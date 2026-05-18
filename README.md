@@ -91,6 +91,14 @@ npm run typecheck
 npm run build
 ```
 
+## GitHub Actions 发布
+
+仓库包含 `.github/workflows/release.yml`：
+
+- 推送 `v*.*.*` tag 时自动构建 macOS / Windows / Linux 桌面包，并上传到对应 GitHub Release。
+- 也可以在 GitHub Actions 页面手动触发 `Release Desktop Packages`，输入已有 tag，例如 `v0.1.0`。
+- CI 默认设置 `CSC_IDENTITY_AUTO_DISCOVERY=false`，产物用于内部预览；正式分发签名和 notarization 后续通过 `CSC_*` / `APPLE_*` secrets 接入。
+
 ## Release Notes
 
 详见 [`RELEASE_NOTES.md`](./RELEASE_NOTES.md)。
