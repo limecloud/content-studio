@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist/
+release/
+!package-lock.json
+.DS_Store
+.env
+.env.*
+*.log
+npm-debug.log*

@@ -1,0 +1,14 @@
+appId: ai.limecloud.contentstudio
+productName: Content Studio
+directories:
+  output: release
+files:
+  - out/**
+  - resources/**
+  - package.json
+mac:
+  category: public.app-category.productivity
+win:
+  target: nsis
+linux:
+  target: AppImage
