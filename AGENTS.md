@@ -35,7 +35,7 @@
 ## 技术栈与架构边界
 
 - 桌面壳：Electron + electron-vite。
-- 前端：React + TypeScript，入口 `src/renderer/src/App.tsx`。
+- 前端：React + TypeScript，入口 `src/renderer/src/App.tsx` 只负责装配壳层。
 - 主进程：`src/main/`，IPC 在 `src/main/ipc.ts`。
 - Preload bridge：`src/preload/index.ts`。
 - 共享协议：`src/shared/types.ts` 是前后端类型契约事实源。
@@ -47,13 +47,15 @@
 
 ## 模块拆分规则
 
-1. `App.tsx` 只保留应用状态编排、数据加载、跨模块动作和顶层路由。
-2. 展示层组件放在 `src/renderer/src/components/`。
-3. 业务页面组件放在 `src/renderer/src/components/modules/`，按图片、视频、文章、知识库、素材、Skills 拆分。
-4. 常量放在 `src/renderer/src/app/constants.ts`。
-5. 纯格式化 / 提取函数放在 `src/renderer/src/app/formatters.ts`。
-6. 前端局部类型放在 `src/renderer/src/app/types.ts`；跨进程协议类型必须放在 `src/shared/types.ts`。
-7. 样式入口 `src/renderer/src/styles.css` 只做分层 `@import`，真实样式放在 `src/renderer/src/styles/`。
+1. `App.tsx` 只保留应用壳层装配、全局布局和顶层入口。
+2. 复杂状态与副作用进入 `src/renderer/src/app/useContentStudioApp.ts`，按 Controller Hook 模式暴露给壳层。
+3. 展示层组件放在 `src/renderer/src/components/`。
+4. 业务页面组件放在 `src/renderer/src/components/modules/`，按图片、视频、文章、知识库、素材、Skills 拆分。
+5. 跨模块路由装配放在 `src/renderer/src/components/ModuleOutlet.tsx`，不要把条件渲染重新堆回 `App.tsx`。
+6. 常量放在 `src/renderer/src/app/constants.ts`。
+7. 纯格式化 / 提取函数放在 `src/renderer/src/app/formatters.ts`。
+8. 前端局部类型放在 `src/renderer/src/app/types.ts`；跨进程协议类型必须放在 `src/shared/types.ts`。
+9. 样式入口 `src/renderer/src/styles.css` 只做分层 `@import`，真实样式放在 `src/renderer/src/styles/`。
 
 ## UI 与产品边界
 
@@ -83,6 +85,7 @@
 ```bash
 npm run typecheck
 npm run build
+npm run smoke:electron
 npm run dist:mac
 npm run dist:win
 npm run dist:linux
@@ -99,6 +102,7 @@ pnpm run dev
 
 - 普通前端 / 主进程改动：至少跑 `npm run typecheck`。
 - 可交付功能改动：跑 `npm run build`。
+- 主工作台 / preload / IPC 主链改动：优先补跑 `npm run smoke:electron`。
 - 打包 / 图标 / release 配置改动：跑对应 `npm run dist:*`，macOS 本地优先 `npm run dist:mac`。
 - GUI 交互改动如无法做点击级验证，必须在收尾说明中明确残余风险。
 

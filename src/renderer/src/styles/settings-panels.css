@@ -77,6 +77,29 @@
   min-height: 82px;
 }
 
+.model-config-form {
+  gap: 14px;
+}
+.model-status-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  padding: 12px;
+}
+.model-status-grid span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.model-field-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
 /* Account Settings */
 .account-settings {
   display: flex;

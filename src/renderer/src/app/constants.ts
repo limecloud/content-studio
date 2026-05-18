@@ -2,6 +2,7 @@ import type {
   ArticleGenerationRequest,
   GenerationLogEntry,
   GlobalGenerationParams,
+  ImageGenerationRequest,
   KnowledgeBaseType,
   KnowledgeSectionType,
 } from '../../../shared/types';
@@ -30,6 +31,18 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
 export const PIPELINE_STEPS = ['知识库', '提示词包', '场景库', '图片素材', '视频队列', '文章生成'];
 
 export const VIDEO_DIMENSIONS = ['开头钩子', '钩子评分', '语气风格', '卖点逻辑', '镜头运镜', '画面构图', '关键词视觉元素', '字幕口播', '情绪曲线', '节奏密度', '视觉风格', '转化设计', '爆点因素', '内容公式', '转场方式', '用户停留点'];
+
+export const IMAGE_PROMPT_MODE_OPTIONS: Array<{ value: ImageGenerationRequest['promptMode']; label: string }> = [
+  { value: 'free', label: '自由模式' },
+  { value: 'preset', label: '预设提示词' },
+];
+
+export const IMAGE_GENERATION_MODE_OPTIONS: Array<{ value: ImageGenerationRequest['generationMode']; label: string }> = [
+  { value: 'smart', label: '智能生成' },
+  { value: 'fixed', label: '固定生成' },
+];
+
+export const IMAGE_TEMPLATE_OPTIONS = ['电商白底主图', '海报图', '场景图', '详情页分区图', '买家秀图', '3D 立体图', '爆款拆解生成', '影视级画面', '美食摄影'];
 
 export const HISTORY_FILTERS: Array<{ value: GenerationLogEntry['kind'] | 'all'; label: string }> = [
   { value: 'all', label: '全部' },

@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   ArticleGenerationRequest,
   AssetFileKind,
+  ExportAssetInput,
   ExportMarkdownInput,
   GeneratePromptPackInput,
   GenerateSceneCardsInput,
@@ -18,7 +19,7 @@ import type {
   VideoGenerationRequest,
   VideoScriptGenerationRequest,
 } from '../shared/types';
-import { writeFile } from 'node:fs/promises';
+import { copyFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { MediaProvider } from './providers/mediaProvider';
 import { ArticleGenerationService } from './services/articleGenerationService';
@@ -111,6 +112,17 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     if (!path) return { ok: false, error: '路径为空' };
     shell.showItemInFolder(path);
     return { ok: true };
+  });
+  ipcMain.handle('assets:export', async (_event, input: ExportAssetInput) => {
+    const safeName = basename(input.suggestedName || input.sourcePath).replace(/[\\/:*?"<>|]/g, '-');
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: '导出本地产物',
+      defaultPath: safeName,
+      filters: [{ name: '全部文件', extensions: ['*'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    await copyFile(input.sourcePath, result.filePath);
+    return result.filePath;
   });
   ipcMain.handle('article:exportMarkdown', async (_event, input: ExportMarkdownInput) => {
     const safeName = basename(input.suggestedName || 'content-studio-draft.md').replace(/[\\/:*?"<>|]/g, '-');

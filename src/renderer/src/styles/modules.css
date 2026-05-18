@@ -74,6 +74,80 @@
 }
 .result-card p, .log-card p, .kb-card p, .skill-card p { margin: 6px 0; font-size: 13px; }
 .result-card small, .log-card small, .kb-card small, .skill-card small { color: var(--muted); font-size: 11px; }
+.kb-card.active,
+.skill-card.active {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px var(--cyan);
+}
+.kb-card,
+.skill-card {
+  display: grid;
+  gap: 10px;
+}
+.kb-card-main,
+.skill-card-main {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+}
+.kb-detail,
+.detail-panel,
+.section-list,
+.detail-stack {
+  display: grid;
+  gap: 12px;
+}
+.section-card,
+.asset-output-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #FFFFFF;
+  padding: 12px;
+  text-align: left;
+}
+.section-card small,
+.asset-output-card small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.tag-row,
+.metadata-grid,
+.status-line,
+.asset-output-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tag-row span,
+.metadata-grid span,
+.status-line span,
+.asset-output-card span {
+  border-radius: 999px;
+  color: var(--cyan);
+  background: var(--cyan-light);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.asset-output-grid {
+  margin-top: 12px;
+}
+.asset-output-card {
+  min-width: 180px;
+}
+.path-code {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #F9FAFB;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
 
 .result-card.blocked, .log-card.blocked { border-left: 3px solid #F59E0B; }
 .result-card.succeeded, .log-card.succeeded { border-left: 3px solid #10B981; }

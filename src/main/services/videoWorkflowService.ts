@@ -35,6 +35,7 @@ export class VideoWorkflowService {
   constructor(private readonly logs: GenerationLogStore) {}
 
   async analyze(input: VideoBreakdownRequest): Promise<VideoBreakdownResult> {
+    const startedAt = Date.now();
     const dimensions = input.dimensions.length ? input.dimensions : DEFAULT_DIMENSIONS;
     const summary = `围绕 ${dimensions.length} 个维度拆解参考${input.sourceType === 'url' ? '链接' : '视频'}，重点提取可复刻的钩子、镜头节奏、字幕口播和转化结构。`;
     const segments = [
@@ -86,11 +87,13 @@ export class VideoWorkflowService {
       citations: input.citations,
       input,
       output: { summary, dimensions, segments, reusableFormula, risks },
+      durationMs: Date.now() - startedAt,
     });
     return { logId: log.id, summary, dimensions, segments, reusableFormula, risks };
   }
 
   async generateScript(input: VideoScriptGenerationRequest): Promise<VideoScriptGenerationResult> {
+    const startedAt = Date.now();
     const shotCount = Math.min(Math.max(input.shotCount || 4, 3), 8);
     const title = `${input.productName || '新产品'}复刻脚本`;
     const storyboard: VideoStoryboardShot[] = Array.from({ length: shotCount }, (_, index) => {
@@ -139,6 +142,7 @@ export class VideoWorkflowService {
       citations: input.citations,
       input,
       output: { title, script, storyboard, videoPrompt, publishCheck },
+      durationMs: Date.now() - startedAt,
     });
     return { logId: log.id, title, script, storyboard, videoPrompt, publishCheck };
   }

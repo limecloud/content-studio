@@ -18,6 +18,7 @@ interface CreateLogInput {
   input?: unknown;
   output?: unknown;
   error?: string;
+  durationMs?: number;
 }
 
 function filePathFor(workspacePath: string): string {
@@ -47,6 +48,7 @@ export class GenerationLogStore {
       input: input.input,
       output: input.output,
       error: input.error,
+      durationMs: input.durationMs,
       createdAt: now,
       updatedAt: now,
     };

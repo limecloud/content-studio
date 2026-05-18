@@ -287,11 +287,13 @@ export class KnowledgeBaseStore {
   async search(input: KnowledgeSearchInput): Promise<KnowledgeSearchResult[]> {
     const bases = await this.list(input.workspacePath);
     const query = input.query?.trim() ?? '';
+    const tag = input.tag?.trim();
     const results: KnowledgeSearchResult[] = [];
     for (const base of bases) {
       if (input.baseType && input.baseType !== 'all' && base.baseType !== input.baseType) continue;
       for (const section of base.sections) {
         if (input.sectionType && input.sectionType !== 'all' && section.sectionType !== input.sectionType) continue;
+        if (tag && !base.tags.includes(tag) && !section.tags.includes(tag)) continue;
         const score = scoreSection(query, base, section);
         if (!query || score > 0) {
           results.push({ knowledgeBaseId: base.id, baseTitle: base.title, baseType: base.baseType, source: base.source, section, score });

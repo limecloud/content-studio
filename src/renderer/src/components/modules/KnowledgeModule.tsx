@@ -4,12 +4,13 @@ import type {
   KnowledgeBaseView,
   KnowledgeCitation,
   KnowledgeSearchResult,
+  KnowledgeSection,
   KnowledgeSectionType,
   PromptPack,
   SceneCard,
 } from '../../../../shared/types';
 import { KNOWLEDGE_BASE_FILTERS, KNOWLEDGE_SECTION_FILTERS } from '../../app/constants';
-import { baseLabel, clip, sectionLabel } from '../../app/formatters';
+import { baseLabel, clip, knowledgeBaseKey, sectionLabel } from '../../app/formatters';
 
 interface SceneCardDraft {
   title: string;
@@ -27,6 +28,12 @@ interface KnowledgeModuleProps {
   setKnowledgeBaseFilter: Dispatch<SetStateAction<KnowledgeBaseType | 'all'>>;
   knowledgeSectionFilter: KnowledgeSectionType | 'all';
   setKnowledgeSectionFilter: Dispatch<SetStateAction<KnowledgeSectionType | 'all'>>;
+  knowledgeTagFilter: string;
+  setKnowledgeTagFilter: Dispatch<SetStateAction<string>>;
+  availableKnowledgeTags: string[];
+  activeKnowledgeBase?: KnowledgeBaseView;
+  activeKnowledgeBaseKey: string;
+  setActiveKnowledgeBaseKey: Dispatch<SetStateAction<string>>;
   searchResults: KnowledgeSearchResult[];
   selectedCitations: KnowledgeCitation[];
   activePromptPack?: PromptPack;
@@ -39,6 +46,7 @@ interface KnowledgeModuleProps {
   onInstallBuiltinKnowledgeBase: (id: string) => void;
   onSearchKnowledge: () => void;
   onAddCitation: (result: KnowledgeSearchResult) => void;
+  onAddKnowledgeSectionCitation: (base: KnowledgeBaseView, section: KnowledgeSection) => void;
   onGenerateSceneCards: () => void;
   onSavePromptPackDraft: () => void;
   onSaveSceneCardDraft: () => void;
@@ -54,6 +62,12 @@ export function KnowledgeModule({
   setKnowledgeBaseFilter,
   knowledgeSectionFilter,
   setKnowledgeSectionFilter,
+  knowledgeTagFilter,
+  setKnowledgeTagFilter,
+  availableKnowledgeTags,
+  activeKnowledgeBase,
+  activeKnowledgeBaseKey,
+  setActiveKnowledgeBaseKey,
   searchResults,
   selectedCitations,
   activePromptPack,
@@ -66,6 +80,7 @@ export function KnowledgeModule({
   onInstallBuiltinKnowledgeBase,
   onSearchKnowledge,
   onAddCitation,
+  onAddKnowledgeSectionCitation,
   onGenerateSceneCards,
   onSavePromptPackDraft,
   onSaveSceneCardDraft,
@@ -79,12 +94,43 @@ export function KnowledgeModule({
         </div>
         <div className="knowledge-list">
           {knowledgeBases.map((base) => (
-            <article key={`${base.source}:${base.id}`} className="kb-card">
-              <div><strong>{base.title}</strong><p>{base.description}</p><small>{baseLabel(base.baseType)} · {base.source === 'builtin' ? '内置样例' : 'Workspace'} · {base.sections.length} 章节</small></div>
+            <article key={knowledgeBaseKey(base)} className={`kb-card ${knowledgeBaseKey(base) === (activeKnowledgeBaseKey || (activeKnowledgeBase ? knowledgeBaseKey(activeKnowledgeBase) : '')) ? 'active' : ''}`}>
+              <button className="kb-card-main" onClick={() => setActiveKnowledgeBaseKey(knowledgeBaseKey(base))}>
+                <strong>{base.title}</strong>
+                <p>{base.description}</p>
+                <small>{baseLabel(base.baseType)} · {base.source === 'builtin' ? '内置样例' : 'Workspace'} · {base.sections.length} 章节</small>
+              </button>
               {base.source === 'builtin' ? <button className="ghost small" disabled={!workspaceReady} onClick={() => onInstallBuiltinKnowledgeBase(base.id)}>安装</button> : null}
             </article>
           ))}
         </div>
+        {activeKnowledgeBase ? (
+          <div className="kb-detail">
+            <div className="metadata-grid">
+              <span>{baseLabel(activeKnowledgeBase.baseType)}</span>
+              <span>{activeKnowledgeBase.source === 'builtin' ? '内置样例' : 'Workspace'}</span>
+              <span>{activeKnowledgeBase.sections.length} 章节</span>
+            </div>
+            {activeKnowledgeBase.tags.length ? (
+              <div className="tag-row">
+                {activeKnowledgeBase.tags.map((tag) => <span key={tag}>{tag}</span>)}
+              </div>
+            ) : null}
+            <p>{activeKnowledgeBase.description ?? '暂无摘要'}</p>
+            <div className="section-list">
+              {activeKnowledgeBase.sections.map((section) => (
+                <article key={section.id} className="section-card">
+                  <div>
+                    <strong>{section.title}</strong>
+                    <small>{sectionLabel(section.sectionType)} · {section.tags.join(' / ') || '无标签'}</small>
+                  </div>
+                  <p>{clip(section.summary || section.content, 180)}</p>
+                  <button className="ghost small" onClick={() => onAddKnowledgeSectionCitation(activeKnowledgeBase, section)}>引用本章节</button>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : <div className="empty-state">安装或导入知识库后，这里会显示章节结构、标签和原文摘要。</div>}
       </article>
 
       <article className="panel">
@@ -106,6 +152,17 @@ export function KnowledgeModule({
             {KNOWLEDGE_SECTION_FILTERS.map((filter) => (
               <button key={filter.value} className={`chip-button ${knowledgeSectionFilter === filter.value ? 'active' : ''}`} onClick={() => setKnowledgeSectionFilter(filter.value)}>
                 {filter.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="filter-block">
+          <span>标签</span>
+          <div className="chip-row tight">
+            <button className={`chip-button ${knowledgeTagFilter === '' ? 'active' : ''}`} onClick={() => setKnowledgeTagFilter('')}>全部标签</button>
+            {availableKnowledgeTags.slice(0, 14).map((tag) => (
+              <button key={tag} className={`chip-button ${knowledgeTagFilter === tag ? 'active' : ''}`} onClick={() => setKnowledgeTagFilter(tag)}>
+                {tag}
               </button>
             ))}
           </div>

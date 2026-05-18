@@ -1,5 +1,44 @@
 # Release Notes
 
+## v0.3 - 2026-05-19
+
+### 版本定位
+
+内容工坊 v0.3 是 v1 内部预览收口版本，目标是把 `docs/roadmap/v1` 中的未完善功能补到可验证、可追溯、可发布的 Electron 桌面工作流。
+
+本版仍遵守 v1 current 边界：真实图片 / 视频 provider 后续接入；当前通过本地 SVG、JSON、Markdown 队列文件和 blocked 状态保证链路可用但不伪造成功。
+
+### 新增能力
+
+- 进一步拆分 Renderer 架构：`App.tsx` 收敛为应用壳层，复杂状态和副作用迁入 `useContentStudioApp`，模块路由迁入 `ModuleOutlet`。
+- 模型设置从静态展示改为真实配置表单，支持 API endpoint、API Key、文字模型、图片模型候选和视频模型的保存 / 回填。
+- 图片引擎补齐真实输入状态：提示词模式、生成模式、图片模板和水印都会写入生成 payload。
+- 视频脚本生成补齐字幕模式、视频语音、镜头数和时长配置，并传入视频脚本 / 视频队列请求。
+- 知识库补齐详情视图：知识库选中态、标签、tag chip 筛选、章节结构和“引用本章节”。
+- Skills 管理补齐详情视图：路径、来源、有效性、启用态、`globs`、`alwaysAllow`、`requiredSources`、校验错误和复制路径。
+- 生成历史补齐耗时、重试和本地产物操作；图片 / 视频结果支持打开位置和导出副本。
+- 顶部流水线新增 renderer 级取消能力，取消后会忽略迟到结果，避免污染当前 UI。
+
+### 工程与验证
+
+- 新增 `scripts/electron-smoke.mjs` 和 `npm run smoke:electron`，用 Electron + CDP 验证主窗口、preload bridge、内置 Skills、完整核心生成链路和主要导航点击流。
+- 修复构建后 resources 根路径解析，确保 built app 能找到内置 Skills 与知识库。
+- 新增 `GenerationLogEntry.durationMs`，文章、提示词包、场景卡、图片、视频、视频拆解和视频脚本都会记录耗时。
+- 更新 `AGENTS.md`，沉淀 Content Studio 项目级 Agent 协作规则与验证入口。
+- 将应用包版本提升到 `0.3.0`，本次 Git tag 按用户指定发布为 `v0.3`。
+
+### 验证
+
+- `npm run typecheck` 通过。
+- `npm run build` 通过。
+- `npm run smoke:electron` 通过，关键结果：`hasBridge: true`、`bridgeMethodCount: 33`、`builtinSkillsCount: 12`、`logCount: 7`、`logsWithDuration: 7`、点击流 `failed: []`。
+
+### 明确不包含
+
+- 不接入真实图片模型、视频模型或视频理解模型；provider 仍以后续接入为主。
+- 不做策略分析、竞品抓取、差评采集、AI 自动搭建知识库、云协作、计费、多租户或向量 RAG。
+- 当前取消能力是 renderer 级“忽略迟到结果”，不是 provider 级 AbortSignal 强取消。
+
 ## v0.2.0 - 2026-05-19
 
 ### 版本定位

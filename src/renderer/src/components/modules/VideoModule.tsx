@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { MediaGenerationResult, SceneCard, VideoBreakdownResult, VideoScriptGenerationResult } from '../../../../shared/types';
 import { VIDEO_DIMENSIONS } from '../../app/constants';
-import { statusLabel } from '../../app/formatters';
+import { fileNameFromPath, statusLabel } from '../../app/formatters';
 
 interface VideoModuleProps {
   busy: boolean;
@@ -12,6 +12,14 @@ interface VideoModuleProps {
   setVideoProductName: Dispatch<SetStateAction<string>>;
   videoSceneBackground: string;
   setVideoSceneBackground: Dispatch<SetStateAction<string>>;
+  videoSubtitleMode: string;
+  setVideoSubtitleMode: Dispatch<SetStateAction<string>>;
+  videoVoiceStyle: string;
+  setVideoVoiceStyle: Dispatch<SetStateAction<string>>;
+  videoShotCount: number;
+  setVideoShotCount: Dispatch<SetStateAction<number>>;
+  videoDurationSeconds: number;
+  setVideoDurationSeconds: Dispatch<SetStateAction<number>>;
   videoCustomRequirement: string;
   setVideoCustomRequirement: Dispatch<SetStateAction<string>>;
   videoAssetRefs: string[];
@@ -22,6 +30,8 @@ interface VideoModuleProps {
   activeScenes: SceneCard[];
   suggestedVideoPrompt: string;
   mediaResult: MediaGenerationResult | null;
+  onRevealPath: (path: string) => void;
+  onExportAsset: (path: string) => void;
   onSelectVideo: () => void;
   onAnalyzeReferenceVideo: () => void;
   onGenerateVideoScript: () => void;
@@ -37,6 +47,14 @@ export function VideoModule({
   setVideoProductName,
   videoSceneBackground,
   setVideoSceneBackground,
+  videoSubtitleMode,
+  setVideoSubtitleMode,
+  videoVoiceStyle,
+  setVideoVoiceStyle,
+  videoShotCount,
+  setVideoShotCount,
+  videoDurationSeconds,
+  setVideoDurationSeconds,
   videoCustomRequirement,
   setVideoCustomRequirement,
   videoAssetRefs,
@@ -47,6 +65,8 @@ export function VideoModule({
   activeScenes,
   suggestedVideoPrompt,
   mediaResult,
+  onRevealPath,
+  onExportAsset,
   onSelectVideo,
   onAnalyzeReferenceVideo,
   onGenerateVideoScript,
@@ -60,6 +80,17 @@ export function VideoModule({
           <label><span>参考视频链接</span><input value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="可粘贴视频链接，或选择本地视频" /></label>
           <label><span>新产品名称</span><input value={videoProductName} onChange={(event) => setVideoProductName(event.target.value)} /></label>
           <label><span>场景背景</span><input value={videoSceneBackground} onChange={(event) => setVideoSceneBackground(event.target.value)} /></label>
+          <label>
+            <span>字幕选择</span>
+            <select value={videoSubtitleMode} onChange={(event) => setVideoSubtitleMode(event.target.value)}>
+              <option value="burned-subtitle">内嵌字幕</option>
+              <option value="caption-file">输出字幕文件</option>
+              <option value="no-subtitle">无字幕</option>
+            </select>
+          </label>
+          <label><span>视频语音</span><input value={videoVoiceStyle} onChange={(event) => setVideoVoiceStyle(event.target.value)} placeholder="自然可信 / 种草感 / 专业讲解" /></label>
+          <label><span>镜头数</span><input type="number" min={1} max={12} value={videoShotCount} onChange={(event) => setVideoShotCount(Math.min(12, Math.max(1, Number(event.target.value) || 1)))} /></label>
+          <label><span>视频时长（秒）</span><input type="number" min={5} max={90} value={videoDurationSeconds} onChange={(event) => setVideoDurationSeconds(Math.min(90, Math.max(5, Number(event.target.value) || 5)))} /></label>
           <label><span>自定义需求</span><input value={videoCustomRequirement} onChange={(event) => setVideoCustomRequirement(event.target.value)} /></label>
         </div>
         <div className="header-actions inline-actions">
@@ -86,7 +117,27 @@ export function VideoModule({
         <pre>{suggestedVideoPrompt}</pre>
         {videoBreakdown ? <div className="script-block"><strong>拆解片段</strong>{videoBreakdown.segments.map((segment) => <p key={segment.timeRange}>{segment.timeRange} · {segment.hook} · {segment.reusablePoint}</p>)}</div> : null}
         {videoScript ? <div className="script-block"><strong>分镜脚本</strong><pre>{videoScript.script}</pre></div> : null}
-        {mediaResult ? <div className={`result-card ${mediaResult.status}`}><strong>{statusLabel(mediaResult.status)}</strong><p>{mediaResult.message}</p></div> : null}
+        {mediaResult ? (
+          <div className={`result-card ${mediaResult.status}`}>
+            <strong>{statusLabel(mediaResult.status)}</strong>
+            <p>{mediaResult.message}</p>
+            {mediaResult.assetRefs.length ? (
+              <div className="asset-output-grid">
+                {mediaResult.assetRefs.map((assetRef) => (
+                  <article key={assetRef} className="asset-output-card">
+                    <span>队列产物</span>
+                    <strong>{fileNameFromPath(assetRef)}</strong>
+                    <small>可打开位置或导出副本</small>
+                    <div className="log-actions">
+                      <button className="ghost small" onClick={() => onRevealPath(assetRef)}>打开位置</button>
+                      <button className="primary small" onClick={() => onExportAsset(assetRef)}>导出</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </article>
     </section>
   );

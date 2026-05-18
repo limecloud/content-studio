@@ -122,6 +122,7 @@ export interface KnowledgeSearchInput {
   query?: string;
   baseType?: KnowledgeBaseType | 'all';
   sectionType?: KnowledgeSectionType | 'all';
+  tag?: string;
 }
 
 export interface KnowledgeSearchResult {
@@ -199,6 +200,7 @@ export interface GenerationLogEntry {
   input?: unknown;
   output?: unknown;
   error?: string;
+  durationMs?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -283,6 +285,11 @@ export interface ExportMarkdownInput {
   sourceLogId?: string;
   suggestedName: string;
   markdown: string;
+}
+
+export interface ExportAssetInput {
+  sourcePath: string;
+  suggestedName?: string;
 }
 
 export interface VideoBreakdownRequest {
@@ -399,6 +406,7 @@ export interface ContentStudioApi {
 
   selectAssetFiles(kind: AssetFileKind): Promise<string[]>;
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>;
+  exportAsset(input: ExportAssetInput): Promise<string | null>;
   exportMarkdown(input: ExportMarkdownInput): Promise<string | null>;
   generateArticle(input: ArticleGenerationRequest): Promise<ArticleGenerationResult>;
   analyzeVideo(input: VideoBreakdownRequest): Promise<VideoBreakdownResult>;

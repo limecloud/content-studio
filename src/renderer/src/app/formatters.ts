@@ -2,6 +2,7 @@ import type {
   GenerationLogEntry,
   KnowledgeBaseView,
   KnowledgeCitation,
+  KnowledgeSection,
   KnowledgeSearchResult,
   LoadedSkill,
   SkillRef,
@@ -66,8 +67,22 @@ export function statusLabel(status: GenerationLogEntry['status']): string {
   }[status];
 }
 
+export function formatDuration(durationMs?: number): string {
+  if (durationMs === undefined) return '未记录耗时';
+  if (durationMs < 1000) return `${durationMs}ms`;
+  return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
 export function skillKey(skill: SkillRef): string {
   return `${skill.source}:${skill.slug}`;
+}
+
+export function knowledgeBaseKey(base: Pick<KnowledgeBaseView, 'source' | 'id'>): string {
+  return `${base.source}:${base.id}`;
+}
+
+export function fileNameFromPath(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
 export function clip(value: string, length = 180): string {
@@ -82,6 +97,16 @@ export function citationFromResult(result: KnowledgeSearchResult): KnowledgeCita
     title: `${result.baseTitle} / ${result.section.title}`,
     sectionType: result.section.sectionType,
     excerpt: clip(result.section.content || result.section.summary || result.section.title, 220),
+  };
+}
+
+export function citationFromSection(base: KnowledgeBaseView, section: KnowledgeSection): KnowledgeCitation {
+  return {
+    knowledgeBaseId: base.id,
+    sectionId: section.id,
+    title: `${base.title} / ${section.title}`,
+    sectionType: section.sectionType,
+    excerpt: clip(section.content || section.summary || section.title, 220),
   };
 }
 

@@ -150,6 +150,7 @@ export class MediaProvider {
   constructor(private readonly modelConfig: ModelConfigStore, private readonly logs: GenerationLogStore) {}
 
   async generateImage(input: ImageGenerationRequest): Promise<MediaGenerationResult> {
+    const startedAt = Date.now();
     const config = await this.modelConfig.readView();
     const model = input.params.imageModel || config.imageModels[0];
     const assetRefs = await writeImagePlaceholders(input, model);
@@ -167,6 +168,7 @@ export class MediaProvider {
       input,
       output: { assetRefs, placeholderType: 'svg' },
       error: 'IMAGE_PROVIDER_NOT_CONFIGURED',
+      durationMs: Date.now() - startedAt,
     });
     return {
       logId: log.id,
@@ -177,6 +179,7 @@ export class MediaProvider {
   }
 
   async generateVideo(input: VideoGenerationRequest): Promise<MediaGenerationResult> {
+    const startedAt = Date.now();
     const config = await this.modelConfig.readView();
     const model = input.params.videoModel || config.videoModel;
     const assetRefs = await writeVideoQueueArtifacts(input, model);
@@ -194,6 +197,7 @@ export class MediaProvider {
       input,
       output: { assetRefs, placeholderType: 'video-queue' },
       error: 'VIDEO_PROVIDER_NOT_CONFIGURED',
+      durationMs: Date.now() - startedAt,
     });
     return {
       logId: log.id,

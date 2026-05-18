@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { GenerationLogEntry } from '../../../../shared/types';
 import { HISTORY_FILTERS } from '../../app/constants';
-import { extractLocalRefsFromLog, extractSkillSlugsFromLog, kindLabel, statusLabel } from '../../app/formatters';
+import { extractLocalRefsFromLog, extractSkillSlugsFromLog, formatDuration, kindLabel, statusLabel } from '../../app/formatters';
 
 interface AssetsModuleProps {
   logsCount: number;
@@ -11,6 +11,7 @@ interface AssetsModuleProps {
   copiedLogId: string | null;
   onCopyLogPrompt: (log: GenerationLogEntry) => void;
   onRevealLogPath: (log: GenerationLogEntry) => void;
+  onRetryLog: (log: GenerationLogEntry) => void;
 }
 
 export function AssetsModule({
@@ -21,6 +22,7 @@ export function AssetsModule({
   copiedLogId,
   onCopyLogPrompt,
   onRevealLogPath,
+  onRetryLog,
 }: AssetsModuleProps) {
   return (
     <section className="panel full-panel">
@@ -41,7 +43,7 @@ export function AssetsModule({
               <span>{kindLabel(log.kind)}</span>
               <strong>{log.title}</strong>
               <p>{log.summary ?? log.error ?? '无摘要'}</p>
-              <small>{statusLabel(log.status)} · {log.model ?? 'local'} · 引用 {log.citations?.length ?? 0} · Skills {skillSlugs.length} · 素材 {localRefs.length} · {new Date(log.createdAt).toLocaleString()}</small>
+              <small>{statusLabel(log.status)} · {formatDuration(log.durationMs)} · {log.model ?? 'local'} · 引用 {log.citations?.length ?? 0} · Skills {skillSlugs.length} · 素材 {localRefs.length} · {new Date(log.createdAt).toLocaleString()}</small>
               {skillSlugs.length ? (
                 <div className="skill-chip-row">
                   {skillSlugs.map((slug) => <span key={slug}>{slug}</span>)}
@@ -50,6 +52,7 @@ export function AssetsModule({
               <div className="log-actions">
                 <button className="ghost small" onClick={() => onCopyLogPrompt(log)}>{copiedLogId === log.id ? '已复制' : '复制提示词'}</button>
                 <button className="ghost small" disabled={localRefs.length === 0} onClick={() => onRevealLogPath(log)}>打开素材位置</button>
+                <button className="primary small" disabled={!log.input} onClick={() => onRetryLog(log)}>重试本次请求</button>
               </div>
               <details>
                 <summary>查看输入 / 输出摘要</summary>

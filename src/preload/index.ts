@@ -4,6 +4,7 @@ import type {
   ArticleGenerationRequest,
   AssetFileKind,
   ContentStudioApi,
+  ExportAssetInput,
   ExportMarkdownInput,
   GeneratePromptPackInput,
   GenerateSceneCardsInput,
@@ -48,6 +49,7 @@ const api: ContentStudioApi = {
 
   selectAssetFiles: (kind: AssetFileKind) => ipcRenderer.invoke('assets:selectFiles', kind),
   revealPath: (path: string) => ipcRenderer.invoke('assets:revealPath', path),
+  exportAsset: (input: ExportAssetInput) => ipcRenderer.invoke('assets:export', input),
   exportMarkdown: (input: ExportMarkdownInput) => ipcRenderer.invoke('article:exportMarkdown', input),
   generateArticle: (input: ArticleGenerationRequest) => ipcRenderer.invoke('article:generate', input),
   analyzeVideo: (input: VideoBreakdownRequest) => ipcRenderer.invoke('video:analyze', input),

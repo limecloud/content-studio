@@ -41,6 +41,7 @@ export class SceneLibraryStore {
   }
 
   async generate(input: GenerateSceneCardsInput): Promise<SceneCard[]> {
+    const startedAt = Date.now();
     const promptPack = await this.promptPacks.find(input.workspacePath, input.promptPackId);
     if (!promptPack) throw new Error(`提示词包不存在: ${input.promptPackId}`);
     const citations = input.citations?.length ? input.citations : promptPack.citations;
@@ -77,7 +78,9 @@ export class SceneLibraryStore {
       summary: `基于提示词包生成 ${cards.length} 张场景卡`,
       promptPackId: input.promptPackId,
       citations,
+      input,
       output: cards,
+      durationMs: Date.now() - startedAt,
     });
     return cards;
   }

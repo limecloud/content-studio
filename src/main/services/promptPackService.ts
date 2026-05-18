@@ -45,6 +45,7 @@ export class PromptPackService {
   }
 
   async generate(input: GeneratePromptPackInput): Promise<PromptPack> {
+    const startedAt = Date.now();
     if (input.citations.length === 0) throw new Error('生成提示词包至少需要 1 条知识引用');
     const now = new Date().toISOString();
     const baseType = inferBaseType(input.citations);
@@ -79,7 +80,9 @@ export class PromptPackService {
       title: pack.name,
       summary: `基于 ${input.citations.length} 条知识引用生成提示词包`,
       citations: input.citations,
+      input,
       output: pack,
+      durationMs: Date.now() - startedAt,
     });
     return pack;
   }

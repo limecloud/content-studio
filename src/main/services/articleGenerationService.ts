@@ -19,6 +19,7 @@ export class ArticleGenerationService {
   constructor(private readonly logs: GenerationLogStore) {}
 
   async generate(input: ArticleGenerationRequest): Promise<ArticleGenerationResult> {
+    const startedAt = Date.now();
     const titleSeed = input.topic || '产品内容选题';
     const titleCandidates = [
       `${titleSeed}：先把真实问题讲清楚`,
@@ -60,6 +61,7 @@ export class ArticleGenerationService {
       citations: input.citations,
       input,
       output: { titleCandidates, outline, summary, markdown, publishCheck },
+      durationMs: Date.now() - startedAt,
     });
     return { logId: log.id, titleCandidates, outline, summary, markdown, publishCheck };
   }
