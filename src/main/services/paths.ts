@@ -15,3 +15,7 @@ export function getWorkspaceDataDir(workspacePath: string): string {
 export function getWorkspaceKnowledgeDir(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'knowledge-bases');
 }
+
+export function getWorkspaceAssetDir(workspacePath: string): string {
+  return join(getWorkspaceDataDir(workspacePath), 'assets');
+}

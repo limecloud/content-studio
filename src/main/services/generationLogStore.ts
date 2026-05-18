@@ -14,6 +14,7 @@ interface CreateLogInput {
   promptPackId?: string;
   sceneCardIds?: string[];
   citations?: KnowledgeCitation[];
+  artifactRefs?: string[];
   input?: unknown;
   output?: unknown;
   error?: string;
@@ -42,6 +43,7 @@ export class GenerationLogStore {
       promptPackId: input.promptPackId,
       sceneCardIds: input.sceneCardIds,
       citations: input.citations,
+      artifactRefs: input.artifactRefs,
       input: input.input,
       output: input.output,
       error: input.error,
@@ -51,5 +53,16 @@ export class GenerationLogStore {
     const logs = await this.list(input.workspacePath);
     await writeJsonFile(filePathFor(input.workspacePath), [entry, ...logs].slice(0, 200));
     return entry;
+  }
+
+  async addArtifactRef(workspacePath: string, logId: string, path: string): Promise<GenerationLogEntry | null> {
+    const logs = await this.list(workspacePath);
+    const nextLogs = logs.map((log) => {
+      if (log.id !== logId) return log;
+      const artifactRefs = Array.from(new Set([...(log.artifactRefs ?? []), path]));
+      return { ...log, artifactRefs, updatedAt: new Date().toISOString() };
+    });
+    await writeJsonFile(filePathFor(workspacePath), nextLogs);
+    return nextLogs.find((log) => log.id === logId) ?? null;
   }
 }

@@ -1,6 +1,6 @@
 import { app, safeStorage } from 'electron';
 import { join } from 'node:path';
-import type { ModelConfigView, SaveModelConfigInput } from '../../shared/types';
+import type { ModelCatalogView, ModelConfigView, SaveModelConfigInput } from '../../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 
 interface StoredModelConfig {
@@ -69,6 +69,17 @@ export class ModelConfigStore {
     const config = await this.readRaw();
     if (config.apiKeyEncrypted) return safeStorage.decryptString(Buffer.from(config.apiKeyEncrypted, 'base64'));
     return config.apiKeyPlain;
+  }
+
+  async readCatalog(): Promise<ModelCatalogView> {
+    const view = await this.readView();
+    return {
+      textModels: Array.from(new Set([view.textModel, 'claude-sonnet-4-5', 'claude-opus-4-1', 'claude-haiku-4-5'].filter(Boolean))),
+      imageModels: Array.from(new Set([...view.imageModels, 'gpt-image-2', 'seedream-4.0', 'nano-banana-pro'].filter(Boolean))),
+      videoModels: Array.from(new Set([view.videoModel, 'veo-3.1', 'kling-2.1', 'runway-gen-4'].filter(Boolean))),
+      source: 'mock',
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   private readRaw(): Promise<StoredModelConfig> {

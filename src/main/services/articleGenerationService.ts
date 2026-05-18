@@ -33,7 +33,9 @@ export class ArticleGenerationService {
       '风险边界：明确哪些话不能说、哪些承诺需要依据',
       '行动闭环：给读者下一步动作和素材承接方式',
     ];
+    const summary = `围绕「${titleSeed}」生成一篇 ${input.platform} 草稿，包含 ${input.citations.length} 条知识引用、场景化表达和发布风险检查。`;
     const markdown = `# ${titleCandidates[0]}\n\n` +
+      `> 摘要：${summary}\n\n` +
       `> 类型：${input.articleType}｜平台：${input.platform}｜受众：${input.audience}｜语气：${input.tone}｜篇幅：${lengthLabel(input.length)}\n\n` +
       `## 选题判断\n\n${input.customRequirement || '围绕知识库事实生成一篇可编辑的内容草稿。'}\n\n` +
       `## 知识引用\n\n${formatCitationBullets(input)}\n\n` +
@@ -57,8 +59,8 @@ export class ArticleGenerationService {
       sceneCardIds: input.sceneCardIds,
       citations: input.citations,
       input,
-      output: { titleCandidates, outline, markdown, publishCheck },
+      output: { titleCandidates, outline, summary, markdown, publishCheck },
     });
-    return { logId: log.id, titleCandidates, outline, markdown, publishCheck };
+    return { logId: log.id, titleCandidates, outline, summary, markdown, publishCheck };
   }
 }

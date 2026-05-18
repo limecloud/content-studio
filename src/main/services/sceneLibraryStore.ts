@@ -32,6 +32,14 @@ export class SceneLibraryStore {
     return cards.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  async update(input: SceneCard): Promise<SceneCard> {
+    const cards = await this.list(input.workspacePath);
+    if (!cards.some((card) => card.id === input.id)) throw new Error(`场景卡不存在: ${input.id}`);
+    const updated: SceneCard = { ...input, updatedAt: new Date().toISOString() };
+    await writeJsonFile(filePathFor(input.workspacePath), cards.map((card) => (card.id === input.id ? updated : card)));
+    return updated;
+  }
+
   async generate(input: GenerateSceneCardsInput): Promise<SceneCard[]> {
     const promptPack = await this.promptPacks.find(input.workspacePath, input.promptPackId);
     if (!promptPack) throw new Error(`提示词包不存在: ${input.promptPackId}`);

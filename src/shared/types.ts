@@ -41,6 +41,14 @@ export interface ModelConfigView {
   updatedAt?: string;
 }
 
+export interface ModelCatalogView {
+  textModels: string[];
+  imageModels: string[];
+  videoModels: string[];
+  source: 'mock' | 'endpoint';
+  updatedAt: string;
+}
+
 export interface SaveModelConfigInput {
   apiEndpoint?: string;
   apiKey?: string;
@@ -174,7 +182,7 @@ export interface GenerateSceneCardsInput {
 }
 
 export type GenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled';
-export type GenerationKind = 'article' | 'image' | 'video' | 'prompt-pack' | 'scene-card';
+export type GenerationKind = 'article' | 'image' | 'video' | 'video-breakdown' | 'video-script' | 'prompt-pack' | 'scene-card';
 
 export interface GenerationLogEntry {
   id: string;
@@ -187,6 +195,7 @@ export interface GenerationLogEntry {
   promptPackId?: string;
   sceneCardIds?: string[];
   citations?: KnowledgeCitation[];
+  artifactRefs?: string[];
   input?: unknown;
   output?: unknown;
   error?: string;
@@ -226,6 +235,7 @@ export interface ArticleGenerationResult {
   logId: string;
   titleCandidates: string[];
   outline: string[];
+  summary: string;
   markdown: string;
   publishCheck: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
 }
@@ -242,6 +252,7 @@ export interface ImageGenerationRequest {
   promptPackId?: string;
   sceneCardIds?: string[];
   citations: KnowledgeCitation[];
+  selectedSkillSlugs: string[];
   params: GlobalGenerationParams;
 }
 
@@ -261,7 +272,84 @@ export interface VideoGenerationRequest {
   promptPackId?: string;
   sceneCardIds?: string[];
   citations: KnowledgeCitation[];
+  selectedSkillSlugs: string[];
   params: Pick<GlobalGenerationParams, 'videoModel' | 'aspectRatio'> & { durationSeconds: number };
+}
+
+export type AssetFileKind = 'product-image' | 'reference-image' | 'video' | 'image-material';
+
+export interface ExportMarkdownInput {
+  workspacePath: string;
+  sourceLogId?: string;
+  suggestedName: string;
+  markdown: string;
+}
+
+export interface VideoBreakdownRequest {
+  workspacePath: string;
+  sourceType: 'file' | 'url';
+  source: string;
+  dimensions: string[];
+  promptPackId?: string;
+  citations: KnowledgeCitation[];
+  selectedSkillSlugs: string[];
+  params: Pick<GlobalGenerationParams, 'textModel'>;
+}
+
+export interface VideoBreakdownSegment {
+  timeRange: string;
+  hook: string;
+  visual: string;
+  voiceover: string;
+  subtitle: string;
+  rhythm: string;
+  reusablePoint: string;
+}
+
+export interface VideoBreakdownResult {
+  logId: string;
+  summary: string;
+  dimensions: string[];
+  segments: VideoBreakdownSegment[];
+  reusableFormula: string[];
+  risks: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
+}
+
+export interface VideoScriptGenerationRequest {
+  workspacePath: string;
+  productName: string;
+  sceneBackground: string;
+  subtitleMode: string;
+  voiceStyle: string;
+  customRequirement?: string;
+  ratio: GlobalGenerationParams['aspectRatio'];
+  shotCount: number;
+  durationSeconds: number;
+  breakdownLogId?: string;
+  promptPackId?: string;
+  sceneCardIds?: string[];
+  citations: KnowledgeCitation[];
+  assetRefs: string[];
+  selectedSkillSlugs: string[];
+  params: Pick<GlobalGenerationParams, 'textModel'>;
+}
+
+export interface VideoStoryboardShot {
+  shot: number;
+  duration: string;
+  visual: string;
+  voiceover: string;
+  subtitle: string;
+  rhythm: string;
+}
+
+export interface VideoScriptGenerationResult {
+  logId: string;
+  title: string;
+  script: string;
+  storyboard: VideoStoryboardShot[];
+  videoPrompt: string;
+  publishCheck: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
 }
 
 export interface RunTaskInput {
@@ -290,6 +378,7 @@ export interface ContentStudioApi {
 
   getModelConfig(): Promise<ModelConfigView>;
   saveModelConfig(input: SaveModelConfigInput): Promise<ModelConfigView>;
+  getModelCatalog(): Promise<ModelCatalogView>;
 
   scanSkills(workspacePath?: string): Promise<LoadedSkill[]>;
   installBuiltinSkill(slug: string, workspacePath: string): Promise<LoadedSkill[]>;
@@ -303,10 +392,17 @@ export interface ContentStudioApi {
 
   listPromptPacks(workspacePath: string): Promise<PromptPack[]>;
   generatePromptPack(input: GeneratePromptPackInput): Promise<PromptPack>;
+  updatePromptPack(input: PromptPack): Promise<PromptPack>;
   listSceneCards(workspacePath: string): Promise<SceneCard[]>;
   generateSceneCards(input: GenerateSceneCardsInput): Promise<SceneCard[]>;
+  updateSceneCard(input: SceneCard): Promise<SceneCard>;
 
+  selectAssetFiles(kind: AssetFileKind): Promise<string[]>;
+  revealPath(path: string): Promise<{ ok: boolean; error?: string }>;
+  exportMarkdown(input: ExportMarkdownInput): Promise<string | null>;
   generateArticle(input: ArticleGenerationRequest): Promise<ArticleGenerationResult>;
+  analyzeVideo(input: VideoBreakdownRequest): Promise<VideoBreakdownResult>;
+  generateVideoScript(input: VideoScriptGenerationRequest): Promise<VideoScriptGenerationResult>;
   generateImage(input: ImageGenerationRequest): Promise<MediaGenerationResult>;
   generateVideo(input: VideoGenerationRequest): Promise<MediaGenerationResult>;
   listGenerationLogs(workspacePath: string): Promise<GenerationLogEntry[]>;

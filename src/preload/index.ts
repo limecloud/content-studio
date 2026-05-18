@@ -2,16 +2,22 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AgentEvent,
   ArticleGenerationRequest,
+  AssetFileKind,
   ContentStudioApi,
+  ExportMarkdownInput,
   GeneratePromptPackInput,
   GenerateSceneCardsInput,
   ImageGenerationRequest,
   KnowledgeSearchInput,
+  PromptPack,
   RunTaskInput,
   SaveModelConfigInput,
   SaveSettingsInput,
+  SceneCard,
   SkillRef,
+  VideoBreakdownRequest,
   VideoGenerationRequest,
+  VideoScriptGenerationRequest,
 } from '../shared/types';
 
 const api: ContentStudioApi = {
@@ -21,6 +27,7 @@ const api: ContentStudioApi = {
 
   getModelConfig: () => ipcRenderer.invoke('modelConfig:get'),
   saveModelConfig: (input: SaveModelConfigInput) => ipcRenderer.invoke('modelConfig:save', input),
+  getModelCatalog: () => ipcRenderer.invoke('modelConfig:catalog'),
 
   scanSkills: (workspacePath?: string) => ipcRenderer.invoke('skills:scan', workspacePath),
   installBuiltinSkill: (slug: string, workspacePath: string) => ipcRenderer.invoke('skills:installBuiltin', slug, workspacePath),
@@ -34,10 +41,17 @@ const api: ContentStudioApi = {
 
   listPromptPacks: (workspacePath: string) => ipcRenderer.invoke('promptPacks:list', workspacePath),
   generatePromptPack: (input: GeneratePromptPackInput) => ipcRenderer.invoke('promptPacks:generate', input),
+  updatePromptPack: (input: PromptPack) => ipcRenderer.invoke('promptPacks:update', input),
   listSceneCards: (workspacePath: string) => ipcRenderer.invoke('sceneCards:list', workspacePath),
   generateSceneCards: (input: GenerateSceneCardsInput) => ipcRenderer.invoke('sceneCards:generate', input),
+  updateSceneCard: (input: SceneCard) => ipcRenderer.invoke('sceneCards:update', input),
 
+  selectAssetFiles: (kind: AssetFileKind) => ipcRenderer.invoke('assets:selectFiles', kind),
+  revealPath: (path: string) => ipcRenderer.invoke('assets:revealPath', path),
+  exportMarkdown: (input: ExportMarkdownInput) => ipcRenderer.invoke('article:exportMarkdown', input),
   generateArticle: (input: ArticleGenerationRequest) => ipcRenderer.invoke('article:generate', input),
+  analyzeVideo: (input: VideoBreakdownRequest) => ipcRenderer.invoke('video:analyze', input),
+  generateVideoScript: (input: VideoScriptGenerationRequest) => ipcRenderer.invoke('video:script', input),
   generateImage: (input: ImageGenerationRequest) => ipcRenderer.invoke('image:generate', input),
   generateVideo: (input: VideoGenerationRequest) => ipcRenderer.invoke('video:generate', input),
   listGenerationLogs: (workspacePath: string) => ipcRenderer.invoke('generationLogs:list', workspacePath),

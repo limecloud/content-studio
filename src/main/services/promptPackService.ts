@@ -36,6 +36,14 @@ export class PromptPackService {
     return (await this.list(workspacePath)).find((pack) => pack.id === id);
   }
 
+  async update(input: PromptPack): Promise<PromptPack> {
+    const packs = await this.list(input.workspacePath);
+    if (!packs.some((pack) => pack.id === input.id)) throw new Error(`提示词包不存在: ${input.id}`);
+    const updated: PromptPack = { ...input, updatedAt: new Date().toISOString() };
+    await writeJsonFile(filePathFor(input.workspacePath), packs.map((pack) => (pack.id === input.id ? updated : pack)));
+    return updated;
+  }
+
   async generate(input: GeneratePromptPackInput): Promise<PromptPack> {
     if (input.citations.length === 0) throw new Error('生成提示词包至少需要 1 条知识引用');
     const now = new Date().toISOString();

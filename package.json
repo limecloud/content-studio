@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Content Studio desktop app powered by the official Claude Agent SDK and project skills.",
   "type": "module",
   "main": "out/main/index.js",
