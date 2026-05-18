@@ -23,6 +23,11 @@
 - 新增模型目录入口：模型配置弹窗可获取本地 mock catalog，方便后续替换为 endpoint metadata。
 - 新增 macOS App Icon：生成布谷鸟主题图标并接入 `electron-builder` 的 macOS 打包配置。
 
+### 发布资产
+
+- GitHub Release 附带 macOS DMG / ZIP、Windows NSIS、Linux AppImage 和自动更新 metadata。
+- 同步上传 `build/icon.png` 和 `build/icon.icns`，便于 Release 页面和下游渠道复用品牌 Logo。
+
 ### 工程更新
 
 - 扩展类型化 IPC 与 preload bridge，覆盖视频拆解、视频脚本、素材选择、文件定位、Markdown 导出、提示词包 / 场景卡更新和模型目录。
@@ -31,6 +36,16 @@
 - 新增 `getWorkspaceAssetDir()`，统一 workspace 内素材产物落点，避免硬编码用户目录。
 - macOS 本地预览包默认跳过签名，避免本机重复 Developer ID 证书导致 `codesign` 歧义；正式签名后续通过证书配置单独接入。
 - 将应用版本提升到 `0.2.0`，同步 `package.json` 与 `package-lock.json`。
+
+### macOS 首次打开
+
+当前 macOS 包是 unsigned 内部预览包，可能出现「`Content Studio` 已损坏，无法打开」提示。确认安装包来自本仓库 Release 后，可执行：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Content Studio.app"
+```
+
+然后重新打开应用；如仍被拦截，右键点击 `Content Studio.app` 并选择「打开」。
 
 ### 明确不包含
 

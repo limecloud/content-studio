@@ -1,0 +1,253 @@
+/* Layout */
+.app-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 240px minmax(620px, 1fr) 280px;
+  gap: 20px;
+  height: 100vh;
+  padding: 20px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.sidebar, .stage, .params-panel {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+}
+.sidebar, .params-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Base Panel */
+.panel,
+.brand-card,
+.workspace-card,
+.mode-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+.panel { padding: 18px; overflow: hidden; display: flex; flex-direction: column; gap: 14px; }
+.full-panel { min-height: 0; overflow: auto; flex: 1; }
+
+/* Typography */
+h1 { font-size: 18px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+h2 { font-size: 18px; font-weight: 600; color: var(--text); line-height: 1.4; letter-spacing: -0.01em; }
+h3 { font-size: 15px; font-weight: 600; color: var(--text); }
+p { color: var(--text-secondary); line-height: 1.5; font-size: 13px; margin: 0; }
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.account-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--panel-strong);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.account-card:hover {
+  background: rgba(0,0,0,0.05);
+}
+.account-card .email {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.account-card .settings-btn {
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.account-card .settings-btn:hover {
+  color: var(--text);
+}
+.account-card .avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: #FFFFFF;
+  font-size: 16px;
+  font-weight: 700;
+  background: var(--cyan);
+}
+.brand-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.brand-logo-img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.sidebar-bottom {
+  margin-top: auto;
+  padding-top: 20px;
+}
+
+.workspace-card, .mode-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.workspace-card strong { font-size: 13px; font-weight: 600; word-break: break-all; }
+
+.nav-stack { display: flex; flex-direction: column; gap: 12px; }
+.nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-group p {
+  margin: 8px 8px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.nav-item:hover { background: rgba(0,0,0,0.03); color: var(--text); }
+.nav-item em,
+.status-pill {
+  border-radius: 999px;
+  color: var(--cyan);
+  background: var(--cyan-light);
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  font-style: normal;
+}
+.nav-item.active {
+  background: var(--cyan-light);
+  color: var(--cyan);
+  font-weight: 600;
+}
+.nav-item.disabled { opacity: 0.4; cursor: not-allowed; }
+.nav-item.disabled:hover { background: transparent; color: var(--text-secondary); }
+
+/* Stage Header */
+.stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  background: #FFFFFF;
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+}
+.header-actions, .modal-actions, .skill-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Buttons */
+.primary, .ghost, .chip-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+.primary {
+  color: #FFFFFF;
+  background: var(--cyan);
+  box-shadow: 0 1px 2px rgba(57, 87, 69, 0.2);
+}
+.primary:hover:not(:disabled) { background: #2F4A39; }
+.ghost {
+  border: 1px solid var(--line);
+  color: var(--text-secondary);
+  background: #FFFFFF;
+  box-shadow: var(--shadow-sm);
+}
+.ghost:hover:not(:disabled) { border-color: #D1D5DB; color: var(--text); }
+.small { padding: 6px 12px; font-size: 12px; }
+.wide { width: 100%; margin-top: 4px; }
+
+/* Pipeline Breadcrumbs */
+.pipeline-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.breadcrumb-item em {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--cyan);
+  background: var(--cyan-light);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-style: normal;
+}
+.breadcrumb-item:not(:last-child)::after {
+  content: "→";
+  color: var(--muted);
+  margin-left: 6px;
+  font-weight: 400;
+}
+
+/* Layouts */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 1; min-height: 0; }
+.module-grid { overflow-y: auto; overflow-x: hidden; padding-right: 4px; display: flex; flex-direction: column; gap: 16px; }

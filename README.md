@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./build/icon.png" alt="Content Studio Logo" width="120" />
+</p>
+
 # 内容工坊 / Content Studio
 
 内容工坊是一个基于 Electron、React、Vite 和官方 `@anthropic-ai/claude-agent-sdk` 的桌面内容工程化工作台。
@@ -58,6 +62,23 @@ npm run dev
 4. 检索并选择知识引用。
 5. 生成品牌 / 产品提示词包，再生成产品场景库。
 6. 进入文章、图片或视频模块生成内容资产或生成请求。
+
+## macOS 首次打开
+
+当前 GitHub Actions 产物用于内部预览，默认没有 Apple 签名和 notarization。macOS 可能会提示「`Content Studio` 已损坏，无法打开」或阻止启动。
+
+如果确认安装包来自本仓库 Release，可按以下方式移除 quarantine 标记：
+
+1. 将 `Content Studio.app` 拖入「应用程序」目录。
+2. 打开「终端」，执行：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Content Studio.app"
+```
+
+3. 重新打开 `Content Studio.app`；如仍被拦截，右键点击应用并选择「打开」。
+
+> 仅对可信来源的安装包执行该命令；正式分发会在接入 Apple 签名和 notarization 后移除此步骤。
 
 ## 目录结构
 

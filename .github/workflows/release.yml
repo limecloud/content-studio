@@ -102,7 +102,10 @@ jobs:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           body_path: RELEASE_NOTES.md
-          files: release-artifacts/**/*
+          files: |
+            release-artifacts/**/*
+            build/icon.png
+            build/icon.icns
           fail_on_unmatched_files: true
           overwrite_files: true
         env:
