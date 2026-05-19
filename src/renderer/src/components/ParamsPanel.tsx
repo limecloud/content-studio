@@ -1,43 +1,186 @@
-import type { GlobalGenerationParams, KnowledgeCitation, SkillSelectionView } from '../../../shared/types';
-import { sectionLabel, skillKey } from '../app/formatters';
+import { useMemo, useState } from 'react';
+import type {
+  GenerationLogEntry,
+  GlobalGenerationParams,
+  KnowledgeCitation,
+  SkillSelectionView,
+} from '../../../shared/types';
+import { formatDuration, kindLabel, sectionLabel, skillKey, statusLabel } from '../app/formatters';
 import type { SetGlobalParams } from '../app/types';
 
 interface ParamsPanelProps {
   params: GlobalGenerationParams;
   citations: KnowledgeCitation[];
+  logs: GenerationLogEntry[];
   skillSelection: SkillSelectionView | null;
   onOpenModelSettings: () => void;
   setParams: SetGlobalParams;
 }
 
-export function ParamsPanel({ params, citations, skillSelection, onOpenModelSettings, setParams }: ParamsPanelProps) {
+type ParamsPanelTab = 'params' | 'logs';
+
+export function ParamsPanel({
+  params,
+  citations,
+  logs,
+  skillSelection,
+  onOpenModelSettings,
+  setParams,
+}: ParamsPanelProps) {
+  const [activeTab, setActiveTab] = useState<ParamsPanelTab>('params');
+  const recentLogs = useMemo(() => logs.slice(0, 8), [logs]);
+
   return (
     <aside className="params-panel">
-      <section className="panel compact">
-        <div className="panel-title"><div><p className="eyebrow">Global Params</p><h3>全局参数</h3></div><button className="ghost small" onClick={onOpenModelSettings}>设置</button></div>
-        <label><span>文字模型</span><input readOnly value={params.textModel} /></label>
-        <label><span>图片模型</span><input readOnly value={params.imageModel} /></label>
-        <label><span>视频模型</span><input readOnly value={params.videoModel} /></label>
-        <div className="param-block"><span>生成数量</span><input type="range" min="1" max="4" value={params.count} onChange={(event) => setParams((current) => ({ ...current, count: Number(event.target.value) }))} /><strong>{params.count}</strong></div>
-        <div className="chip-row tight">{(['1:1', '4:5', '3:4', '9:16', '16:9'] as GlobalGenerationParams['aspectRatio'][]).map((ratio) => <button key={ratio} className={`chip-button ${params.aspectRatio === ratio ? 'active' : ''}`} onClick={() => setParams((current) => ({ ...current, aspectRatio: ratio }))}>{ratio}</button>)}</div>
-        <div className="chip-row tight">{(['1k', '2k', '4k'] as GlobalGenerationParams['resolution'][]).map((resolution) => <button key={resolution} className={`chip-button ${params.resolution === resolution ? 'active' : ''}`} onClick={() => setParams((current) => ({ ...current, resolution }))}>{resolution.toUpperCase()}</button>)}</div>
-        <div className="chip-row tight">{(['low', 'medium', 'high'] as GlobalGenerationParams['quality'][]).map((quality) => <button key={quality} className={`chip-button ${params.quality === quality ? 'active' : ''}`} onClick={() => setParams((current) => ({ ...current, quality }))}>{quality}</button>)}</div>
-      </section>
+      <div className="params-panel-tabs" role="tablist" aria-label="右侧辅助面板">
+        <button
+          role="tab"
+          aria-selected={activeTab === 'params'}
+          className={activeTab === 'params' ? 'active' : ''}
+          onClick={() => setActiveTab('params')}
+        >
+          参数
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeTab === 'logs'}
+          className={activeTab === 'logs' ? 'active' : ''}
+          onClick={() => setActiveTab('logs')}
+        >
+          日志
+          <span>{logs.length}</span>
+        </button>
+      </div>
 
-      <section className="panel compact">
-        <p className="eyebrow">已选知识引用</p>
-        <div className="citation-stack">
-          {citations.map((citation) => <article key={`${citation.knowledgeBaseId}:${citation.sectionId}`}><strong>{sectionLabel(citation.sectionType)}</strong><p>{citation.excerpt}</p></article>)}
-        </div>
-      </section>
+      {activeTab === 'params' ? (
+        <>
+          <section className="panel compact">
+            <div className="panel-title">
+              <div>
+                <p className="eyebrow">生成参数</p>
+                <h3>全局参数</h3>
+              </div>
+              <button className="ghost small" onClick={onOpenModelSettings}>
+                设置
+              </button>
+            </div>
+            <label>
+              <span>文字模型</span>
+              <input readOnly value={params.textModel} />
+            </label>
+            <label>
+              <span>图片模型</span>
+              <input readOnly value={params.imageModel} />
+            </label>
+            <label>
+              <span>视频模型</span>
+              <input readOnly value={params.videoModel} />
+            </label>
+            <div className="param-block">
+              <span>生成数量</span>
+              <input
+                type="range"
+                min="1"
+                max="4"
+                value={params.count}
+                onChange={(event) =>
+                  setParams((current) => ({
+                    ...current,
+                    count: Number(event.target.value),
+                  }))
+                }
+              />
+              <strong>{params.count}</strong>
+            </div>
+            <div className="chip-row tight">
+              {(['1:1', '4:5', '3:4', '9:16', '16:9'] as GlobalGenerationParams['aspectRatio'][]).map((ratio) => (
+                <button
+                  key={ratio}
+                  className={`chip-button ${params.aspectRatio === ratio ? 'active' : ''}`}
+                  onClick={() => setParams((current) => ({ ...current, aspectRatio: ratio }))}
+                >
+                  {ratio}
+                </button>
+              ))}
+            </div>
+            <div className="chip-row tight">
+              {(['1k', '2k', '4k'] as GlobalGenerationParams['resolution'][]).map((resolution) => (
+                <button
+                  key={resolution}
+                  className={`chip-button ${params.resolution === resolution ? 'active' : ''}`}
+                  onClick={() => setParams((current) => ({ ...current, resolution }))}
+                >
+                  {resolution.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <div className="chip-row tight">
+              {(['low', 'medium', 'high'] as GlobalGenerationParams['quality'][]).map((quality) => (
+                <button
+                  key={quality}
+                  className={`chip-button ${params.quality === quality ? 'active' : ''}`}
+                  onClick={() => setParams((current) => ({ ...current, quality }))}
+                >
+                  {quality}
+                </button>
+              ))}
+            </div>
+          </section>
 
-      <section className="panel compact">
-        <p className="eyebrow">当前启用 Skills</p>
-        <div className="selected-citations">
-          {(skillSelection?.enabledSkills ?? []).map((skill) => <span key={skillKey(skill)}>{skill.slug}</span>)}
-          {!skillSelection?.enabledSkills.length ? <p>选择 workspace 后可启用生成链路使用的 Skills。</p> : null}
-        </div>
-      </section>
+          <section className="panel compact">
+            <p className="eyebrow">已选知识引用</p>
+            <div className="citation-stack">
+              {citations.map((citation) => (
+                <article key={`${citation.knowledgeBaseId}:${citation.sectionId}`}>
+                  <strong>{sectionLabel(citation.sectionType)}</strong>
+                  <p>{citation.excerpt}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel compact">
+            <p className="eyebrow">当前启用能力</p>
+            <div className="selected-citations">
+              {(skillSelection?.enabledSkills ?? []).map((skill) => (
+                <span key={skillKey(skill)}>{skill.slug}</span>
+              ))}
+              {!skillSelection?.enabledSkills.length ? (
+                <p>选择工作区后可启用内容生成能力。</p>
+              ) : null}
+            </div>
+          </section>
+        </>
+      ) : (
+        <section className="panel compact params-log-panel">
+          <div className="panel-title">
+            <div>
+              <p className="eyebrow">生成记录</p>
+              <h3>最近生成日志</h3>
+            </div>
+            <span className="status-pill">{logs.length} 条</span>
+          </div>
+          <div className="params-log-list">
+            {recentLogs.map((log) => (
+              <article key={log.id} className={`params-log-card ${log.status}`}>
+                <header>
+                  <span>{kindLabel(log.kind)}</span>
+                  <small>{statusLabel(log.status)}</small>
+                </header>
+                <strong>{log.title}</strong>
+                <p>{log.summary ?? log.error ?? '暂无摘要'}</p>
+                <small>
+                  {formatDuration(log.durationMs)} · {log.model ?? 'local'} ·{' '}
+                  {new Date(log.createdAt).toLocaleString()}
+                </small>
+              </article>
+            ))}
+            {recentLogs.length === 0 ? (
+              <div className="empty-state">生成图片、文章或视频后，最近记录会在这里显示。</div>
+            ) : null}
+          </div>
+        </section>
+      )}
     </aside>
   );
 }

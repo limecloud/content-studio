@@ -1,4 +1,4 @@
-import type { GlobalGenerationParams } from '../../../shared/types';
+import type { GlobalGenerationParams, ImageGenerationProtocol, TextGenerationProtocol } from '../../../shared/types';
 import type { Dispatch, SetStateAction } from 'react';
 
 export type ModuleKey = 'image' | 'video' | 'article' | 'knowledge' | 'assets' | 'skills';
@@ -7,8 +7,10 @@ export type NavItem = { key?: ModuleKey; label: string; badge?: string; disabled
 export type ModelDraft = {
   apiEndpoint: string;
   apiKey: string;
+  textProtocol: TextGenerationProtocol;
   imageApiEndpoint: string;
   imageApiKey: string;
+  imageProtocol: ImageGenerationProtocol;
   imageOuterModel: string;
   textModel: string;
   imageModels: string;

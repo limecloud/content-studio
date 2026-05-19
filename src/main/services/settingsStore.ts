@@ -8,6 +8,8 @@ interface StoredSettings {
   workspacePath?: string;
   anthropicApiKeyEncrypted?: string;
   anthropicApiKeyPlain?: string;
+  autoUpdateEnabled?: boolean;
+  lastUpdateCheckAt?: string;
 }
 
 export class SettingsStore {
@@ -24,6 +26,8 @@ export class SettingsStore {
         : settings.anthropicApiKeyPlain
           ? 'plain'
           : 'none',
+      autoUpdateEnabled: settings.autoUpdateEnabled ?? true,
+      lastUpdateCheckAt: settings.lastUpdateCheckAt,
     };
   }
 
@@ -39,6 +43,9 @@ export class SettingsStore {
       delete settings.anthropicApiKeyEncrypted;
       delete settings.anthropicApiKeyPlain;
     }
+    if (input.autoUpdateEnabled !== undefined) {
+      settings.autoUpdateEnabled = input.autoUpdateEnabled;
+    }
     if (input.anthropicApiKey !== undefined) {
       const key = input.anthropicApiKey.trim();
       delete settings.anthropicApiKeyEncrypted;
@@ -51,6 +58,20 @@ export class SettingsStore {
         }
       }
     }
+    await this.writeRaw(settings);
+    return this.readView();
+  }
+
+  async setAutoUpdateEnabled(enabled: boolean): Promise<AppSettingsView> {
+    const settings = await this.readRaw();
+    settings.autoUpdateEnabled = enabled;
+    await this.writeRaw(settings);
+    return this.readView();
+  }
+
+  async setLastUpdateCheckAt(checkedAt: string): Promise<AppSettingsView> {
+    const settings = await this.readRaw();
+    settings.lastUpdateCheckAt = checkedAt;
     await this.writeRaw(settings);
     return this.readView();
   }
