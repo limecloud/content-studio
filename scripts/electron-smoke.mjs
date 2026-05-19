@@ -111,7 +111,12 @@ async function waitForRendererReady(cdp, timeoutMs = 20_000) {
       text: document.body?.innerText?.slice(0, 1000) ?? ''
     }))()`);
     lastState = state;
-    if (state?.readyState === 'complete' && state.hasBridge && state.text.toLowerCase().includes('content studio pipeline')) return state;
+    const text = state?.text ?? '';
+    if (
+      state?.readyState === 'complete'
+      && state.hasBridge
+      && (text.includes('布谷AI 内容工厂') || text.toLowerCase().includes('content studio pipeline'))
+    ) return state;
     await wait(250);
   }
   throw new Error(`Renderer 未在超时时间内完成加载或 preload bridge 缺失：${JSON.stringify(lastState)}`);
@@ -150,13 +155,15 @@ try {
       window.contentStudio.scanSkills(),
     ]);
     const apiKeys = Object.keys(window.contentStudio).sort();
+    const bodyText = document.body.innerText;
+    const bodyTextLower = bodyText.toLowerCase();
     return {
       title: document.title,
       hasBridge: Boolean(window.contentStudio),
-      hasPipeline: document.body.innerText.toLowerCase().includes('content studio pipeline'),
-      hasImageEngine: document.body.innerText.includes('图片引擎'),
+      hasPipeline: bodyText.includes('布谷AI 内容工厂') || bodyTextLower.includes('content studio pipeline'),
+      hasImageEngine: bodyText.includes('图片生成') || bodyText.includes('图片引擎'),
       hasKnowledgeEntry: document.body.innerText.includes('成型知识库'),
-      hasSkillsEntry: document.body.innerText.includes('Skills 管理'),
+      hasSkillsEntry: bodyText.includes('能力管理') || bodyText.includes('Skills 管理'),
       hasRedundantWorkbenchHint: document.body.innerText.includes('列表页留在主工作台') || document.body.innerText.includes('Main Workbench'),
       bridgeMethodCount: apiKeys.length,
       skillsCount: skills.length,
@@ -272,24 +279,30 @@ try {
       await wait(80);
       return true;
     };
+    const clickAnyButton = async (labels) => {
+      for (const label of labels) {
+        if (await clickButton(label)) return true;
+      }
+      return false;
+    };
     const checks = [];
-    checks.push({ action: 'click video nav', clicked: await clickButton('视频引擎'), hasText: document.body.innerText.includes('视频复刻引擎') });
+    checks.push({ action: 'click video nav', clicked: await clickAnyButton(['视频生成', '视频引擎']), hasText: document.body.innerText.includes('视频复刻引擎') || document.body.innerText.includes('视频生成') });
     checks.push({ action: 'click article nav', clicked: await clickButton('文章生成'), hasText: document.body.innerText.includes('文章生成') && document.body.innerText.includes('正文 / 发布检查') });
     checks.push({ action: 'click knowledge nav', clicked: await clickButton('成型知识库'), hasText: document.body.innerText.includes('引用检索') && document.body.innerText.includes('提示词包 / 场景库') });
     checks.push({ action: 'click assets nav', clicked: await clickButton('素材库 / 历史'), hasText: document.body.innerText.includes('生成历史 / 素材库') });
-    checks.push({ action: 'click skills nav', clicked: await clickButton('Skills 管理'), hasText: document.body.innerText.includes('高级能力库') && document.body.innerText.includes('已启用') });
+    checks.push({ action: 'click skills nav', clicked: await clickAnyButton(['能力管理', 'Skills 管理']), hasText: (document.body.innerText.includes('内容生成能力') || document.body.innerText.includes('高级能力库')) && document.body.innerText.includes('已启用') });
     const skillDetailClicked = await clickButton('详情');
     const detailBackdrop = document.querySelector('.detail-dialog-backdrop');
     const detailCard = document.querySelector('.detail-dialog-card');
     checks.push({
       action: 'open skill detail dialog',
       clicked: skillDetailClicked,
-      hasText: Boolean(detailBackdrop && detailCard) && document.body.innerText.toLowerCase().includes('skill detail') && window.getComputedStyle(detailBackdrop).position === 'fixed',
+      hasText: Boolean(detailBackdrop && detailCard) && (document.body.innerText.includes('能力详情') || document.body.innerText.toLowerCase().includes('skill detail')) && window.getComputedStyle(detailBackdrop).position === 'fixed',
     });
     checks.push({ action: 'close skill detail dialog', clicked: await clickButton('关闭'), hasText: !document.querySelector('.detail-dialog-card') });
     checks.push({ action: 'open settings', clicked: await clickButton('设置'), hasText: document.body.innerText.includes('设置') && document.body.innerText.includes('通用') });
-    checks.push({ action: 'click model settings', clicked: await clickButton('模型'), hasText: document.body.innerText.includes('Provider 连接配置') && document.body.innerText.includes('文字端点') });
-    checks.push({ action: 'close settings', clicked: await clickButton('完成'), hasText: !document.body.innerText.includes('文字端点') });
+    checks.push({ action: 'click model settings', clicked: await clickButton('模型'), hasText: (document.body.innerText.includes('生成服务连接配置') && document.body.innerText.includes('文字生成')) || (document.body.innerText.includes('Provider 连接配置') && document.body.innerText.includes('文字端点')) });
+    checks.push({ action: 'close settings', clicked: await clickButton('完成'), hasText: !document.body.innerText.includes('生成服务连接配置') && !document.body.innerText.includes('文字端点') });
     return {
       checks,
       failed: checks.filter((check) => !check.clicked || !check.hasText),
@@ -323,9 +336,21 @@ try {
       button.click();
       await wait(120);
     };
+    const clickAnyButton = async (labels) => {
+      let lastLabel = labels[labels.length - 1];
+      for (const label of labels) {
+        try {
+          await clickButton(label);
+          return;
+        } catch {
+          lastLabel = label;
+        }
+      }
+      throw new Error('按钮不可点击：' + lastLabel);
+    };
     const checks = [];
 
-    await waitFor('default workspace ready', () => !bodyText().includes('尚未选择工作区') && !bodyText().includes('请先选择 Workspace'));
+    await waitFor('default workspace ready', () => !bodyText().includes('尚未选择工作区') && !bodyText().includes('请先选择工作区'));
     checks.push({ step: 'default workspace ready', ok: true });
 
     await clickButton('生成提示词包');
@@ -337,12 +362,12 @@ try {
     await waitFor('article blocked', () => bodyText().includes('文字模型未配置'));
     checks.push({ step: 'article blocked without provider', ok: true });
 
-    await clickButton('图片引擎');
+    await clickAnyButton(['图片生成', '图片引擎']);
     await clickButton('启动渲染引擎');
-    await waitFor('image blocked', () => bodyText().includes('图片 provider 未配置') && bodyText().includes('未生成占位素材'));
+    await waitFor('image blocked', () => (bodyText().includes('图片生成服务未配置') || bodyText().includes('图片 provider 未配置')) && bodyText().includes('未生成占位素材'));
     checks.push({ step: 'image blocked without provider', ok: true });
 
-    await clickButton('视频引擎');
+    await clickAnyButton(['视频生成', '视频引擎']);
     await clickButton('真实拆解');
     await waitFor('video breakdown blocked', () => bodyText().includes('请先选择本地视频') || bodyText().includes('真实视频理解模型未配置'));
     checks.push({ step: 'video breakdown blocked without provider', ok: true });
@@ -350,15 +375,15 @@ try {
     await waitFor('video script blocked', () => bodyText().includes('文字模型未配置'));
     checks.push({ step: 'video script blocked without provider', ok: true });
     await clickButton('生成视频队列');
-    await waitFor('video queue blocked', () => bodyText().includes('视频 provider 未配置') && bodyText().includes('队列产物'));
+    await waitFor('video queue blocked', () => (bodyText().includes('视频生成服务未配置') || bodyText().includes('视频 provider 未配置')) && bodyText().includes('队列产物'));
     checks.push({ step: 'video queue blocked', ok: true });
 
     await clickButton('素材库 / 历史');
     await waitFor('history hydrated', () => bodyText().includes('生成历史 / 素材库') && bodyText().includes('图片素材生成未完成') && bodyText().includes('视频生成队列请求'));
     checks.push({ step: 'history hydrated', ok: true });
 
-    await clickButton('Skills 管理');
-    await waitFor('skills usable', () => bodyText().includes('高级能力库') && bodyText().includes('已启用') && !bodyText().includes('选择 workspace 后可启用'));
+    await clickAnyButton(['能力管理', 'Skills 管理']);
+    await waitFor('skills usable', () => (bodyText().includes('内容生成能力') || bodyText().includes('高级能力库')) && bodyText().includes('已启用') && !bodyText().includes('选择工作区后可启用') && !bodyText().includes('选择 workspace 后可启用'));
     checks.push({ step: 'skills usable', ok: true });
 
     return {
