@@ -140,6 +140,28 @@ export function BuguAuthGate({
   return (
     <main className="bugu-auth-shell">
       <section className="bugu-auth-hero">
+        <div className="bugu-auth-orbit-map" aria-hidden="true">
+          <div className="bugu-auth-orbit-card is-factory">
+            <span>PROJECT</span>
+            <strong>内容工厂</strong>
+            <em>本地可用</em>
+          </div>
+          <div className="bugu-auth-orbit-card is-account">
+            <span>ACCOUNT</span>
+            <strong>账号权益</strong>
+            <em>可稍后连接</em>
+          </div>
+          <div className="bugu-auth-orbit-card is-verify">
+            <span>VERIFY</span>
+            <strong>邮箱验证</strong>
+            <em>人机校验保护</em>
+          </div>
+          <div className="bugu-auth-orbit-rail">
+            <i />
+            <i />
+            <i />
+          </div>
+        </div>
         <div className="bugu-auth-brand">
           <img src={logoUrl} alt="布谷 AI" />
           <div>
