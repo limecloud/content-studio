@@ -115,7 +115,12 @@ async function waitForRendererReady(cdp, timeoutMs = 20_000) {
   throw new Error(`Renderer 未在超时时间内完成加载或 preload bridge 缺失：${JSON.stringify(lastState)}`);
 }
 
-const child = spawn(electronPath, [projectRoot, `--remote-debugging-port=${remoteDebuggingPort}`, `--user-data-dir=${userDataDir}`], {
+const electronArgs = [projectRoot, `--remote-debugging-port=${remoteDebuggingPort}`, `--user-data-dir=${userDataDir}`];
+if (process.env.CI === 'true' && process.platform === 'linux') {
+  electronArgs.push('--no-sandbox');
+}
+
+const child = spawn(electronPath, electronArgs, {
   cwd: projectRoot,
   env: {
     ...process.env,

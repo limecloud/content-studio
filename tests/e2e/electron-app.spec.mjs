@@ -11,6 +11,7 @@ const electronExecutable = require('electron');
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const mainEntry = join(projectRoot, 'out/main/index.js');
 const resourcesDir = join(projectRoot, 'resources');
+const electronArgs = process.env.CI === 'true' && process.platform === 'linux' ? ['--no-sandbox'] : [];
 
 async function launchContentStudio(testInfo) {
   if (!existsSync(mainEntry)) {
@@ -23,7 +24,7 @@ async function launchContentStudio(testInfo) {
 
   const electronApp = await electron.launch({
     executablePath: electronExecutable,
-    args: [projectRoot, `--user-data-dir=${userDataDir}`],
+    args: [projectRoot, `--user-data-dir=${userDataDir}`, ...electronArgs],
     cwd: projectRoot,
     env: {
       ...process.env,
