@@ -3,10 +3,15 @@ import type {
   AgentEvent,
   ArticleGenerationRequest,
   AssetFileKind,
+  AutoUpdateState,
+  BuguEmailCodeSendInput,
+  BuguEmailCodeVerifyInput,
+  BuguPasswordLoginInput,
   ContentStudioApi,
   ExportAssetInput,
   ExportMarkdownInput,
   GeneratePromptPackInput,
+  GenerateImageSkillInput,
   GenerateSceneCardsInput,
   ImageGenerationRequest,
   KnowledgeSearchInput,
@@ -19,12 +24,31 @@ import type {
   VideoBreakdownRequest,
   VideoGenerationRequest,
   VideoScriptGenerationRequest,
+  UpdateCheckOptions,
 } from '../shared/types';
 
 const api: ContentStudioApi = {
+  authGetSession: () => ipcRenderer.invoke('auth:getSession'),
+  authLoginByPassword: (input: BuguPasswordLoginInput) => ipcRenderer.invoke('auth:loginByPassword', input),
+  authSendEmailCode: (input: BuguEmailCodeSendInput) => ipcRenderer.invoke('auth:sendEmailCode', input),
+  authVerifyEmailCode: (input: BuguEmailCodeVerifyInput) => ipcRenderer.invoke('auth:verifyEmailCode', input),
+  authLogout: () => ipcRenderer.invoke('auth:logout'),
+
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (input: SaveSettingsInput) => ipcRenderer.invoke('settings:save', input),
   selectWorkspace: () => ipcRenderer.invoke('workspace:select'),
+
+  getUpdateState: () => ipcRenderer.invoke('updates:getState'),
+  checkForUpdates: (options?: UpdateCheckOptions) => ipcRenderer.invoke('updates:check', options),
+  setAutoUpdateEnabled: (enabled: boolean) => ipcRenderer.invoke('updates:setAutoCheck', enabled),
+  openUpdateDownload: () => ipcRenderer.invoke('updates:openDownload'),
+  openUpdateReleaseNotes: () => ipcRenderer.invoke('updates:openReleaseNotes'),
+  openLogsDirectory: () => ipcRenderer.invoke('updates:openLogsDirectory'),
+  onUpdateState: (callback: (state: AutoUpdateState) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: AutoUpdateState) => callback(payload);
+    ipcRenderer.on('updates:state', listener);
+    return () => ipcRenderer.off('updates:state', listener);
+  },
 
   getModelConfig: () => ipcRenderer.invoke('modelConfig:get'),
   saveModelConfig: (input: SaveModelConfigInput) => ipcRenderer.invoke('modelConfig:save', input),
@@ -55,6 +79,8 @@ const api: ContentStudioApi = {
   analyzeVideo: (input: VideoBreakdownRequest) => ipcRenderer.invoke('video:analyze', input),
   generateVideoScript: (input: VideoScriptGenerationRequest) => ipcRenderer.invoke('video:script', input),
   generateImage: (input: ImageGenerationRequest) => ipcRenderer.invoke('image:generate', input),
+  generateImageSkill: (input: GenerateImageSkillInput) => ipcRenderer.invoke('imageSkills:generate', input),
+  importImageSkillFromFile: () => ipcRenderer.invoke('imageSkills:importFromFile'),
   generateVideo: (input: VideoGenerationRequest) => ipcRenderer.invoke('video:generate', input),
   listGenerationLogs: (workspacePath: string) => ipcRenderer.invoke('generationLogs:list', workspacePath),
 

@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ArticleGenerationResult,
   ArticleGenerationRequest,
   AppSettingsView,
+  AutoUpdateState,
+  BuguAuthState,
+  BuguEmailCodeSendInput,
+  BuguEmailCodeVerifyInput,
+  BuguPasswordLoginInput,
   GenerationLogEntry,
   GeneratePromptPackInput,
   GenerateSceneCardsInput,
@@ -26,8 +31,8 @@ import type {
   VideoGenerationRequest,
   VideoScriptGenerationResult,
   VideoScriptGenerationRequest,
-} from '../../../shared/types';
-import { DEFAULT_PARAMS, VIDEO_DIMENSIONS } from './constants';
+} from "../../../shared/types";
+import { DEFAULT_PARAMS, VIDEO_DIMENSIONS } from "./constants";
 import {
   citationFromResult,
   citationFromSection,
@@ -37,14 +42,28 @@ import {
   isSameCitation,
   knowledgeBaseKey,
   skillKey,
-} from './formatters';
-import type { ColorTheme, ModelDraft, ModelSettingView, ModuleKey, ProviderTab, SettingsTab } from './types';
+} from "./formatters";
+import type {
+  ColorTheme,
+  ModelDraft,
+  ModelSettingView,
+  ModuleKey,
+  ProviderTab,
+  SettingsTab,
+} from "./types";
 
 class ActionCancelledError extends Error {
   constructor() {
-    super('ACTION_CANCELLED');
+    super("ACTION_CANCELLED");
   }
 }
+
+const INITIAL_UPDATE_STATE: AutoUpdateState = {
+  enabled: true,
+  status: "idle",
+  currentVersion: "0.0.0",
+  hasUpdate: false,
+};
 
 interface ActionContext {
   isCancelled: () => boolean;
@@ -52,13 +71,18 @@ interface ActionContext {
 }
 
 export function useContentStudioApp() {
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('light');
-  const [colorTheme, setColorTheme] = useState<ColorTheme>('emerald');
-  const [effectiveTheme, setEffectiveTheme] = useState<'light' | 'dark'>('light');
+  const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">(
+    "light",
+  );
+  const [colorTheme, setColorTheme] = useState<ColorTheme>("emerald");
+  const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">(
+    "light",
+  );
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
-  const [modelSettingView, setModelSettingView] = useState<ModelSettingView>('edit_claude');
-  const [providerTab, setProviderTab] = useState<ProviderTab>('recommended');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  const [modelSettingView, setModelSettingView] =
+    useState<ModelSettingView>("edit_claude");
+  const [providerTab, setProviderTab] = useState<ProviderTab>("recommended");
   const [responsesApiActive, setResponsesApiActive] = useState(false);
 
   // 通用设置 Switch States
@@ -70,103 +94,189 @@ export function useContentStudioApp() {
   const [shortcutActive, setShortcutActive] = useState(true);
   const [commandWhitelist, setCommandWhitelist] = useState(false);
 
-
-
-  const [activeModule, setActiveModule] = useState<ModuleKey>('image');
+  const [activeModule, setActiveModule] = useState<ModuleKey>("image");
   const [settings, setSettings] = useState<AppSettingsView | null>(null);
+  const [authState, setAuthState] = useState<BuguAuthState | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [updateState, setUpdateState] =
+    useState<AutoUpdateState>(INITIAL_UPDATE_STATE);
   const [modelConfig, setModelConfig] = useState<ModelConfigView | null>(null);
   const [modelDraft, setModelDraft] = useState<ModelDraft>({
-    apiEndpoint: '',
-    apiKey: '',
-    imageApiEndpoint: '',
-    imageApiKey: '',
-    imageOuterModel: '',
-    textModel: '',
-    imageModels: '',
-    videoApiEndpoint: '',
-    videoApiKey: '',
-    videoModel: '',
+    apiEndpoint: "",
+    apiKey: "",
+    textProtocol: "claude-sdk",
+    imageApiEndpoint: "",
+    imageApiKey: "",
+    imageProtocol: "openai-responses",
+    imageOuterModel: "",
+    textModel: "",
+    imageModels: "",
+    videoApiEndpoint: "",
+    videoApiKey: "",
+    videoModel: "",
   });
   const [showModelDialog, setShowModelDialog] = useState(false);
   const [skills, setSkills] = useState<LoadedSkill[]>([]);
-  const [skillSelection, setSkillSelection] = useState<SkillSelectionView | null>(null);
+  const [skillSelection, setSkillSelection] =
+    useState<SkillSelectionView | null>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseView[]>([]);
-  const [knowledgeQuery, setKnowledgeQuery] = useState('卖点 合规 场景');
-  const [knowledgeBaseFilter, setKnowledgeBaseFilter] = useState<KnowledgeBaseType | 'all'>('all');
-  const [knowledgeSectionFilter, setKnowledgeSectionFilter] = useState<KnowledgeSectionType | 'all'>('all');
-  const [knowledgeTagFilter, setKnowledgeTagFilter] = useState('');
-  const [activeKnowledgeBaseKey, setActiveKnowledgeBaseKey] = useState('');
-  const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>([]);
-  const [selectedCitations, setSelectedCitations] = useState<KnowledgeCitation[]>([]);
+  const [knowledgeQuery, setKnowledgeQuery] = useState("卖点 合规 场景");
+  const [knowledgeBaseFilter, setKnowledgeBaseFilter] = useState<
+    KnowledgeBaseType | "all"
+  >("all");
+  const [knowledgeSectionFilter, setKnowledgeSectionFilter] = useState<
+    KnowledgeSectionType | "all"
+  >("all");
+  const [knowledgeTagFilter, setKnowledgeTagFilter] = useState("");
+  const [activeKnowledgeBaseKey, setActiveKnowledgeBaseKey] = useState("");
+  const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>(
+    [],
+  );
+  const [selectedCitations, setSelectedCitations] = useState<
+    KnowledgeCitation[]
+  >([]);
   const [promptPacks, setPromptPacks] = useState<PromptPack[]>([]);
-  const [activePromptPackId, setActivePromptPackId] = useState('');
-  const [promptPackDraft, setPromptPackDraft] = useState({ brandVoice: '', visualStyle: '' });
+  const [activePromptPackId, setActivePromptPackId] = useState("");
+  const [promptPackDraft, setPromptPackDraft] = useState({
+    brandVoice: "",
+    visualStyle: "",
+  });
   const [sceneCards, setSceneCards] = useState<SceneCard[]>([]);
   const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
-  const [sceneCardDraft, setSceneCardDraft] = useState({ title: '', imageMaterialSuggestion: '', videoMaterialSuggestion: '' });
+  const [sceneCardDraft, setSceneCardDraft] = useState({
+    title: "",
+    imageMaterialSuggestion: "",
+    videoMaterialSuggestion: "",
+  });
   const [logs, setLogs] = useState<GenerationLogEntry[]>([]);
   const [params, setParams] = useState<GlobalGenerationParams>(DEFAULT_PARAMS);
   const [productImageRefs, setProductImageRefs] = useState<string[]>([]);
   const [referenceImageRefs, setReferenceImageRefs] = useState<string[]>([]);
   const [videoAssetRefs, setVideoAssetRefs] = useState<string[]>([]);
-  const [imagePromptDraft, setImagePromptDraft] = useState('');
-  const [imagePromptMode, setImagePromptMode] = useState<ImageGenerationRequest['promptMode']>('preset');
-  const [imageGenerationMode, setImageGenerationMode] = useState<ImageGenerationRequest['generationMode']>('smart');
-  const [imageTemplate, setImageTemplate] = useState('电商场景图');
+  const [imagePromptDraft, setImagePromptDraft] = useState("");
+  const [imagePromptMode, setImagePromptMode] =
+    useState<ImageGenerationRequest["promptMode"]>("free");
+  const [imageGenerationMode, setImageGenerationMode] =
+    useState<ImageGenerationRequest["generationMode"]>("smart");
+  const [imageTemplate, setImageTemplate] = useState("电商白底主图");
+  const [imageTemplateInputs, setImageTemplateInputs] = useState<
+    Record<string, string | string[]>
+  >({});
   const [imageWatermark, setImageWatermark] = useState(false);
-  const [videoUrl, setVideoUrl] = useState('');
-  const [selectedVideoDimensions, setSelectedVideoDimensions] = useState<string[]>(VIDEO_DIMENSIONS);
-  const [videoBreakdown, setVideoBreakdown] = useState<VideoBreakdownResult | null>(null);
-  const [videoScript, setVideoScript] = useState<VideoScriptGenerationResult | null>(null);
-  const [videoProductName, setVideoProductName] = useState('新产品');
-  const [videoSceneBackground, setVideoSceneBackground] = useState('电商真实使用场景');
-  const [videoSubtitleMode, setVideoSubtitleMode] = useState('burned-subtitle');
-  const [videoVoiceStyle, setVideoVoiceStyle] = useState('自然可信');
+  const [videoUrl, setVideoUrl] = useState("");
+  const [selectedVideoDimensions, setSelectedVideoDimensions] =
+    useState<string[]>(VIDEO_DIMENSIONS);
+  const [videoBreakdown, setVideoBreakdown] =
+    useState<VideoBreakdownResult | null>(null);
+  const [videoScript, setVideoScript] =
+    useState<VideoScriptGenerationResult | null>(null);
+  const [videoProductName, setVideoProductName] = useState("新产品");
+  const [videoSceneBackground, setVideoSceneBackground] =
+    useState("电商真实使用场景");
+  const [videoSubtitleMode, setVideoSubtitleMode] = useState("burned-subtitle");
+  const [videoVoiceStyle, setVideoVoiceStyle] = useState("自然可信");
   const [videoShotCount, setVideoShotCount] = useState(5);
   const [videoDurationSeconds, setVideoDurationSeconds] = useState(18);
-  const [videoCustomRequirement, setVideoCustomRequirement] = useState('保留爆款结构，但所有卖点回到知识库事实源。');
-  const [articleType, setArticleType] = useState<ArticleGenerationRequest['articleType']>('wechat-longform');
-  const [articlePlatform, setArticlePlatform] = useState('公众号');
-  const [articleLength, setArticleLength] = useState<ArticleGenerationRequest['length']>('medium');
-  const [articleTopic, setArticleTopic] = useState('成型知识库驱动的内容工程');
-  const [articleAudience, setArticleAudience] = useState('关注产品真实价值和使用场景的用户');
-  const [articleTone, setArticleTone] = useState('专业、自然、克制');
-  const [articleRequirement, setArticleRequirement] = useState('先做人话策略，再给事实引用，最后承接图片和视频素材生成。');
-  const [articleResult, setArticleResult] = useState<ArticleGenerationResult | null>(null);
-  const [articleExportPath, setArticleExportPath] = useState<string | null>(null);
-  const [mediaResult, setMediaResult] = useState<MediaGenerationResult | null>(null);
-  const [historyFilter, setHistoryFilter] = useState<GenerationLogEntry['kind'] | 'all'>('all');
+  const [videoCustomRequirement, setVideoCustomRequirement] = useState(
+    "保留爆款结构，但所有卖点回到知识库事实源。",
+  );
+  const [articleType, setArticleType] =
+    useState<ArticleGenerationRequest["articleType"]>("wechat-longform");
+  const [articlePlatform, setArticlePlatform] = useState("公众号");
+  const [articleLength, setArticleLength] =
+    useState<ArticleGenerationRequest["length"]>("medium");
+  const [articleTopic, setArticleTopic] = useState("成型知识库驱动的内容工程");
+  const [articleAudience, setArticleAudience] =
+    useState("关注产品真实价值和使用场景的用户");
+  const [articleTone, setArticleTone] = useState("专业、自然、克制");
+  const [articleRequirement, setArticleRequirement] = useState(
+    "先做人话策略，再给事实引用，最后承接图片和视频素材生成。",
+  );
+  const [articleResult, setArticleResult] =
+    useState<ArticleGenerationResult | null>(null);
+  const [articleExportPath, setArticleExportPath] = useState<string | null>(
+    null,
+  );
+  const [mediaResult, setMediaResult] = useState<MediaGenerationResult | null>(
+    null,
+  );
+  const [historyFilter, setHistoryFilter] = useState<
+    GenerationLogEntry["kind"] | "all"
+  >("all");
   const [copiedLogId, setCopiedLogId] = useState<string | null>(null);
-  const [activeSkillKey, setActiveSkillKey] = useState('');
+  const [activeSkillKey, setActiveSkillKey] = useState("");
   const [copiedSkillKey, setCopiedSkillKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [currentActionLabel, setCurrentActionLabel] = useState<string | null>(null);
+  const [currentActionLabel, setCurrentActionLabel] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const actionRunIdRef = useRef(0);
   const cancelledRunIdsRef = useRef(new Set<number>());
 
   const workspacePath = settings?.workspacePath;
-  const enabledSkillKeys = useMemo(() => new Set((skillSelection?.enabledSkills ?? []).map(skillKey)), [skillSelection]);
-  const activePromptPack = useMemo(() => promptPacks.find((pack) => pack.id === activePromptPackId) ?? promptPacks[0], [activePromptPackId, promptPacks]);
+  const enabledSkillKeys = useMemo(
+    () => new Set((skillSelection?.enabledSkills ?? []).map(skillKey)),
+    [skillSelection],
+  );
+  const activePromptPack = useMemo(
+    () =>
+      promptPacks.find((pack) => pack.id === activePromptPackId) ??
+      promptPacks[0],
+    [activePromptPackId, promptPacks],
+  );
   const activeKnowledgeBase = useMemo(
-    () => knowledgeBases.find((base) => knowledgeBaseKey(base) === activeKnowledgeBaseKey) ?? knowledgeBases[0],
+    () =>
+      knowledgeBases.find(
+        (base) => knowledgeBaseKey(base) === activeKnowledgeBaseKey,
+      ) ?? knowledgeBases[0],
     [activeKnowledgeBaseKey, knowledgeBases],
   );
   const availableKnowledgeTags = useMemo(
-    () => Array.from(new Set(knowledgeBases.flatMap((base) => [...base.tags, ...base.sections.flatMap((section) => section.tags)]))).slice(0, 24),
+    () =>
+      Array.from(
+        new Set(
+          knowledgeBases.flatMap((base) => [
+            ...base.tags,
+            ...base.sections.flatMap((section) => section.tags),
+          ]),
+        ),
+      ).slice(0, 24),
     [knowledgeBases],
   );
   const activeSkill = useMemo(
-    () => skills.find((skill) => skillKey(skill) === activeSkillKey) ?? skills[0],
+    () =>
+      skills.find((skill) => skillKey(skill) === activeSkillKey) ?? skills[0],
     [activeSkillKey, skills],
   );
-  const activeScenes = useMemo(() => sceneCards.filter((card) => selectedSceneIds.includes(card.id)), [sceneCards, selectedSceneIds]);
+  const activeScenes = useMemo(
+    () => sceneCards.filter((card) => selectedSceneIds.includes(card.id)),
+    [sceneCards, selectedSceneIds],
+  );
   const activeEditableScene = activeScenes[0] ?? sceneCards[0];
-  const selectedSceneIdsForRequest = activeScenes.length ? activeScenes.map((scene) => scene.id) : sceneCards.slice(0, 1).map((scene) => scene.id);
-  const citationsForRequest = selectedCitations.length ? selectedCitations : searchResults.slice(0, 3).map(citationFromResult);
-  const filteredLogs = useMemo(() => historyFilter === 'all' ? logs : logs.filter((log) => log.kind === historyFilter), [historyFilter, logs]);
-  const suggestedImagePrompt = imagePromptDraft || activeScenes[0]?.imageMaterialSuggestion || activePromptPack?.imagePromptFragments[0] || '根据知识库生成一张电商场景图，突出产品主体和真实使用场景。';
-  const suggestedVideoPrompt = videoScript?.videoPrompt || activeScenes[0]?.videoMaterialSuggestion || activePromptPack?.videoPromptFragments.join('\n') || '根据知识库和场景卡生成短视频镜头提示词。';
+  const selectedSceneIdsForRequest = activeScenes.length
+    ? activeScenes.map((scene) => scene.id)
+    : sceneCards.slice(0, 1).map((scene) => scene.id);
+  const citationsForRequest = selectedCitations.length
+    ? selectedCitations
+    : searchResults.slice(0, 3).map(citationFromResult);
+  const filteredLogs = useMemo(
+    () =>
+      historyFilter === "all"
+        ? logs
+        : logs.filter((log) => log.kind === historyFilter),
+    [historyFilter, logs],
+  );
+  const suggestedImagePrompt =
+    imagePromptDraft ||
+    activeScenes[0]?.imageMaterialSuggestion ||
+    activePromptPack?.imagePromptFragments[0] ||
+    "根据知识库生成一张电商场景图，突出产品主体和真实使用场景。";
+  const suggestedVideoPrompt =
+    videoScript?.videoPrompt ||
+    activeScenes[0]?.videoMaterialSuggestion ||
+    activePromptPack?.videoPromptFragments.join("\n") ||
+    "根据知识库和场景卡生成短视频镜头提示词。";
 
   async function refresh(nextWorkspace?: string): Promise<void> {
     const [nextSettings, nextModelConfig] = await Promise.all([
@@ -174,11 +284,18 @@ export function useContentStudioApp() {
       window.contentStudio.getModelConfig(),
     ]);
     const workspace = nextWorkspace ?? nextSettings.workspacePath;
-    const [nextSkills, nextKnowledgeBases, nextSearchResults] = await Promise.all([
-      window.contentStudio.scanSkills(workspace),
-      window.contentStudio.listKnowledgeBases(workspace),
-      window.contentStudio.searchKnowledge({ workspacePath: workspace, query: knowledgeQuery, baseType: knowledgeBaseFilter, sectionType: knowledgeSectionFilter, tag: knowledgeTagFilter }),
-    ]);
+    const [nextSkills, nextKnowledgeBases, nextSearchResults] =
+      await Promise.all([
+        window.contentStudio.scanSkills(workspace),
+        window.contentStudio.listKnowledgeBases(workspace),
+        window.contentStudio.searchKnowledge({
+          workspacePath: workspace,
+          query: knowledgeQuery,
+          baseType: knowledgeBaseFilter,
+          sectionType: knowledgeSectionFilter,
+          tag: knowledgeTagFilter,
+        }),
+      ]);
     setSettings(nextSettings);
     setModelConfig(nextModelConfig);
     setSkills(nextSkills);
@@ -199,18 +316,23 @@ export function useContentStudioApp() {
       return;
     }
 
-    const [nextSelection, nextPromptPacks, nextSceneCards, nextLogs] = await Promise.all([
-      window.contentStudio.getSkillSelection(workspace),
-      window.contentStudio.listPromptPacks(workspace),
-      window.contentStudio.listSceneCards(workspace),
-      window.contentStudio.listGenerationLogs(workspace),
-    ]);
+    const [nextSelection, nextPromptPacks, nextSceneCards, nextLogs] =
+      await Promise.all([
+        window.contentStudio.getSkillSelection(workspace),
+        window.contentStudio.listPromptPacks(workspace),
+        window.contentStudio.listSceneCards(workspace),
+        window.contentStudio.listGenerationLogs(workspace),
+      ]);
     setSkillSelection(nextSelection);
     setPromptPacks(nextPromptPacks);
     setSceneCards(nextSceneCards);
     setLogs(nextLogs);
-    setActivePromptPackId((current) => current || nextPromptPacks[0]?.id || '');
-    setSelectedSceneIds((current) => (current.length ? current : nextSceneCards.slice(0, 2).map((scene) => scene.id)));
+    setActivePromptPackId((current) => current || nextPromptPacks[0]?.id || "");
+    setSelectedSceneIds((current) =>
+      current.length
+        ? current
+        : nextSceneCards.slice(0, 2).map((scene) => scene.id),
+    );
   }
 
   useEffect(() => {
@@ -218,25 +340,80 @@ export function useContentStudioApp() {
   }, []);
 
   useEffect(() => {
+    let alive = true;
+    void window.contentStudio.authGetSession()
+      .then((state) => {
+        if (alive) setAuthState(state);
+      })
+      .catch((error) => {
+        if (alive) {
+          setAuthState({
+            authenticated: false,
+            error: error instanceof Error ? error.message : '账号状态同步失败。',
+          });
+        }
+      })
+      .finally(() => {
+        if (alive) setAuthChecking(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void window.contentStudio.getUpdateState().then((state) => {
+      if (alive) setUpdateState(state);
+    });
+    const unsubscribe = window.contentStudio.onUpdateState((state) =>
+      setUpdateState(state),
+    );
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!activePromptPack) return;
-    setPromptPackDraft({ brandVoice: activePromptPack.brandVoice, visualStyle: activePromptPack.visualStyle });
-  }, [activePromptPack?.id, activePromptPack?.brandVoice, activePromptPack?.visualStyle]);
+    setPromptPackDraft({
+      brandVoice: activePromptPack.brandVoice,
+      visualStyle: activePromptPack.visualStyle,
+    });
+  }, [
+    activePromptPack?.id,
+    activePromptPack?.brandVoice,
+    activePromptPack?.visualStyle,
+  ]);
 
   useEffect(() => {
     if (!modelConfig) return;
     setModelDraft({
       apiEndpoint: modelConfig.textApiEndpoint,
-      apiKey: '',
+      apiKey: "",
+      textProtocol: modelConfig.textProtocol,
       imageApiEndpoint: modelConfig.imageApiEndpoint,
-      imageApiKey: '',
+      imageApiKey: "",
+      imageProtocol: modelConfig.imageProtocol,
       imageOuterModel: modelConfig.imageOuterModel,
       textModel: modelConfig.textModel,
-      imageModels: modelConfig.imageModels.join(', '),
+      imageModels: modelConfig.imageModels.join(", "),
       videoApiEndpoint: modelConfig.videoApiEndpoint,
-      videoApiKey: '',
+      videoApiKey: "",
       videoModel: modelConfig.videoModel,
     });
-  }, [modelConfig?.textApiEndpoint, modelConfig?.imageApiEndpoint, modelConfig?.imageOuterModel, modelConfig?.textModel, modelConfig?.imageModels, modelConfig?.videoApiEndpoint, modelConfig?.videoModel]);
+  }, [
+    modelConfig?.textApiEndpoint,
+    modelConfig?.textProtocol,
+    modelConfig?.imageApiEndpoint,
+    modelConfig?.imageProtocol,
+    modelConfig?.imageOuterModel,
+    modelConfig?.textModel,
+    modelConfig?.imageModels,
+    modelConfig?.videoApiEndpoint,
+    modelConfig?.videoModel,
+  ]);
 
   useEffect(() => {
     if (!activeEditableScene) return;
@@ -245,28 +422,38 @@ export function useContentStudioApp() {
       imageMaterialSuggestion: activeEditableScene.imageMaterialSuggestion,
       videoMaterialSuggestion: activeEditableScene.videoMaterialSuggestion,
     });
-  }, [activeEditableScene?.id, activeEditableScene?.title, activeEditableScene?.imageMaterialSuggestion, activeEditableScene?.videoMaterialSuggestion]);
+  }, [
+    activeEditableScene?.id,
+    activeEditableScene?.title,
+    activeEditableScene?.imageMaterialSuggestion,
+    activeEditableScene?.videoMaterialSuggestion,
+  ]);
 
   useEffect(() => {
-    if (themeMode !== 'system') {
+    if (themeMode !== "system") {
       setEffectiveTheme(themeMode);
       return;
     }
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    setEffectiveTheme(media.matches ? 'dark' : 'light');
-    const listener = (e: MediaQueryListEvent) => setEffectiveTheme(e.matches ? 'dark' : 'light');
-    media.addEventListener('change', listener);
-    return () => media.removeEventListener('change', listener);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    setEffectiveTheme(media.matches ? "dark" : "light");
+    const listener = (e: MediaQueryListEvent) =>
+      setEffectiveTheme(e.matches ? "dark" : "light");
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
   }, [themeMode]);
 
-  function runAction(action: (context: ActionContext) => Promise<void>, label = '正在处理当前任务'): void {
+  function runAction(
+    action: (context: ActionContext) => Promise<void>,
+    label = "正在处理当前任务",
+  ): void {
     const runId = actionRunIdRef.current + 1;
     actionRunIdRef.current = runId;
     cancelledRunIdsRef.current.delete(runId);
     const context: ActionContext = {
       isCancelled: () => cancelledRunIdsRef.current.has(runId),
       throwIfCancelled: () => {
-        if (cancelledRunIdsRef.current.has(runId)) throw new ActionCancelledError();
+        if (cancelledRunIdsRef.current.has(runId))
+          throw new ActionCancelledError();
       },
     };
     setBusy(true);
@@ -275,7 +462,9 @@ export function useContentStudioApp() {
     void action(context)
       .catch((nextError) => {
         if (nextError instanceof ActionCancelledError) return;
-        setError(nextError instanceof Error ? nextError.message : String(nextError));
+        setError(
+          nextError instanceof Error ? nextError.message : String(nextError),
+        );
       })
       .finally(() => {
         cancelledRunIdsRef.current.delete(runId);
@@ -291,25 +480,30 @@ export function useContentStudioApp() {
     cancelledRunIdsRef.current.add(actionRunIdRef.current);
     setBusy(false);
     setCurrentActionLabel(null);
-    setError('已取消当前本地任务；如果底层操作已完成，迟到结果会被忽略。');
+    setError("已取消当前本地任务；如果底层操作已完成，迟到结果会被忽略。");
   }
 
   function requireWorkspace(): string {
-    if (!workspacePath) throw new Error('请先选择 Workspace，生成结果和配置会写入本地 .content-studio 目录。');
+    if (!workspacePath)
+      throw new Error(
+        "请先选择工作区，生成结果和配置会写入本地内容工厂目录。",
+      );
     return workspacePath;
   }
 
   function openModelDialog(): void {
     setModelDraft({
-      apiEndpoint: modelConfig?.textApiEndpoint ?? '',
-      apiKey: '',
-      imageApiEndpoint: modelConfig?.imageApiEndpoint ?? '',
-      imageApiKey: '',
-      imageOuterModel: modelConfig?.imageOuterModel ?? 'gpt-5.5',
+      apiEndpoint: modelConfig?.textApiEndpoint ?? "",
+      apiKey: "",
+      textProtocol: modelConfig?.textProtocol ?? "claude-sdk",
+      imageApiEndpoint: modelConfig?.imageApiEndpoint ?? "",
+      imageApiKey: "",
+      imageProtocol: modelConfig?.imageProtocol ?? "openai-responses",
+      imageOuterModel: modelConfig?.imageOuterModel ?? "gpt-5.5",
       textModel: modelConfig?.textModel ?? params.textModel,
-      imageModels: modelConfig?.imageModels.join(', ') ?? params.imageModel,
-      videoApiEndpoint: modelConfig?.videoApiEndpoint ?? '',
-      videoApiKey: '',
+      imageModels: modelConfig?.imageModels.join(", ") ?? params.imageModel,
+      videoApiEndpoint: modelConfig?.videoApiEndpoint ?? "",
+      videoApiKey: "",
       videoModel: modelConfig?.videoModel ?? params.videoModel,
     });
     setShowModelDialog(true);
@@ -318,7 +512,9 @@ export function useContentStudioApp() {
   async function chooseWorkspace(): Promise<void> {
     const selected = await window.contentStudio.selectWorkspace();
     if (!selected) return;
-    const nextSettings = await window.contentStudio.saveSettings({ workspacePath: selected });
+    const nextSettings = await window.contentStudio.saveSettings({
+      workspacePath: selected,
+    });
     setSettings(nextSettings);
     await refresh(selected);
   }
@@ -328,18 +524,35 @@ export function useContentStudioApp() {
       textApiEndpoint: modelDraft.apiEndpoint,
       textApiKey: modelDraft.apiKey || undefined,
       textModel: modelDraft.textModel,
-      imageProvider: modelDraft.imageApiKey || modelConfig?.hasImageApiKey ? 'openai-responses' : 'disabled',
+      textProtocol: modelDraft.textProtocol,
+      imageProvider:
+        modelDraft.imageApiKey || modelConfig?.hasImageApiKey
+          ? "openai-responses"
+          : "disabled",
+      imageProtocol: modelDraft.imageProtocol,
       imageApiEndpoint: modelDraft.imageApiEndpoint,
       imageApiKey: modelDraft.imageApiKey || undefined,
       imageOuterModel: modelDraft.imageOuterModel,
-      imageModels: modelDraft.imageModels.split(',').map((item) => item.trim()).filter(Boolean),
-      videoProvider: modelDraft.videoApiEndpoint.trim() && (modelDraft.videoApiKey.trim() || modelConfig?.hasVideoApiKey) ? 'generic-http' : 'disabled',
+      imageModels: modelDraft.imageModels
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+      videoProvider:
+        modelDraft.videoApiEndpoint.trim() &&
+        (modelDraft.videoApiKey.trim() || modelConfig?.hasVideoApiKey)
+          ? "generic-http"
+          : "disabled",
       videoApiEndpoint: modelDraft.videoApiEndpoint,
       videoApiKey: modelDraft.videoApiKey || undefined,
       videoModel: modelDraft.videoModel,
     });
     setModelConfig(next);
-    setParams((current) => ({ ...current, textModel: next.textModel, imageModel: next.imageModels[0] ?? current.imageModel, videoModel: next.videoModel }));
+    setParams((current) => ({
+      ...current,
+      textModel: next.textModel,
+      imageModel: next.imageModels[0] ?? current.imageModel,
+      videoModel: next.videoModel,
+    }));
     setShowModelDialog(false);
   }
 
@@ -348,39 +561,115 @@ export function useContentStudioApp() {
     setModelDraft((current) => ({
       ...current,
       textModel: current.textModel || catalog.textModels[0] || params.textModel,
-      imageModels: catalog.imageModels.join(', '),
-      imageOuterModel: current.imageOuterModel || 'gpt-5.5',
-      videoModel: current.videoModel || catalog.videoModels[0] || params.videoModel,
+      imageModels: catalog.imageModels.join(", "),
+      imageOuterModel: current.imageOuterModel || "gpt-5.5",
+      videoModel:
+        current.videoModel || catalog.videoModels[0] || params.videoModel,
     }));
   }
 
+  async function checkForUpdates(): Promise<void> {
+    const next = await window.contentStudio.checkForUpdates({ manual: true });
+    setUpdateState(next);
+    if (next.status === "error" && next.error) throw new Error(next.error);
+  }
+
+  async function setAutoUpdateEnabled(enabled: boolean): Promise<void> {
+    setUpdateState(await window.contentStudio.setAutoUpdateEnabled(enabled));
+  }
+
+  async function openUpdateDownload(): Promise<void> {
+    const result = await window.contentStudio.openUpdateDownload();
+    if (!result.ok) throw new Error(result.error ?? "无法打开更新下载链接。");
+  }
+
+  async function openUpdateReleaseNotes(): Promise<void> {
+    const result = await window.contentStudio.openUpdateReleaseNotes();
+    if (!result.ok) throw new Error(result.error ?? "无法打开更新日志。");
+  }
+
+  async function openLogsDirectory(): Promise<void> {
+    const result = await window.contentStudio.openLogsDirectory();
+    if (!result.ok) throw new Error(result.error ?? "无法打开日志目录。");
+  }
+
+  function openUpdateSettings(): void {
+    setSettingsTab("about");
+    setShowSettingsDialog(true);
+  }
+
+  async function loginByPassword(input: BuguPasswordLoginInput): Promise<BuguAuthState> {
+    const next = await window.contentStudio.authLoginByPassword(input);
+    setAuthState(next);
+    return next;
+  }
+
+  async function sendAuthEmailCode(input: BuguEmailCodeSendInput) {
+    return window.contentStudio.authSendEmailCode(input);
+  }
+
+  async function verifyAuthEmailCode(input: BuguEmailCodeVerifyInput): Promise<BuguAuthState> {
+    const next = await window.contentStudio.authVerifyEmailCode(input);
+    setAuthState(next);
+    return next;
+  }
+
+  async function logoutAuth(): Promise<void> {
+    const next = await window.contentStudio.authLogout();
+    setAuthState(next);
+  }
+
   async function searchKnowledge(): Promise<void> {
-    const results = await window.contentStudio.searchKnowledge({ workspacePath, query: knowledgeQuery, baseType: knowledgeBaseFilter, sectionType: knowledgeSectionFilter, tag: knowledgeTagFilter });
+    const results = await window.contentStudio.searchKnowledge({
+      workspacePath,
+      query: knowledgeQuery,
+      baseType: knowledgeBaseFilter,
+      sectionType: knowledgeSectionFilter,
+      tag: knowledgeTagFilter,
+    });
     setSearchResults(results);
   }
 
   function addCitation(result: KnowledgeSearchResult): void {
     const citation = citationFromResult(result);
-    setSelectedCitations((current) => (current.some((item) => isSameCitation(item, citation)) ? current : [...current, citation].slice(0, 8)));
+    setSelectedCitations((current) =>
+      current.some((item) => isSameCitation(item, citation))
+        ? current
+        : [...current, citation].slice(0, 8),
+    );
   }
 
-  function addKnowledgeSectionCitation(base: KnowledgeBaseView, section: KnowledgeSection): void {
+  function addKnowledgeSectionCitation(
+    base: KnowledgeBaseView,
+    section: KnowledgeSection,
+  ): void {
     const citation = citationFromSection(base, section);
-    setSelectedCitations((current) => (current.some((item) => isSameCitation(item, citation)) ? current : [...current, citation].slice(0, 8)));
+    setSelectedCitations((current) =>
+      current.some((item) => isSameCitation(item, citation))
+        ? current
+        : [...current, citation].slice(0, 8),
+    );
   }
 
   function toggleVideoDimension(dimension: string): void {
-    setSelectedVideoDimensions((current) => (
-      current.includes(dimension) ? current.filter((item) => item !== dimension) : [...current, dimension]
-    ));
+    setSelectedVideoDimensions((current) =>
+      current.includes(dimension)
+        ? current.filter((item) => item !== dimension)
+        : [...current, dimension],
+    );
   }
 
-  async function selectAssetFiles(kind: 'product-image' | 'reference-image' | 'video'): Promise<void> {
+  async function selectAssetFiles(
+    kind: "product-image" | "reference-image" | "video",
+  ): Promise<void> {
     const paths = await window.contentStudio.selectAssetFiles(kind);
     if (paths.length === 0) return;
-    if (kind === 'product-image') setProductImageRefs((current) => [...current, ...paths].slice(0, 10));
-    if (kind === 'reference-image') setReferenceImageRefs((current) => [...current, ...paths].slice(0, 6));
-    if (kind === 'video') setVideoAssetRefs((current) => [...current, ...paths].slice(0, 3));
+    if (kind === "product-image")
+      setProductImageRefs((current) => [...current, ...paths].slice(0, 10));
+    if (kind === "reference-image")
+      setReferenceImageRefs((current) => [...current, ...paths].slice(0, 6));
+    if (kind === "video")
+      setVideoAssetRefs((current) => [...current, ...paths].slice(0, 3));
   }
 
   async function installBuiltinKnowledgeBase(id: string): Promise<void> {
@@ -391,56 +680,70 @@ export function useContentStudioApp() {
 
   async function importKnowledgeBase(): Promise<void> {
     const workspace = requireWorkspace();
-    const imported = await window.contentStudio.importKnowledgeBaseFromFile(workspace);
+    const imported =
+      await window.contentStudio.importKnowledgeBaseFromFile(workspace);
     if (imported) await refresh(workspace);
   }
 
   async function generatePromptPack(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
     const citations = citationsForRequest;
-    if (citations.length === 0) throw new Error('请先选择至少一条知识引用。');
-    const pack = await window.contentStudio.generatePromptPack({ workspacePath: workspace, citations, name: 'v1 内容工厂提示词包' });
+    if (citations.length === 0) throw new Error("请先选择至少一条知识引用。");
+    const pack = await window.contentStudio.generatePromptPack({
+      workspacePath: workspace,
+      citations,
+      name: "v1 内容工厂提示词包",
+    });
     context?.throwIfCancelled();
     setPromptPacks((current) => [pack, ...current]);
     setActivePromptPackId(pack.id);
-    setActiveModule('knowledge');
+    setActiveModule("knowledge");
     await refresh(workspace);
   }
 
   async function generateSceneCards(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
     const promptPackId = activePromptPack?.id;
-    if (!promptPackId) throw new Error('请先生成提示词包，再生成产品场景库。');
-    const cards = await window.contentStudio.generateSceneCards({ workspacePath: workspace, promptPackId, citations: citationsForRequest, count: 5 });
+    if (!promptPackId) throw new Error("请先生成提示词包，再生成产品场景库。");
+    const cards = await window.contentStudio.generateSceneCards({
+      workspacePath: workspace,
+      promptPackId,
+      citations: citationsForRequest,
+      count: 5,
+    });
     context?.throwIfCancelled();
     setSceneCards((current) => [...cards, ...current]);
     setSelectedSceneIds(cards.slice(0, 2).map((card) => card.id));
-    setActiveModule('image');
+    setActiveModule("image");
     await refresh(workspace);
   }
 
   async function savePromptPackDraft(): Promise<void> {
     const workspace = requireWorkspace();
-    if (!activePromptPack) throw new Error('请先生成提示词包。');
+    if (!activePromptPack) throw new Error("请先生成提示词包。");
     const updated = await window.contentStudio.updatePromptPack({
       ...activePromptPack,
       brandVoice: promptPackDraft.brandVoice,
       visualStyle: promptPackDraft.visualStyle,
     });
-    setPromptPacks((current) => current.map((pack) => (pack.id === updated.id ? updated : pack)));
+    setPromptPacks((current) =>
+      current.map((pack) => (pack.id === updated.id ? updated : pack)),
+    );
     await refresh(workspace);
   }
 
   async function saveSceneCardDraft(): Promise<void> {
     const workspace = requireWorkspace();
-    if (!activeEditableScene) throw new Error('请先生成场景卡。');
+    if (!activeEditableScene) throw new Error("请先生成场景卡。");
     const updated = await window.contentStudio.updateSceneCard({
       ...activeEditableScene,
       title: sceneCardDraft.title,
       imageMaterialSuggestion: sceneCardDraft.imageMaterialSuggestion,
       videoMaterialSuggestion: sceneCardDraft.videoMaterialSuggestion,
     });
-    setSceneCards((current) => current.map((card) => (card.id === updated.id ? updated : card)));
+    setSceneCards((current) =>
+      current.map((card) => (card.id === updated.id ? updated : card)),
+    );
     await refresh(workspace);
   }
 
@@ -451,31 +754,33 @@ export function useContentStudioApp() {
       articleType,
       platform: articlePlatform,
       audience: articleAudience,
-      topic: articleTopic || activePromptPack?.name || '成型知识库驱动的内容工程',
-      tone: articleTone || activePromptPack?.brandVoice || '专业、自然、克制',
+      topic:
+        articleTopic || activePromptPack?.name || "成型知识库驱动的内容工程",
+      tone: articleTone || activePromptPack?.brandVoice || "专业、自然、克制",
       length: articleLength,
       customRequirement: articleRequirement,
       citations: citationsForRequest,
       promptPackId: activePromptPack?.id,
       sceneCardIds: selectedSceneIdsForRequest,
       assetRefs: [...productImageRefs, ...referenceImageRefs],
-      selectedSkillSlugs: skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+      selectedSkillSlugs:
+        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
       params: { textModel: params.textModel },
     });
     context?.throwIfCancelled();
     setArticleResult(result);
     setArticleExportPath(null);
-    setActiveModule('article');
+    setActiveModule("article");
     await refresh(workspace);
   }
 
   async function exportArticleMarkdown(): Promise<void> {
     const workspace = requireWorkspace();
-    if (!articleResult) throw new Error('请先生成文章草稿，再导出 Markdown。');
+    if (!articleResult) throw new Error("请先生成文章草稿，再导出 Markdown。");
     const exported = await window.contentStudio.exportMarkdown({
       workspacePath: workspace,
       sourceLogId: articleResult.logId,
-      suggestedName: `${articleResult.titleCandidates[0] || 'content-studio-draft'}.md`,
+      suggestedName: `${articleResult.titleCandidates[0] || "buguai-draft"}.md`,
       markdown: articleResult.markdown,
     });
     setArticleExportPath(exported);
@@ -485,68 +790,92 @@ export function useContentStudioApp() {
   async function copyLogPrompt(log: GenerationLogEntry): Promise<void> {
     await navigator.clipboard.writeText(extractPromptFromLog(log));
     setCopiedLogId(log.id);
-    window.setTimeout(() => setCopiedLogId((current) => (current === log.id ? null : current)), 1400);
+    window.setTimeout(
+      () => setCopiedLogId((current) => (current === log.id ? null : current)),
+      1400,
+    );
   }
 
   async function revealLogPath(log: GenerationLogEntry): Promise<void> {
     const [firstPath] = extractLocalRefsFromLog(log);
-    if (!firstPath) throw new Error('这条历史没有可打开的本地素材路径。');
+    if (!firstPath) throw new Error("这条历史没有可打开的本地素材路径。");
     await revealPath(firstPath);
   }
 
   async function revealPath(path: string): Promise<void> {
     const result = await window.contentStudio.revealPath(path);
-    if (!result.ok) throw new Error(result.error ?? '无法打开本地位置。');
+    if (!result.ok) throw new Error(result.error ?? "无法打开本地位置。");
   }
 
   async function exportAsset(path: string): Promise<void> {
-    const exported = await window.contentStudio.exportAsset({ sourcePath: path, suggestedName: fileNameFromPath(path) });
+    const exported = await window.contentStudio.exportAsset({
+      sourcePath: path,
+      suggestedName: fileNameFromPath(path),
+    });
     if (!exported) return;
     await revealPath(exported);
   }
 
-  async function retryLog(log: GenerationLogEntry, context?: ActionContext): Promise<void> {
+  async function retryLog(
+    log: GenerationLogEntry,
+    context?: ActionContext,
+  ): Promise<void> {
     const workspace = requireWorkspace();
-    if (!log.input || typeof log.input !== 'object') throw new Error('这条历史缺少可重试的输入 payload。');
+    if (!log.input || typeof log.input !== "object")
+      throw new Error("这条历史缺少可重试的输入 payload。");
 
-    if (log.kind === 'article') {
-      const result = await window.contentStudio.generateArticle(log.input as ArticleGenerationRequest);
+    if (log.kind === "article") {
+      const result = await window.contentStudio.generateArticle(
+        log.input as ArticleGenerationRequest,
+      );
       context?.throwIfCancelled();
       setArticleResult(result);
       setArticleExportPath(null);
-      setActiveModule('article');
-    } else if (log.kind === 'image') {
-      const result = await window.contentStudio.generateImage(log.input as ImageGenerationRequest);
+      setActiveModule("article");
+    } else if (log.kind === "image") {
+      const result = await window.contentStudio.generateImage(
+        log.input as ImageGenerationRequest,
+      );
       context?.throwIfCancelled();
       setMediaResult(result);
-      setActiveModule('image');
-    } else if (log.kind === 'video') {
-      const result = await window.contentStudio.generateVideo(log.input as VideoGenerationRequest);
+      setActiveModule("image");
+    } else if (log.kind === "video") {
+      const result = await window.contentStudio.generateVideo(
+        log.input as VideoGenerationRequest,
+      );
       context?.throwIfCancelled();
       setMediaResult(result);
-      setActiveModule('video');
-    } else if (log.kind === 'video-breakdown') {
-      const result = await window.contentStudio.analyzeVideo(log.input as VideoBreakdownRequest);
+      setActiveModule("video");
+    } else if (log.kind === "video-breakdown") {
+      const result = await window.contentStudio.analyzeVideo(
+        log.input as VideoBreakdownRequest,
+      );
       context?.throwIfCancelled();
       setVideoBreakdown(result);
-      setActiveModule('video');
-    } else if (log.kind === 'video-script') {
-      const result = await window.contentStudio.generateVideoScript(log.input as VideoScriptGenerationRequest);
+      setActiveModule("video");
+    } else if (log.kind === "video-script") {
+      const result = await window.contentStudio.generateVideoScript(
+        log.input as VideoScriptGenerationRequest,
+      );
       context?.throwIfCancelled();
       setVideoScript(result);
-      setActiveModule('video');
-    } else if (log.kind === 'prompt-pack') {
-      const pack = await window.contentStudio.generatePromptPack(log.input as GeneratePromptPackInput);
+      setActiveModule("video");
+    } else if (log.kind === "prompt-pack") {
+      const pack = await window.contentStudio.generatePromptPack(
+        log.input as GeneratePromptPackInput,
+      );
       context?.throwIfCancelled();
       setPromptPacks((current) => [pack, ...current]);
       setActivePromptPackId(pack.id);
-      setActiveModule('knowledge');
-    } else if (log.kind === 'scene-card') {
-      const cards = await window.contentStudio.generateSceneCards(log.input as GenerateSceneCardsInput);
+      setActiveModule("knowledge");
+    } else if (log.kind === "scene-card") {
+      const cards = await window.contentStudio.generateSceneCards(
+        log.input as GenerateSceneCardsInput,
+      );
       context?.throwIfCancelled();
       setSceneCards((current) => [...cards, ...current]);
       setSelectedSceneIds(cards.slice(0, 2).map((card) => card.id));
-      setActiveModule('image');
+      setActiveModule("image");
     } else {
       throw new Error(`暂不支持重试该历史类型：${log.kind}`);
     }
@@ -556,6 +885,8 @@ export function useContentStudioApp() {
 
   async function generateImage(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
+    if (params.runMode !== "single")
+      throw new Error("批量 / 定时队列仍在后续接入中，请先切回单次处理。");
     const result = await window.contentStudio.generateImage({
       workspacePath: workspace,
       productImageRefs,
@@ -564,11 +895,13 @@ export function useContentStudioApp() {
       promptMode: imagePromptMode,
       generationMode: imageGenerationMode,
       template: imageTemplate,
+      templateInputs: imageTemplateInputs,
       watermark: imageWatermark,
       promptPackId: activePromptPack?.id,
       sceneCardIds: selectedSceneIdsForRequest,
       citations: citationsForRequest,
-      selectedSkillSlugs: skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+      selectedSkillSlugs:
+        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
       params,
     });
     context?.throwIfCancelled();
@@ -587,8 +920,13 @@ export function useContentStudioApp() {
       promptPackId: activePromptPack?.id,
       sceneCardIds: selectedSceneIdsForRequest,
       citations: citationsForRequest,
-      selectedSkillSlugs: skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
-      params: { videoModel: params.videoModel, aspectRatio: params.aspectRatio, durationSeconds: videoDurationSeconds },
+      selectedSkillSlugs:
+        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+      params: {
+        videoModel: params.videoModel,
+        aspectRatio: params.aspectRatio,
+        durationSeconds: videoDurationSeconds,
+      },
     });
     context?.throwIfCancelled();
     setMediaResult(result);
@@ -598,15 +936,19 @@ export function useContentStudioApp() {
   async function analyzeReferenceVideo(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
     const source = videoAssetRefs[0] || videoUrl.trim();
-    if (!source) throw new Error('请先选择本地视频或粘贴参考视频链接；当前不会使用 demo 数据伪造拆解结果。');
+    if (!source)
+      throw new Error(
+        "请先选择本地视频或粘贴参考视频链接；当前不会使用 demo 数据伪造拆解结果。",
+      );
     const result = await window.contentStudio.analyzeVideo({
       workspacePath: workspace,
-      sourceType: videoAssetRefs[0] ? 'file' : 'url',
+      sourceType: videoAssetRefs[0] ? "file" : "url",
       source,
       dimensions: selectedVideoDimensions,
       promptPackId: activePromptPack?.id,
       citations: citationsForRequest,
-      selectedSkillSlugs: skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+      selectedSkillSlugs:
+        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
       params: { textModel: params.textModel },
     });
     context?.throwIfCancelled();
@@ -621,7 +963,7 @@ export function useContentStudioApp() {
       productName: videoProductName,
       sceneBackground: videoSceneBackground,
       subtitleMode: videoSubtitleMode,
-      voiceStyle: videoVoiceStyle || activePromptPack?.brandVoice || '自然可信',
+      voiceStyle: videoVoiceStyle || activePromptPack?.brandVoice || "自然可信",
       customRequirement: videoCustomRequirement,
       ratio: params.aspectRatio,
       shotCount: videoShotCount,
@@ -630,8 +972,13 @@ export function useContentStudioApp() {
       promptPackId: activePromptPack?.id,
       sceneCardIds: selectedSceneIdsForRequest,
       citations: citationsForRequest,
-      assetRefs: [...productImageRefs, ...referenceImageRefs, ...videoAssetRefs],
-      selectedSkillSlugs: skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+      assetRefs: [
+        ...productImageRefs,
+        ...referenceImageRefs,
+        ...videoAssetRefs,
+      ],
+      selectedSkillSlugs:
+        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
       params: { textModel: params.textModel },
     });
     context?.throwIfCancelled();
@@ -646,9 +993,14 @@ export function useContentStudioApp() {
 
   async function toggleSkill(skill: LoadedSkill): Promise<void> {
     const workspace = requireWorkspace();
-    if (!skill.valid) throw new Error('无效 Skill 不能启用，请先修复 SKILL.md frontmatter。');
+    if (!skill.valid)
+      throw new Error("无效 Skill 不能启用，请先修复 SKILL.md frontmatter。");
     const ref: SkillRef = { slug: skill.slug, source: skill.source };
-    const next = await window.contentStudio.setSkillEnabled(workspace, ref, !enabledSkillKeys.has(skillKey(ref)));
+    const next = await window.contentStudio.setSkillEnabled(
+      workspace,
+      ref,
+      !enabledSkillKeys.has(skillKey(ref)),
+    );
     setSkillSelection(next);
   }
 
@@ -656,7 +1008,10 @@ export function useContentStudioApp() {
     await navigator.clipboard.writeText(skill.path);
     const key = skillKey(skill);
     setCopiedSkillKey(key);
-    window.setTimeout(() => setCopiedSkillKey((current) => (current === key ? null : current)), 1400);
+    window.setTimeout(
+      () => setCopiedSkillKey((current) => (current === key ? null : current)),
+      1400,
+    );
   }
 
   return {
@@ -692,9 +1047,13 @@ export function useContentStudioApp() {
     activeModule,
     setActiveModule,
     settings,
+    updateState,
+    setUpdateState,
     modelConfig,
     modelDraft,
     setModelDraft,
+    authState,
+    authChecking,
     showModelDialog,
     setShowModelDialog,
     skills,
@@ -737,6 +1096,8 @@ export function useContentStudioApp() {
     setImageGenerationMode,
     imageTemplate,
     setImageTemplate,
+    imageTemplateInputs,
+    setImageTemplateInputs,
     imageWatermark,
     setImageWatermark,
     videoUrl,
@@ -804,6 +1165,16 @@ export function useContentStudioApp() {
     chooseWorkspace,
     saveModelConfig,
     loadModelCatalog,
+    checkForUpdates,
+    setAutoUpdateEnabled,
+    openUpdateDownload,
+    openUpdateReleaseNotes,
+    openLogsDirectory,
+    openUpdateSettings,
+    loginByPassword,
+    sendAuthEmailCode,
+    verifyAuthEmailCode,
+    logoutAuth,
     searchKnowledge,
     addCitation,
     addKnowledgeSectionCitation,

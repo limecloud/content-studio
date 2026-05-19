@@ -16,15 +16,9 @@ export function SettingsDialogOutlet({ app }: SettingsDialogOutletProps) {
       setThemeMode={app.setThemeMode}
       colorTheme={app.colorTheme}
       setColorTheme={app.setColorTheme}
-      modelSettingView={app.modelSettingView}
-      setModelSettingView={app.setModelSettingView}
       modelConfig={app.modelConfig}
       modelDraft={app.modelDraft}
       setModelDraft={app.setModelDraft}
-      providerTab={app.providerTab}
-      setProviderTab={app.setProviderTab}
-      responsesApiActive={app.responsesApiActive}
-      setResponsesApiActive={app.setResponsesApiActive}
       menubarShow={app.menubarShow}
       setMenubarShow={app.setMenubarShow}
       autoStart={app.autoStart}
@@ -39,8 +33,16 @@ export function SettingsDialogOutlet({ app }: SettingsDialogOutletProps) {
       setShortcutActive={app.setShortcutActive}
       commandWhitelist={app.commandWhitelist}
       setCommandWhitelist={app.setCommandWhitelist}
-      onLoadModelCatalog={() => app.runAction(app.loadModelCatalog)}
+      updateState={app.updateState}
+      authState={app.authState}
+      onSetAutoUpdateEnabled={(enabled) => app.runAction(() => app.setAutoUpdateEnabled(enabled))}
+      onCheckForUpdates={() => app.runAction(app.checkForUpdates, '正在检查更新')}
+      onOpenUpdateDownload={() => app.runAction(app.openUpdateDownload, '正在打开更新下载')}
+      onOpenUpdateReleaseNotes={() => app.runAction(app.openUpdateReleaseNotes, '正在打开更新日志')}
+      onOpenLogsDirectory={() => app.runAction(app.openLogsDirectory, '正在打开日志目录')}
       onSaveModelConfig={() => app.runAction(app.saveModelConfig)}
+      onPasswordLogin={app.loginByPassword}
+      onLogoutAuth={() => app.runAction(app.logoutAuth, '正在退出登录')}
       onClose={() => app.setShowSettingsDialog(false)}
     />
   );

@@ -1,25 +1,20 @@
 import type { Dispatch, SetStateAction } from 'react';
 import logoUrl from '../logo.png';
 import { COLOR_THEME_OPTIONS } from '../app/constants';
-import type { ModelConfigView } from '../../../shared/types';
-import type { ColorTheme, ModelDraft, ModelSettingView, ProviderTab, SettingsTab } from '../app/types';
+import type { AutoUpdateState, BuguAuthState, ModelConfigView } from '../../../shared/types';
+import type { ColorTheme, ModelDraft, SettingsTab } from '../app/types';
+import { BuguAuthForm, type BuguAuthActions } from './BuguAuthGate';
 
-interface SettingsDialogProps {
+interface SettingsDialogProps extends BuguAuthActions {
   settingsTab: SettingsTab;
   setSettingsTab: Dispatch<SetStateAction<SettingsTab>>;
   themeMode: 'light' | 'dark' | 'system';
   setThemeMode: Dispatch<SetStateAction<'light' | 'dark' | 'system'>>;
   colorTheme: ColorTheme;
   setColorTheme: Dispatch<SetStateAction<ColorTheme>>;
-  modelSettingView: ModelSettingView;
-  setModelSettingView: Dispatch<SetStateAction<ModelSettingView>>;
   modelConfig: ModelConfigView | null;
   modelDraft: ModelDraft;
   setModelDraft: Dispatch<SetStateAction<ModelDraft>>;
-  providerTab: ProviderTab;
-  setProviderTab: Dispatch<SetStateAction<ProviderTab>>;
-  responsesApiActive: boolean;
-  setResponsesApiActive: Dispatch<SetStateAction<boolean>>;
   menubarShow: boolean;
   setMenubarShow: Dispatch<SetStateAction<boolean>>;
   autoStart: boolean;
@@ -34,9 +29,40 @@ interface SettingsDialogProps {
   setShortcutActive: Dispatch<SetStateAction<boolean>>;
   commandWhitelist: boolean;
   setCommandWhitelist: Dispatch<SetStateAction<boolean>>;
-  onLoadModelCatalog: () => void;
+  updateState: AutoUpdateState;
+  authState: BuguAuthState | null;
+  onSetAutoUpdateEnabled: (enabled: boolean) => void;
+  onCheckForUpdates: () => void;
+  onOpenUpdateDownload: () => void;
+  onOpenUpdateReleaseNotes: () => void;
+  onOpenLogsDirectory: () => void;
   onSaveModelConfig: () => void;
+  onLogoutAuth: () => void;
   onClose: () => void;
+}
+
+function formatVersion(version?: string) {
+  if (!version) return '未知版本';
+  return version.startsWith('v') ? version : `v${version}`;
+}
+
+function formatSize(size?: number) {
+  if (!size || !Number.isFinite(size)) return '';
+  return `${Math.round(size / 1024 / 1024)} MB`;
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return '尚未检查';
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? new Date(time).toLocaleString() : value;
+}
+
+function updateStatusText(updateState: AutoUpdateState) {
+  if (updateState.status === 'checking') return '正在检查更新...';
+  if (updateState.status === 'update-available') return `发现新版本 ${formatVersion(updateState.latestVersion)}`;
+  if (updateState.status === 'up-to-date') return '当前已是最新版本';
+  if (updateState.status === 'error') return updateState.error || '检查更新失败';
+  return '开启后，正式安装包启动时会自动检查更新。';
 }
 
 export function SettingsDialog({
@@ -46,15 +72,9 @@ export function SettingsDialog({
   setThemeMode,
   colorTheme,
   setColorTheme,
-  modelSettingView,
-  setModelSettingView,
   modelConfig,
   modelDraft,
   setModelDraft,
-  providerTab,
-  setProviderTab,
-  responsesApiActive,
-  setResponsesApiActive,
   menubarShow,
   setMenubarShow,
   autoStart,
@@ -69,10 +89,31 @@ export function SettingsDialog({
   setShortcutActive,
   commandWhitelist,
   setCommandWhitelist,
-  onLoadModelCatalog,
+  updateState,
+  authState,
+  onSetAutoUpdateEnabled,
+  onCheckForUpdates,
+  onOpenUpdateDownload,
+  onOpenUpdateReleaseNotes,
+  onOpenLogsDirectory,
   onSaveModelConfig,
+  onPasswordLogin,
+  onLogoutAuth,
   onClose,
 }: SettingsDialogProps) {
+  const accountUser = authState?.user;
+  const isAccountAuthenticated = Boolean(authState?.authenticated);
+  const accountName = isAccountAuthenticated
+    ? accountUser?.displayName || accountUser?.username || accountUser?.email || '布谷用户'
+    : '本地模式';
+  const accountEmail = isAccountAuthenticated
+    ? accountUser?.email || accountUser?.username || '账号已登录'
+    : '未登录布谷账号';
+  const accountInitial = accountName.trim().slice(0, 1).toUpperCase() || 'B';
+  const subscription = authState?.bootstrap?.subscription;
+  const subscriptionText =
+    subscription?.planName || subscription?.planKey || subscription?.status || '企业开通';
+
   return (
   <div className="modal-backdrop" onClick={() => onClose()}>
     <div className="modal-card settings-modal" onClick={(event) => event.stopPropagation()}>
@@ -127,9 +168,17 @@ export function SettingsDialog({
                 <div className="settings-row-item">
                   <div className="item-info">
                     <strong>通知</strong>
-                    <span>在 布谷AI 完成响应时接收通知。适用于长线程任务。</span>
+                    <span>在 布谷AI 完成长时间生成任务时接收通知。</span>
                   </div>
                   <div className={`switch ${notificationsEnabled ? 'active' : ''}`} onClick={() => setNotificationsEnabled(!notificationsEnabled)}></div>
+                </div>
+
+                <div className="settings-row-item">
+                  <div className="item-info">
+                    <strong>自动检查更新</strong>
+                    <span>启动正式安装包后自动检查新版本；发现更新会在左下角账号卡片提示。</span>
+                  </div>
+                  <div className={`switch ${updateState.enabled ? 'active' : ''}`} onClick={() => onSetAutoUpdateEnabled(!updateState.enabled)}></div>
                 </div>
 
                 <div className="settings-row-item">
@@ -142,8 +191,8 @@ export function SettingsDialog({
 
                 <div className="settings-row-item">
                   <div className="item-info">
-                    <strong>同步 Claude Code 历史</strong>
-                    <span>将本地 Claude Code 终端对话同步到当前工作区</span>
+                    <strong>同步本地素材历史</strong>
+                    <span>将本地内容生产记录同步到当前工作区</span>
                   </div>
                   <div className={`switch ${syncClaudeHistory ? 'active' : ''}`} onClick={() => setSyncClaudeHistory(!syncClaudeHistory)}></div>
                 </div>
@@ -161,8 +210,8 @@ export function SettingsDialog({
 
                 <div className="settings-row-item">
                   <div className="item-info">
-                    <strong>命令白名单</strong>
-                    <span>允许自动运行的命令</span>
+                    <strong>自动化安全确认</strong>
+                    <span>涉及本地文件和生成服务调用时保留人工确认边界</span>
                   </div>
                   <div className={`switch ${commandWhitelist ? 'active' : ''}`} onClick={() => setCommandWhitelist(!commandWhitelist)}></div>
                 </div>
@@ -202,145 +251,198 @@ export function SettingsDialog({
               </div>
             </>
           ) : settingsTab === 'model' ? (
-            <div className="model-settings-layout">
+            <div className="model-settings-layout model-settings-simple">
               <aside className="model-sidebar">
                 <div className="model-sidebar-header">
                   <h2>模型</h2>
-                  <p>分开配置文字、图片、视频 Provider。API Key 只保存在 Electron main process，Renderer 只读取是否已配置。</p>
+                  <p>只配置真实可调用的文字、图片、视频生成服务；Key 保存在主进程，前端只显示配置状态。</p>
                 </div>
                 <div className="model-list-header">
                   <div>
-                    <strong>当前配置</strong>
+                    <strong>当前连接</strong>
                     <span>{modelConfig?.updatedAt ? `更新于 ${new Date(modelConfig.updatedAt).toLocaleString()}` : '尚未保存本地配置'}</span>
                   </div>
-                  <button className="add-btn" onClick={onLoadModelCatalog}>↻</button>
                 </div>
                 <div className="model-list">
-                  <div className={`model-list-item ${modelSettingView === 'edit_claude' ? 'active' : ''}`} onClick={() => setModelSettingView('edit_claude')}>
-                    <span className="drag-handle">⋮⋮</span>
-                    <span className="icon" style={{ color: '#E05A47' }}>✹</span>
+                  <div className="model-list-item active">
+                    <span className="icon" style={{ color: '#395745' }}>●</span>
                     <div className="item-text">
-                      <strong>Provider 连接 <em className="tag-green">真实调用</em></strong>
+                      <strong>生成服务连接 <em className="tag-green">真实调用</em></strong>
                       <span>{modelConfig?.textModel ?? modelDraft.textModel}</span>
                     </div>
                   </div>
-                  <button className="add-model-btn" onClick={() => setModelSettingView('provider_list')}>查看推荐供应商</button>
                 </div>
               </aside>
+
               <main className="model-content">
-                {modelSettingView === 'provider_list' ? (
-                  <div className="provider-list-view">
-                    <div className="provider-tabs">
-                      <button className={providerTab === 'recommended' ? 'active' : ''} onClick={() => setProviderTab('recommended')}>推荐服务</button>
-                      <button className={providerTab === 'domestic' ? 'active' : ''} onClick={() => setProviderTab('domestic')}>国内服务</button>
-                      <button className={providerTab === 'aggregate' ? 'active' : ''} onClick={() => setProviderTab('aggregate')}>聚合平台</button>
-                      <button className={providerTab === 'overseas' ? 'active' : ''} onClick={() => setProviderTab('overseas')}>海外平台</button>
-                      <button className={providerTab === 'local' ? 'active' : ''} onClick={() => setProviderTab('local')}>本地模型</button>
+                <div className="model-config-shell">
+                  <div className="model-config-hero">
+                    <div>
+                      <p className="eyebrow">生成服务设置</p>
+                      <h3>生成服务连接配置</h3>
+                      <p>先保证文字和图片可用；视频未配置时会保持待配置队列，不伪造成果。</p>
                     </div>
-                    <div className="provider-grid">
-                      <button className="provider-card" onClick={() => setModelSettingView('edit_claude')}>
-                        <div className="title"><span className="icon">✹</span> Claude / Anthropic <em className="tag-orange">推荐</em></div>
-                        <p>适合提示词包、场景库、文章和视频脚本生成的主文本模型。</p>
-                      </button>
-                      <button className="provider-card" onClick={() => setModelSettingView('edit_claude')}>
-                        <div className="title"><span className="icon grey">⚙</span> OpenAI Responses 图片</div>
-                        <p>填写支持 Responses + image_generation 的图片端点和图片 API Key。</p>
-                      </button>
-                      <button className="provider-card" onClick={onLoadModelCatalog}>
-                        <div className="title"><span className="icon blue">↻</span> 获取模型列表</div>
-                        <p>读取当前配置和离线种子；真实远端列表失败时不会伪装已连通。</p>
-                      </button>
-                    </div>
+                    <button className="primary" onClick={onSaveModelConfig}>保存配置</button>
                   </div>
-                ) : (
-                  <div className="model-edit-card custom-provider model-config-form">
-                    <div className="card-header">
-                      <div className="title"><span className="icon grey">⚙</span> Provider 连接配置</div>
-                      <button className="ghost small" onClick={onLoadModelCatalog}>获取模型</button>
-                    </div>
 
-                    <div className="ready-banner">
-                      <span>{modelConfig?.hasTextApiKey ? '文字模型 Key 已保存，留空不会覆盖' : '文字模型尚未保存 API Key'}</span>
-                    </div>
-
-                    <div className="model-status-grid">
-                      <span>文字：{modelConfig?.hasTextApiKey ? '已配置' : '未配置'} · {modelConfig?.textModel ?? '未加载'}</span>
-                      <span>图片：{modelConfig?.hasImageApiKey ? '已配置' : '未配置'} · {modelConfig?.imageModels.join(', ') ?? '未加载'}</span>
-                      <span>视频：{modelConfig?.hasVideoApiKey ? '已配置' : '未配置'} · {modelConfig?.videoModel ?? '未加载'}</span>
-                    </div>
-
-                    <label className="field-label">文字端点（Claude Agent SDK）</label>
-                    <input value={modelDraft.apiEndpoint} onChange={(event) => setModelDraft((current) => ({ ...current, apiEndpoint: event.target.value }))} placeholder="https://api.anthropic.com" />
-
-                    <label className="field-label">文字 API Key</label>
-                    <input type="password" value={modelDraft.apiKey} onChange={(event) => setModelDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={modelConfig?.hasTextApiKey ? '留空保留现有 Key' : '输入 Anthropic API Key'} />
-
-                    <label className="field-label">文字模型</label>
-                    <input value={modelDraft.textModel} onChange={(event) => setModelDraft((current) => ({ ...current, textModel: event.target.value }))} />
-
-                    <label className="field-label">图片端点（Responses API）</label>
-                    <input value={modelDraft.imageApiEndpoint} onChange={(event) => setModelDraft((current) => ({ ...current, imageApiEndpoint: event.target.value }))} placeholder="https://api.openai.com/v1" />
-
-                    <label className="field-label">图片 API Key</label>
-                    <input type="password" value={modelDraft.imageApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, imageApiKey: event.target.value }))} placeholder={modelConfig?.hasImageApiKey ? '留空保留现有图片 Key' : '输入图片 Provider API Key'} />
-
-                    <label className="field-label">图片编排模型</label>
-                    <input value={modelDraft.imageOuterModel} onChange={(event) => setModelDraft((current) => ({ ...current, imageOuterModel: event.target.value }))} placeholder="gpt-5.5" />
-
-                    <label className="field-label">图片生成模型候选</label>
-                    <input value={modelDraft.imageModels} onChange={(event) => setModelDraft((current) => ({ ...current, imageModels: event.target.value }))} placeholder="多个模型用英文逗号分隔" />
-
-                    <label className="field-label">视频端点（Generic HTTP）</label>
-                    <input value={modelDraft.videoApiEndpoint} onChange={(event) => setModelDraft((current) => ({ ...current, videoApiEndpoint: event.target.value }))} placeholder="填写真实视频 Provider 接口；拆解发送 analyze，未配置则只保存队列" />
-
-                    <label className="field-label">视频 API Key</label>
-                    <input type="password" value={modelDraft.videoApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, videoApiKey: event.target.value }))} placeholder={modelConfig?.hasVideoApiKey ? '留空保留现有视频 Key' : '未配置时视频保持 blocked 队列'} />
-
-                    <label className="field-label">视频模型</label>
-                    <input value={modelDraft.videoModel} onChange={(event) => setModelDraft((current) => ({ ...current, videoModel: event.target.value }))} />
-
-                    <div className="model-field-actions">
-                      <button className="ghost" onClick={onLoadModelCatalog}>获取模型</button>
-                      <button className="primary" onClick={onSaveModelConfig}>保存配置并回填右侧参数</button>
-                    </div>
+                  <div className="model-connection-summary">
+                    <span className={modelConfig?.hasTextApiKey ? 'ready' : 'missing'}>文字 Key：{modelConfig?.hasTextApiKey ? '已保存' : '未配置'}</span>
+                    <span className={modelConfig?.hasImageApiKey ? 'ready' : 'missing'}>图片 Key：{modelConfig?.hasImageApiKey ? '已保存' : '未配置'}</span>
+                    <span className={modelConfig?.hasVideoApiKey ? 'ready' : 'muted'}>视频 Key：{modelConfig?.hasVideoApiKey ? '已保存' : '可选'}</span>
                   </div>
-                )}
+
+                  <section className="model-config-section">
+                    <header>
+                      <div>
+                        <strong>文字生成</strong>
+                        <p>用于提示词包、场景库、文章和脚本。</p>
+                      </div>
+                    </header>
+                    <div className="model-field-grid">
+                      <label>
+                        <span>协议</span>
+                        <select value={modelDraft.textProtocol} onChange={(event) => setModelDraft((current) => ({ ...current, textProtocol: event.target.value as ModelDraft['textProtocol'] }))}>
+                          <option value="claude-sdk">Claude SDK（Anthropic 官方）</option>
+                          <option value="anthropic-messages">Anthropic Messages 兼容</option>
+                          <option value="openai-chat">OpenAI Chat Completions</option>
+                          <option value="gemini-generate-content">Gemini GenerateContent</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>模型</span>
+                        <input value={modelDraft.textModel} onChange={(event) => setModelDraft((current) => ({ ...current, textModel: event.target.value }))} />
+                      </label>
+                      <label className="wide">
+                        <span>端点</span>
+                        <input value={modelDraft.apiEndpoint} onChange={(event) => setModelDraft((current) => ({ ...current, apiEndpoint: event.target.value }))} placeholder="https://api.anthropic.com 或兼容网关" />
+                      </label>
+                      <label className="wide">
+                        <span>API Key</span>
+                        <input type="password" value={modelDraft.apiKey} onChange={(event) => setModelDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={modelConfig?.hasTextApiKey ? '留空保留现有文字 Key；更换服务商时请重新填写' : '输入当前文字协议对应的 API Key'} />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="model-config-section">
+                    <header>
+                      <div>
+                        <strong>图片生成</strong>
+                        <p>用于图片技能、素材图和电商图生成。</p>
+                      </div>
+                    </header>
+                    <div className="model-field-grid">
+                      <label>
+                        <span>协议</span>
+                        <select value={modelDraft.imageProtocol} onChange={(event) => setModelDraft((current) => ({ ...current, imageProtocol: event.target.value as ModelDraft['imageProtocol'] }))}>
+                          <option value="openai-responses">OpenAI Responses image_generation</option>
+                          <option value="openai-chat-data-uri">OpenAI Chat data URI</option>
+                          <option value="gemini-generate-content">Gemini GenerateContent</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>图片生成模型</span>
+                        <input value={modelDraft.imageModels} onChange={(event) => setModelDraft((current) => ({ ...current, imageModels: event.target.value }))} placeholder="多个模型用英文逗号分隔" />
+                      </label>
+                      <label className="wide">
+                        <span>端点</span>
+                        <input value={modelDraft.imageApiEndpoint} onChange={(event) => setModelDraft((current) => ({ ...current, imageApiEndpoint: event.target.value }))} placeholder="https://api.openai.com/v1 或兼容网关" />
+                      </label>
+                      <label className="wide">
+                        <span>API Key</span>
+                        <input type="password" value={modelDraft.imageApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, imageApiKey: event.target.value }))} placeholder={modelConfig?.hasImageApiKey ? '留空保留现有图片 Key；更换服务商时请重新填写' : '输入图片生成 API Key'} />
+                      </label>
+                      <label className="wide subdued-field">
+                        <span>图片提示词编排模型（可选）</span>
+                        <input value={modelDraft.imageOuterModel} onChange={(event) => setModelDraft((current) => ({ ...current, imageOuterModel: event.target.value }))} placeholder="默认跟随文字模型" />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="model-config-section optional">
+                    <header>
+                      <div>
+                        <strong>视频生成（可选）</strong>
+                        <p>没有真实视频生成服务时，只保存待配置请求。</p>
+                      </div>
+                    </header>
+                    <div className="model-field-grid">
+                      <label>
+                        <span>视频模型</span>
+                        <input value={modelDraft.videoModel} onChange={(event) => setModelDraft((current) => ({ ...current, videoModel: event.target.value }))} />
+                      </label>
+                      <label>
+                        <span>视频 API Key</span>
+                        <input type="password" value={modelDraft.videoApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, videoApiKey: event.target.value }))} placeholder={modelConfig?.hasVideoApiKey ? '留空保留现有视频 Key' : '未配置时视频保持待配置队列'} />
+                      </label>
+                      <label className="wide">
+                        <span>视频端点</span>
+                        <input value={modelDraft.videoApiEndpoint} onChange={(event) => setModelDraft((current) => ({ ...current, videoApiEndpoint: event.target.value }))} placeholder="真实视频生成服务接口；拆解发送 analyze" />
+                      </label>
+                    </div>
+                  </section>
+                </div>
               </main>
             </div>
           ) : settingsTab === 'account' ? (
             <div className="account-settings">
               <div className="panel-title" style={{ marginBottom: '24px' }}>
-                <h3>账号</h3>
+                <h3>账号（可选）</h3>
               </div>
 
-              <div className="account-section">
-                <span className="section-label">头像</span>
-                <div className="avatar-row">
-                  <div className="avatar-circle">C</div>
-                  <span className="change-avatar-text">点击更换头像</span>
-                </div>
-              </div>
+              {isAccountAuthenticated ? (
+                <>
+                  <div className="account-section">
+                    <span className="section-label">头像</span>
+                    <div className="avatar-row">
+                      <div className="avatar-circle">{accountInitial}</div>
+                      <span className="change-avatar-text">布谷 AI 账号已登录</span>
+                    </div>
+                  </div>
 
-              <div className="account-section">
-                <span className="section-label">昵称</span>
-                <div className="nickname-row">
-                  <span className="nickname-value">未设置</span>
-                  <button className="modify-btn">修改</button>
-                </div>
-              </div>
+                  <div className="account-section">
+                    <span className="section-label">昵称</span>
+                    <div className="nickname-row">
+                      <span className="nickname-value">{accountName}</span>
+                    </div>
+                  </div>
 
-              <div className="account-section">
-                <span className="section-label">邮箱</span>
-                <div className="email-row">
-                  <span className="email-value">coso@gmail.com</span>
-                </div>
-              </div>
+                  <div className="account-section">
+                    <span className="section-label">邮箱</span>
+                    <div className="email-row">
+                      <span className="email-value">{accountEmail}</span>
+                    </div>
+                  </div>
 
-              <div className="account-actions">
-                <button className="logout-btn">
-                  <span className="logout-icon">↪</span> 退出登录
-                </button>
-              </div>
+                  <div className="account-section">
+                    <span className="section-label">权益</span>
+                    <div className="email-row">
+                      <span className="email-value">{subscriptionText}</span>
+                    </div>
+                  </div>
+
+                  <div className="account-actions">
+                    <button className="logout-btn" onClick={onLogoutAuth}>
+                      <span className="logout-icon">↪</span> 退出登录
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="account-section">
+                    <span className="section-label">当前状态</span>
+                    <div className="email-row">
+                      <span className="email-value">未登录；本地内容工厂可继续使用。</span>
+                    </div>
+                  </div>
+                  <BuguAuthForm
+                    compact
+                    authState={authState}
+                    title="连接布谷 AI 账号"
+                    description="使用邮箱 + 密码同步企业权益、下载和账号状态；不登录不会影响本地工作区。"
+                    onPasswordLogin={onPasswordLogin}
+                  />
+                </>
+              )}
             </div>
           ) : settingsTab === 'about' ? (
             <div className="about-settings">
@@ -351,15 +453,40 @@ export function SettingsDialog({
               <div className="about-brand-section">
                 <img src={logoUrl} alt="Logo" className="about-logo" />
                 <h4 className="about-app-name">布谷AI</h4>
-                <span className="about-version">版本 0.3.0 (Build 2026.05.19)</span>
-                <p className="about-copyright">© 2026 Limecloud. All rights reserved.</p>
+                <span className="about-version">当前版本 {formatVersion(updateState.currentVersion)} (Build 2026.05.19)</span>
+                <p className="about-copyright">© 2026 布谷AI. All rights reserved.</p>
+              </div>
+
+              <div className={`update-status-card ${updateState.status === 'update-available' ? 'has-update' : ''}`}>
+                <div className="update-status-main">
+                  <span className="update-dot"></span>
+                  <div>
+                    <strong>{updateStatusText(updateState)}</strong>
+                    <p>
+                      {updateState.status === 'update-available'
+                        ? `当前 ${formatVersion(updateState.currentVersion)}，可更新到 ${formatVersion(updateState.latestVersion)}。`
+                        : `上次检查：${formatDateTime(updateState.checkedAt || updateState.lastAutoCheckAt)}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="update-actions">
+                  <button className="ghost small" onClick={onCheckForUpdates} disabled={updateState.status === 'checking'}>
+                    {updateState.status === 'checking' ? '检查中...' : '检查更新'}
+                  </button>
+                  {updateState.hasUpdate ? (
+                    <button className="primary small" onClick={onOpenUpdateDownload}>
+                      {updateState.asset ? '下载当前设备版本' : '打开发布页'}
+                    </button>
+                  ) : null}
+                  <button className="ghost small" onClick={onOpenUpdateReleaseNotes}>查看更新日志</button>
+                  <button className="ghost small" onClick={onOpenLogsDirectory}>打开日志目录</button>
+                </div>
               </div>
 
               <div className="about-links-section">
-                <button className="about-link-btn" onClick={() => alert('当前已是最新版本')}>检查更新</button>
-                <button className="about-link-btn" onClick={() => window.open('https://limecloud.ai/terms', '_blank')}>服务条款</button>
-                <button className="about-link-btn" onClick={() => window.open('https://limecloud.ai/privacy', '_blank')}>隐私政策</button>
-                <button className="about-link-btn" onClick={() => window.open('https://limecloud.ai', '_blank')}>官方网站</button>
+                <button className="about-link-btn" disabled>服务条款（后续提供）</button>
+                <button className="about-link-btn" disabled>隐私政策（后续提供）</button>
+                <button className="about-link-btn" disabled>官方网站（后续提供）</button>
               </div>
             </div>
           ) : (

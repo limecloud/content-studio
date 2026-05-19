@@ -6,6 +6,7 @@ import type {
   ExportAssetInput,
   ExportMarkdownInput,
   GeneratePromptPackInput,
+  GenerateImageSkillInput,
   GenerateSceneCardsInput,
   ImageGenerationRequest,
   KnowledgeSearchInput,
@@ -18,13 +19,19 @@ import type {
   VideoBreakdownRequest,
   VideoGenerationRequest,
   VideoScriptGenerationRequest,
+  BuguEmailCodeSendInput,
+  BuguEmailCodeVerifyInput,
+  BuguPasswordLoginInput,
 } from '../shared/types';
 import { copyFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { MediaProvider } from './providers/mediaProvider';
 import { ArticleGenerationService } from './services/articleGenerationService';
+import { AutoUpdateService } from './services/autoUpdateService';
+import { BuguAuthService } from './services/buguAuthService';
 import { ClaudeAgentService } from './services/claudeAgentService';
 import { GenerationLogStore } from './services/generationLogStore';
+import { ImageSkillGenerationService } from './services/imageSkillGenerationService';
 import { KnowledgeBaseStore } from './services/knowledgeBaseStore';
 import { ModelConfigStore } from './services/modelConfigStore';
 import { PromptPackService } from './services/promptPackService';
@@ -37,12 +44,15 @@ import { VideoWorkflowService } from './services/videoWorkflowService';
 
 export function registerIpc(mainWindow: BrowserWindow): void {
   const settings = new SettingsStore();
+  const buguAuth = new BuguAuthService();
+  const autoUpdates = new AutoUpdateService(settings, mainWindow);
   const modelConfig = new ModelConfigStore();
   const skills = new SkillManager();
   const skillSelection = new SkillSelectionStore();
   const knowledgeBases = new KnowledgeBaseStore();
   const logs = new GenerationLogStore();
   const textGeneration = new TextGenerationService(modelConfig);
+  const imageSkills = new ImageSkillGenerationService(textGeneration);
   const promptPacks = new PromptPackService(logs, textGeneration);
   const sceneCards = new SceneLibraryStore(logs, promptPacks, textGeneration);
   const articles = new ArticleGenerationService(logs, textGeneration);
@@ -54,11 +64,27 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     mainWindow.webContents.send(`agent:event:${event.taskId}`, event);
   };
 
+  ipcMain.handle('auth:getSession', () => buguAuth.getAuthState());
+  ipcMain.handle('auth:loginByPassword', (_event, input: BuguPasswordLoginInput) => buguAuth.loginByPassword(input));
+  ipcMain.handle('auth:sendEmailCode', (_event, input: BuguEmailCodeSendInput) => buguAuth.sendEmailCode(input));
+  ipcMain.handle('auth:verifyEmailCode', (_event, input: BuguEmailCodeVerifyInput) => buguAuth.verifyEmailCode(input));
+  ipcMain.handle('auth:logout', () => buguAuth.logout());
+
   ipcMain.handle('settings:get', () => settings.ensureDefaultWorkspace());
   ipcMain.handle('settings:save', (_event, input: SaveSettingsInput) => settings.save(input));
+  ipcMain.handle('updates:getState', () => autoUpdates.getState());
+  ipcMain.handle('updates:check', (_event, options) => autoUpdates.checkForUpdates(options));
+  ipcMain.handle('updates:setAutoCheck', (_event, enabled: boolean) => autoUpdates.setEnabled(enabled));
+  ipcMain.handle('updates:openDownload', () => autoUpdates.openDownload());
+  ipcMain.handle('updates:openReleaseNotes', () => autoUpdates.openReleaseNotes());
+  ipcMain.handle('updates:openLogsDirectory', () => autoUpdates.openLogsDirectory());
+  mainWindow.webContents.on('did-finish-load', () => {
+    autoUpdates.startBackgroundChecks();
+  });
+  mainWindow.on('closed', () => autoUpdates.dispose());
   ipcMain.handle('workspace:select', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: '选择内容工坊 Workspace',
+      title: '选择布谷AI工作区',
       properties: ['openDirectory', 'createDirectory'],
     });
     return result.canceled ? null : result.filePaths[0] ?? null;
@@ -127,7 +153,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     return result.filePath;
   });
   ipcMain.handle('article:exportMarkdown', async (_event, input: ExportMarkdownInput) => {
-    const safeName = basename(input.suggestedName || 'content-studio-draft.md').replace(/[\\/:*?"<>|]/g, '-');
+    const safeName = basename(input.suggestedName || 'buguai-draft.md').replace(/[\\/:*?"<>|]/g, '-');
     const result = await dialog.showSaveDialog(mainWindow, {
       title: '导出 Markdown',
       defaultPath: join(input.workspacePath, safeName.endsWith('.md') ? safeName : `${safeName}.md`),
@@ -144,6 +170,19 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('video:analyze', (_event, input: VideoBreakdownRequest) => videoWorkflow.analyze(input));
   ipcMain.handle('video:script', (_event, input: VideoScriptGenerationRequest) => videoWorkflow.generateScript(input));
   ipcMain.handle('image:generate', (_event, input: ImageGenerationRequest) => media.generateImage(input));
+  ipcMain.handle('imageSkills:generate', (_event, input: GenerateImageSkillInput) => imageSkills.generate(input));
+  ipcMain.handle('imageSkills:importFromFile', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '导入图片技能 JSON',
+      properties: ['openFile'],
+      filters: [
+        { name: '图片技能 JSON', extensions: ['json'] },
+        { name: '全部文件', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return imageSkills.importFromFile(result.filePaths[0]);
+  });
   ipcMain.handle('video:generate', (_event, input: VideoGenerationRequest) => media.generateVideo(input));
   ipcMain.handle('generationLogs:list', (_event, workspacePath: string) => logs.list(workspacePath));
 

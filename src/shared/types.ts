@@ -1,7 +1,22 @@
+import type { ImageTemplateConfig } from './imageTemplates';
+
 export type PermissionMode = 'ask' | 'safe' | 'allow-all';
 export type SkillSource = 'builtin' | 'project' | 'project-compat' | 'user' | 'user-compat';
 export type KnowledgeBaseSource = 'builtin' | 'workspace';
 export type KnowledgeBaseType = 'product-kb' | 'personal-ip-kb';
+export type TextGenerationProtocol = 'claude-sdk' | 'anthropic-messages' | 'openai-chat' | 'gemini-generate-content';
+export type ImageGenerationProtocol = 'openai-responses' | 'openai-chat-data-uri' | 'gemini-generate-content';
+export const TEXT_GENERATION_PROTOCOLS: readonly TextGenerationProtocol[] = ['claude-sdk', 'anthropic-messages', 'openai-chat', 'gemini-generate-content'];
+export const IMAGE_GENERATION_PROTOCOLS: readonly ImageGenerationProtocol[] = ['openai-responses', 'openai-chat-data-uri', 'gemini-generate-content'];
+
+export function isTextGenerationProtocol(value: unknown): value is TextGenerationProtocol {
+  return typeof value === 'string' && TEXT_GENERATION_PROTOCOLS.includes(value as TextGenerationProtocol);
+}
+
+export function isImageGenerationProtocol(value: unknown): value is ImageGenerationProtocol {
+  return typeof value === 'string' && IMAGE_GENERATION_PROTOCOLS.includes(value as ImageGenerationProtocol);
+}
+
 export type KnowledgeSectionType =
   | 'science'
   | 'brand'
@@ -24,22 +39,139 @@ export interface AppSettingsView {
   workspacePath?: string;
   hasAnthropicApiKey: boolean;
   apiKeyStorage: 'safeStorage' | 'plain' | 'none';
+  autoUpdateEnabled: boolean;
+  lastUpdateCheckAt?: string;
+}
+
+export interface BuguTenantUser {
+  id: string;
+  email?: string;
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  passwordConfigured?: boolean;
+  roles?: string[];
+  status?: string;
+}
+
+export interface BuguTenantSession {
+  id: string;
+  expiresAt?: string;
+}
+
+export interface BuguClientBootstrap {
+  tenant?: {
+    id?: string;
+    name?: string;
+    slug?: string;
+  };
+  user?: BuguTenantUser;
+  subscription?: {
+    status?: string;
+    planName?: string;
+    planKey?: string;
+  };
+  creditAccount?: {
+    balance?: number;
+  };
+  agentAppCatalog?: {
+    apps?: Array<{ appId?: string; displayName?: string; enabled?: boolean }>;
+  };
+}
+
+export interface BuguCurrentSession {
+  token?: string;
+  user: BuguTenantUser;
+  session: BuguTenantSession;
+}
+
+export interface BuguAuthState {
+  authenticated: boolean;
+  user?: BuguTenantUser;
+  session?: BuguTenantSession;
+  bootstrap?: BuguClientBootstrap;
+  error?: string;
+}
+
+export interface BuguPasswordLoginInput {
+  identifier: string;
+  password: string;
+}
+
+export interface BuguEmailCodeSendInput {
+  identifier: string;
+  turnstileToken?: string;
+}
+
+export interface BuguEmailCodeSendResult {
+  sent: boolean;
+  maskedEmail?: string;
+  expiresInSeconds?: number;
+}
+
+export interface BuguEmailCodeVerifyInput {
+  identifier: string;
+  code: string;
+  displayName?: string;
 }
 
 export interface SaveSettingsInput {
   workspacePath?: string;
   anthropicApiKey?: string;
   clearAnthropicApiKey?: boolean;
+  autoUpdateEnabled?: boolean;
+}
+
+export type AutoUpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error';
+
+export interface AutoUpdateAsset {
+  platform: string;
+  kind: string;
+  label: string;
+  fileName?: string;
+  url: string;
+  sha256?: string;
+  size?: number;
+  primary?: boolean;
+}
+
+export interface AutoUpdateState {
+  enabled: boolean;
+  status: AutoUpdateStatus;
+  currentVersion: string;
+  latestVersion?: string;
+  hasUpdate: boolean;
+  checkedAt?: string;
+  lastAutoCheckAt?: string;
+  publishedAt?: string;
+  channel?: string;
+  sourceLabel?: string;
+  manifestUrl?: string;
+  releaseNotesUrl?: string;
+  downloadUrl?: string;
+  asset?: AutoUpdateAsset;
+  error?: string;
+}
+
+export interface UpdateCheckOptions {
+  manual?: boolean;
+}
+
+export interface UpdateActionResult {
+  ok: boolean;
+  error?: string;
 }
 
 export interface ModelConfigView {
   apiEndpoint: string;
   hasApiKey: boolean;
   textProvider: 'anthropic-claude-sdk';
+  textProtocol: TextGenerationProtocol;
   textApiEndpoint: string;
   hasTextApiKey: boolean;
   textModel: string;
   imageProvider: 'openai-responses' | 'disabled';
+  imageProtocol: ImageGenerationProtocol;
   imageApiEndpoint: string;
   imageOuterModel: string;
   hasImageApiKey: boolean;
@@ -67,7 +199,9 @@ export interface SaveModelConfigInput {
   textApiKey?: string;
   clearTextApiKey?: boolean;
   textModel?: string;
+  textProtocol?: ModelConfigView['textProtocol'];
   imageProvider?: ModelConfigView['imageProvider'];
+  imageProtocol?: ModelConfigView['imageProtocol'];
   imageApiEndpoint?: string;
   imageApiKey?: string;
   clearImageApiKey?: boolean;
@@ -272,12 +406,24 @@ export interface ImageGenerationRequest {
   promptMode: 'free' | 'preset';
   generationMode: 'smart' | 'fixed';
   template: string;
+  templateInputs?: Record<string, string | string[]>;
   watermark: boolean;
   promptPackId?: string;
   sceneCardIds?: string[];
   citations: KnowledgeCitation[];
   selectedSkillSlugs: string[];
   params: GlobalGenerationParams;
+}
+
+export interface GenerateImageSkillInput {
+  workspacePath: string;
+  description: string;
+}
+
+export interface GenerateImageSkillResult {
+  template: ImageTemplateConfig;
+  model: string;
+  rawText: string;
 }
 
 export interface MediaGenerationResult {
@@ -401,9 +547,23 @@ export interface RunTaskResult {
 }
 
 export interface ContentStudioApi {
+  authGetSession(): Promise<BuguAuthState>;
+  authLoginByPassword(input: BuguPasswordLoginInput): Promise<BuguAuthState>;
+  authSendEmailCode(input: BuguEmailCodeSendInput): Promise<BuguEmailCodeSendResult>;
+  authVerifyEmailCode(input: BuguEmailCodeVerifyInput): Promise<BuguAuthState>;
+  authLogout(): Promise<BuguAuthState>;
+
   getSettings(): Promise<AppSettingsView>;
   saveSettings(input: SaveSettingsInput): Promise<AppSettingsView>;
   selectWorkspace(): Promise<string | null>;
+
+  getUpdateState(): Promise<AutoUpdateState>;
+  checkForUpdates(options?: UpdateCheckOptions): Promise<AutoUpdateState>;
+  setAutoUpdateEnabled(enabled: boolean): Promise<AutoUpdateState>;
+  openUpdateDownload(): Promise<UpdateActionResult>;
+  openUpdateReleaseNotes(): Promise<UpdateActionResult>;
+  openLogsDirectory(): Promise<UpdateActionResult>;
+  onUpdateState(callback: (state: AutoUpdateState) => void): () => void;
 
   getModelConfig(): Promise<ModelConfigView>;
   saveModelConfig(input: SaveModelConfigInput): Promise<ModelConfigView>;
@@ -434,6 +594,8 @@ export interface ContentStudioApi {
   analyzeVideo(input: VideoBreakdownRequest): Promise<VideoBreakdownResult>;
   generateVideoScript(input: VideoScriptGenerationRequest): Promise<VideoScriptGenerationResult>;
   generateImage(input: ImageGenerationRequest): Promise<MediaGenerationResult>;
+  generateImageSkill(input: GenerateImageSkillInput): Promise<GenerateImageSkillResult>;
+  importImageSkillFromFile(): Promise<GenerateImageSkillResult | null>;
   generateVideo(input: VideoGenerationRequest): Promise<MediaGenerationResult>;
   listGenerationLogs(workspacePath: string): Promise<GenerationLogEntry[]>;
 
