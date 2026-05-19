@@ -152,3 +152,19 @@ jobs:
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger Bugu website R2 sync
+        env:
+          GH_TOKEN: ${{ secrets.BUGU_RELEASE_GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::Missing BUGU_RELEASE_GITHUB_TOKEN; skipped Bugu website R2 sync."
+            exit 0
+          fi
+          gh workflow run "Software Release to R2" \
+            --repo "limecloud/bugu" \
+            --ref main \
+            -f tag="${RELEASE_TAG}" \
+            -f source_repo="${GITHUB_REPOSITORY}" \
+            -f channel=stable
