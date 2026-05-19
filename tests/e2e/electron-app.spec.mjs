@@ -150,7 +150,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     await clickButton(page, '设置');
     await expect(page.locator('.settings-modal')).toBeVisible();
     await clickButton(page, '模型');
-    await expect(page.getByText('Provider 连接配置')).toBeVisible();
+    await expect(page.getByText(/Provider 连接配置|生成服务连接配置/)).toBeVisible();
     await clickButton(page, '完成');
     await expect(page.locator('.settings-modal')).toHaveCount(0);
 
