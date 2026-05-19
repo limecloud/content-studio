@@ -4,9 +4,11 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
+import { WebSocket as UndiciWebSocket } from 'undici';
 
 const require = createRequire(import.meta.url);
 const electronPath = require('electron');
+const WebSocketClient = globalThis.WebSocket ?? UndiciWebSocket;
 const projectRoot = resolve(new URL('..', import.meta.url).pathname);
 const mainEntry = join(projectRoot, 'out/main/index.js');
 const remoteDebuggingPort = 9333 + Math.floor(Math.random() * 400);
@@ -45,7 +47,7 @@ async function waitForDebugTarget(timeoutMs = 20_000) {
 }
 
 function createCdpClient(webSocketDebuggerUrl) {
-  const ws = new WebSocket(webSocketDebuggerUrl);
+  const ws = new WebSocketClient(webSocketDebuggerUrl);
   let nextId = 1;
   const pending = new Map();
   const exceptions = [];
