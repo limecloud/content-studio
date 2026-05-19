@@ -42,6 +42,20 @@ import { SkillSelectionStore } from './services/skillSelectionStore';
 import { TextGenerationService } from './services/textGenerationService';
 import { VideoWorkflowService } from './services/videoWorkflowService';
 
+function readE2eAssetSelection(kind: AssetFileKind): string[] | null {
+  if (process.env.CONTENT_STUDIO_E2E !== '1') return null;
+  const raw = process.env.CONTENT_STUDIO_E2E_ASSET_SELECTIONS;
+  if (!raw) return null;
+  try {
+    const selections = JSON.parse(raw) as Partial<Record<AssetFileKind, unknown>>;
+    const refs = selections[kind];
+    if (!Array.isArray(refs)) return null;
+    return refs.filter((ref): ref is string => typeof ref === 'string' && ref.length > 0);
+  } catch {
+    return null;
+  }
+}
+
 export function registerIpc(mainWindow: BrowserWindow): void {
   const settings = new SettingsStore();
   const buguAuth = new BuguAuthService();
@@ -126,6 +140,8 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('sceneCards:update', (_event, input: SceneCard) => sceneCards.update(input));
 
   ipcMain.handle('assets:selectFiles', async (_event, kind: AssetFileKind) => {
+    const e2eSelection = readE2eAssetSelection(kind);
+    if (e2eSelection) return e2eSelection;
     const filters = kind === 'video'
       ? [{ name: '视频文件', extensions: ['mp4', 'mov', 'webm', 'm4v'] }]
       : [{ name: '图片文件', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }];

@@ -69,14 +69,14 @@ function normalizeRiskLevel(value: unknown): 'info' | 'warning' | 'risk' {
 function normalizeBreakdownOutput(value: VideoBreakdownProviderOutput, input: VideoBreakdownRequest, dimensions: string[]): Omit<VideoBreakdownResult, 'logId'> {
   const segments = (Array.isArray(value.segments) ? value.segments : []).map((segment, index) => ({
     timeRange: compactText(segment.timeRange, `${index * 3}s-${(index + 1) * 3}s`),
-    hook: compactText(segment.hook, 'Provider 未返回钩子说明'),
-    visual: compactText(segment.visual, 'Provider 未返回画面说明'),
-    voiceover: compactText(segment.voiceover, 'Provider 未返回口播说明'),
+    hook: compactText(segment.hook, '视频理解服务未返回钩子说明'),
+    visual: compactText(segment.visual, '视频理解服务未返回画面说明'),
+    voiceover: compactText(segment.voiceover, '视频理解服务未返回口播说明'),
     subtitle: compactText(segment.subtitle, ''),
-    rhythm: compactText(segment.rhythm, 'Provider 未返回节奏说明'),
-    reusablePoint: compactText(segment.reusablePoint, 'Provider 未返回可复用点'),
+    rhythm: compactText(segment.rhythm, '视频理解服务未返回节奏说明'),
+    reusablePoint: compactText(segment.reusablePoint, '视频理解服务未返回可复用点'),
   })).filter((segment) => segment.hook || segment.visual || segment.voiceover || segment.reusablePoint);
-  if (segments.length === 0) throw new Error('视频理解 Provider 未返回 segments，无法形成真实拆解结果。');
+  if (segments.length === 0) throw new Error('视频理解服务未返回 segments，无法形成真实拆解结果。');
 
   const reusableFormula = (Array.isArray(value.reusableFormula) ? value.reusableFormula : [])
     .map((item) => compactText(item, ''))
@@ -88,11 +88,11 @@ function normalizeBreakdownOutput(value: VideoBreakdownProviderOutput, input: Vi
     .slice(0, 8);
 
   return {
-    summary: compactText(value.summary, `已通过真实视频理解 Provider 拆解 ${input.sourceType === 'file' ? '本地视频' : '视频链接'}。`),
+    summary: compactText(value.summary, `已通过真实视频理解服务拆解 ${input.sourceType === 'file' ? '本地视频' : '视频链接'}。`),
     dimensions: Array.isArray(value.dimensions) && value.dimensions.length ? value.dimensions.map((item) => compactText(item, '')).filter(Boolean) : dimensions,
     segments,
-    reusableFormula: reusableFormula.length ? reusableFormula : ['基于 Provider 返回的镜头片段提炼复用结构，请人工复核后用于新产品脚本。'],
-    risks: risks.length ? risks : [{ level: 'warning', message: 'Provider 未返回风险检查，请人工复核素材授权、事实引用和合规表达。' }],
+    reusableFormula: reusableFormula.length ? reusableFormula : ['基于视频理解服务返回的镜头片段提炼复用结构，请人工复核后用于新产品脚本。'],
+    risks: risks.length ? risks : [{ level: 'warning', message: '视频理解服务未返回风险检查，请人工复核素材授权、事实引用和合规表达。' }],
   };
 }
 
@@ -127,7 +127,7 @@ async function postGenericVideoUnderstanding(input: {
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`视频理解 Provider 返回 ${response.status}：${sanitizeProviderError(text).slice(0, 1000)}`);
+    throw new Error(`视频理解服务返回 ${response.status}：${sanitizeProviderError(text).slice(0, 1000)}`);
   }
   return text.trim() ? JSON.parse(text) as VideoBreakdownProviderOutput : {};
 }
@@ -219,7 +219,7 @@ export class VideoWorkflowService {
           kind: 'video-breakdown',
           status: 'failed',
           title: '视频拆解失败',
-          summary: '真实视频理解 Provider 调用失败，未使用模板伪造拆解结果。',
+          summary: '真实视频理解服务调用失败，未使用模板伪造拆解结果。',
           model: config.videoModel,
           promptPackId: input.promptPackId,
           citations: input.citations,
@@ -231,7 +231,7 @@ export class VideoWorkflowService {
       }
     }
 
-    const message = '真实视频理解模型未配置：当前不会用模板伪造拆解结果。请先接入支持视频帧/转写分析的 provider，或人工提供参考视频结构后再生成脚本。';
+    const message = '真实视频理解模型未配置：当前不会用模板伪造拆解结果。请先接入支持视频帧/转写分析的生成服务，或人工提供参考视频结构后再生成脚本。';
     await this.logs.append({
       workspacePath: input.workspacePath,
       kind: 'video-breakdown',
@@ -311,7 +311,7 @@ export class VideoWorkflowService {
         kind: 'video-script',
         status: 'succeeded',
         title,
-        summary: `Claude 生成 ${storyboard.length} 镜头、${input.durationSeconds}s 的视频脚本`,
+        summary: `文字模型生成 ${storyboard.length} 镜头、${input.durationSeconds}s 的视频脚本`,
         model,
         promptPackId: input.promptPackId,
         sceneCardIds: input.sceneCardIds,

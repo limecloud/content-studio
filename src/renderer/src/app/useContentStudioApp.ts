@@ -39,6 +39,7 @@ import {
   extractLocalRefsFromLog,
   extractPromptFromLog,
   fileNameFromPath,
+  imageRequestFromLog,
   isSameCitation,
   knowledgeBaseKey,
   skillKey,
@@ -327,6 +328,15 @@ export function useContentStudioApp() {
     setPromptPacks(nextPromptPacks);
     setSceneCards(nextSceneCards);
     setLogs(nextLogs);
+    setMediaResult((current) => {
+      if (current) return current;
+      const lastImage = nextLogs.find(
+        (log) => log.kind === "image" && log.status === "succeeded" && (log.output as { assetRefs?: string[] })?.assetRefs?.length,
+      );
+      if (!lastImage) return null;
+      const output = lastImage.output as { assetRefs: string[] };
+      return { logId: lastImage.id, status: "succeeded", message: "", assetRefs: output.assetRefs };
+    });
     setActivePromptPackId((current) => current || nextPromptPacks[0]?.id || "");
     setSelectedSceneIds((current) =>
       current.length
@@ -802,6 +812,48 @@ export function useContentStudioApp() {
     await revealPath(firstPath);
   }
 
+  function reuseImageLogInput(log: GenerationLogEntry): void {
+    const input = imageRequestFromLog(log);
+    if (!input) throw new Error("这条历史缺少可复用的图片生成参数。");
+    if (typeof input.prompt === "string") setImagePromptDraft(input.prompt);
+    if (input.promptMode === "free" || input.promptMode === "preset") {
+      setImagePromptMode(input.promptMode);
+    }
+    if (input.generationMode === "smart" || input.generationMode === "fixed") {
+      setImageGenerationMode(input.generationMode);
+    }
+    if (typeof input.template === "string") setImageTemplate(input.template);
+    if (input.templateInputs && typeof input.templateInputs === "object") {
+      setImageTemplateInputs(
+        input.templateInputs as Record<string, string | string[]>,
+      );
+    }
+    if (typeof input.watermark === "boolean") setImageWatermark(input.watermark);
+    setActiveModule("image");
+  }
+
+  function routeAiImageCommand(input: string): string {
+    const prompt = input
+      .replace(/(^|\s)@(图片|image)\s*/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const nextPrompt =
+      prompt ||
+      activeScenes[0]?.imageMaterialSuggestion ||
+      activePromptPack?.imagePromptFragments[0] ||
+      "根据知识库生成一张电商场景图，突出产品主体和真实使用场景。";
+    setImagePromptDraft(nextPrompt);
+    setImagePromptMode("free");
+    setActiveModule("image");
+    return nextPrompt;
+  }
+
+  function useGeneratedImageAsReference(path: string): void {
+    setReferenceImageRefs((current) =>
+      current.includes(path) ? current : [...current, path].slice(0, 6),
+    );
+  }
+
   async function revealPath(path: string): Promise<void> {
     const result = await window.contentStudio.revealPath(path);
     if (!result.ok) throw new Error(result.error ?? "无法打开本地位置。");
@@ -1190,6 +1242,9 @@ export function useContentStudioApp() {
     exportArticleMarkdown,
     copyLogPrompt,
     revealLogPath,
+    reuseImageLogInput,
+    routeAiImageCommand,
+    useGeneratedImageAsReference,
     revealPath,
     exportAsset,
     retryLog,

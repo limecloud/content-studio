@@ -278,6 +278,117 @@
   overflow-y: auto;
   background: var(--panel);
 }
+.model-settings-simple .model-sidebar {
+  width: 260px;
+}
+.model-settings-simple .model-content {
+  padding: 24px;
+  background:
+    linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--cyan) 3%, #ffffff) 100%),
+    var(--panel);
+}
+.model-config-shell {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+}
+.model-config-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+}
+.model-config-hero h3 {
+  margin-bottom: 6px;
+  font-size: 18px;
+}
+.model-config-hero p:not(.eyebrow) {
+  max-width: 500px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.model-connection-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.model-connection-summary span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  padding: 6px 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.model-connection-summary span.ready {
+  border-color: color-mix(in srgb, var(--cyan) 22%, var(--line));
+  color: var(--cyan);
+  background: var(--cyan-light);
+}
+.model-connection-summary span.missing {
+  border-color: #fde68a;
+  color: #92400e;
+  background: #fffbeb;
+}
+.model-connection-summary span.muted {
+  color: var(--muted);
+  background: var(--panel-strong);
+}
+.model-config-section {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.model-config-section.optional {
+  background: color-mix(in srgb, var(--cyan) 2%, #ffffff);
+}
+.model-config-section header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.model-config-section header strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+.model-config-section header p {
+  color: var(--muted);
+  font-size: 12px;
+}
+.model-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.model-field-grid label {
+  display: grid;
+  gap: 6px;
+}
+.model-field-grid label span {
+  margin-bottom: 0;
+}
+.model-field-grid .wide {
+  grid-column: 1 / -1;
+}
+.model-field-grid .subdued-field {
+  opacity: 0.86;
+}
+.model-field-grid input,
+.model-field-grid select {
+  box-shadow: none;
+}
 .model-edit-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);

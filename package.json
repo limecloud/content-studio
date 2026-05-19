@@ -1,7 +1,7 @@
 {
   "name": "content-studio",
-  "version": "0.4.0",
-  "description": "Content Studio desktop app powered by the official Claude Agent SDK and project skills.",
+  "version": "0.5.0",
+  "description": "布谷AI内容工厂桌面应用，用于知识库、提示词、图片、视频和文章生产。",
   "type": "module",
   "main": "out/main/index.js",
   "license": "Apache-2.0",
@@ -44,5 +44,5 @@
     "typescript": "^5.9.3",
     "undici": "7.25.0"
   },
-  "author": "Limecloud"
+  "author": "布谷AI"
 }

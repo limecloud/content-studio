@@ -1,181 +1,38 @@
 # Release Notes
 
-## v0.4.0 - 2026-05-19
+## v0.5.0 - 2026-05-19
 
 ### 版本定位
 
-本轮把 v0.3 内部预览中的本地模板 / SVG 占位路径收口为真实 Provider 调用或明确 `blocked`，对齐“不要 mock”的产品要求。
+v0.5.0 将布谷AI内容工厂从“可演示主链”推进到“可追溯真实生成工作台”：文字、图片、视频按协议化生成服务拆分；图片技能、图片引用、生成历史和更新检查形成更完整的桌面端闭环。
 
 ### 新增 / 调整
 
-- 文本生成主链改为调用官方 `@anthropic-ai/claude-agent-sdk`：优先复用本机 Claude Code 登录，也支持在设置中保存 Claude Key / Base URL；只有 SDK 认证不可用时才 `blocked`。
-- 参考 Craft 的 SDK 运行经验，启动前修复 `~/.claude.json`，并通过单次 `env` 注入 API Key / Base URL，避免长期污染 `process.env`。
-- 图片生成改为 OpenAI Responses 兼容 `image_generation` Provider，支持保存真实 PNG；未配置图片 Key 时返回 `blocked`，不再生成 SVG 占位。
-- 视频拆解和视频生成支持 Generic HTTP Provider：配置视频端点和 Key 后，拆解会发送 `operation: "analyze"`，生成会真实提交请求并下载返回的视频 URL / base64；未配置时仍只保存 `blocked` 队列文件。
-- 视频视觉拆解在未接入真实视频理解 Provider 时返回 `blocked`，不再用固定模板伪造拆解结果。
-- 模型设置弹窗拆分文字、图片、视频 Provider 配置，Renderer 仍只读取是否已配置，不读取明文 Key。
-- 弹窗内显示生成错误，避免主界面错误提示被弹窗遮挡。
-- 新增 Playwright Electron E2E：真实启动 Electron App，验证 preload bridge、主进程状态、模块导航、Skills 详情弹窗、模型设置和主内容滚动。
-- `verify:local` 接入 Playwright E2E，并新增 GitHub Actions CI；Release 打包前会先跑完整本地验证，失败时上传 Playwright 诊断产物。
-- 修复详情弹窗层级问题，避免右侧参数栏拦截弹窗关闭按钮。
-
-### 明确不包含
-
-- 未配置 Generic HTTP 视频 Provider 时，爆款视频“真实拆解”和视频生成仍只返回 `blocked` / 队列文件，不会伪造成功。
-- `npm run smoke:electron` / `npm run test:e2e` 默认不外发模型请求；真实 Provider E2E 需要显式提供 Key 并确认外发与费用风险。
-- 新增 `npm run test:functional` / `npm run test:e2e` / `npm run verify:local`，覆盖提示词包、场景卡、文章、视频脚本、知识库导入检索、图片 Provider、视频理解 Provider、视频生成 Provider、GUI smoke 和真实 Electron E2E。
-
-## v0.3 - 2026-05-19
-
-### 版本定位
-
-内容工坊 v0.3 是 v1 内部预览收口版本，目标是把 `docs/roadmap/v1` 中的未完善功能补到可验证、可追溯、可发布的 Electron 桌面工作流。
-
-本版仍遵守 v1 current 边界：真实图片 / 视频 provider 后续接入；当前通过本地 SVG、JSON、Markdown 队列文件和 blocked 状态保证链路可用但不伪造成功。
-
-### 新增能力
-
-- 进一步拆分 Renderer 架构：`App.tsx` 收敛为应用壳层，复杂状态和副作用迁入 `useContentStudioApp`，模块路由迁入 `ModuleOutlet`。
-- 模型设置从静态展示改为真实配置表单，支持 API endpoint、API Key、文字模型、图片模型候选和视频模型的保存 / 回填。
-- 图片引擎补齐真实输入状态：提示词模式、生成模式、图片模板和水印都会写入生成 payload。
-- 视频脚本生成补齐字幕模式、视频语音、镜头数和时长配置，并传入视频脚本 / 视频队列请求。
-- 知识库补齐详情视图：知识库选中态、标签、tag chip 筛选、章节结构和“引用本章节”。
-- Skills 管理补齐详情视图：路径、来源、有效性、启用态、`globs`、`alwaysAllow`、`requiredSources`、校验错误和复制路径。
-- 生成历史补齐耗时、重试和本地产物操作；图片 / 视频结果支持打开位置和导出副本。
-- 顶部流水线新增 renderer 级取消能力，取消后会忽略迟到结果，避免污染当前 UI。
+- 新增协议化文字生成服务路由：Claude 官方链路继续走 `claude-sdk`，Anthropic Messages、OpenAI Chat、Gemini GenerateContent 走显式 HTTP 协议，不再用模型名隐式推断运行底座。
+- 新增独立图片生成服务适配：支持 OpenAI Responses `image_generation`、OpenAI Chat data URI、Gemini GenerateContent inlineData；未配置真实图片 Key 时返回 `blocked`，不生成占位图。
+- 图片工作台接入上一代图片技能参数：模板字段、系统提示词、增强词、负面词会进入真实图片请求。
+- 图片页支持 AI 创建图片技能、本地 JSON 导入、技能 JSON / 系统提示词编辑；未配置文字模型时明确失败，不伪造技能。
+- 图片提示词支持 `@` / `@图片` 引用：可点名产品图、参考图和已生成图片；选择生成图后会自动加入参考图列表，下一次生成会真实带入。
+- 新增内容助手入口：支持 `@图片 ...` 受控路由到图片生成模块并填充提示词草稿；通用 Agent 对话仍标记为后续接入。
+- 生成历史和素材库增强：图片结果可查看详情、复用参数、回填模板输入，并从历史继续作为图片参考。
+- 新增桌面端更新检查：主进程读取更新服务 / R2 `latest.json`，设置页提供自动检查、手动检查、下载链接、更新日志和日志目录入口。
+- UI 收口为“布谷AI 内容工厂”：导航、弹窗、设置和模块文案统一业务命名，移除旧的通用对话表达。
 
 ### 工程与验证
 
-- 新增 `scripts/electron-smoke.mjs` 和 `npm run smoke:electron`，用 Electron + CDP 验证主窗口、preload bridge、内置 Skills、完整核心生成链路和主要导航点击流。
-- 修复构建后 resources 根路径解析，确保 built app 能找到内置 Skills 与知识库。
-- 新增 `GenerationLogEntry.durationMs`，文章、提示词包、场景卡、图片、视频、视频拆解和视频脚本都会记录耗时。
-- 更新 `AGENTS.md`，沉淀 Content Studio 项目级 Agent 协作规则与验证入口。
-- 将应用包版本提升到 `0.3.0`，本次 Git tag 按用户指定发布为 `v0.3`。
+- 扩展主进程 provider / service 分层，文字、图片、视频生成服务边界更清晰。
+- 扩展 Electron E2E，覆盖 `@图片` 空素材提示、上传图引用、生成图引用、图片预览大盘、详情弹窗、历史复用和真实图片协议 mock。
+- 扩展功能测试，覆盖文字协议、图片协议、blocked 分支、技能创建和导入归一化。
+- 更新 v1 路线图、架构图、PRD、完成度审计和上一代图片技能复刻矩阵。
 
 ### 验证
 
 - `npm run typecheck` 通过。
 - `npm run build` 通过。
-- `npm run smoke:electron` 通过，关键结果：`hasBridge: true`、`bridgeMethodCount: 33`、`builtinSkillsCount: 12`、`logCount: 7`、`logsWithDuration: 7`、点击流 `failed: []`。
+- `npm run test:e2e` 通过。
 
 ### 明确不包含
 
-- 不接入真实图片模型、视频模型或视频理解模型；provider 仍以后续接入为主。
-- 不做策略分析、竞品抓取、差评采集、AI 自动搭建知识库、云协作、计费、多租户或向量 RAG。
-- 当前取消能力是 renderer 级“忽略迟到结果”，不是 provider 级 AbortSignal 强取消。
-
-## v0.2.0 - 2026-05-19
-
-### 版本定位
-
-内容工坊 v0.2.0 是 PRD 主链补齐版本，目标是把 v0.1.0 的初始化骨架推进到可演示、可追溯、可打包的本地桌面工作流。
-
-核心主链保持不变：
-
-```text
-已成型知识库 -> 品牌 / 产品提示词包 -> 产品场景库 -> 文章 / 图片提示词 / 视频脚本 -> 本地素材占位 / 队列文件 -> 生成历史
-```
-
-### 新增能力
-
-- 新增视频复刻三步流：参考视频 / 链接拆解、16 个维度选择、新产品视频脚本生成、视频生成队列。
-- 新增文章生成增强：支持文章类型、平台、目标读者、主题、口吻、字数范围和自定义要求，并支持 Markdown 导出。
-- 新增知识库筛选：支持产品型 / 个人 IP 型知识库筛选，以及产品、卖点、场景脚本、合规、人物档案、方法论、写作风格、边界等章节筛选。
-- 新增提示词包和场景卡编辑：品牌口吻、视觉风格、场景标题、图片素材建议和视频素材建议可保存后继续复用。
-- 新增素材选择与历史闭环：图片页支持产品图 / 参考图选择，视频页支持本地参考视频，生成历史可按类型过滤、复制提示词 / 脚本 / Markdown、打开本地素材位置。
-- 新增本地媒体占位产物：图片请求会写入 workspace `.content-studio/assets/images/*.svg` 占位预览；视频请求会写入 `.json` / `.md` 队列文件，避免在真实 provider 未接入时伪造成功。
-- 新增模型目录入口：模型配置弹窗可获取本地 mock catalog，方便后续替换为 endpoint metadata。
-- 新增 macOS App Icon：生成布谷鸟主题图标并接入 `electron-builder` 的 macOS 打包配置。
-
-### 发布资产
-
-- GitHub Release 附带 macOS DMG / ZIP、Windows NSIS、Linux AppImage 和自动更新 metadata。
-- 同步上传 `build/icon.png` 和 `build/icon.icns`，便于 Release 页面和下游渠道复用品牌 Logo。
-
-### 工程更新
-
-- 扩展类型化 IPC 与 preload bridge，覆盖视频拆解、视频脚本、素材选择、文件定位、Markdown 导出、提示词包 / 场景卡更新和模型目录。
-- 扩展 `GenerationLogEntry.artifactRefs`，文章导出、本地图片 SVG 占位和视频队列文件都能回写到生成历史。
-- 新增 `VideoWorkflowService`，把爆款视频拆解和分镜脚本生成沉淀为独立历史类型。
-- 新增 `getWorkspaceAssetDir()`，统一 workspace 内素材产物落点，避免硬编码用户目录。
-- macOS 本地预览包默认跳过签名，避免本机重复 Developer ID 证书导致 `codesign` 歧义；正式签名后续通过证书配置单独接入。
-- 将应用版本提升到 `0.2.0`，同步 `package.json` 与 `package-lock.json`。
-
-### macOS 首次打开
-
-当前 macOS 包是 unsigned 内部预览包，可能出现「`Content Studio` 已损坏，无法打开」提示。确认安装包来自本仓库 Release 后，可执行：
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Content Studio.app"
-```
-
-然后重新打开应用；如仍被拦截，右键点击 `Content Studio.app` 并选择「打开」。
-
-### 明确不包含
-
-- 不接入真实图片模型、视频模型或视频理解模型；v0.2.0 用本地占位产物和 blocked 状态保证体验闭环。
-- 不做竞品抓取、差评采集、店铺诊断、策略报告生成。
-- 不做 AI 自动搭建知识库；仍消费已经成型的产品型 / 个人 IP 型知识库。
-- 不做云端协作、团队权限、计费、多租户和复杂向量 RAG。
-
-### 验证
-
-- `npm run typecheck` 通过。
-- `npm run build` 通过。
-- `npm run dist:mac` 通过，生成 unsigned 内部预览 DMG / ZIP。
-
-## v0.1.0 - 2026-05-18
-
-### 版本定位
-
-内容工坊 v0.1.0 是第一版 Electron 桌面初始化版本，目标是把项目从通用 Claude Agent / Skills 骨架收敛成面向电商内容工程化的工作台。
-
-核心主链：
-
-```text
-已成型知识库 -> 品牌 / 产品提示词包 -> 产品场景库 -> 文案 / 脚本 / 图片提示词 -> 图片素材 -> 视频生成队列 -> 生成历史
-```
-
-### 新增能力
-
-- 新增深色三栏桌面工作台：左侧能力导航、中间内容生产区、右侧全局参数舱。
-- 新增模型配置：统一 API endpoint、API Key、文字模型、图片模型、视频模型。
-- 新增 Skills 管理：扫描内置 / workspace / 用户级 Skills，支持安装内置 Skill 到 workspace，支持启用 / 停用。
-- 新增已成型知识库模块：支持内置样例、workspace 安装、DOCX / Markdown / TXT / JSON 导入、关键词检索和引用选择。
-- 新增脱敏内置知识库样例：产品型知识库和个人 IP 型知识库。
-- 新增品牌 / 产品提示词包生成：基于知识引用生成品牌口吻、视觉风格、卖点规则、合规边界和平台约束。
-- 新增产品场景库生成：基于提示词包生成目标人群、痛点、场景、画面构图、口播方向和素材建议。
-- 新增文章生成初始化链路：本地生成标题候选、大纲、Markdown 草稿和发布检查，并记录生成日志。
-- 新增图片 / 视频 provider adapter：在真实媒体模型未接入时返回 blocked 状态，避免伪造成功素材，同时保留完整生成请求日志。
-- 新增生成历史 / 素材库最小闭环：记录提示词包、场景卡、文章、图片请求和视频队列请求。
-
-### 新增内置 Skills
-
-- `prompt-pack-builder`：提示词包构建师。
-- `scene-library-builder`：场景库构建师。
-- `ecommerce-image-prompt`：电商图片提示词师。
-- `video-breakdown`：爆款视频拆解师。
-- `video-script-writer`：视频脚本生成师。
-- `compliance-reviewer`：合规审核员。
-- `brand-voice-keeper`：品牌口吻守门员。
-- `knowledge-citation-picker`：知识引用选择器。
-
-### 工程更新
-
-- 补齐类型化 IPC 与 preload bridge，使 `ContentStudioApi` 覆盖 v1 主链。
-- 新增 main process 本地 JSON stores：模型配置、Skill 选择、知识库、提示词包、场景卡、生成日志。
-- 新增 DOCX 文本提取基础能力，依赖 `yauzl` 与 `fast-xml-parser`。
-- 保持官方 `@anthropic-ai/claude-agent-sdk` 作为文本编排底座，媒体生成走独立 provider adapter。
-- 不 fork Craft，不迁移 Craft 的远程 server、MCP、多会话 inbox 或通用聊天复杂度；只参考 workspace / Skills / typed bridge 的架构思路。
-
-### 明确不包含
-
-- 不做竞品抓取、差评采集、店铺诊断、策略报告生成。
-- 不做 AI 自动搭建知识库；v0.1.0 只消费已经成型的知识库。
-- 不接入真实图片 / 视频模型网关；图片和视频生成请求会记录为 blocked。
-- 不做云端协作、团队权限、计费、多租户和复杂向量 RAG。
-
-### 验证
-
-- `npm run typecheck` 通过。
-- `npm run build` 通过。
+- 通用 Agent 对话后端仍未接入；当前只提供 `@图片` 到图片模块的受控路由。
+- 未配置真实文字 / 图片 / 视频生成服务时仍返回 `blocked`，不伪造生成成功。
+- 正式签名、notarization、云端协作、多租户、计费和复杂向量检索仍为后续任务。

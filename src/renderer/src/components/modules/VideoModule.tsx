@@ -75,7 +75,7 @@ export function VideoModule({
   return (
     <section className="module-grid two-col">
       <article className="panel">
-        <div className="panel-title"><div><p className="eyebrow">Video Engine</p><h3>视频复刻引擎</h3></div><span className="status-pill">三步流</span></div>
+        <div className="panel-title"><div><p className="eyebrow">视频素材</p><h3>视频复刻引擎</h3></div><span className="status-pill">三步流</span></div>
         <div className="form-grid">
           <label><span>参考视频链接</span><input value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="可粘贴视频链接，或选择本地视频" /></label>
           <label><span>新产品名称</span><input value={videoProductName} onChange={(event) => setVideoProductName(event.target.value)} /></label>
@@ -98,7 +98,7 @@ export function VideoModule({
           <button className="primary small" disabled={busy || !workspaceReady} onClick={onAnalyzeReferenceVideo}>真实拆解</button>
           <button className="primary small" disabled={busy || !workspaceReady} onClick={onGenerateVideoScript}>生成脚本</button>
         </div>
-        <p className="helper-text">真实拆解需要视频理解 Provider；视频生成可走 Generic HTTP Provider，未配置时只保存 blocked 队列文件。</p>
+        <p className="helper-text">真实拆解需要视频理解服务；视频生成服务未配置时只保存待配置队列文件。</p>
         <div className="chip-row dimension-row">
           {VIDEO_DIMENSIONS.map((dimension) => (
             <button key={dimension} className={`chip-button ${selectedVideoDimensions.includes(dimension) ? 'active' : ''}`} onClick={() => toggleVideoDimension(dimension)}>
@@ -114,7 +114,7 @@ export function VideoModule({
         <button className="primary wide" disabled={busy || !workspaceReady} onClick={onGenerateVideo}>生成视频队列</button>
       </article>
       <article className="panel terminal-panel">
-        <p className="eyebrow">Video Prompt</p>
+        <p className="eyebrow">视频提示词</p>
         <pre>{suggestedVideoPrompt}</pre>
         {videoBreakdown ? <div className="script-block"><strong>拆解片段</strong>{videoBreakdown.segments.map((segment) => <p key={segment.timeRange}>{segment.timeRange} · {segment.hook} · {segment.reusablePoint}</p>)}</div> : null}
         {videoScript ? <div className="script-block"><strong>分镜脚本</strong><pre>{videoScript.script}</pre></div> : null}

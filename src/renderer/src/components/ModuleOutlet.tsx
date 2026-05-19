@@ -1,6 +1,7 @@
 import type { ContentStudioAppController } from '../app/useContentStudioApp';
 import { ArticleModule } from './modules/ArticleModule';
 import { AssetsModule } from './modules/AssetsModule';
+import { AiAssistantModule } from './modules/AiAssistantModule';
 import { ImageModule } from './modules/ImageModule';
 import { KnowledgeModule } from './modules/KnowledgeModule';
 import { SkillsModule } from './modules/SkillsModule';
@@ -11,14 +12,25 @@ interface ModuleOutletProps {
 }
 
 export function ModuleOutlet({ app }: ModuleOutletProps) {
+  if (app.activeModule === 'ai') {
+    return (
+      <AiAssistantModule
+        workspaceReady={Boolean(app.workspacePath)}
+        onRouteImageCommand={app.routeAiImageCommand}
+      />
+    );
+  }
+
   if (app.activeModule === 'image') {
     return (
       <ImageModule
         busy={app.busy}
         workspaceReady={Boolean(app.workspacePath)}
+        workspacePath={app.workspacePath}
+        runMode={app.params.runMode}
         productImageRefs={app.productImageRefs}
         referenceImageRefs={app.referenceImageRefs}
-        suggestedImagePrompt={app.suggestedImagePrompt}
+        imagePromptDraft={app.imagePromptDraft}
         setImagePromptDraft={app.setImagePromptDraft}
         imagePromptMode={app.imagePromptMode}
         setImagePromptMode={app.setImagePromptMode}
@@ -26,19 +38,18 @@ export function ModuleOutlet({ app }: ModuleOutletProps) {
         setImageGenerationMode={app.setImageGenerationMode}
         imageTemplate={app.imageTemplate}
         setImageTemplate={app.setImageTemplate}
+        imageTemplateInputs={app.imageTemplateInputs}
+        setImageTemplateInputs={app.setImageTemplateInputs}
         imageWatermark={app.imageWatermark}
         setImageWatermark={app.setImageWatermark}
-        sceneCards={app.sceneCards}
-        selectedSceneIds={app.selectedSceneIds}
-        setSelectedSceneIds={app.setSelectedSceneIds}
-        activePromptPack={app.activePromptPack}
         mediaResult={app.mediaResult}
+        logs={app.logs}
+        onUseGeneratedImageAsReference={app.useGeneratedImageAsReference}
         onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
         onExportAsset={(path) => app.runAction(() => app.exportAsset(path))}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
         onGenerateImage={() => app.runAction(app.generateImage)}
-        onGenerateSceneCards={() => app.runAction(app.generateSceneCards)}
       />
     );
   }
@@ -157,6 +168,7 @@ export function ModuleOutlet({ app }: ModuleOutletProps) {
         copiedLogId={app.copiedLogId}
         onCopyLogPrompt={(log) => app.runAction(() => app.copyLogPrompt(log))}
         onRevealLogPath={(log) => app.runAction(() => app.revealLogPath(log))}
+        onReuseImageLogInput={(log) => app.reuseImageLogInput(log)}
         onRetryLog={(log) => app.runAction((context) => app.retryLog(log, context))}
       />
     );

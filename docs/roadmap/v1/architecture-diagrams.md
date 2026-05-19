@@ -1,6 +1,6 @@
-# 内容工坊 v1 架构与流程图
+# 布谷AI内容工厂 v1 架构与流程图
 
-更新时间：2026-05-18
+更新时间：2026-05-19
 状态：Draft
 
 ## 1. 设计结论
@@ -19,10 +19,10 @@ flowchart LR
     KB[已成型知识库]
     PromptPack[品牌提示词包]
     Scene[产品场景库]
-    Image[图片引擎]
-    Video[视频引擎]
+    Image[图片生成]
+    Video[视频生成]
     Assets[素材库 / 生成历史]
-    SkillsUI[Skills 管理]
+    能力UI[能力管理]
     SettingsUI[模型配置]
   end
 
@@ -33,27 +33,29 @@ flowchart LR
   subgraph Main[Electron Main]
     Settings[SettingsStore]
     ModelConfig[ModelConfigStore]
-    SkillManager[SkillManager]
-    SkillSelection[SkillSelectionStore]
+    能力Manager[SkillManager]
+    能力Selection[SkillSelectionStore]
     KBStore[KnowledgeBaseStore]
     PromptPackService[PromptPackService]
     SceneStore[SceneLibraryStore]
     ArticleService[ArticleGenerationService]
-    MediaProvider[MediaProvider Adapter]
+    TextRouter[TextGenerationService / TextProviderRouter]
+    Media生成服务[Media生成服务 Adapter]
+    ImageRouter[ImageGeneration生成服务]
     GenerationLog[GenerationLogStore]
   end
 
-  subgraph Local[本地 Workspace]
+  subgraph Local[本地 工作区]
     KBDocs[DOCX / MD / TXT / JSON 知识库]
-    SkillFiles[.claude/skills]
+    能力Files[.claude/skills]
     AssetFiles[生成素材文件]
     Logs[生成日志]
   end
 
   subgraph Models[模型 / SDK]
-    Claude[Claude Agent SDK]
-    TextModel[文字模型]
-    ImageModel[图片模型]
+    Claude[Claude SDK / Anthropic Messages]
+    OpenAI[OpenAI Chat / Responses]
+    Gemini[Gemini GenerateContent]
     VideoModel[视频模型]
   end
 
@@ -64,7 +66,7 @@ flowchart LR
   Workbench --> Image
   Workbench --> Video
   Workbench --> Assets
-  Workbench --> SkillsUI
+  Workbench --> 能力UI
   Workbench --> SettingsUI
 
   Article --> IPC
@@ -74,31 +76,36 @@ flowchart LR
   Image --> IPC
   Video --> IPC
   Assets --> IPC
-  SkillsUI --> IPC
+  能力UI --> IPC
   SettingsUI --> IPC
 
   IPC --> Settings
   IPC --> ModelConfig
-  IPC --> SkillManager
-  IPC --> SkillSelection
+  IPC --> 能力Manager
+  IPC --> 能力Selection
   IPC --> KBStore
   IPC --> PromptPackService
   IPC --> SceneStore
   IPC --> ArticleService
-  IPC --> MediaProvider
+  IPC --> TextRouter
+  IPC --> Media生成服务
   IPC --> GenerationLog
 
   KBStore --> KBDocs
-  SkillManager --> SkillFiles
+  能力Manager --> 能力Files
   GenerationLog --> Logs
-  MediaProvider --> AssetFiles
+  Media生成服务 --> AssetFiles
 
-  PromptPackService --> Claude
-  SceneStore --> Claude
-  ArticleService --> Claude
-  MediaProvider --> ImageModel
-  MediaProvider --> VideoModel
-  Claude --> TextModel
+  PromptPackService --> TextRouter
+  SceneStore --> TextRouter
+  ArticleService --> TextRouter
+  TextRouter --> Claude
+  TextRouter --> OpenAI
+  TextRouter --> Gemini
+  Media生成服务 --> ImageRouter
+  ImageRouter --> OpenAI
+  ImageRouter --> Gemini
+  Media生成服务 --> VideoModel
 ```
 
 ## 3. 内容工程流程图
@@ -144,7 +151,7 @@ sequenceDiagram
   participant R as Renderer 知识库页
   participant P as Preload IPC
   participant K as KnowledgeBaseStore
-  participant F as Workspace 文件
+  participant F as 工作区 文件
   participant L as GenerationLogStore
 
   U->>R: 选择内置知识库或导入成型文件
@@ -173,8 +180,8 @@ sequenceDiagram
   participant R as Renderer 场景库页
   participant P as Preload IPC
   participant K as KnowledgeBaseStore
-  participant S as SkillSelectionStore
-  participant C as ClaudeAgentService
+  participant S as 能力SelectionStore
+  participant T as TextGenerationService / ProviderRouter
   participant PP as PromptPackService
   participant SC as SceneLibraryStore
   participant L as GenerationLogStore
@@ -183,17 +190,17 @@ sequenceDiagram
   R->>P: promptPack:generate(citations)
   P->>K: resolveCitations(citations)
   K-->>P: 引用原文和章节类型
-  P->>S: getEnabledSkills(workspace)
-  S-->>P: brand-voice / citation-picker 等 Skills
-  P->>C: run(提示词包生成任务)
-  C-->>PP: 品牌口吻、视觉风格、合规边界、平台约束
+  P->>S: getEnabled能力(工作区)
+  S-->>P: brand-voice / citation-picker 等 能力
+  P->>T: generateJson(提示词包生成任务)
+  T-->>PP: 品牌口吻、视觉风格、合规边界、平台约束
   PP->>L: 记录提示词包生成
   PP-->>R: PromptPack
 
   U->>R: 基于提示词包生成产品场景库
   R->>P: scene:generate(promptPackId, citations)
-  P->>C: run(场景库生成任务)
-  C-->>SC: 人群、痛点、场景、画面、卖点、口播、素材建议
+  P->>T: generateJson(场景库生成任务)
+  T-->>SC: 人群、痛点、场景、画面、卖点、口播、素材建议
   SC->>L: 记录场景卡生成
   SC-->>R: SceneCards
 ```
@@ -204,12 +211,12 @@ sequenceDiagram
 sequenceDiagram
   autonumber
   participant U as 用户
-  participant R as Renderer 图片引擎
+  participant R as Renderer 图片生成
   participant P as Preload IPC
   participant SC as SceneLibraryStore
   participant PP as PromptPackService
-  participant M as MediaProvider
-  participant I as 图片模型
+  participant M as Media生成服务
+  participant I as ImageGeneration生成服务 / 图片协议生成服务
   participant A as 素材库
   participant L as GenerationLogStore
 
@@ -223,8 +230,8 @@ sequenceDiagram
   U->>R: 编辑提示词并启动渲染
   R->>P: image:generate(request)
   P->>M: generateImage(request)
-  M->>I: 调用图片模型
-  I-->>M: 图片结果或错误
+  M->>I: 按 openai-responses / openai-chat-data-uri / gemini-generate-content 调用
+  I-->>M: 图片 data URI / inlineData / 错误
   M->>A: 保存图片素材
   M->>L: 写入输入、模型、知识引用、场景卡、错误或结果
   M-->>R: 图片预览 / 错误态
@@ -236,12 +243,12 @@ sequenceDiagram
 sequenceDiagram
   autonumber
   participant U as 用户
-  participant R as Renderer 视频引擎
+  participant R as Renderer 视频生成
   participant P as Preload IPC
   participant A as 素材库
   participant SC as SceneLibraryStore
-  participant C as ClaudeAgentService
-  participant M as MediaProvider
+  participant T as TextGenerationService / ProviderRouter
+  participant M as Media生成服务
   participant V as 视频模型
   participant L as GenerationLogStore
 
@@ -249,8 +256,8 @@ sequenceDiagram
   R->>P: video:preparePrompt(input)
   P->>A: getAssets(imageAssetIds)
   P->>SC: getScene(sceneId)
-  P->>C: run(视频提示词 / 镜头脚本整理任务)
-  C-->>P: 视频提示词、镜头、节奏、字幕和素材映射
+  P->>T: generateJson(视频提示词 / 镜头脚本整理任务)
+  T-->>P: 视频提示词、镜头、节奏、字幕和素材映射
   P-->>R: 视频生成草稿
   U->>R: 编辑视频提示词并加入队列
   R->>P: video:enqueue(request)
@@ -340,7 +347,7 @@ flowchart LR
     J[店铺诊断]
     K[策略报告]
     L[AI 自动搭建知识库]
-    M[向量 RAG]
+    M[向量 向量检索]
     N[批量处理 / 定时任务]
     O[云端协作知识库]
   end

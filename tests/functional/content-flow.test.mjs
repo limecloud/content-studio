@@ -8,11 +8,14 @@ import { join } from 'node:path';
 
 import { ArticleGenerationService } from '../../src/main/services/articleGenerationService.ts';
 import { GenerationLogStore } from '../../src/main/services/generationLogStore.ts';
+import { ImageSkillGenerationService } from '../../src/main/services/imageSkillGenerationService.ts';
 import { KnowledgeBaseStore } from '../../src/main/services/knowledgeBaseStore.ts';
 import { PromptPackService } from '../../src/main/services/promptPackService.ts';
 import { SceneLibraryStore } from '../../src/main/services/sceneLibraryStore.ts';
+import { TextGenerationService } from '../../src/main/services/textGenerationService.ts';
 import { VideoWorkflowService } from '../../src/main/services/videoWorkflowService.ts';
 import { MediaProvider } from '../../src/main/providers/mediaProvider.ts';
+import { formatImageTemplateInputs, formatImageTemplatePromptContext } from '../../src/shared/imageTemplates.ts';
 
 const ONE_PIXEL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
 const TEST_VIDEO = Buffer.from('content-studio-test-video');
@@ -107,6 +110,30 @@ class FakeTextGenerationService {
         },
       };
     }
+    if (task === 'generate_image_skill') {
+      return {
+        model: input.model || 'fake-claude-sonnet',
+        rawText: '{}',
+        value: {
+          id: 'xiaohongshu-skincare-cover',
+          name: '小红书护肤封面',
+          version: '1.0.0',
+          icon: '🧴',
+          category: '社媒',
+          description: '生成高端护肤品小红书封面图。',
+          config: { defaultRatio: '3:4', defaultCount: 1 },
+          prompts: {
+            system: '你是专业的小红书护肤品封面图片提示词专家。请根据产品名称、卖点、目标人群和风格偏好，生成适合真实商业投放的图片提示词。要求画面主体清晰、包装可辨识、背景与护肤场景一致，避免夸大功效、医疗暗示和不可读文字。输出时要把构图、光线、材质、颜色、镜头语言和合规边界写清楚。',
+            enhance: 'premium skincare, clean composition, soft daylight, commercial photography',
+            negative: 'medical claims, messy text, watermark, distorted packaging',
+          },
+          variables: [
+            { key: 'productName', label: '产品名称', type: 'text', required: true, placeholder: '例如：多肽精华' },
+            { key: 'style', label: '风格', type: 'select', options: ['清透', '高级'], default: '高级' },
+          ],
+        },
+      };
+    }
     throw new Error(`未覆盖的测试任务：${task}`);
   }
 }
@@ -118,6 +145,81 @@ const citation = {
   sectionType: 'product',
   excerpt: '示例产品主打清晰成分、便携条包、适合早餐后或办公场景使用。',
 };
+
+
+test('图片模板参数会格式化为可读中文字段', () => {
+  const formatted = formatImageTemplateInputs('场景图', {
+    productName: '测试产品',
+    sceneType: '厨房餐厅',
+  });
+  assert.match(formatted, /产品名称: 测试产品/);
+  assert.match(formatted, /场景选择: 厨房餐厅/);
+
+  const promptContext = formatImageTemplatePromptContext('美食摄影');
+  assert.match(promptContext, /Skill System Prompt/);
+  assert.match(promptContext, /SMART INGREDIENT MATCHING TABLE/);
+  assert.doesNotMatch(promptContext, new RegExp(`${['光', '核'].join('')}|${['g', 'uanghe'].join('')}`, 'i'));
+});
+
+test('AI 创建图片技能会生成当前内容工厂可用的模板配置', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const text = new FakeTextGenerationService();
+    const imageSkills = new ImageSkillGenerationService(text);
+    const result = await imageSkills.generate({
+      workspacePath,
+      description: '创建一个小红书护肤品封面技能，适合高端护肤品牌种草。',
+    });
+
+    assert.equal(result.model, 'fake-claude-sonnet');
+    assert.equal(result.template.id, 'xiaohongshu-skincare-cover');
+    assert.equal(result.template.name, '小红书护肤封面');
+    assert.equal(result.template.author, '布谷AI');
+    assert.equal(result.template.defaultRatio, '3:4');
+    assert.equal(result.template.defaultCount, 1);
+    assert.equal(result.template.fields.length, 2);
+    assert.deepEqual(result.template.fields.map((field) => field.key), ['productName', 'style']);
+    assert.equal(result.template.fields[1].kind, 'single');
+    assert.match(result.template.prompts.system, /护肤品封面图片提示词专家/);
+    assert.doesNotMatch(JSON.stringify(result.template), new RegExp(`${['光', '核'].join('')}|${['g', 'uanghe'].join('')}`, 'i'));
+    assert.equal(JSON.parse(text.calls.at(-1).prompt).task, 'generate_image_skill');
+  });
+});
+
+test('本地图片技能 JSON 可以导入并归一化为模板配置', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const skillPath = join(workspacePath, 'imported-image.skill.json');
+    await writeFile(skillPath, JSON.stringify({
+      id: 'imported-food-cover',
+      name: '导入美食封面',
+      version: '2.0.0',
+      author: '第三方',
+      icon: '🍜',
+      category: '美食',
+      description: '生成餐饮品牌社媒封面。',
+      config: { defaultRatio: '4:5', defaultCount: 2 },
+      prompts: {
+        system: '你是专业餐饮摄影图片提示词专家。请根据菜品名称、餐厅定位和用户补充需求生成适合社媒封面的图片提示词，突出真实食材、自然光、热气、餐具、背景氛围和商业可用性，避免夸张文字、低清晰度、水印和不真实摆盘。',
+        enhance: 'food photography, warm light, appetizing, commercial cover',
+        negative: 'watermark, low quality, messy plate',
+      },
+      variables: [
+        { key: 'foodName', label: '菜品名称', type: 'text', required: true, placeholder: '例如：牛肉面' },
+        { key: 'scene', label: '拍摄场景', type: 'select', options: ['餐桌', '外卖包装'] },
+      ],
+    }), 'utf-8');
+
+    const imageSkills = new ImageSkillGenerationService(new FakeTextGenerationService());
+    const result = await imageSkills.importFromFile(skillPath);
+
+    assert.equal(result.model, 'local-json');
+    assert.equal(result.template.name, '导入美食封面');
+    assert.equal(result.template.author, '布谷AI');
+    assert.equal(result.template.defaultRatio, '4:5');
+    assert.equal(result.template.defaultCount, 2);
+    assert.deepEqual(result.template.fields.map((field) => field.kind), ['text', 'single']);
+    assert.match(result.rawText, /imported-food-cover/);
+  });
+});
 
 test('内容工厂文字主链可以生成提示词包、场景卡、文章和视频脚本', async () => {
   await withWorkspace(async (workspacePath) => {
@@ -191,10 +293,165 @@ test('知识库可以导入、结构化并参与搜索引用', async () => {
   });
 });
 
+test('文字模型支持 Anthropic 兼容 HTTP 网关生成 JSON', async () => {
+  await withWorkspace(async (workspacePath) => {
+    let capturedRequest;
+    const server = createServer((request, response) => {
+      if (request.url === '/v1/messages') {
+        let body = '';
+        request.on('data', (chunk) => { body += chunk.toString(); });
+        request.on('end', () => {
+          capturedRequest = JSON.parse(body);
+          response.setHeader('content-type', 'application/json');
+          response.end(JSON.stringify({
+            type: 'message',
+            role: 'assistant',
+            model: capturedRequest.model,
+            content: [{ type: 'text', text: '{"ok":true,"name":"兼容网关"}' }],
+            stop_reason: 'end_turn',
+          }));
+        });
+        return;
+      }
+      response.statusCode = 404;
+      response.end('not found');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+      const modelConfig = {
+        async readView() {
+          return {
+            apiEndpoint: baseUrl,
+            hasApiKey: true,
+            textProvider: 'anthropic-claude-sdk',
+            textProtocol: 'anthropic-messages',
+            textApiEndpoint: baseUrl,
+            hasTextApiKey: true,
+            textModel: 'gemini-3-pro-preview',
+          };
+        },
+        async getTextApiKey() { return 'test-text-key'; },
+      };
+      const text = new TextGenerationService(modelConfig);
+      const result = await text.generateJson({
+        workspacePath,
+        systemPrompt: '只输出 JSON。',
+        prompt: '{"task":"compat_test"}',
+        schema: {
+          type: 'object',
+          required: ['ok', 'name'],
+          properties: { ok: { type: 'boolean' }, name: { type: 'string' } },
+        },
+      });
+
+      assert.deepEqual(result.value, { ok: true, name: '兼容网关' });
+      assert.equal(result.model, 'gemini-3-pro-preview');
+      assert.equal(capturedRequest.model, 'gemini-3-pro-preview');
+      assert.match(capturedRequest.system, /JSON Schema/);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test('文字模型支持 OpenAI Chat Completions 兼容协议生成 JSON', async () => {
+  await withWorkspace(async (workspacePath) => {
+    let capturedRequest;
+    const server = createServer((request, response) => {
+      if (request.url === '/v1/chat/completions') {
+        let body = '';
+        request.on('data', (chunk) => { body += chunk.toString(); });
+        request.on('end', () => {
+          capturedRequest = JSON.parse(body);
+          response.setHeader('content-type', 'application/json');
+          response.end(JSON.stringify({
+            choices: [{ message: { role: 'assistant', content: '{"ok":true,"name":"OpenAI 兼容"}' }, finish_reason: 'stop' }],
+          }));
+        });
+        return;
+      }
+      response.statusCode = 404;
+      response.end('not found');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+      const text = new TextGenerationService({
+        async readView() {
+          return {
+            textProtocol: 'openai-chat',
+            textApiEndpoint: baseUrl,
+            textModel: 'gpt-compatible',
+          };
+        },
+        async getTextApiKey() { return 'test-text-key'; },
+      });
+      const result = await text.generateJson({
+        workspacePath,
+        systemPrompt: '只输出 JSON。',
+        prompt: '{"task":"compat_test"}',
+        schema: { type: 'object', required: ['ok', 'name'], properties: { ok: { type: 'boolean' }, name: { type: 'string' } } },
+      });
+      assert.deepEqual(result.value, { ok: true, name: 'OpenAI 兼容' });
+      assert.equal(capturedRequest.model, 'gpt-compatible');
+      assert.equal(capturedRequest.response_format.type, 'json_object');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test('文字模型支持 Gemini GenerateContent 原生协议生成 JSON', async () => {
+  await withWorkspace(async (workspacePath) => {
+    let capturedRequest;
+    const server = createServer((request, response) => {
+      if (request.url === '/v1beta/models/gemini-test:generateContent') {
+        let body = '';
+        request.on('data', (chunk) => { body += chunk.toString(); });
+        request.on('end', () => {
+          capturedRequest = JSON.parse(body);
+          response.setHeader('content-type', 'application/json');
+          response.end(JSON.stringify({
+            candidates: [{ content: { parts: [{ text: '{"ok":true,"name":"Gemini 原生"}' }] } }],
+          }));
+        });
+        return;
+      }
+      response.statusCode = 404;
+      response.end('not found');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+      const text = new TextGenerationService({
+        async readView() {
+          return {
+            textProtocol: 'gemini-generate-content',
+            textApiEndpoint: baseUrl,
+            textModel: 'gemini-test',
+          };
+        },
+        async getTextApiKey() { return 'test-text-key'; },
+      });
+      const result = await text.generateJson({
+        workspacePath,
+        systemPrompt: '只输出 JSON。',
+        prompt: '{"task":"compat_test"}',
+        schema: { type: 'object', required: ['ok', 'name'], properties: { ok: { type: 'boolean' }, name: { type: 'string' } } },
+      });
+      assert.deepEqual(result.value, { ok: true, name: 'Gemini 原生' });
+      assert.equal(capturedRequest.generationConfig.responseMimeType, 'application/json');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
 test('媒体 Provider 可以调用真实 HTTP 适配器并沉淀图片/视频产物', async () => {
   await withWorkspace(async (workspacePath) => {
     const server = createServer((request, response) => {
-      if (request.url === '/responses') {
+      if (request.url === '/v1/responses') {
         response.setHeader('content-type', 'application/json');
         response.end(JSON.stringify({ output: [{ type: 'image_generation_call', result: ONE_PIXEL_PNG }] }));
         return;
@@ -222,10 +479,12 @@ test('媒体 Provider 可以调用真实 HTTP 适配器并沉淀图片/视频产
             apiEndpoint: 'https://api.anthropic.com',
             hasApiKey: false,
             textProvider: 'anthropic-claude-sdk',
+            textProtocol: 'claude-sdk',
             textApiEndpoint: 'https://api.anthropic.com',
             hasTextApiKey: false,
             textModel: 'claude-sonnet-4-5',
             imageProvider: 'openai-responses',
+            imageProtocol: 'openai-responses',
             imageApiEndpoint: baseUrl,
             imageOuterModel: 'test-outer-model',
             hasImageApiKey: true,
@@ -270,6 +529,208 @@ test('媒体 Provider 可以调用真实 HTTP 适配器并沉淀图片/视频产
       assert.equal(video.status, 'succeeded');
       assert.equal(video.assetRefs.length, 1);
       assert.equal(existsSync(video.assetRefs[0]), true);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test('媒体 Provider 支持 Chat Completions 图片 data URI 协议', async () => {
+  await withWorkspace(async (workspacePath) => {
+    let capturedRequest;
+    const server = createServer((request, response) => {
+      if (request.url === '/v1/responses') {
+        response.statusCode = 500;
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify({ error: { message: 'not implemented' } }));
+        return;
+      }
+      if (request.url === '/v1/chat/completions') {
+        let body = '';
+        request.on('data', (chunk) => { body += chunk.toString(); });
+        request.on('end', () => {
+          capturedRequest = JSON.parse(body);
+          response.setHeader('content-type', 'application/json');
+          response.end(JSON.stringify({
+          choices: [{
+            message: {
+              role: 'assistant',
+              content: `![image](data:image/png;base64,${ONE_PIXEL_PNG})`,
+            },
+            finish_reason: 'stop',
+          }],
+          }));
+        });
+        return;
+      }
+      response.statusCode = 404;
+      response.end('not found');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+      const logs = new GenerationLogStore();
+      const modelConfig = {
+        async readView() {
+          return {
+            imageProvider: 'openai-responses',
+            imageProtocol: 'openai-chat-data-uri',
+            imageApiEndpoint: baseUrl,
+            imageOuterModel: 'gemini-3-pro-preview',
+            hasImageApiKey: true,
+            imageModels: ['gemini-3-pro-image-preview'],
+          };
+        },
+        async getImageApiKey() { return 'test-image-key'; },
+      };
+      const provider = new MediaProvider(modelConfig, logs);
+      const image = await provider.generateImage({
+        workspacePath,
+        productImageRefs: [],
+        referenceImageRefs: [],
+        prompt: '生成一张兜底测试图',
+        promptMode: 'preset',
+        generationMode: 'smart',
+        template: '场景图',
+        templateInputs: { productName: '测试产品', sceneType: '厨房餐厅' },
+        watermark: false,
+        citations: [citation],
+        selectedSkillSlugs: ['ecommerce-image-prompt'],
+        params: { textModel: 'fake', imageModel: 'gemini-3-pro-image-preview', videoModel: 'test-video-model', runMode: 'single', count: 1, aspectRatio: '4:5', resolution: '1k', quality: 'low' },
+      });
+
+      assert.equal(image.status, 'succeeded');
+      assert.equal(image.assetRefs.length, 1);
+      assert.equal(existsSync(image.assetRefs[0]), true);
+      assert.match(capturedRequest.messages[0].content, /模板参数/);
+      assert.match(capturedRequest.messages[0].content, /产品名称: 测试产品/);
+      assert.match(capturedRequest.messages[0].content, /场景选择: 厨房餐厅/);
+      const storedLogs = await logs.list(workspacePath);
+      assert.equal(storedLogs[0].output.endpoint, 'openai-chat-data-uri');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test('图片提示词支持 @ 点名某张输入图片作为重点参考', async () => {
+  await withWorkspace(async (workspacePath) => {
+    let capturedRequest;
+    const server = createServer((request, response) => {
+      if (request.url === '/v1/responses') {
+        let body = '';
+        request.on('data', (chunk) => { body += chunk.toString(); });
+        request.on('end', () => {
+          capturedRequest = JSON.parse(body);
+          response.setHeader('content-type', 'application/json');
+          response.end(JSON.stringify({ output: [{ type: 'image_generation_call', result: ONE_PIXEL_PNG }] }));
+        });
+        return;
+      }
+      response.statusCode = 404;
+      response.end('not found');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+      const heroPath = join(workspacePath, 'hero.png');
+      await writeFile(heroPath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
+      const logs = new GenerationLogStore();
+      const modelConfig = {
+        async readView() {
+          return {
+            imageProvider: 'openai-responses',
+            imageProtocol: 'openai-responses',
+            imageApiEndpoint: baseUrl,
+            imageOuterModel: 'test-outer-model',
+            hasImageApiKey: true,
+            imageModels: ['test-image-model'],
+          };
+        },
+        async getImageApiKey() { return 'test-image-key'; },
+      };
+      const provider = new MediaProvider(modelConfig, logs);
+      const image = await provider.generateImage({
+        workspacePath,
+        productImageRefs: [heroPath],
+        referenceImageRefs: [],
+        prompt: '重点参考 @hero.png 的构图，生成一张白底主图',
+        promptMode: 'free',
+        generationMode: 'smart',
+        template: '自由模式',
+        watermark: false,
+        citations: [citation],
+        selectedSkillSlugs: ['ecommerce-image-prompt'],
+        params: { textModel: 'fake', imageModel: 'test-image-model', videoModel: 'test-video-model', runMode: 'single', count: 1, aspectRatio: '1:1', resolution: '1k', quality: 'low' },
+      });
+
+      assert.equal(image.status, 'succeeded');
+      const content = capturedRequest.input[0].content;
+      assert.equal(content.some((part) => part.type === 'input_image'), true);
+      assert.equal(content.some((part) => part.type === 'input_text' && part.text.includes('hero.png') && part.text.includes('用户 @ 点名重点参考')), true);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test('媒体 Provider 支持 Gemini GenerateContent 图片 inlineData 协议', async () => {
+  await withWorkspace(async (workspacePath) => {
+    let capturedRequest;
+    const server = createServer((request, response) => {
+      if (request.url === '/v1beta/models/gemini-image-test:generateContent') {
+        let body = '';
+        request.on('data', (chunk) => { body += chunk.toString(); });
+        request.on('end', () => {
+          capturedRequest = JSON.parse(body);
+          response.setHeader('content-type', 'application/json');
+          response.end(JSON.stringify({
+            candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: ONE_PIXEL_PNG } }] } }],
+          }));
+        });
+        return;
+      }
+      response.statusCode = 404;
+      response.end('not found');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+      const logs = new GenerationLogStore();
+      const modelConfig = {
+        async readView() {
+          return {
+            imageProvider: 'openai-responses',
+            imageProtocol: 'gemini-generate-content',
+            imageApiEndpoint: baseUrl,
+            imageOuterModel: 'unused',
+            hasImageApiKey: true,
+            imageModels: ['gemini-image-test'],
+          };
+        },
+        async getImageApiKey() { return 'test-image-key'; },
+      };
+      const provider = new MediaProvider(modelConfig, logs);
+      const image = await provider.generateImage({
+        workspacePath,
+        productImageRefs: [],
+        referenceImageRefs: [],
+        prompt: '生成一张 Gemini 协议测试图',
+        promptMode: 'preset',
+        generationMode: 'smart',
+        template: '场景图',
+        watermark: false,
+        citations: [citation],
+        selectedSkillSlugs: ['ecommerce-image-prompt'],
+        params: { textModel: 'fake', imageModel: 'gemini-image-test', videoModel: 'test-video-model', runMode: 'single', count: 1, aspectRatio: '4:5', resolution: '1k', quality: 'low' },
+      });
+
+      assert.equal(image.status, 'succeeded');
+      assert.equal(image.assetRefs.length, 1);
+      assert.equal(existsSync(image.assetRefs[0]), true);
+      assert.deepEqual(capturedRequest.generationConfig.responseModalities, ['TEXT', 'IMAGE']);
+      const storedLogs = await logs.list(workspacePath);
+      assert.equal(storedLogs[0].output.endpoint, 'gemini-generate-content');
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }

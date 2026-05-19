@@ -8,11 +8,11 @@ const DASHBOARD_CARDS: Array<{
   statLabel: string;
 }> = [
   { module: 'knowledge', index: '01', title: '知识库列表', description: '从成型知识库选择引用，生成品牌口吻、视觉风格和合规边界。', statLabel: '提示词包' },
-  { module: 'image', index: '02', title: '图片素材工作台', description: '使用场景卡、产品图和参考图调用真实图片 Provider。', statLabel: '场景卡' },
-  { module: 'video', index: '03', title: '视频脚本工作台', description: '生成短视频脚本；视频 Provider 未配置时只保存队列文件。', statLabel: '视频队列' },
+  { module: 'image', index: '02', title: '图片素材工作台', description: '使用场景卡、产品图和参考图调用真实图片生成服务。', statLabel: '场景卡' },
+  { module: 'video', index: '03', title: '视频脚本工作台', description: '生成短视频脚本；视频服务未配置时只保存队列文件。', statLabel: '视频队列' },
   { module: 'article', index: '04', title: '文章生成工作台', description: '把知识引用和场景卡转成大纲、正文和发布检查。', statLabel: '正文草稿' },
   { module: 'assets', index: '05', title: '素材库 / 历史', description: '回看输入输出、素材路径、模型参数和重试入口。', statLabel: '历史记录' },
-  { module: 'skills', index: '06', title: 'Skills 管理', description: '管理参与生成链路的内置、项目和用户级 Skills。', statLabel: '启用能力' },
+  { module: 'skills', index: '06', title: '能力管理', description: '管理参与内容生成链路的内置、项目和用户级能力。', statLabel: '启用能力' },
 ];
 
 interface WorkbenchDashboardProps {
@@ -40,8 +40,8 @@ export function WorkbenchDashboard(props: WorkbenchDashboardProps) {
     <section className="workbench-dashboard">
       <div className="dashboard-hero panel">
         <div>
-          <p className="eyebrow">Main Workbench</p>
-          <h2>列表页留在主工作台，详情再进弹窗</h2>
+          <p className="eyebrow">内容工作台</p>
+          <h2>内容工厂主线：知识库、提示词、素材生产</h2>
           <p>主界面承载列表、筛选和当前模块工作台；详情、编辑、配置和历史明细再进入独立弹窗，避免把一级页面藏起来。</p>
         </div>
         <button className="primary" onClick={() => props.onOpenModule(props.activeModule)}>

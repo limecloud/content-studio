@@ -120,7 +120,7 @@ export class ArticleGenerationService {
         kind: 'article',
         status: 'succeeded',
         title: titleCandidates[0],
-        summary: `Claude 生成 ${input.platform} ${input.articleType} 草稿`,
+        summary: `文字模型生成 ${input.platform} ${input.articleType} 草稿`,
         model,
         promptPackId: input.promptPackId,
         sceneCardIds: input.sceneCardIds,

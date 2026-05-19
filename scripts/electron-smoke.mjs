@@ -116,6 +116,7 @@ async function waitForRendererReady(cdp, timeoutMs = 20_000) {
       state?.readyState === 'complete'
       && state.hasBridge
       && (text.includes('布谷AI 内容工厂') || text.toLowerCase().includes('content studio pipeline'))
+      && (text.includes('图片生成') || text.includes('图片引擎') || text.includes('图片素材') || text.includes('启动渲染引擎'))
     ) return state;
     await wait(250);
   }
@@ -161,7 +162,7 @@ try {
       title: document.title,
       hasBridge: Boolean(window.contentStudio),
       hasPipeline: bodyText.includes('布谷AI 内容工厂') || bodyTextLower.includes('content studio pipeline'),
-      hasImageEngine: bodyText.includes('图片生成') || bodyText.includes('图片引擎'),
+      hasImageEngine: bodyText.includes('图片生成') || bodyText.includes('图片引擎') || bodyText.includes('图片素材') || bodyText.includes('启动渲染引擎'),
       hasKnowledgeEntry: bodyText.includes('成型知识库') || bodyText.includes('知识库'),
       hasSkillsEntry: bodyText.includes('能力管理') || bodyText.includes('Skills 管理') || bodyText.includes('SKILLS') || skills.length > 0,
       hasRedundantWorkbenchHint: document.body.innerText.includes('列表页留在主工作台') || document.body.innerText.includes('Main Workbench'),

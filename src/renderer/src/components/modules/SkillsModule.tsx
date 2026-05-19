@@ -41,7 +41,7 @@ export function SkillsModule({
   return (
     <section className="module-grid">
       <article className="panel full-panel">
-        <div className="panel-title"><div><p className="eyebrow">Skills</p><h3>高级能力库</h3></div><span className="status-pill">{skillSelection?.enabledSkills.length ?? 0} 已启用</span></div>
+        <div className="panel-title"><div><p className="eyebrow">能力库</p><h3>内容生成能力</h3></div><span className="status-pill">{skillSelection?.enabledSkills.length ?? 0} 已启用</span></div>
         <div className="skills-grid">
           {skills.map((skill) => {
             const key = skillKey(skill);
@@ -67,7 +67,7 @@ export function SkillsModule({
 
       {detailSkill ? (
         <DetailDialog
-          eyebrow="Skill Detail"
+          eyebrow="能力详情"
           title={`${detailSkill.metadata.icon ?? '◇'} ${detailSkill.metadata.name}`}
           description={detailSkill.metadata.description}
           onClose={() => setDetailSkillKey(null)}
@@ -84,7 +84,7 @@ export function SkillsModule({
                 {copiedSkillKey === skillKey(detailSkill) ? '已复制路径' : '复制路径'}
               </button>
               <button className="primary small" disabled={!workspaceReady || !detailSkill.valid} onClick={() => onToggleSkill(detailSkill)}>
-                {enabledSkillKeys.has(skillKey(detailSkill)) ? '停用此 Skill' : '启用此 Skill'}
+                {enabledSkillKeys.has(skillKey(detailSkill)) ? '停用此能力' : '启用此能力'}
               </button>
             </div>
             {detailSkill.error ? <div className="error-banner">{detailSkill.error}</div> : null}

@@ -37,7 +37,7 @@ jobs:
           npx playwright install-deps chromium
 
       - name: Run local verification
-        run: xvfb-run -a npm run verify:local
+        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run verify:local
 
       - name: Upload Playwright diagnostics
         if: failure()

@@ -89,7 +89,7 @@ export function KnowledgeModule({
     <section className="module-grid knowledge-layout">
       <article className="panel">
         <div className="panel-title">
-          <div><p className="eyebrow">Knowledge</p><h3>已成型知识库</h3></div>
+          <div><p className="eyebrow">知识来源</p><h3>已成型知识库</h3></div>
           <button className="ghost small" onClick={onImportKnowledgeBase} disabled={!workspaceReady}>导入 DOCX / MD / JSON</button>
         </div>
         <div className="knowledge-list">
@@ -98,7 +98,7 @@ export function KnowledgeModule({
               <button className="kb-card-main" onClick={() => setActiveKnowledgeBaseKey(knowledgeBaseKey(base))}>
                 <strong>{base.title}</strong>
                 <p>{base.description}</p>
-                <small>{baseLabel(base.baseType)} · {base.source === 'builtin' ? '内置样例' : 'Workspace'} · {base.sections.length} 章节</small>
+                <small>{baseLabel(base.baseType)} · {base.source === 'builtin' ? '内置样例' : '工作区'} · {base.sections.length} 章节</small>
               </button>
               {base.source === 'builtin' ? <button className="ghost small" disabled={!workspaceReady} onClick={() => onInstallBuiltinKnowledgeBase(base.id)}>安装</button> : null}
             </article>
@@ -108,7 +108,7 @@ export function KnowledgeModule({
           <div className="kb-detail">
             <div className="metadata-grid">
               <span>{baseLabel(activeKnowledgeBase.baseType)}</span>
-              <span>{activeKnowledgeBase.source === 'builtin' ? '内置样例' : 'Workspace'}</span>
+              <span>{activeKnowledgeBase.source === 'builtin' ? '内置样例' : '工作区'}</span>
               <span>{activeKnowledgeBase.sections.length} 章节</span>
             </div>
             {activeKnowledgeBase.tags.length ? (
@@ -134,7 +134,7 @@ export function KnowledgeModule({
       </article>
 
       <article className="panel">
-        <div className="panel-title"><div><p className="eyebrow">Citation</p><h3>引用检索</h3></div><button className="primary small" onClick={onSearchKnowledge}>搜索</button></div>
+        <div className="panel-title"><div><p className="eyebrow">知识引用</p><h3>引用检索</h3></div><button className="primary small" onClick={onSearchKnowledge}>搜索</button></div>
         <input value={knowledgeQuery} onChange={(event) => setKnowledgeQuery(event.target.value)} placeholder="输入卖点、合规、场景、口吻等关键词" />
         <div className="filter-block">
           <span>知识库类型</span>
@@ -179,7 +179,7 @@ export function KnowledgeModule({
       </article>
 
       <article className="panel">
-        <div className="panel-title"><div><p className="eyebrow">Prompt Pack</p><h3>提示词包 / 场景库</h3></div><button className="ghost small" disabled={!activePromptPack || busy} onClick={onGenerateSceneCards}>生成场景</button></div>
+        <div className="panel-title"><div><p className="eyebrow">提示词包</p><h3>提示词包 / 场景库</h3></div><button className="ghost small" disabled={!activePromptPack || busy} onClick={onGenerateSceneCards}>生成场景</button></div>
         <div className="selected-citations">
           {selectedCitations.map((citation) => <span key={`${citation.knowledgeBaseId}:${citation.sectionId}`}>{sectionLabel(citation.sectionType)} · {citation.title}</span>)}
           {selectedCitations.length === 0 ? <p>未手动选择引用时，会默认使用检索结果前三条。</p> : null}

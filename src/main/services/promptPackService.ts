@@ -130,7 +130,7 @@ export class PromptPackService {
         kind: 'prompt-pack',
         status: 'succeeded',
         title: pack.name,
-        summary: `Claude 基于 ${input.citations.length} 条知识引用生成提示词包`,
+        summary: `文字模型基于 ${input.citations.length} 条知识引用生成提示词包`,
         model,
         citations: input.citations,
         input,

@@ -145,7 +145,7 @@ export class SceneLibraryStore {
         kind: 'scene-card',
         status: 'succeeded',
         title: '产品场景库',
-        summary: `Claude 基于提示词包生成 ${cards.length} 张场景卡`,
+        summary: `文字模型基于提示词包生成 ${cards.length} 张场景卡`,
         model,
         promptPackId: input.promptPackId,
         citations,

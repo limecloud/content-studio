@@ -1,6 +1,6 @@
-# Content Studio Agent 指南
+# 布谷AI内容工厂 Agent 指南
 
-本文件只用于开发 `limecloud/content-studio` 仓库本身。规则参考 Lime 主仓库的工程协作方式，但按本项目的 Electron + React + Claude Agent SDK 内容工厂定位收敛。
+本文件只用于开发 `limecloud/content-studio` 仓库本身。规则参考 Lime 主仓库的工程协作方式，但按本项目的 Electron + React + Claude SDK 内容工厂定位收敛。
 
 ## 基本原则
 
@@ -39,10 +39,11 @@
 - 主进程：`src/main/`，IPC 在 `src/main/ipc.ts`。
 - Preload bridge：`src/preload/index.ts`。
 - 共享协议：`src/shared/types.ts` 是前后端类型契约事实源。
-- 文本编排：官方 `@anthropic-ai/claude-agent-sdk`。
-- 媒体生成：`src/main/providers/mediaProvider.ts`，图片必须走真实 Provider；未配置时返回可追溯 `blocked`，禁止生成 SVG 占位或伪造成功。视频生成可走 Generic HTTP Provider；未配置真实 Provider 时只允许保存 blocked 队列请求。
-- 视频拆解：`src/main/services/videoWorkflowService.ts` 可走同一个 Generic HTTP 视频端点并发送 `operation: "analyze"`；未配置真实理解 Provider 时只能 blocked，禁止模板伪造拆解。
-- 本地数据：workspace 下 `.content-studio/`，不要硬编码用户目录。
+- 文本编排：`src/main/services/textGenerationService.ts` 只负责编排配置，具体调用下沉到 `src/main/providers/textGenerationProvider.ts`；Claude / Anthropic 官方链路走 `claude-sdk`，Anthropic 兼容、OpenAI 兼容、Gemini 原生链路必须走显式协议生成服务，禁止把非 Claude 模型硬塞进 Claude SDK 运行底座。
+- 媒体生成：`src/main/providers/mediaProvider.ts` 只负责编排日志和视频，图片协议下沉到 `src/main/providers/imageGenerationProvider.ts`；图片必须走真实生成服务；未配置时返回可追溯 `blocked`，禁止生成 SVG 占位或伪造成功。视频生成可走 Generic HTTP 生成服务；未配置真实生成服务时只允许保存 blocked 队列请求。
+- Pi 边界：当前不引入 Pi；只有当非 Claude 模型需要完整会话、工具调用、权限、安全模式、MCP / 能力调度和会话恢复时，才按路线图重新评估。
+- 视频拆解：`src/main/services/videoWorkflowService.ts` 可走同一个 Generic HTTP 视频端点并发送 `operation: "analyze"`；未配置真实理解生成服务时只能 blocked，禁止模板伪造拆解。
+- 本地数据：工作区下 `.content-studio/`，不要硬编码用户目录。
 - 路线图：`docs/roadmap/v1/`。
 - 发布说明：`RELEASE_NOTES.md`。
 
@@ -51,7 +52,7 @@
 1. `App.tsx` 只保留应用壳层装配、全局布局和顶层入口。
 2. 复杂状态与副作用进入 `src/renderer/src/app/useContentStudioApp.ts`，按 Controller Hook 模式暴露给壳层。
 3. 展示层组件放在 `src/renderer/src/components/`。
-4. 业务页面组件放在 `src/renderer/src/components/modules/`，按图片、视频、文章、知识库、素材、Skills 拆分。
+4. 业务页面组件放在 `src/renderer/src/components/modules/`，按图片、视频、文章、知识库、素材、能力拆分。
 5. 跨模块路由装配放在 `src/renderer/src/components/ModuleOutlet.tsx`，不要把条件渲染重新堆回 `App.tsx`。
 6. 常量放在 `src/renderer/src/app/constants.ts`。
 7. 纯格式化 / 提取函数放在 `src/renderer/src/app/formatters.ts`。
@@ -60,12 +61,12 @@
 
 ## UI 与产品边界
 
-- 产品定位是“内容工厂 / 内容工作台”，不是通用聊天 Agent。
+- 产品定位是“内容工厂 / 内容工作台”，不是通用聊天平台。
 - 主链保持：成型知识库 -> 提示词包 -> 场景库 -> 文章 / 图片 / 视频队列 -> 历史。
 - UI 默认桌面端，不新增移动端或营销页风格。
 - 用户可见能力必须真实可追溯；未接入能力用 disabled / blocked / 后续接入表达。
-- 图片未接入真实 provider 时不得生成占位图；视频未接入真实 provider 时只保存 blocked 队列文件，并写入 `artifactRefs`。
-- 文字生成默认交给 Claude Agent SDK 处理本机登录 / API Key；测试或 smoke 如需避免外发，使用 `CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY=1` 强制走 blocked 分支。
+- 图片未接入真实生成服务时不得生成占位图；视频未接入真实生成服务时只保存 blocked 队列文件，并写入 `artifactRefs`。
+- 文字生成默认用协议化 生成服务路由；`claude-sdk` 可复用 Claude Code 登录 / API Key，其他协议必须使用对应端点和 Key。测试或 smoke 如需避免外发，使用 `CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY=1` 强制走 blocked 分支。
 
 ## 代码变更规则
 
@@ -87,7 +88,10 @@
 ```bash
 npm run typecheck
 npm run build
+npm run test:functional
 npm run smoke:electron
+npm run test:e2e
+npm run verify:local
 npm run dist:mac
 npm run dist:win
 npm run dist:linux
@@ -106,19 +110,21 @@ pnpm run dev
 - 可交付功能改动：跑 `npm run build`。
 - 主工作台 / preload / IPC 主链改动：优先补跑 `npm run smoke:electron`。
 - 打包 / 图标 / release 配置改动：跑对应 `npm run dist:*`，macOS 本地优先 `npm run dist:mac`。
-- GUI 交互改动如无法做点击级验证，必须在收尾说明中明确残余风险。
+- 发布前必须本地严格跑完 `npm run verify:local`；如失败，必须按日志修复后重新全量执行，禁止只依赖远端 CI 试错。
+- GUI / E2E 失败必须修稳定的真实用户路径，禁止通过放宽断言、跳过测试、增加无意义等待或移除覆盖来绕过失败。
+- GUI 交互改动如无法做点击级验证，必须说明阻塞原因、已完成的替代验证和残余风险；发布相关改动不得带着未解释的 GUI 风险继续。
 
 ## 发布流程
 
 1. 更新版本号和 `RELEASE_NOTES.md`。
-2. 运行必要校验。
+2. 本地运行 `npm run verify:local` 并确认通过；如 CI 曾失败，先复现 / 对齐失败日志，修复后再重新跑本地全量验证。
 3. 危险操作确认。
 4. `git commit`。
-5. `git tag -a vX.Y.Z -m "Content Studio vX.Y.Z"`。
+5. `git tag -a vX.Y.Z -m "布谷AI vX.Y.Z"`。
 6. `git push origin main`。
 7. `git push origin vX.Y.Z`。
-8. 用 `gh run watch` 跟进 `.github/workflows/release.yml`。
-9. 发布成功后汇报 commit、tag、Release 链接和验证结果。
+8. 用 `gh run watch` 跟进 CI 与 `.github/workflows/release.yml`；失败后必须按日志修复、重新跑本地 `npm run verify:local`，再更新提交和 tag。
+9. 发布成功后汇报 commit、tag、Release 链接、本地全量验证和远端 CI / Release 结果。
 
 ## 收尾汇报
 

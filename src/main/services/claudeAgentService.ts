@@ -67,7 +67,7 @@ export class ClaudeAgentService {
       ensureClaudeConfig();
       const modelView = await this.modelConfig.readView();
       const apiKey = await this.settings.getAnthropicApiKey() || await this.modelConfig.getTextApiKey();
-      sink({ type: 'status', taskId, message: '正在启动 Claude Agent SDK...' });
+      sink({ type: 'status', taskId, message: '正在启动内容生产底座...' });
       const options = {
         cwd: input.workspacePath,
         model: modelView.textModel,
@@ -78,8 +78,8 @@ export class ClaudeAgentService {
         env: buildClaudeSubprocessEnv({ apiKey, baseUrl: modelView.textApiEndpoint }),
         settingSources: ['user', 'project'],
         appendSystemPrompt: [
-          '你是内容工坊里的内容生产代理。',
-          '优先使用当前 workspace 中的 Claude Skills。',
+          '你是布谷AI内容工厂里的内容生产助手。',
+          '优先使用当前工作区中的内容生成能力。',
           '输出要清晰标注：资料判断、内容策略、草稿、下一步确认。',
         ].join('\n'),
       };

@@ -12,7 +12,7 @@ export function StageHeader({ busy, currentActionLabel, workspaceReady, onGenera
   return (
     <header className="stage-header">
       <div>
-        <p className="eyebrow">Content Studio Pipeline</p>
+        <p className="eyebrow">布谷AI 内容工厂</p>
         <div className="pipeline-breadcrumbs">
           {PIPELINE_STEPS.map((item, idx) => (
             <span key={item} className="breadcrumb-item">

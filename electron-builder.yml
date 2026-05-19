@@ -1,5 +1,5 @@
 appId: ai.limecloud.contentstudio
-productName: Content Studio
+productName: 布谷AI
 directories:
   output: release
   buildResources: build

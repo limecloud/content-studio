@@ -1,5 +1,6 @@
 import type {
   GenerationLogEntry,
+  ImageGenerationRequest,
   KnowledgeBaseView,
   KnowledgeCitation,
   KnowledgeSection,
@@ -157,4 +158,12 @@ export function extractSkillSlugsFromLog(log: GenerationLogEntry): string[] {
   if (log.kind === 'image') return ['ecommerce-image-prompt'];
   if (log.kind === 'video') return ['video-script-writer'];
   return [];
+}
+
+export function imageRequestFromLog(
+  log?: GenerationLogEntry,
+): Partial<ImageGenerationRequest> | null {
+  if (log?.kind !== 'image') return null;
+  if (!log.input || typeof log.input !== 'object') return null;
+  return log.input as Partial<ImageGenerationRequest>;
 }

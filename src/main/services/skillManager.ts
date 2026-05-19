@@ -80,9 +80,13 @@ export class SkillManager {
   async scan(workspacePath?: string): Promise<LoadedSkill[]> {
     const roots: Array<{ path: string; source: SkillSource }> = [
       { path: join(getResourcesRoot(), 'skills'), source: 'builtin' },
-      { path: join(homedir(), '.claude', 'skills'), source: 'user' },
-      { path: join(homedir(), '.agents', 'skills'), source: 'user-compat' },
     ];
+    if (process.env.CONTENT_STUDIO_INCLUDE_USER_SKILLS === '1') {
+      roots.push(
+        { path: join(homedir(), '.claude', 'skills'), source: 'user' },
+        { path: join(homedir(), '.agents', 'skills'), source: 'user-compat' },
+      );
+    }
     if (workspacePath) {
       roots.unshift(
         { path: join(workspacePath, '.claude', 'skills'), source: 'project' },
@@ -96,7 +100,7 @@ export class SkillManager {
   async installBuiltin(slug: string, workspacePath: string): Promise<void> {
     const source = join(getResourcesRoot(), 'skills', slug);
     if (!existsSync(source) || !statSync(source).isDirectory()) {
-      throw new Error(`内置 Skill 不存在: ${slug}`);
+      throw new Error(`内置能力不存在: ${slug}`);
     }
     const target = join(workspacePath, '.claude', 'skills', slug);
     await mkdir(dirname(target), { recursive: true });

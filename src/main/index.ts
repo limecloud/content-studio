@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, Menu, net, protocol, type MenuItemConstructorOptions } from 'electron';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { registerIpc } from './ipc';
 
 function registerContextMenu(mainWindow: BrowserWindow): void {
@@ -52,7 +53,7 @@ function createWindow(): void {
     height: 860,
     minWidth: 1080,
     minHeight: 720,
-    title: '内容工坊',
+    title: '布谷AI',
     backgroundColor: '#060514',
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
@@ -72,7 +73,16 @@ function createWindow(): void {
   }
 }
 
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'local-asset', privileges: { bypassCSP: true, supportFetchAPI: true } },
+]);
+
 app.whenReady().then(() => {
+  protocol.handle('local-asset', (request) => {
+    const filePath = decodeURIComponent(new URL(request.url).pathname);
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
