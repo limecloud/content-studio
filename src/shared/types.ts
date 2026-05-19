@@ -35,8 +35,18 @@ export interface SaveSettingsInput {
 export interface ModelConfigView {
   apiEndpoint: string;
   hasApiKey: boolean;
+  textProvider: 'anthropic-claude-sdk';
+  textApiEndpoint: string;
+  hasTextApiKey: boolean;
   textModel: string;
+  imageProvider: 'openai-responses' | 'disabled';
+  imageApiEndpoint: string;
+  imageOuterModel: string;
+  hasImageApiKey: boolean;
   imageModels: string[];
+  videoProvider: 'generic-http' | 'disabled';
+  videoApiEndpoint: string;
+  hasVideoApiKey: boolean;
   videoModel: string;
   updatedAt?: string;
 }
@@ -45,7 +55,7 @@ export interface ModelCatalogView {
   textModels: string[];
   imageModels: string[];
   videoModels: string[];
-  source: 'mock' | 'endpoint';
+  source: 'configured' | 'provider' | 'offline-seed';
   updatedAt: string;
 }
 
@@ -53,8 +63,20 @@ export interface SaveModelConfigInput {
   apiEndpoint?: string;
   apiKey?: string;
   clearApiKey?: boolean;
+  textApiEndpoint?: string;
+  textApiKey?: string;
+  clearTextApiKey?: boolean;
   textModel?: string;
+  imageProvider?: ModelConfigView['imageProvider'];
+  imageApiEndpoint?: string;
+  imageApiKey?: string;
+  clearImageApiKey?: boolean;
+  imageOuterModel?: string;
   imageModels?: string[];
+  videoProvider?: ModelConfigView['videoProvider'];
+  videoApiEndpoint?: string;
+  videoApiKey?: string;
+  clearVideoApiKey?: boolean;
   videoModel?: string;
 }
 

@@ -562,8 +562,5 @@
 }
 
 @media (max-width: 1280px) {
-  .app-shell { grid-template-columns: 240px minmax(620px, 1fr); height: auto; min-height: 100vh; overflow: visible; }
-  .params-panel { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
-  .params-panel > section { flex: 1; min-width: 300px; }
-  .two-col, .knowledge-layout { grid-template-columns: 1fr; }
+  .module-grid.two-col { grid-template-columns: 1fr; }
 }

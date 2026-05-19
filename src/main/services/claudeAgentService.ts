@@ -1,6 +1,8 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { randomUUID } from 'node:crypto';
 import type { AgentEvent, RunTaskInput } from '../../shared/types';
+import { buildClaudeSubprocessEnv, ensureClaudeConfig } from './claudeSdkRuntime';
+import { ModelConfigStore } from './modelConfigStore';
 import { SettingsStore } from './settingsStore';
 
 export type AgentEventSink = (event: AgentEvent) => void;
@@ -42,7 +44,7 @@ function mapSdkMessage(taskId: string, message: unknown): AgentEvent | null {
 export class ClaudeAgentService {
   private readonly controllers = new Map<string, AbortController>();
 
-  constructor(private readonly settings: SettingsStore) {}
+  constructor(private readonly settings: SettingsStore, private readonly modelConfig: ModelConfigStore) {}
 
   async run(input: RunTaskInput, sink: AgentEventSink): Promise<string> {
     const taskId = randomUUID();
@@ -61,19 +63,19 @@ export class ClaudeAgentService {
   }
 
   private async execute(taskId: string, input: RunTaskInput, controller: AbortController, sink: AgentEventSink): Promise<void> {
-    const previousApiKey = process.env.ANTHROPIC_API_KEY;
     try {
-      const apiKey = await this.settings.getAnthropicApiKey();
-      if (apiKey) {
-        process.env.ANTHROPIC_API_KEY = apiKey;
-      }
+      ensureClaudeConfig();
+      const modelView = await this.modelConfig.readView();
+      const apiKey = await this.settings.getAnthropicApiKey() || await this.modelConfig.getTextApiKey();
       sink({ type: 'status', taskId, message: '正在启动 Claude Agent SDK...' });
       const options = {
         cwd: input.workspacePath,
+        model: modelView.textModel,
         maxTurns: 12,
         abortController: controller,
         permissionMode: input.permissionMode === 'allow-all' ? 'bypassPermissions' : 'default',
         allowedTools: DEFAULT_ALLOWED_TOOLS,
+        env: buildClaudeSubprocessEnv({ apiKey, baseUrl: modelView.textApiEndpoint }),
         settingSources: ['user', 'project'],
         appendSystemPrompt: [
           '你是内容工坊里的内容生产代理。',
@@ -89,11 +91,6 @@ export class ClaudeAgentService {
     } catch (error) {
       sink({ type: 'error', taskId, message: error instanceof Error ? error.message : String(error) });
     } finally {
-      if (previousApiKey === undefined) {
-        delete process.env.ANTHROPIC_API_KEY;
-      } else {
-        process.env.ANTHROPIC_API_KEY = previousApiKey;
-      }
       this.controllers.delete(taskId);
     }
   }

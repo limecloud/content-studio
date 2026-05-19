@@ -206,7 +206,7 @@ export function SettingsDialog({
               <aside className="model-sidebar">
                 <div className="model-sidebar-header">
                   <h2>模型</h2>
-                  <p>统一配置文字、图片、视频模型。API Key 只保存在 Electron main process，Renderer 只读取是否已配置。</p>
+                  <p>分开配置文字、图片、视频 Provider。API Key 只保存在 Electron main process，Renderer 只读取是否已配置。</p>
                 </div>
                 <div className="model-list-header">
                   <div>
@@ -220,7 +220,7 @@ export function SettingsDialog({
                     <span className="drag-handle">⋮⋮</span>
                     <span className="icon" style={{ color: '#E05A47' }}>✹</span>
                     <div className="item-text">
-                      <strong>统一模型配置 <em className="tag-green">v1</em></strong>
+                      <strong>Provider 连接 <em className="tag-green">真实调用</em></strong>
                       <span>{modelConfig?.textModel ?? modelDraft.textModel}</span>
                     </div>
                   </div>
@@ -240,46 +240,61 @@ export function SettingsDialog({
                     <div className="provider-grid">
                       <button className="provider-card" onClick={() => setModelSettingView('edit_claude')}>
                         <div className="title"><span className="icon">✹</span> Claude / Anthropic <em className="tag-orange">推荐</em></div>
-                        <p>适合文章、策略、视频拆解和脚本生成的主文本模型。</p>
+                        <p>适合提示词包、场景库、文章和视频脚本生成的主文本模型。</p>
                       </button>
                       <button className="provider-card" onClick={() => setModelSettingView('edit_claude')}>
-                        <div className="title"><span className="icon grey">⚙</span> 自定义兼容端点</div>
-                        <p>填写统一 API Base URL，并分别配置文字、图片和视频模型。</p>
+                        <div className="title"><span className="icon grey">⚙</span> OpenAI Responses 图片</div>
+                        <p>填写支持 Responses + image_generation 的图片端点和图片 API Key。</p>
                       </button>
                       <button className="provider-card" onClick={onLoadModelCatalog}>
                         <div className="title"><span className="icon blue">↻</span> 获取模型列表</div>
-                        <p>v1 先返回本地 catalog，后续可替换为 endpoint metadata。</p>
+                        <p>读取当前配置和离线种子；真实远端列表失败时不会伪装已连通。</p>
                       </button>
                     </div>
                   </div>
                 ) : (
                   <div className="model-edit-card custom-provider model-config-form">
                     <div className="card-header">
-                      <div className="title"><span className="icon grey">⚙</span> 统一模型配置</div>
+                      <div className="title"><span className="icon grey">⚙</span> Provider 连接配置</div>
                       <button className="ghost small" onClick={onLoadModelCatalog}>获取模型</button>
                     </div>
 
                     <div className="ready-banner">
-                      <span>{modelConfig?.hasApiKey ? '已保存 API Key，留空不会覆盖' : '尚未保存 API Key'}</span>
+                      <span>{modelConfig?.hasTextApiKey ? '文字模型 Key 已保存，留空不会覆盖' : '文字模型尚未保存 API Key'}</span>
                     </div>
 
                     <div className="model-status-grid">
-                      <span>文字模型：{modelConfig?.textModel ?? '未加载'}</span>
-                      <span>图片模型：{modelConfig?.imageModels.join(', ') ?? '未加载'}</span>
-                      <span>视频模型：{modelConfig?.videoModel ?? '未加载'}</span>
+                      <span>文字：{modelConfig?.hasTextApiKey ? '已配置' : '未配置'} · {modelConfig?.textModel ?? '未加载'}</span>
+                      <span>图片：{modelConfig?.hasImageApiKey ? '已配置' : '未配置'} · {modelConfig?.imageModels.join(', ') ?? '未加载'}</span>
+                      <span>视频：{modelConfig?.hasVideoApiKey ? '已配置' : '未配置'} · {modelConfig?.videoModel ?? '未加载'}</span>
                     </div>
 
-                    <label className="field-label">API 端点</label>
+                    <label className="field-label">文字端点（Claude Agent SDK）</label>
                     <input value={modelDraft.apiEndpoint} onChange={(event) => setModelDraft((current) => ({ ...current, apiEndpoint: event.target.value }))} placeholder="https://api.anthropic.com" />
 
-                    <label className="field-label">API Key</label>
-                    <input type="password" value={modelDraft.apiKey} onChange={(event) => setModelDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={modelConfig?.hasApiKey ? '留空保留现有 Key' : '输入 API Key'} />
+                    <label className="field-label">文字 API Key</label>
+                    <input type="password" value={modelDraft.apiKey} onChange={(event) => setModelDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={modelConfig?.hasTextApiKey ? '留空保留现有 Key' : '输入 Anthropic API Key'} />
 
                     <label className="field-label">文字模型</label>
                     <input value={modelDraft.textModel} onChange={(event) => setModelDraft((current) => ({ ...current, textModel: event.target.value }))} />
 
-                    <label className="field-label">图片模型候选</label>
+                    <label className="field-label">图片端点（Responses API）</label>
+                    <input value={modelDraft.imageApiEndpoint} onChange={(event) => setModelDraft((current) => ({ ...current, imageApiEndpoint: event.target.value }))} placeholder="https://api.openai.com/v1" />
+
+                    <label className="field-label">图片 API Key</label>
+                    <input type="password" value={modelDraft.imageApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, imageApiKey: event.target.value }))} placeholder={modelConfig?.hasImageApiKey ? '留空保留现有图片 Key' : '输入图片 Provider API Key'} />
+
+                    <label className="field-label">图片编排模型</label>
+                    <input value={modelDraft.imageOuterModel} onChange={(event) => setModelDraft((current) => ({ ...current, imageOuterModel: event.target.value }))} placeholder="gpt-5.5" />
+
+                    <label className="field-label">图片生成模型候选</label>
                     <input value={modelDraft.imageModels} onChange={(event) => setModelDraft((current) => ({ ...current, imageModels: event.target.value }))} placeholder="多个模型用英文逗号分隔" />
+
+                    <label className="field-label">视频端点（Generic HTTP）</label>
+                    <input value={modelDraft.videoApiEndpoint} onChange={(event) => setModelDraft((current) => ({ ...current, videoApiEndpoint: event.target.value }))} placeholder="填写真实视频 Provider 接口；拆解发送 analyze，未配置则只保存队列" />
+
+                    <label className="field-label">视频 API Key</label>
+                    <input type="password" value={modelDraft.videoApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, videoApiKey: event.target.value }))} placeholder={modelConfig?.hasVideoApiKey ? '留空保留现有视频 Key' : '未配置时视频保持 blocked 队列'} />
 
                     <label className="field-label">视频模型</label>
                     <input value={modelDraft.videoModel} onChange={(event) => setModelDraft((current) => ({ ...current, videoModel: event.target.value }))} />

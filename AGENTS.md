@@ -40,7 +40,8 @@
 - Preload bridge：`src/preload/index.ts`。
 - 共享协议：`src/shared/types.ts` 是前后端类型契约事实源。
 - 文本编排：官方 `@anthropic-ai/claude-agent-sdk`。
-- 媒体生成：`src/main/providers/mediaProvider.ts`，真实 provider 未接入时必须返回可追溯 `blocked`，禁止伪造成功。
+- 媒体生成：`src/main/providers/mediaProvider.ts`，图片必须走真实 Provider；未配置时返回可追溯 `blocked`，禁止生成 SVG 占位或伪造成功。视频生成可走 Generic HTTP Provider；未配置真实 Provider 时只允许保存 blocked 队列请求。
+- 视频拆解：`src/main/services/videoWorkflowService.ts` 可走同一个 Generic HTTP 视频端点并发送 `operation: "analyze"`；未配置真实理解 Provider 时只能 blocked，禁止模板伪造拆解。
 - 本地数据：workspace 下 `.content-studio/`，不要硬编码用户目录。
 - 路线图：`docs/roadmap/v1/`。
 - 发布说明：`RELEASE_NOTES.md`。
@@ -63,7 +64,8 @@
 - 主链保持：成型知识库 -> 提示词包 -> 场景库 -> 文章 / 图片 / 视频队列 -> 历史。
 - UI 默认桌面端，不新增移动端或营销页风格。
 - 用户可见能力必须真实可追溯；未接入能力用 disabled / blocked / 后续接入表达。
-- 图片 / 视频未接入真实 provider 时，应生成本地占位产物或队列文件，并写入 `artifactRefs`。
+- 图片未接入真实 provider 时不得生成占位图；视频未接入真实 provider 时只保存 blocked 队列文件，并写入 `artifactRefs`。
+- 文字生成默认交给 Claude Agent SDK 处理本机登录 / API Key；测试或 smoke 如需避免外发，使用 `CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY=1` 强制走 blocked 分支。
 
 ## 代码变更规则
 

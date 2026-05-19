@@ -6,6 +6,8 @@ import type {
   VideoStoryboardShot,
 } from '../../shared/types';
 import { GenerationLogStore } from './generationLogStore';
+import { ModelConfigStore } from './modelConfigStore';
+import { TextGenerationService, TextProviderBlockedError } from './textGenerationService';
 
 const DEFAULT_DIMENSIONS = [
   '开头钩子',
@@ -26,124 +28,316 @@ const DEFAULT_DIMENSIONS = [
   '用户停留点',
 ];
 
-function citationSummary(input: { citations: Array<{ title: string; excerpt: string }> }): string {
-  if (input.citations.length === 0) return '未使用知识库引用，结果只作为结构草稿。';
-  return input.citations.slice(0, 3).map((item, index) => `${index + 1}. ${item.title}：${item.excerpt}`).join('\n');
+interface VideoScriptModelOutput {
+  title?: string;
+  script?: string;
+  storyboard?: Array<Partial<VideoStoryboardShot>>;
+  videoPrompt?: string;
+  publishCheck?: Array<{ level?: 'info' | 'warning' | 'risk'; message?: string }>;
 }
 
+interface VideoBreakdownProviderOutput {
+  summary?: string;
+  dimensions?: string[];
+  segments?: Array<Partial<VideoBreakdownResult['segments'][number]>>;
+  reusableFormula?: string[];
+  risks?: Array<{ level?: 'info' | 'warning' | 'risk'; message?: string }>;
+}
+
+function compactText(value: unknown, fallback: string): string {
+  const normalized = String(value ?? '').trim();
+  return normalized || fallback;
+}
+
+function citationPayload(input: { citations: Array<{ title: string; sectionType?: string; excerpt: string }> }): Array<Record<string, string>> {
+  return input.citations.map((item, index) => ({
+    index: String(index + 1),
+    title: item.title,
+    sectionType: item.sectionType ?? '',
+    excerpt: item.excerpt.slice(0, 800),
+  }));
+}
+
+function sanitizeProviderError(value: string): string {
+  return value.replace(/sk-[A-Za-z0-9_-]+/g, 'sk-***').replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer ***');
+}
+
+function normalizeRiskLevel(value: unknown): 'info' | 'warning' | 'risk' {
+  return value === 'info' || value === 'warning' || value === 'risk' ? value : 'warning';
+}
+
+function normalizeBreakdownOutput(value: VideoBreakdownProviderOutput, input: VideoBreakdownRequest, dimensions: string[]): Omit<VideoBreakdownResult, 'logId'> {
+  const segments = (Array.isArray(value.segments) ? value.segments : []).map((segment, index) => ({
+    timeRange: compactText(segment.timeRange, `${index * 3}s-${(index + 1) * 3}s`),
+    hook: compactText(segment.hook, 'Provider 未返回钩子说明'),
+    visual: compactText(segment.visual, 'Provider 未返回画面说明'),
+    voiceover: compactText(segment.voiceover, 'Provider 未返回口播说明'),
+    subtitle: compactText(segment.subtitle, ''),
+    rhythm: compactText(segment.rhythm, 'Provider 未返回节奏说明'),
+    reusablePoint: compactText(segment.reusablePoint, 'Provider 未返回可复用点'),
+  })).filter((segment) => segment.hook || segment.visual || segment.voiceover || segment.reusablePoint);
+  if (segments.length === 0) throw new Error('视频理解 Provider 未返回 segments，无法形成真实拆解结果。');
+
+  const reusableFormula = (Array.isArray(value.reusableFormula) ? value.reusableFormula : [])
+    .map((item) => compactText(item, ''))
+    .filter(Boolean)
+    .slice(0, 8);
+  const risks = (Array.isArray(value.risks) ? value.risks : [])
+    .map((item) => ({ level: normalizeRiskLevel(item.level), message: compactText(item.message, '需要人工复核。') }))
+    .filter((item) => item.message)
+    .slice(0, 8);
+
+  return {
+    summary: compactText(value.summary, `已通过真实视频理解 Provider 拆解 ${input.sourceType === 'file' ? '本地视频' : '视频链接'}。`),
+    dimensions: Array.isArray(value.dimensions) && value.dimensions.length ? value.dimensions.map((item) => compactText(item, '')).filter(Boolean) : dimensions,
+    segments,
+    reusableFormula: reusableFormula.length ? reusableFormula : ['基于 Provider 返回的镜头片段提炼复用结构，请人工复核后用于新产品脚本。'],
+    risks: risks.length ? risks : [{ level: 'warning', message: 'Provider 未返回风险检查，请人工复核素材授权、事实引用和合规表达。' }],
+  };
+}
+
+async function postGenericVideoUnderstanding(input: {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+  request: VideoBreakdownRequest;
+  dimensions: string[];
+}): Promise<VideoBreakdownProviderOutput> {
+  const response = await fetch(input.endpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${input.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      operation: 'analyze',
+      model: input.model,
+      source_type: input.request.sourceType,
+      source: input.request.source,
+      dimensions: input.dimensions,
+      prompt_pack_id: input.request.promptPackId,
+      selected_skill_slugs: input.request.selectedSkillSlugs,
+      citations: citationPayload(input.request),
+      requirements: [
+        '返回真实视频拆解结果，不要用模板补齐未分析到的画面。',
+        'segments 至少包含 timeRange、hook、visual、voiceover、subtitle、rhythm、reusablePoint。',
+        'risks 需要指出素材授权、事实引用、合规表达或复刻相似度风险。',
+      ],
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`视频理解 Provider 返回 ${response.status}：${sanitizeProviderError(text).slice(0, 1000)}`);
+  }
+  return text.trim() ? JSON.parse(text) as VideoBreakdownProviderOutput : {};
+}
+
+const VIDEO_SCRIPT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'script', 'storyboard', 'videoPrompt', 'publishCheck'],
+  properties: {
+    title: { type: 'string' },
+    script: { type: 'string' },
+    storyboard: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 12,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['shot', 'duration', 'visual', 'voiceover', 'subtitle', 'rhythm'],
+        properties: {
+          shot: { type: 'number' },
+          duration: { type: 'string' },
+          visual: { type: 'string' },
+          voiceover: { type: 'string' },
+          subtitle: { type: 'string' },
+          rhythm: { type: 'string' },
+        },
+      },
+    },
+    videoPrompt: { type: 'string' },
+    publishCheck: {
+      type: 'array',
+      minItems: 2,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['level', 'message'],
+        properties: {
+          level: { type: 'string', enum: ['info', 'warning', 'risk'] },
+          message: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
 export class VideoWorkflowService {
-  constructor(private readonly logs: GenerationLogStore) {}
+  constructor(
+    private readonly logs: GenerationLogStore,
+    private readonly text: TextGenerationService,
+    private readonly modelConfig?: ModelConfigStore,
+  ) {}
 
   async analyze(input: VideoBreakdownRequest): Promise<VideoBreakdownResult> {
     const startedAt = Date.now();
     const dimensions = input.dimensions.length ? input.dimensions : DEFAULT_DIMENSIONS;
-    const summary = `围绕 ${dimensions.length} 个维度拆解参考${input.sourceType === 'url' ? '链接' : '视频'}，重点提取可复刻的钩子、镜头节奏、字幕口播和转化结构。`;
-    const segments = [
-      {
-        timeRange: '00:00-00:03',
-        hook: '用一个具体痛点开场，先让用户确认“这说的是我”。',
-        visual: '产品或人物快速入画，背景信息少，主体明确。',
-        voiceover: '第一句话必须抛出问题或反常识判断。',
-        subtitle: '短句大字，保留一个关键词高亮。',
-        rhythm: '快切，1 秒内给出视觉变化。',
-        reusablePoint: '适合复用为产品痛点钩子或个人 IP 观点钩子。',
-      },
-      {
-        timeRange: '00:03-00:10',
-        hook: '解释为什么这个问题值得现在解决。',
-        visual: '展示使用前后场景、清单、桌面或真实动作。',
-        voiceover: '把卖点放进场景，不直接喊口号。',
-        subtitle: '每行不超过 14 个字，跟随口播推进。',
-        rhythm: '中速推进，留出用户理解时间。',
-        reusablePoint: '适合承接知识库里的卖点、方法论或人物可信证据。',
-      },
-      {
-        timeRange: '00:10-00:18',
-        hook: '给出明确行动和风险边界。',
-        visual: '产品 close-up、操作细节、结尾 CTA 画面。',
-        voiceover: '提醒适用前提，避免绝对承诺。',
-        subtitle: 'CTA 明确，但不要制造焦虑。',
-        rhythm: '收束节奏，最后 2 秒保留品牌或行动提示。',
-        reusablePoint: '适合转成视频生成提示词和分镜脚本。',
-      },
-    ];
-    const reusableFormula = [
-      '痛点确认 -> 场景证据 -> 卖点解释 -> 合规边界 -> 行动提示',
-      '镜头优先展示真实动作，再展示产品或人物可信依据',
-      `知识库引用：\n${citationSummary(input)}`,
-    ];
-    const risks = [
-      { level: 'warning' as const, message: '当前为结构化文本拆解，尚未做真实视频视觉识别；上线前需要接入视频理解模型或人工校验。' },
-      { level: input.citations.length ? 'info' as const : 'risk' as const, message: input.citations.length ? `已携带 ${input.citations.length} 条知识引用。` : '未携带知识引用，复刻脚本不能直接发布。' },
-    ];
-    const log = await this.logs.append({
+    const config = await this.modelConfig?.readView();
+    const apiKey = await this.modelConfig?.getVideoApiKey() || process.env.CONTENT_STUDIO_VIDEO_API_KEY || process.env.VIDEO_API_KEY;
+    const endpoint = (process.env.CONTENT_STUDIO_VIDEO_UNDERSTANDING_ENDPOINT || process.env.CONTENT_STUDIO_VIDEO_ENDPOINT || config?.videoApiEndpoint || '').trim();
+
+    if (config?.videoProvider === 'generic-http' && apiKey && endpoint) {
+      try {
+        const output = await postGenericVideoUnderstanding({
+          endpoint,
+          apiKey,
+          model: config.videoModel,
+          request: input,
+          dimensions,
+        });
+        const result = normalizeBreakdownOutput(output, input, dimensions);
+        const log = await this.logs.append({
+          workspacePath: input.workspacePath,
+          kind: 'video-breakdown',
+          status: 'succeeded',
+          title: '视频拆解结果',
+          summary: result.summary,
+          model: config.videoModel,
+          promptPackId: input.promptPackId,
+          citations: input.citations,
+          input: { ...input, dimensions },
+          output: result,
+          durationMs: Date.now() - startedAt,
+        });
+        return { logId: log.id, ...result };
+      } catch (error) {
+        const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
+        await this.logs.append({
+          workspacePath: input.workspacePath,
+          kind: 'video-breakdown',
+          status: 'failed',
+          title: '视频拆解失败',
+          summary: '真实视频理解 Provider 调用失败，未使用模板伪造拆解结果。',
+          model: config.videoModel,
+          promptPackId: input.promptPackId,
+          citations: input.citations,
+          input: { ...input, dimensions },
+          error: message,
+          durationMs: Date.now() - startedAt,
+        });
+        throw new Error(message);
+      }
+    }
+
+    const message = '真实视频理解模型未配置：当前不会用模板伪造拆解结果。请先接入支持视频帧/转写分析的 provider，或人工提供参考视频结构后再生成脚本。';
+    await this.logs.append({
       workspacePath: input.workspacePath,
       kind: 'video-breakdown',
-      status: 'succeeded',
-      title: '爆款视频拆解结果',
-      summary,
+      status: 'blocked',
+      title: '视频拆解未完成',
+      summary: message,
       model: input.params.textModel,
       promptPackId: input.promptPackId,
       citations: input.citations,
-      input,
-      output: { summary, dimensions, segments, reusableFormula, risks },
+      input: { ...input, dimensions },
+      error: 'VIDEO_UNDERSTANDING_PROVIDER_NOT_CONFIGURED',
       durationMs: Date.now() - startedAt,
     });
-    return { logId: log.id, summary, dimensions, segments, reusableFormula, risks };
+    throw new Error(message);
   }
 
   async generateScript(input: VideoScriptGenerationRequest): Promise<VideoScriptGenerationResult> {
     const startedAt = Date.now();
-    const shotCount = Math.min(Math.max(input.shotCount || 4, 3), 8);
-    const title = `${input.productName || '新产品'}复刻脚本`;
-    const storyboard: VideoStoryboardShot[] = Array.from({ length: shotCount }, (_, index) => {
-      const shot = index + 1;
-      const isFirst = shot === 1;
-      const isLast = shot === shotCount;
-      return {
-        shot,
-        duration: `${Math.max(2, Math.round(input.durationSeconds / shotCount))}s`,
-        visual: isFirst
-          ? `${input.sceneBackground || '真实使用场景'}中快速出现痛点和产品主体。`
-          : isLast
-            ? '产品细节或人物可信动作收束，画面保留 CTA 留白。'
-            : '展示使用动作、场景证据和知识库支持点。',
-        voiceover: isFirst
-          ? `如果你也在纠结${input.productName || '这个问题'}，先别急着看参数。`
-          : isLast
-            ? '先对照自己的场景判断，再决定是否进入下一步。'
-            : '把卖点放回真实场景里讲，用事实而不是夸张承诺说服用户。',
-        subtitle: input.subtitleMode === 'no-subtitle' ? '' : isFirst ? '先看场景，再看卖点' : '事实源驱动，不夸大承诺',
-        rhythm: isFirst ? '快节奏钩子' : isLast ? '放慢收束' : '中速解释',
+    const shotCount = Math.min(Math.max(input.shotCount || 4, 3), 12);
+    try {
+      const { value, model } = await this.text.generateJson<VideoScriptModelOutput>({
+        workspacePath: input.workspacePath,
+        model: input.params.textModel,
+        maxTurns: 3,
+        systemPrompt: '你是短视频脚本导演。你只能基于用户提供的产品信息、知识引用和素材说明生成新产品脚本，不要声称已经看过未解析的视频画面。',
+        schema: VIDEO_SCRIPT_SCHEMA,
+        prompt: JSON.stringify({
+          task: 'generate_video_script',
+          productName: input.productName,
+          sceneBackground: input.sceneBackground,
+          subtitleMode: input.subtitleMode,
+          voiceStyle: input.voiceStyle,
+          customRequirement: input.customRequirement ?? '',
+          ratio: input.ratio,
+          shotCount,
+          durationSeconds: input.durationSeconds,
+          breakdownLogId: input.breakdownLogId ?? '',
+          promptPackId: input.promptPackId ?? '',
+          sceneCardIds: input.sceneCardIds ?? [],
+          assetRefs: input.assetRefs,
+          selectedSkillSlugs: input.selectedSkillSlugs,
+          citations: citationPayload(input),
+          requirements: [
+            '输出可直接用于图生视频或文生视频的分镜脚本。',
+            '每个镜头都要有画面、口播、字幕和节奏。',
+            '不要编造知识库外的功效和背书。',
+            '如果没有真实视频拆解，明确按知识库和用户输入生成，不要伪装复刻原视频。',
+          ],
+        }, null, 2),
+      });
+
+      const storyboard = (Array.isArray(value.storyboard) ? value.storyboard : []).slice(0, shotCount).map((item, index) => ({
+        shot: Number(item.shot || index + 1),
+        duration: compactText(item.duration, `${Math.max(2, Math.round(input.durationSeconds / shotCount))}s`),
+        visual: compactText(item.visual, `${input.sceneBackground || '真实使用场景'}中展示产品和使用动作。`),
+        voiceover: compactText(item.voiceover, '把卖点放回真实场景里讲，用事实而不是夸张承诺说服用户。'),
+        subtitle: compactText(item.subtitle, input.subtitleMode === 'no-subtitle' ? '' : '事实源驱动，不夸大承诺'),
+        rhythm: compactText(item.rhythm, index === 0 ? '快节奏钩子' : '中速解释'),
+      }));
+      if (storyboard.length === 0) throw new Error('文字模型没有返回分镜脚本');
+      const title = compactText(value.title, `${input.productName || '新产品'}脚本`);
+      const script = compactText(value.script, storyboard.map((item) => `镜头 ${item.shot}（${item.duration}）\n画面：${item.visual}\n口播：${item.voiceover}\n字幕：${item.subtitle || '无字幕'}\n节奏：${item.rhythm}`).join('\n\n'));
+      const videoPrompt = compactText(value.videoPrompt, `比例 ${input.ratio}，总时长 ${input.durationSeconds}s，${input.voiceStyle || '自然可信'}口吻。\n${script}`);
+      const publishCheck = (Array.isArray(value.publishCheck) ? value.publishCheck : [])
+        .map((item) => ({ level: item.level ?? 'warning', message: compactText(item.message, '需要人工复核。') }))
+        .filter((item) => item.message)
+        .slice(0, 8);
+      const result: Omit<VideoScriptGenerationResult, 'logId'> = {
+        title,
+        script,
+        storyboard,
+        videoPrompt,
+        publishCheck: publishCheck.length ? publishCheck : [{ level: 'warning', message: '模型未返回发布检查，请人工复核知识引用和合规表达。' }],
       };
-    });
-    const script = storyboard.map((item) => `镜头 ${item.shot}（${item.duration}）\n画面：${item.visual}\n口播：${item.voiceover}\n字幕：${item.subtitle || '无字幕'}\n节奏：${item.rhythm}`).join('\n\n');
-    const videoPrompt = [
-      `比例 ${input.ratio}，总时长 ${input.durationSeconds}s，${input.voiceStyle || '自然可信'}口吻。`,
-      `场景：${input.sceneBackground || '真实电商内容场景'}。`,
-      `产品：${input.productName || '新产品'}。`,
-      `要求：${input.customRequirement || '画面真实，节奏清晰，遵守知识库合规边界。'}`,
-      `分镜：\n${script}`,
-      `知识引用：\n${citationSummary(input)}`,
-    ].join('\n');
-    const publishCheck = [
-      { level: input.citations.length ? 'info' as const : 'warning' as const, message: input.citations.length ? `脚本已携带 ${input.citations.length} 条知识引用。` : '脚本未绑定知识引用，发布前需要补充事实源。' },
-      { level: 'risk' as const, message: '涉及功效、收益、健康、身份背书时必须人工复核，不能直接发布。' },
-    ];
-    const log = await this.logs.append({
-      workspacePath: input.workspacePath,
-      kind: 'video-script',
-      status: 'succeeded',
-      title,
-      summary: `生成 ${shotCount} 镜头、${input.durationSeconds}s 的视频复刻脚本`,
-      model: input.params.textModel,
-      promptPackId: input.promptPackId,
-      sceneCardIds: input.sceneCardIds,
-      citations: input.citations,
-      input,
-      output: { title, script, storyboard, videoPrompt, publishCheck },
-      durationMs: Date.now() - startedAt,
-    });
-    return { logId: log.id, title, script, storyboard, videoPrompt, publishCheck };
+      const log = await this.logs.append({
+        workspacePath: input.workspacePath,
+        kind: 'video-script',
+        status: 'succeeded',
+        title,
+        summary: `Claude 生成 ${storyboard.length} 镜头、${input.durationSeconds}s 的视频脚本`,
+        model,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        output: result,
+        durationMs: Date.now() - startedAt,
+      });
+      return { logId: log.id, ...result };
+    } catch (error) {
+      const status = error instanceof TextProviderBlockedError ? 'blocked' : 'failed';
+      await this.logs.append({
+        workspacePath: input.workspacePath,
+        kind: 'video-script',
+        status,
+        title: `${input.productName || '新产品'}脚本生成未完成`,
+        summary: status === 'blocked' ? '文字模型未配置，未生成本地模板。' : '文字模型调用失败，未生成视频脚本。',
+        model: input.params.textModel,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - startedAt,
+      });
+      throw error;
+    }
   }
 }

@@ -75,7 +75,18 @@ export function useContentStudioApp() {
   const [activeModule, setActiveModule] = useState<ModuleKey>('image');
   const [settings, setSettings] = useState<AppSettingsView | null>(null);
   const [modelConfig, setModelConfig] = useState<ModelConfigView | null>(null);
-  const [modelDraft, setModelDraft] = useState<ModelDraft>({ apiEndpoint: '', apiKey: '', textModel: '', imageModels: '', videoModel: '' });
+  const [modelDraft, setModelDraft] = useState<ModelDraft>({
+    apiEndpoint: '',
+    apiKey: '',
+    imageApiEndpoint: '',
+    imageApiKey: '',
+    imageOuterModel: '',
+    textModel: '',
+    imageModels: '',
+    videoApiEndpoint: '',
+    videoApiKey: '',
+    videoModel: '',
+  });
   const [showModelDialog, setShowModelDialog] = useState(false);
   const [skills, setSkills] = useState<LoadedSkill[]>([]);
   const [skillSelection, setSkillSelection] = useState<SkillSelectionView | null>(null);
@@ -214,13 +225,18 @@ export function useContentStudioApp() {
   useEffect(() => {
     if (!modelConfig) return;
     setModelDraft({
-      apiEndpoint: modelConfig.apiEndpoint,
+      apiEndpoint: modelConfig.textApiEndpoint,
       apiKey: '',
+      imageApiEndpoint: modelConfig.imageApiEndpoint,
+      imageApiKey: '',
+      imageOuterModel: modelConfig.imageOuterModel,
       textModel: modelConfig.textModel,
       imageModels: modelConfig.imageModels.join(', '),
+      videoApiEndpoint: modelConfig.videoApiEndpoint,
+      videoApiKey: '',
       videoModel: modelConfig.videoModel,
     });
-  }, [modelConfig?.apiEndpoint, modelConfig?.textModel, modelConfig?.imageModels, modelConfig?.videoModel]);
+  }, [modelConfig?.textApiEndpoint, modelConfig?.imageApiEndpoint, modelConfig?.imageOuterModel, modelConfig?.textModel, modelConfig?.imageModels, modelConfig?.videoApiEndpoint, modelConfig?.videoModel]);
 
   useEffect(() => {
     if (!activeEditableScene) return;
@@ -285,10 +301,15 @@ export function useContentStudioApp() {
 
   function openModelDialog(): void {
     setModelDraft({
-      apiEndpoint: modelConfig?.apiEndpoint ?? '',
+      apiEndpoint: modelConfig?.textApiEndpoint ?? '',
       apiKey: '',
+      imageApiEndpoint: modelConfig?.imageApiEndpoint ?? '',
+      imageApiKey: '',
+      imageOuterModel: modelConfig?.imageOuterModel ?? 'gpt-5.5',
       textModel: modelConfig?.textModel ?? params.textModel,
       imageModels: modelConfig?.imageModels.join(', ') ?? params.imageModel,
+      videoApiEndpoint: modelConfig?.videoApiEndpoint ?? '',
+      videoApiKey: '',
       videoModel: modelConfig?.videoModel ?? params.videoModel,
     });
     setShowModelDialog(true);
@@ -304,10 +325,17 @@ export function useContentStudioApp() {
 
   async function saveModelConfig(): Promise<void> {
     const next = await window.contentStudio.saveModelConfig({
-      apiEndpoint: modelDraft.apiEndpoint,
-      apiKey: modelDraft.apiKey || undefined,
+      textApiEndpoint: modelDraft.apiEndpoint,
+      textApiKey: modelDraft.apiKey || undefined,
       textModel: modelDraft.textModel,
+      imageProvider: modelDraft.imageApiKey || modelConfig?.hasImageApiKey ? 'openai-responses' : 'disabled',
+      imageApiEndpoint: modelDraft.imageApiEndpoint,
+      imageApiKey: modelDraft.imageApiKey || undefined,
+      imageOuterModel: modelDraft.imageOuterModel,
       imageModels: modelDraft.imageModels.split(',').map((item) => item.trim()).filter(Boolean),
+      videoProvider: modelDraft.videoApiEndpoint.trim() && (modelDraft.videoApiKey.trim() || modelConfig?.hasVideoApiKey) ? 'generic-http' : 'disabled',
+      videoApiEndpoint: modelDraft.videoApiEndpoint,
+      videoApiKey: modelDraft.videoApiKey || undefined,
       videoModel: modelDraft.videoModel,
     });
     setModelConfig(next);
@@ -321,6 +349,7 @@ export function useContentStudioApp() {
       ...current,
       textModel: current.textModel || catalog.textModels[0] || params.textModel,
       imageModels: catalog.imageModels.join(', '),
+      imageOuterModel: current.imageOuterModel || 'gpt-5.5',
       videoModel: current.videoModel || catalog.videoModels[0] || params.videoModel,
     }));
   }
@@ -569,7 +598,7 @@ export function useContentStudioApp() {
   async function analyzeReferenceVideo(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
     const source = videoAssetRefs[0] || videoUrl.trim();
-    if (!source) throw new Error('请先选择参考视频或粘贴视频链接。');
+    if (!source) throw new Error('请先选择本地视频或粘贴参考视频链接；当前不会使用 demo 数据伪造拆解结果。');
     const result = await window.contentStudio.analyzeVideo({
       workspacePath: workspace,
       sourceType: videoAssetRefs[0] ? 'file' : 'url',

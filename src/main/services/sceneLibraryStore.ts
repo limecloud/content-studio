@@ -5,15 +5,11 @@ import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { GenerationLogStore } from './generationLogStore';
 import { PromptPackService } from './promptPackService';
+import { TextGenerationService, TextProviderBlockedError } from './textGenerationService';
 
-const DEFAULT_SCENES = [
-  { title: '痛点对比开场', audience: '正在比较同类产品的潜在用户', painPoint: '不知道卖点差异，害怕踩坑', usageScene: '购买前的搜索和收藏阶段' },
-  { title: '真实使用瞬间', audience: '已经有明确需求但缺少行动理由的用户', painPoint: '担心买回去用不上', usageScene: '家庭、办公室或日常随身场景' },
-  { title: '专家背书解释', audience: '重视依据和安全边界的理性用户', painPoint: '担心内容只是营销话术', usageScene: '长文、详情页或直播讲解' },
-  { title: '差评反向回应', audience: '看过差评后犹豫的用户', painPoint: '对价格、效果、使用门槛有顾虑', usageScene: '评论区答疑和短视频口播' },
-  { title: '礼赠 / 复购理由', audience: '需要送礼或复购理由的老用户', painPoint: '不知道如何判断适不适合', usageScene: '节日节点、会员复购、私域推荐' },
-  { title: '人物故事切入', audience: '被个人 IP 信任感吸引的用户', painPoint: '想知道这个人为什么可信', usageScene: '公众号开篇、访谈短视频、品牌故事页' },
-];
+interface SceneCardModelOutput {
+  cards?: Array<Partial<Omit<SceneCard, 'id' | 'workspacePath' | 'promptPackId' | 'citations' | 'createdAt' | 'updatedAt'>>>;
+}
 
 function filePathFor(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'scene-cards.json');
@@ -24,8 +20,55 @@ function pickCitation(citations: KnowledgeCitation[], index: number): KnowledgeC
   return [citations[index % citations.length], citations[(index + 1) % citations.length]].filter((item, itemIndex, arr) => arr.findIndex((other) => other.sectionId === item.sectionId && other.knowledgeBaseId === item.knowledgeBaseId) === itemIndex);
 }
 
+function compactText(value: unknown, fallback: string): string {
+  const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return normalized || fallback;
+}
+
+function citationPayload(citations: KnowledgeCitation[]): Array<Record<string, string>> {
+  return citations.map((item, index) => ({
+    index: String(index + 1),
+    title: item.title,
+    sectionType: item.sectionType,
+    excerpt: item.excerpt.slice(0, 800),
+  }));
+}
+
+const SCENE_CARD_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['cards'],
+  properties: {
+    cards: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 8,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title', 'audience', 'painPoint', 'usageScene', 'visualComposition', 'sellingPoint', 'voiceoverDirection', 'imageMaterialSuggestion', 'videoMaterialSuggestion'],
+        properties: {
+          title: { type: 'string' },
+          audience: { type: 'string' },
+          painPoint: { type: 'string' },
+          usageScene: { type: 'string' },
+          visualComposition: { type: 'string' },
+          sellingPoint: { type: 'string' },
+          voiceoverDirection: { type: 'string' },
+          imageMaterialSuggestion: { type: 'string' },
+          videoMaterialSuggestion: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
 export class SceneLibraryStore {
-  constructor(private readonly logs: GenerationLogStore, private readonly promptPacks: PromptPackService) {}
+  constructor(
+    private readonly logs: GenerationLogStore,
+    private readonly promptPacks: PromptPackService,
+    private readonly text: TextGenerationService,
+  ) {}
 
   async list(workspacePath: string): Promise<SceneCard[]> {
     const cards = await readJsonFile<SceneCard[]>(filePathFor(workspacePath), []);
@@ -47,41 +90,85 @@ export class SceneLibraryStore {
     const citations = input.citations?.length ? input.citations : promptPack.citations;
     const count = Math.min(Math.max(input.count ?? 4, 1), 8);
     const now = new Date().toISOString();
-    const cards: SceneCard[] = DEFAULT_SCENES.slice(0, count).map((preset, index) => {
-      const cardCitations = pickCitation(citations, index);
-      const sourceHint = cardCitations.map((item) => item.excerpt).join(' ');
-      return {
+
+    try {
+      const { value, model } = await this.text.generateJson<SceneCardModelOutput>({
+        workspacePath: input.workspacePath,
+        systemPrompt: '你是电商内容场景策划。你需要把品牌提示词包和知识引用转成可执行的场景卡，供文章、图片和视频共用。',
+        schema: SCENE_CARD_SCHEMA,
+        prompt: JSON.stringify({
+          task: 'generate_scene_cards',
+          count,
+          promptPack: {
+            name: promptPack.name,
+            baseType: promptPack.baseType,
+            brandVoice: promptPack.brandVoice,
+            visualStyle: promptPack.visualStyle,
+            sellingPointRules: promptPack.sellingPointRules,
+            complianceBoundaries: promptPack.complianceBoundaries,
+            imagePromptFragments: promptPack.imagePromptFragments,
+            videoPromptFragments: promptPack.videoPromptFragments,
+          },
+          citations: citationPayload(citations),
+          requirements: [
+            '每张场景卡要对应一个明确人群、痛点和使用场景。',
+            '图片素材建议必须可直接进入图片生成模型。',
+            '视频素材建议必须能转成 15-30 秒短视频分镜。',
+            '不要编造知识库外的功效和背书。',
+          ],
+        }, null, 2),
+      });
+
+      const sourceCards = (value.cards ?? []).slice(0, count);
+      if (sourceCards.length === 0) throw new Error('文字模型没有返回场景卡');
+      const cards: SceneCard[] = sourceCards.map((card, index) => ({
         id: randomUUID(),
         workspacePath: input.workspacePath,
         promptPackId: input.promptPackId,
-        title: preset.title,
-        audience: preset.audience,
-        painPoint: preset.painPoint,
-        usageScene: preset.usageScene,
-        visualComposition: `${promptPack.visualStyle} 画面重点：${sourceHint.slice(0, 80) || '产品主体、人物动作和场景证据'}。`,
-        sellingPoint: promptPack.sellingPointRules[index % promptPack.sellingPointRules.length] ?? '围绕知识库事实表达卖点。',
-        voiceoverDirection: `${promptPack.brandVoice} 口播先说人话，再补证据。`,
-        imageMaterialSuggestion: promptPack.imagePromptFragments[index % promptPack.imagePromptFragments.length] ?? '生成一张可用于电商图的场景素材。',
-        videoMaterialSuggestion: promptPack.videoPromptFragments[index % promptPack.videoPromptFragments.length] ?? '生成一段可用于图生视频的提示词。',
-        citations: cardCitations,
+        title: compactText(card.title, `场景卡 ${index + 1}`),
+        audience: compactText(card.audience, '需要更明确的目标人群'),
+        painPoint: compactText(card.painPoint, '需要更明确的用户痛点'),
+        usageScene: compactText(card.usageScene, '真实使用场景'),
+        visualComposition: compactText(card.visualComposition, promptPack.visualStyle),
+        sellingPoint: compactText(card.sellingPoint, promptPack.sellingPointRules[index % promptPack.sellingPointRules.length] ?? '围绕知识库事实表达卖点。'),
+        voiceoverDirection: compactText(card.voiceoverDirection, promptPack.brandVoice),
+        imageMaterialSuggestion: compactText(card.imageMaterialSuggestion, promptPack.imagePromptFragments[index % promptPack.imagePromptFragments.length] ?? '生成一张可用于电商图的场景素材。'),
+        videoMaterialSuggestion: compactText(card.videoMaterialSuggestion, promptPack.videoPromptFragments[index % promptPack.videoPromptFragments.length] ?? '生成一段可用于图生视频的提示词。'),
+        citations: pickCitation(citations, index),
         createdAt: now,
         updatedAt: now,
-      };
-    });
-    const existing = await this.list(input.workspacePath);
-    await writeJsonFile(filePathFor(input.workspacePath), [...cards, ...existing].slice(0, 120));
-    await this.logs.append({
-      workspacePath: input.workspacePath,
-      kind: 'scene-card',
-      status: 'succeeded',
-      title: '产品场景库',
-      summary: `基于提示词包生成 ${cards.length} 张场景卡`,
-      promptPackId: input.promptPackId,
-      citations,
-      input,
-      output: cards,
-      durationMs: Date.now() - startedAt,
-    });
-    return cards;
+      }));
+      const existing = await this.list(input.workspacePath);
+      await writeJsonFile(filePathFor(input.workspacePath), [...cards, ...existing].slice(0, 120));
+      await this.logs.append({
+        workspacePath: input.workspacePath,
+        kind: 'scene-card',
+        status: 'succeeded',
+        title: '产品场景库',
+        summary: `Claude 基于提示词包生成 ${cards.length} 张场景卡`,
+        model,
+        promptPackId: input.promptPackId,
+        citations,
+        input,
+        output: cards,
+        durationMs: Date.now() - startedAt,
+      });
+      return cards;
+    } catch (error) {
+      const status = error instanceof TextProviderBlockedError ? 'blocked' : 'failed';
+      await this.logs.append({
+        workspacePath: input.workspacePath,
+        kind: 'scene-card',
+        status,
+        title: '场景库生成未完成',
+        summary: status === 'blocked' ? '文字模型未配置，未生成本地模板。' : '文字模型调用失败，未写入场景卡。',
+        promptPackId: input.promptPackId,
+        citations,
+        input,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - startedAt,
+      });
+      throw error;
+    }
   }
 }

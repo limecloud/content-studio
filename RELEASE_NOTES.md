@@ -1,5 +1,30 @@
 # Release Notes
 
+## v0.4.0 - 2026-05-19
+
+### 版本定位
+
+本轮把 v0.3 内部预览中的本地模板 / SVG 占位路径收口为真实 Provider 调用或明确 `blocked`，对齐“不要 mock”的产品要求。
+
+### 新增 / 调整
+
+- 文本生成主链改为调用官方 `@anthropic-ai/claude-agent-sdk`：优先复用本机 Claude Code 登录，也支持在设置中保存 Claude Key / Base URL；只有 SDK 认证不可用时才 `blocked`。
+- 参考 Craft 的 SDK 运行经验，启动前修复 `~/.claude.json`，并通过单次 `env` 注入 API Key / Base URL，避免长期污染 `process.env`。
+- 图片生成改为 OpenAI Responses 兼容 `image_generation` Provider，支持保存真实 PNG；未配置图片 Key 时返回 `blocked`，不再生成 SVG 占位。
+- 视频拆解和视频生成支持 Generic HTTP Provider：配置视频端点和 Key 后，拆解会发送 `operation: "analyze"`，生成会真实提交请求并下载返回的视频 URL / base64；未配置时仍只保存 `blocked` 队列文件。
+- 视频视觉拆解在未接入真实视频理解 Provider 时返回 `blocked`，不再用固定模板伪造拆解结果。
+- 模型设置弹窗拆分文字、图片、视频 Provider 配置，Renderer 仍只读取是否已配置，不读取明文 Key。
+- 弹窗内显示生成错误，避免主界面错误提示被弹窗遮挡。
+- 新增 Playwright Electron E2E：真实启动 Electron App，验证 preload bridge、主进程状态、模块导航、Skills 详情弹窗、模型设置和主内容滚动。
+- `verify:local` 接入 Playwright E2E，并新增 GitHub Actions CI；Release 打包前会先跑完整本地验证，失败时上传 Playwright 诊断产物。
+- 修复详情弹窗层级问题，避免右侧参数栏拦截弹窗关闭按钮。
+
+### 明确不包含
+
+- 未配置 Generic HTTP 视频 Provider 时，爆款视频“真实拆解”和视频生成仍只返回 `blocked` / 队列文件，不会伪造成功。
+- `npm run smoke:electron` / `npm run test:e2e` 默认不外发模型请求；真实 Provider E2E 需要显式提供 Key 并确认外发与费用风险。
+- 新增 `npm run test:functional` / `npm run test:e2e` / `npm run verify:local`，覆盖提示词包、场景卡、文章、视频脚本、知识库导入检索、图片 Provider、视频理解 Provider、视频生成 Provider、GUI smoke 和真实 Electron E2E。
+
 ## v0.3 - 2026-05-19
 
 ### 版本定位

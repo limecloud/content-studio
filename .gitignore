@@ -8,3 +8,4 @@ release/
 .env.*
 *.log
 npm-debug.log*
+.playwright-mcp/

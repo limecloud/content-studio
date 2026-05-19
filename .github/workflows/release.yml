@@ -20,9 +20,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify:
+    name: Verify Release Candidate
+    runs-on: ubuntu-latest
+    env:
+      CI: 'true'
+      CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '1'
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Electron runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          npx playwright install-deps chromium
+
+      - name: Run release verification
+        run: xvfb-run -a npm run verify:local
+
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-playwright-diagnostics
+          if-no-files-found: ignore
+          path: |
+            .playwright-mcp/e2e-results
+            .playwright-mcp/e2e-report
+
   build:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    needs: verify
     strategy:
       fail-fast: false
       matrix:

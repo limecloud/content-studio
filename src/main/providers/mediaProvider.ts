@@ -1,24 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { extname, join } from 'node:path';
 import type { ImageGenerationRequest, MediaGenerationResult, VideoGenerationRequest } from '../../shared/types';
 import { GenerationLogStore } from '../services/generationLogStore';
 import { ModelConfigStore } from '../services/modelConfigStore';
 import { getWorkspaceAssetDir } from '../services/paths';
 
-const MAX_PLACEHOLDER_COUNT = 8;
+const MAX_REAL_IMAGE_COUNT = 4;
 
 function clampCount(count: number): number {
-  return Math.min(Math.max(Math.trunc(count) || 1, 1), MAX_PLACEHOLDER_COUNT);
+  return Math.min(Math.max(Math.trunc(count) || 1, 1), MAX_REAL_IMAGE_COUNT);
 }
 
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+function nowSlug(): string {
+  return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
 function compact(value: string, length: number): string {
@@ -26,67 +21,176 @@ function compact(value: string, length: number): string {
   return normalized.length > length ? `${normalized.slice(0, length)}...` : normalized;
 }
 
-function nowSlug(): string {
-  return new Date().toISOString().replace(/[:.]/g, '-');
+function resolveResponsesEndpoint(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  if (!trimmed) return 'https://api.openai.com/v1/responses';
+  return trimmed.endsWith('/responses') ? trimmed : `${trimmed}/responses`;
 }
 
-async function writeImagePlaceholders(input: ImageGenerationRequest, model: string): Promise<string[]> {
+function sanitizeProviderError(value: string): string {
+  return value.replace(/sk-[A-Za-z0-9_-]+/g, 'sk-***').replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer ***');
+}
+
+function imageMimeType(path: string): string | null {
+  const ext = extname(path).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  return null;
+}
+
+async function buildImageContentBlocks(input: ImageGenerationRequest): Promise<Array<Record<string, unknown>>> {
+  const blocks: Array<Record<string, unknown>> = [{ type: 'input_text', text: buildImagePrompt(input) }];
+  const refs = [...input.productImageRefs, ...input.referenceImageRefs].slice(0, 6);
+  for (const ref of refs) {
+    const mimeType = imageMimeType(ref);
+    if (!mimeType) continue;
+    try {
+      const payload = await readFile(ref);
+      blocks.push({ type: 'input_image', image_url: `data:${mimeType};base64,${payload.toString('base64')}` });
+    } catch {
+      blocks.push({ type: 'input_text', text: `本地参考图读取失败：${ref}` });
+    }
+  }
+  return blocks;
+}
+
+function buildImagePrompt(input: ImageGenerationRequest): string {
+  const citationText = input.citations.length
+    ? input.citations.map((item, index) => `${index + 1}. ${item.title}：${compact(item.excerpt, 220)}`).join('\n')
+    : '未绑定知识引用。';
+  return [
+    '你是电商内容工厂的图片生成器。请生成真实可用的中文电商图片素材，不要输出解释文字。',
+    `模板：${input.template}`,
+    `提示词模式：${input.promptMode}；生成模式：${input.generationMode}；${input.watermark ? '允许轻量水印。' : '不要添加水印。'}`,
+    `画幅：${input.params.aspectRatio}；分辨率：${input.params.resolution}；质量：${input.params.quality}。`,
+    `产品图数量：${input.productImageRefs.length}；参考图数量：${input.referenceImageRefs.length}。如果附带了图片，请保持产品主体一致，并参考风格而不是复制版式。`,
+    `核心提示词：${input.prompt || '根据知识库生成一张电商场景图，突出产品主体和真实使用场景。'}`,
+    `知识引用：\n${citationText}`,
+    '约束：中文文字必须清晰且尽量少；不要英文乱码；不要医疗化、治愈化、绝对化承诺；不要虚构品牌 Logo。',
+  ].join('\n');
+}
+
+function collectImagesFromResponseJson(payload: unknown): string[] {
+  const images: string[] = [];
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (record.type === 'image_generation_call' && typeof record.result === 'string') {
+      images.push(record.result);
+    }
+    Object.values(record).forEach(visit);
+  };
+  visit(payload);
+  return images;
+}
+
+function collectStringFields(payload: unknown, fieldNames: string[]): string[] {
+  const values: string[] = [];
+  const keys = new Set(fieldNames);
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    for (const [key, child] of Object.entries(record)) {
+      if (keys.has(key) && typeof child === 'string' && child.trim()) values.push(child.trim());
+      else visit(child);
+    }
+  };
+  visit(payload);
+  return Array.from(new Set(values));
+}
+
+function parseSseChunk(chunk: string): unknown[] {
+  return chunk
+    .split('\n\n')
+    .map((eventText) => eventText.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n'))
+    .filter((data) => data && data !== '[DONE]')
+    .map((data) => {
+      try {
+        return JSON.parse(data) as unknown;
+      } catch {
+        return null;
+      }
+    })
+    .filter((value): value is unknown => value !== null);
+}
+
+async function readImageResults(response: Response): Promise<string[]> {
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!response.body || contentType.includes('application/json')) {
+    return collectImagesFromResponseJson(await response.json());
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const images: string[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const boundary = buffer.lastIndexOf('\n\n');
+    if (boundary < 0) continue;
+    const complete = buffer.slice(0, boundary);
+    buffer = buffer.slice(boundary + 2);
+    for (const event of parseSseChunk(complete)) {
+      images.push(...collectImagesFromResponseJson(event));
+    }
+  }
+  if (buffer.trim()) {
+    for (const event of parseSseChunk(buffer)) images.push(...collectImagesFromResponseJson(event));
+  }
+  return images;
+}
+
+async function postResponsesImage(input: {
+  endpoint: string;
+  apiKey: string;
+  outerModel: string;
+  imageModel: string;
+  bodyInput: string | Array<Record<string, unknown>>;
+}): Promise<string[]> {
+  const body = {
+    model: input.outerModel,
+    input: input.bodyInput,
+    tools: [{ type: 'image_generation', model: input.imageModel }],
+    stream: true,
+  };
+  const response = await fetch(input.endpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${input.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = sanitizeProviderError(await response.text());
+    throw new Error(`图片 provider 返回 ${response.status}：${text.slice(0, 1000)}`);
+  }
+  return readImageResults(response);
+}
+
+async function writeBase64Images(input: ImageGenerationRequest, images: string[]): Promise<string[]> {
   const operationId = randomUUID().slice(0, 8);
   const outputDir = join(getWorkspaceAssetDir(input.workspacePath), 'images');
   await mkdir(outputDir, { recursive: true });
-  const count = clampCount(input.params.count);
   const paths: string[] = [];
-
-  for (let index = 0; index < count; index += 1) {
-    const filePath = join(outputDir, `${nowSlug()}-image-${operationId}-${index + 1}.svg`);
-    const title = `Content Studio 图片占位预览 ${index + 1}/${count}`;
-    const prompt = compact(input.prompt || '未填写图片提示词', 220);
-    const sceneText = input.sceneCardIds?.length ? `${input.sceneCardIds.length} 张场景卡` : '未绑定场景卡';
-    const citationText = input.citations.length ? `${input.citations.length} 条知识引用` : '未绑定知识引用';
-    const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" role="img" aria-label="${escapeXml(title)}">
-  <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0%" stop-color="#ecfeff"/>
-      <stop offset="58%" stop-color="#f8fafc"/>
-      <stop offset="100%" stop-color="#fff7ed"/>
-    </linearGradient>
-    <linearGradient id="card" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#e0f2fe"/>
-    </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#0f172a" flood-opacity="0.14"/>
-    </filter>
-  </defs>
-  <rect width="1200" height="900" rx="84" fill="url(#bg)"/>
-  <circle cx="995" cy="150" r="130" fill="#bae6fd" opacity="0.45"/>
-  <circle cx="180" cy="760" r="180" fill="#ccfbf1" opacity="0.5"/>
-  <g filter="url(#shadow)">
-    <rect x="170" y="150" width="860" height="600" rx="54" fill="url(#card)" stroke="#cbd5e1" stroke-width="2"/>
-    <rect x="240" y="230" width="320" height="260" rx="36" fill="#0f172a" opacity="0.9"/>
-    <path d="M280 430 L375 330 L455 430 Z" fill="#67e8f9" opacity="0.9"/>
-    <circle cx="470" cy="295" r="34" fill="#fbbf24"/>
-    <rect x="620" y="238" width="330" height="32" rx="16" fill="#0f766e" opacity="0.85"/>
-    <rect x="620" y="306" width="260" height="24" rx="12" fill="#38bdf8" opacity="0.75"/>
-    <rect x="620" y="352" width="300" height="24" rx="12" fill="#94a3b8" opacity="0.8"/>
-    <rect x="620" y="398" width="225" height="24" rx="12" fill="#94a3b8" opacity="0.65"/>
-    <rect x="620" y="520" width="150" height="48" rx="24" fill="#0f172a"/>
-    <rect x="792" y="520" width="150" height="48" rx="24" fill="#ccfbf1" stroke="#5eead4"/>
-  </g>
-  <text x="170" y="820" fill="#0f172a" font-size="32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-weight="700">${escapeXml(title)}</text>
-  <text x="170" y="858" fill="#475569" font-size="22" font-family="PingFang SC, Microsoft YaHei, sans-serif">真实图片 provider 未接入，已保存可追溯占位素材。</text>
-  <text x="620" y="638" fill="#334155" font-size="24" font-family="PingFang SC, Microsoft YaHei, sans-serif">模型：${escapeXml(model)}</text>
-  <text x="620" y="676" fill="#334155" font-size="24" font-family="PingFang SC, Microsoft YaHei, sans-serif">比例：${escapeXml(input.params.aspectRatio)} · 质量：${escapeXml(input.params.quality)} · ${escapeXml(sceneText)} · ${escapeXml(citationText)}</text>
-  <foreignObject x="240" y="590" width="320" height="96">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: PingFang SC, Microsoft YaHei, sans-serif; color: #334155; font-size: 20px; line-height: 1.45;">${escapeXml(prompt)}</div>
-  </foreignObject>
-</svg>
-`;
-    await writeFile(filePath, svg, 'utf-8');
+  for (const [index, image] of images.entries()) {
+    const payload = image.includes(',') ? image.slice(image.indexOf(',') + 1) : image;
+    const filePath = join(outputDir, `${nowSlug()}-image-${operationId}-${index + 1}.png`);
+    await writeFile(filePath, Buffer.from(payload, 'base64'));
     paths.push(filePath);
   }
-
   return paths;
 }
 
@@ -114,10 +218,10 @@ async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: st
   const markdown = [
     '# Content Studio 视频生成队列',
     '',
-    '> 真实视频 provider 尚未接入，本文件用于保存可追溯的视频生成请求。',
+    '> 真实视频 provider 尚未配置，本文件只保存可追溯的视频生成请求，不代表视频已生成。',
     '',
-    `- 状态：blocked`,
-    `- 原因：VIDEO_PROVIDER_NOT_CONFIGURED`,
+    '- 状态：blocked',
+    '- 原因：VIDEO_PROVIDER_NOT_CONFIGURED',
     `- 模型：${model}`,
     `- 比例：${input.params.aspectRatio}`,
     `- 时长：${input.params.durationSeconds}s`,
@@ -146,6 +250,79 @@ async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: st
   return [jsonPath, markdownPath];
 }
 
+function resolveGenericEndpoint(endpoint: string): string {
+  return endpoint.trim();
+}
+
+function videoExtension(contentType: string | null, url: string): string {
+  if (contentType?.includes('quicktime')) return '.mov';
+  if (contentType?.includes('webm')) return '.webm';
+  if (contentType?.includes('mpegurl')) return '.m3u8';
+  const match = /\.(mp4|mov|webm|m4v)(?:[?#]|$)/i.exec(url);
+  return match ? `.${match[1].toLowerCase()}` : '.mp4';
+}
+
+async function writeVideoBase64(input: VideoGenerationRequest, encoded: string, index: number): Promise<string> {
+  const outputDir = join(getWorkspaceAssetDir(input.workspacePath), 'videos');
+  await mkdir(outputDir, { recursive: true });
+  const payload = encoded.includes(',') ? encoded.slice(encoded.indexOf(',') + 1) : encoded;
+  const filePath = join(outputDir, `${nowSlug()}-video-provider-${randomUUID().slice(0, 8)}-${index + 1}.mp4`);
+  await writeFile(filePath, Buffer.from(payload, 'base64'));
+  return filePath;
+}
+
+async function downloadVideoAsset(input: VideoGenerationRequest, url: string, index: number): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`视频素材下载失败 ${response.status}：${url}`);
+  const outputDir = join(getWorkspaceAssetDir(input.workspacePath), 'videos');
+  await mkdir(outputDir, { recursive: true });
+  const filePath = join(outputDir, `${nowSlug()}-video-provider-${randomUUID().slice(0, 8)}-${index + 1}${videoExtension(response.headers.get('content-type'), url)}`);
+  await writeFile(filePath, Buffer.from(await response.arrayBuffer()));
+  return filePath;
+}
+
+async function writeProviderJobArtifact(input: VideoGenerationRequest, model: string, payload: unknown): Promise<string> {
+  const outputDir = join(getWorkspaceAssetDir(input.workspacePath), 'videos');
+  await mkdir(outputDir, { recursive: true });
+  const filePath = join(outputDir, `${nowSlug()}-video-provider-job-${randomUUID().slice(0, 8)}.json`);
+  await writeFile(filePath, `${JSON.stringify({ model, request: input, providerResponse: payload, createdAt: new Date().toISOString() }, null, 2)}\n`, 'utf-8');
+  return filePath;
+}
+
+async function postGenericVideo(input: {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+  request: VideoGenerationRequest;
+}): Promise<unknown> {
+  const response = await fetch(input.endpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${input.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: input.model,
+      prompt: input.request.prompt,
+      script: input.request.script,
+      aspect_ratio: input.request.params.aspectRatio,
+      duration_seconds: input.request.params.durationSeconds,
+      image_asset_refs: input.request.imageAssetRefs,
+      video_asset_refs: input.request.videoAssetRefs,
+      prompt_pack_id: input.request.promptPackId,
+      scene_card_ids: input.request.sceneCardIds,
+      selected_skill_slugs: input.request.selectedSkillSlugs,
+      citations: input.request.citations,
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`视频 provider 返回 ${response.status}：${sanitizeProviderError(text).slice(0, 1000)}`);
+  }
+  const payload = text.trim() ? JSON.parse(text) as unknown : {};
+  return payload;
+}
+
 export class MediaProvider {
   constructor(private readonly modelConfig: ModelConfigStore, private readonly logs: GenerationLogStore) {}
 
@@ -153,42 +330,184 @@ export class MediaProvider {
     const startedAt = Date.now();
     const config = await this.modelConfig.readView();
     const model = input.params.imageModel || config.imageModels[0];
-    const assetRefs = await writeImagePlaceholders(input, model);
-    const log = await this.logs.append({
-      workspacePath: input.workspacePath,
-      kind: 'image',
-      status: 'blocked',
-      title: '图片素材生成请求',
-      summary: '图片 provider 尚未接入真实生成，已生成本地 SVG 占位预览并记录完整请求。',
-      model,
-      promptPackId: input.promptPackId,
-      sceneCardIds: input.sceneCardIds,
-      citations: input.citations,
-      artifactRefs: assetRefs,
-      input,
-      output: { assetRefs, placeholderType: 'svg' },
-      error: 'IMAGE_PROVIDER_NOT_CONFIGURED',
-      durationMs: Date.now() - startedAt,
-    });
-    return {
-      logId: log.id,
-      status: 'blocked',
-      message: `图片 provider 尚未接入：已生成 ${assetRefs.length} 个本地占位预览，可在生成历史中打开位置。`,
-      assetRefs,
-    };
+    const apiKey = await this.modelConfig.getImageApiKey() || process.env.CONTENT_STUDIO_IMAGE_API_KEY || process.env.IMAGE_API_KEY || process.env.OPENAI_API_KEY;
+
+    const imageProviderEnabled = config.imageProvider === 'openai-responses' || Boolean(apiKey);
+    if (!imageProviderEnabled || !apiKey) {
+      const log = await this.logs.append({
+        workspacePath: input.workspacePath,
+        kind: 'image',
+        status: 'blocked',
+        title: '图片素材生成未完成',
+        summary: '图片 provider 未配置，未生成 SVG 占位或伪素材。',
+        model,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        output: { assetRefs: [] },
+        error: 'IMAGE_PROVIDER_NOT_CONFIGURED',
+        durationMs: Date.now() - startedAt,
+      });
+      return {
+        logId: log.id,
+        status: 'blocked',
+        message: '图片 provider 未配置：请在设置中配置 OpenAI Responses 兼容图片端点和图片 API Key。未生成占位素材。',
+        assetRefs: [],
+      };
+    }
+
+    try {
+      const endpoint = resolveResponsesEndpoint(process.env.CONTENT_STUDIO_IMAGE_BASE_URL || config.imageApiEndpoint);
+      const count = clampCount(input.params.count);
+      const assetRefs: string[] = [];
+      const contentBlocks = await buildImageContentBlocks(input);
+      for (let index = 0; index < count; index += 1) {
+        const bodyInput = contentBlocks.length > 1
+          ? [{ role: 'user', content: contentBlocks }]
+          : index === 0
+            ? buildImagePrompt(input)
+            : `${buildImagePrompt(input)}\n生成第 ${index + 1} 张变体，保持同一产品与风格但改变构图。`;
+        let images: string[];
+        try {
+          images = await postResponsesImage({ endpoint, apiKey, outerModel: config.imageOuterModel, imageModel: model, bodyInput });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (typeof bodyInput === 'string' && /input must be a list/i.test(message)) {
+            images = await postResponsesImage({ endpoint, apiKey, outerModel: config.imageOuterModel, imageModel: model, bodyInput: [{ role: 'user', content: [{ type: 'input_text', text: bodyInput }] }] });
+          } else {
+            throw error;
+          }
+        }
+        assetRefs.push(...await writeBase64Images(input, images));
+      }
+      if (assetRefs.length === 0) throw new Error('图片 provider 未返回 image_generation_call.result。');
+
+      const log = await this.logs.append({
+        workspacePath: input.workspacePath,
+        kind: 'image',
+        status: 'succeeded',
+        title: '图片素材生成结果',
+        summary: `真实图片 provider 生成 ${assetRefs.length} 张 PNG 素材。`,
+        model,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        artifactRefs: assetRefs,
+        input,
+        output: { assetRefs, provider: config.imageProvider, endpoint: 'responses' },
+        durationMs: Date.now() - startedAt,
+      });
+      return {
+        logId: log.id,
+        status: 'succeeded',
+        message: `已通过真实图片 provider 生成 ${assetRefs.length} 张 PNG 素材。`,
+        assetRefs,
+      };
+    } catch (error) {
+      const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
+      const log = await this.logs.append({
+        workspacePath: input.workspacePath,
+        kind: 'image',
+        status: 'failed',
+        title: '图片素材生成失败',
+        summary: '真实图片 provider 调用失败，未生成占位素材。',
+        model,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        output: { assetRefs: [] },
+        error: message,
+        durationMs: Date.now() - startedAt,
+      });
+      return { logId: log.id, status: 'failed', message, assetRefs: [] };
+    }
   }
 
   async generateVideo(input: VideoGenerationRequest): Promise<MediaGenerationResult> {
     const startedAt = Date.now();
     const config = await this.modelConfig.readView();
     const model = input.params.videoModel || config.videoModel;
+    const apiKey = await this.modelConfig.getVideoApiKey() || process.env.CONTENT_STUDIO_VIDEO_API_KEY || process.env.VIDEO_API_KEY;
+    const endpoint = resolveGenericEndpoint(process.env.CONTENT_STUDIO_VIDEO_ENDPOINT || config.videoApiEndpoint);
+
+    if (config.videoProvider === 'generic-http' && apiKey && endpoint) {
+      try {
+        const providerResponse = await postGenericVideo({ endpoint, apiKey, model, request: input });
+        const urls = collectStringFields(providerResponse, ['url', 'video_url', 'videoUrl', 'download_url', 'downloadUrl']);
+        const base64Videos = collectStringFields(providerResponse, ['b64_json', 'base64', 'video_base64', 'videoBase64']);
+        const assetRefs: string[] = [];
+        for (const [index, encoded] of base64Videos.entries()) {
+          assetRefs.push(await writeVideoBase64(input, encoded, index));
+        }
+        for (const [index, url] of urls.entries()) {
+          if (/^https?:\/\//i.test(url)) assetRefs.push(await downloadVideoAsset(input, url, index));
+        }
+        if (assetRefs.length > 0) {
+          const log = await this.logs.append({
+            workspacePath: input.workspacePath,
+            kind: 'video',
+            status: 'succeeded',
+            title: '视频生成结果',
+            summary: `真实视频 provider 返回 ${assetRefs.length} 个视频素材。`,
+            model,
+            promptPackId: input.promptPackId,
+            sceneCardIds: input.sceneCardIds,
+            citations: input.citations,
+            artifactRefs: assetRefs,
+            input,
+            output: { assetRefs, provider: config.videoProvider },
+            durationMs: Date.now() - startedAt,
+          });
+          return { logId: log.id, status: 'succeeded', message: `已通过真实视频 provider 生成 ${assetRefs.length} 个视频素材。`, assetRefs };
+        }
+
+        const jobArtifact = await writeProviderJobArtifact(input, model, providerResponse);
+        const log = await this.logs.append({
+          workspacePath: input.workspacePath,
+          kind: 'video',
+          status: 'queued',
+          title: '视频 Provider 已提交',
+          summary: '真实视频 provider 已接收请求，当前响应未直接返回可下载视频，已保存任务响应。',
+          model,
+          promptPackId: input.promptPackId,
+          sceneCardIds: input.sceneCardIds,
+          citations: input.citations,
+          artifactRefs: [jobArtifact],
+          input,
+          output: { assetRefs: [jobArtifact], provider: config.videoProvider, providerResponse },
+          durationMs: Date.now() - startedAt,
+        });
+        return { logId: log.id, status: 'queued', message: '已提交真实视频 provider；未直接返回视频文件，已保存 provider 任务响应。', assetRefs: [jobArtifact] };
+      } catch (error) {
+        const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
+        const log = await this.logs.append({
+          workspacePath: input.workspacePath,
+          kind: 'video',
+          status: 'failed',
+          title: '视频生成失败',
+          summary: '真实视频 provider 调用失败，未伪造视频素材。',
+          model,
+          promptPackId: input.promptPackId,
+          sceneCardIds: input.sceneCardIds,
+          citations: input.citations,
+          input,
+          output: { assetRefs: [] },
+          error: message,
+          durationMs: Date.now() - startedAt,
+        });
+        return { logId: log.id, status: 'failed', message, assetRefs: [] };
+      }
+    }
+
     const assetRefs = await writeVideoQueueArtifacts(input, model);
     const log = await this.logs.append({
       workspacePath: input.workspacePath,
       kind: 'video',
       status: 'blocked',
       title: '视频生成队列请求',
-      summary: '视频 provider 尚未接入真实生成，已生成本地 JSON / Markdown 队列文件。',
+      summary: '真实视频 provider 未配置，只生成可追溯队列文件，不伪造视频素材。',
       model,
       promptPackId: input.promptPackId,
       sceneCardIds: input.sceneCardIds,
@@ -202,7 +521,7 @@ export class MediaProvider {
     return {
       logId: log.id,
       status: 'blocked',
-      message: '视频 provider 尚未接入：已生成本地队列文件，避免伪造成功素材。',
+      message: '视频 provider 未配置：已保存可追溯队列文件，未伪造视频生成成功。',
       assetRefs,
     };
   }

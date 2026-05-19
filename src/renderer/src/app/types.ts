@@ -7,8 +7,13 @@ export type NavItem = { key?: ModuleKey; label: string; badge?: string; disabled
 export type ModelDraft = {
   apiEndpoint: string;
   apiKey: string;
+  imageApiEndpoint: string;
+  imageApiKey: string;
+  imageOuterModel: string;
   textModel: string;
   imageModels: string;
+  videoApiEndpoint: string;
+  videoApiKey: string;
   videoModel: string;
 };
 

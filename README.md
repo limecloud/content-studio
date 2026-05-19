@@ -25,25 +25,26 @@ v0.1.0 的产品主线不是通用聊天 Agent，而是面向电商和个人 IP 
 - **Skills**：支持内置、workspace `.claude/skills`、兼容 `.agents/skills`、用户级 Skills。
 - **知识库**：v1 只消费已经成型的产品型知识库和个人 IP 型知识库。
 - **本地事实源**：workspace 下的 `.content-studio` 保存知识库索引、提示词包、场景卡、生成日志和 Skill 启用状态。
-- **安全边界**：API Key 只在 Electron main process 保存，Renderer 不读取明文 Key、不直接执行文件或命令。
+- **安全边界**：API Key 只在 Electron main process 保存，Renderer 不读取明文 Key、不直接执行文件或命令；未配置真实 Provider 时返回 `blocked`，不再用 mock/占位产物伪装成功。
 
 ## v0.1.0 已包含
 
 - 深色三栏桌面工作台：左侧能力导航、中间内容生产区、右侧全局参数舱。
-- 模型配置：统一 API endpoint、API Key、文字模型、图片模型、视频模型。
+- 模型配置：文字 Claude SDK、图片 Responses、视频 Generic HTTP Provider 分开配置。
 - Skills 管理：扫描、安装内置 Skill、启用 / 停用、无效 Skill 错误展示。
 - 已成型知识库：内置脱敏样例、workspace 安装、DOCX / Markdown / TXT / JSON 导入、关键词检索和引用选择。
 - 提示词包：从知识引用生成品牌口吻、视觉风格、卖点规则、合规边界和平台约束。
 - 产品场景库：生成目标人群、痛点、使用场景、画面构图、口播方向和素材建议。
 - 文章生成：生成标题候选、大纲、Markdown 草稿和发布检查。
-- 图片 / 视频生成请求：真实媒体 provider 未接入时返回 `blocked`，同时记录完整请求日志。
+- 图片生成：支持 OpenAI Responses 兼容 `image_generation` Provider；未配置图片 Key 时返回 `blocked`，不生成 SVG 占位。
+- 视频拆解 / 生成请求：支持 Generic HTTP 视频理解 / 生成 Provider；未配置时返回 `blocked`，只保存可追溯队列文件。
 - 生成历史：记录提示词包、场景卡、文章、图片请求和视频队列请求。
 
 ## v0.1.0 不包含
 
 - 不做竞品抓取、用户差评采集、店铺诊断和策略报告生成。
 - 不做 AI 自动搭建知识库；只接入用户已有的成型知识库。
-- 不接入真实图片 / 视频模型网关；图片和视频结果不会伪造成功素材。
+- 不内置真实视频模型网关；视频结果不会伪造成功素材。
 - 不做云端协作、团队权限、计费、多租户、复杂向量 RAG。
 - 不 fork Craft，不迁移 Craft 的远程 server、MCP、多会话 inbox 或通用聊天复杂度。
 
@@ -56,7 +57,7 @@ npm run dev
 
 首次运行后：
 
-1. 打开「模型配置」，填写 endpoint、API Key 和模型名。
+1. 打开「模型配置」：文字可复用本机 Claude Code 登录，也可填写 Claude 端点 / Key；如需生成图片或视频，再填写 Responses 图片端点 / Key、Generic HTTP 视频端点 / Key。视频端点会收到 `operation: "analyze"` 或生成请求 payload。
 2. 选择一个 Workspace。
 3. 在「知识库」中安装内置样例或导入 DOCX / Markdown / TXT / JSON 成型知识库。
 4. 检索并选择知识引用。
@@ -110,6 +111,9 @@ docs/roadmap/v1/          v1 PRD、UI 蓝图、架构图和实施计划
 ```bash
 npm run typecheck
 npm run build
+npm run test:functional
+npm run smoke:electron
+npm run verify:local
 ```
 
 ## GitHub Actions 发布

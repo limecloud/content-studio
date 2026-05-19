@@ -24,12 +24,17 @@ export function App() {
           busy={app.busy}
           currentActionLabel={app.currentActionLabel}
           workspaceReady={Boolean(app.workspacePath)}
-          onGeneratePromptPack={() => app.runAction(app.generatePromptPack)}
+          onGeneratePromptPack={() => {
+            app.setActiveModule('knowledge');
+            app.runAction(app.generatePromptPack);
+          }}
           onCancelAction={app.cancelCurrentAction}
         />
 
         {app.error ? <div className="error-banner">{app.error}</div> : null}
-        <ModuleOutlet app={app} />
+        <div className="stage-module-surface">
+          <ModuleOutlet app={app} />
+        </div>
       </section>
 
       <ParamsPanel

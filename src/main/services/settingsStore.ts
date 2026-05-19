@@ -12,6 +12,7 @@ interface StoredSettings {
 
 export class SettingsStore {
   private readonly filePath = join(app.getPath('userData'), 'settings.json');
+  private readonly defaultWorkspacePath = join(app.getPath('userData'), 'workspace');
 
   async readView(): Promise<AppSettingsView> {
     const settings = await this.readRaw();
@@ -30,6 +31,9 @@ export class SettingsStore {
     const settings = await this.readRaw();
     if (input.workspacePath !== undefined) {
       settings.workspacePath = input.workspacePath || undefined;
+      if (settings.workspacePath) {
+        await mkdir(settings.workspacePath, { recursive: true });
+      }
     }
     if (input.clearAnthropicApiKey) {
       delete settings.anthropicApiKeyEncrypted;
@@ -48,6 +52,18 @@ export class SettingsStore {
       }
     }
     await this.writeRaw(settings);
+    return this.readView();
+  }
+
+  async ensureDefaultWorkspace(): Promise<AppSettingsView> {
+    const settings = await this.readRaw();
+    if (!settings.workspacePath) {
+      await mkdir(this.defaultWorkspacePath, { recursive: true });
+      settings.workspacePath = this.defaultWorkspacePath;
+      await this.writeRaw(settings);
+    } else {
+      await mkdir(settings.workspacePath, { recursive: true });
+    }
     return this.readView();
   }
 

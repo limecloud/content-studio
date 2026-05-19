@@ -95,9 +95,10 @@ export function VideoModule({
         </div>
         <div className="header-actions inline-actions">
           <button className="ghost small" onClick={onSelectVideo}>选择本地视频 · {videoAssetRefs.length}</button>
-          <button className="primary small" disabled={busy || !workspaceReady} onClick={onAnalyzeReferenceVideo}>开始拆解</button>
+          <button className="primary small" disabled={busy || !workspaceReady} onClick={onAnalyzeReferenceVideo}>真实拆解</button>
           <button className="primary small" disabled={busy || !workspaceReady} onClick={onGenerateVideoScript}>生成脚本</button>
         </div>
+        <p className="helper-text">真实拆解需要视频理解 Provider；视频生成可走 Generic HTTP Provider，未配置时只保存 blocked 队列文件。</p>
         <div className="chip-row dimension-row">
           {VIDEO_DIMENSIONS.map((dimension) => (
             <button key={dimension} className={`chip-button ${selectedVideoDimensions.includes(dimension) ? 'active' : ''}`} onClick={() => toggleVideoDimension(dimension)}>

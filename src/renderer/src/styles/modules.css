@@ -213,6 +213,12 @@
   font-size: 13px;
   font-weight: 500;
 }
+.helper-text {
+  margin: -4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
 .selected-citations { display: flex; flex-wrap: wrap; gap: 8px; }
 .selected-citations span {
   border-radius: 999px;

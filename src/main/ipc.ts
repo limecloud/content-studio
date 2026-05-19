@@ -32,6 +32,7 @@ import { SceneLibraryStore } from './services/sceneLibraryStore';
 import { SettingsStore } from './services/settingsStore';
 import { SkillManager } from './services/skillManager';
 import { SkillSelectionStore } from './services/skillSelectionStore';
+import { TextGenerationService } from './services/textGenerationService';
 import { VideoWorkflowService } from './services/videoWorkflowService';
 
 export function registerIpc(mainWindow: BrowserWindow): void {
@@ -41,18 +42,19 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const skillSelection = new SkillSelectionStore();
   const knowledgeBases = new KnowledgeBaseStore();
   const logs = new GenerationLogStore();
-  const promptPacks = new PromptPackService(logs);
-  const sceneCards = new SceneLibraryStore(logs, promptPacks);
-  const articles = new ArticleGenerationService(logs);
-  const videoWorkflow = new VideoWorkflowService(logs);
+  const textGeneration = new TextGenerationService(modelConfig);
+  const promptPacks = new PromptPackService(logs, textGeneration);
+  const sceneCards = new SceneLibraryStore(logs, promptPacks, textGeneration);
+  const articles = new ArticleGenerationService(logs, textGeneration);
+  const videoWorkflow = new VideoWorkflowService(logs, textGeneration, modelConfig);
   const media = new MediaProvider(modelConfig, logs);
-  const agent = new ClaudeAgentService(settings);
+  const agent = new ClaudeAgentService(settings, modelConfig);
 
   const publish = (event: AgentEvent) => {
     mainWindow.webContents.send(`agent:event:${event.taskId}`, event);
   };
 
-  ipcMain.handle('settings:get', () => settings.readView());
+  ipcMain.handle('settings:get', () => settings.ensureDefaultWorkspace());
   ipcMain.handle('settings:save', (_event, input: SaveSettingsInput) => settings.save(input));
   ipcMain.handle('workspace:select', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {

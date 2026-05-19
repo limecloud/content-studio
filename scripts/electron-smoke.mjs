@@ -121,6 +121,7 @@ const child = spawn(electronPath, [projectRoot, `--remote-debugging-port=${remot
     ...process.env,
     ELECTRON_ENABLE_LOGGING: '1',
     CONTENT_STUDIO_SMOKE: '1',
+    CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '1',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -149,6 +150,7 @@ try {
       hasImageEngine: document.body.innerText.includes('图片引擎'),
       hasKnowledgeEntry: document.body.innerText.includes('成型知识库'),
       hasSkillsEntry: document.body.innerText.includes('Skills 管理'),
+      hasRedundantWorkbenchHint: document.body.innerText.includes('列表页留在主工作台') || document.body.innerText.includes('Main Workbench'),
       bridgeMethodCount: apiKeys.length,
       skillsCount: skills.length,
       builtinSkillsCount: skills.filter((skill) => skill.source === 'builtin').length,
@@ -166,7 +168,6 @@ try {
   })()`, true);
   const coreFlowState = await evaluate(cdp, `(async () => {
     const workspacePath = ${JSON.stringify(workspaceDir)};
-    await window.contentStudio.saveSettings({ workspacePath });
     await window.contentStudio.installBuiltinKnowledgeBase('product-demo', workspacePath);
     const knowledgeBases = await window.contentStudio.listKnowledgeBases(workspacePath);
     const searchResults = await window.contentStudio.searchKnowledge({ workspacePath, query: '卖点 场景', baseType: 'product-kb', sectionType: 'all' });
@@ -177,35 +178,23 @@ try {
       sectionType: result.section.sectionType,
       excerpt: (result.section.content || result.section.summary || result.section.title).slice(0, 220),
     }));
-    const promptPack = await window.contentStudio.generatePromptPack({ workspacePath, citations, name: 'Smoke 提示词包' });
-    const sceneCards = await window.contentStudio.generateSceneCards({ workspacePath, promptPackId: promptPack.id, citations, count: 3 });
-    const article = await window.contentStudio.generateArticle({
-      workspacePath,
-      articleType: 'wechat-longform',
-      platform: '公众号',
-      audience: '内部 smoke 测试用户',
-      topic: '内容工厂 GUI smoke',
-      tone: '专业、克制',
-      length: 'short',
-      customRequirement: '验证主链可运行。',
-      citations,
-      promptPackId: promptPack.id,
-      sceneCardIds: sceneCards.map((card) => card.id),
-      assetRefs: [],
-      selectedSkillSlugs: [],
-      params: { textModel: 'claude-sonnet-4-5' },
-    });
+    let promptPackError = '';
+    try {
+      await window.contentStudio.generatePromptPack({ workspacePath, citations, name: 'Smoke 提示词包' });
+    } catch (error) {
+      promptPackError = error instanceof Error ? error.message : String(error);
+    }
     const image = await window.contentStudio.generateImage({
       workspacePath,
       productImageRefs: [],
       referenceImageRefs: [],
-      prompt: sceneCards[0]?.imageMaterialSuggestion || '生成一张 smoke 场景图',
+      prompt: '生成一张 smoke 场景图',
       promptMode: 'preset',
       generationMode: 'smart',
       template: '场景图',
       watermark: false,
-      promptPackId: promptPack.id,
-      sceneCardIds: sceneCards.map((card) => card.id),
+      promptPackId: undefined,
+      sceneCardIds: [],
       citations,
       selectedSkillSlugs: [],
       params: {
@@ -219,42 +208,29 @@ try {
         quality: 'medium',
       },
     });
-    const breakdown = await window.contentStudio.analyzeVideo({
-      workspacePath,
-      sourceType: 'url',
-      source: 'https://example.com/smoke-video.mp4',
-      dimensions: ['开头钩子', '字幕口播'],
-      promptPackId: promptPack.id,
-      citations,
-      selectedSkillSlugs: [],
-      params: { textModel: 'claude-sonnet-4-5' },
-    });
-    const videoScript = await window.contentStudio.generateVideoScript({
-      workspacePath,
-      productName: 'Smoke 产品',
-      sceneBackground: '内部测试场景',
-      subtitleMode: 'burned-subtitle',
-      voiceStyle: '自然可信',
-      customRequirement: '验证视频脚本主链。',
-      ratio: '4:5',
-      shotCount: 3,
-      durationSeconds: 12,
-      breakdownLogId: breakdown.logId,
-      promptPackId: promptPack.id,
-      sceneCardIds: sceneCards.map((card) => card.id),
-      citations,
-      assetRefs: image.assetRefs,
-      selectedSkillSlugs: [],
-      params: { textModel: 'claude-sonnet-4-5' },
-    });
+    let breakdownError = '';
+    try {
+      await window.contentStudio.analyzeVideo({
+        workspacePath,
+        sourceType: 'url',
+        source: 'https://example.com/smoke-video.mp4',
+        dimensions: ['开头钩子', '字幕口播'],
+        promptPackId: undefined,
+        citations,
+        selectedSkillSlugs: [],
+        params: { textModel: 'claude-sonnet-4-5' },
+      });
+    } catch (error) {
+      breakdownError = error instanceof Error ? error.message : String(error);
+    }
     const video = await window.contentStudio.generateVideo({
       workspacePath,
-      imageAssetRefs: image.assetRefs,
+      imageAssetRefs: [],
       videoAssetRefs: [],
-      prompt: videoScript.videoPrompt,
-      script: videoScript.script,
-      promptPackId: promptPack.id,
-      sceneCardIds: sceneCards.map((card) => card.id),
+      prompt: 'Smoke 视频队列提示词',
+      script: 'Smoke 脚本',
+      promptPackId: undefined,
+      sceneCardIds: [],
       citations,
       selectedSkillSlugs: [],
       params: { videoModel: 'veo-3.1', aspectRatio: '4:5', durationSeconds: 12 },
@@ -265,13 +241,10 @@ try {
       knowledgeBaseCount: knowledgeBases.length,
       searchResultCount: searchResults.length,
       citationCount: citations.length,
-      promptPackId: promptPack.id,
-      sceneCardCount: sceneCards.length,
-      articleLogId: article.logId,
+      promptPackBlocked: promptPackError.includes('文字模型未配置'),
       imageStatus: image.status,
       imageAssetCount: image.assetRefs.length,
-      breakdownSegments: breakdown.segments.length,
-      videoScriptShots: videoScript.storyboard.length,
+      breakdownBlocked: breakdownError.includes('视频理解模型未配置') || breakdownError.includes('真实视频理解模型未配置'),
       videoStatus: video.status,
       videoAssetCount: video.assetRefs.length,
       logCount: logs.length,
@@ -282,7 +255,11 @@ try {
   const clickFlowState = await evaluate(cdp, `(async () => {
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const clickButton = async (label) => {
-      const button = Array.from(document.querySelectorAll('button')).find((item) => item.innerText.includes(label));
+      const scopes = [document.querySelector('.settings-modal'), document.querySelector('.detail-dialog-card'), document].filter(Boolean);
+      const button = scopes.flatMap((scope) => Array.from(scope.querySelectorAll('button'))).find((item) => {
+        const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
+        return accessibleText.includes(label) && !item.disabled;
+      });
       if (!button) return false;
       button.click();
       await wait(80);
@@ -293,16 +270,112 @@ try {
     checks.push({ action: 'click article nav', clicked: await clickButton('文章生成'), hasText: document.body.innerText.includes('文章生成') && document.body.innerText.includes('正文 / 发布检查') });
     checks.push({ action: 'click knowledge nav', clicked: await clickButton('成型知识库'), hasText: document.body.innerText.includes('引用检索') && document.body.innerText.includes('提示词包 / 场景库') });
     checks.push({ action: 'click assets nav', clicked: await clickButton('素材库 / 历史'), hasText: document.body.innerText.includes('生成历史 / 素材库') });
-    checks.push({ action: 'click skills nav', clicked: await clickButton('Skills 管理'), hasText: document.body.innerText.includes('高级能力库') && document.body.innerText.includes('能力详情') });
+    checks.push({ action: 'click skills nav', clicked: await clickButton('Skills 管理'), hasText: document.body.innerText.includes('高级能力库') && document.body.innerText.includes('已启用') });
+    const skillDetailClicked = await clickButton('详情');
+    const detailBackdrop = document.querySelector('.detail-dialog-backdrop');
+    const detailCard = document.querySelector('.detail-dialog-card');
+    checks.push({
+      action: 'open skill detail dialog',
+      clicked: skillDetailClicked,
+      hasText: Boolean(detailBackdrop && detailCard) && document.body.innerText.toLowerCase().includes('skill detail') && window.getComputedStyle(detailBackdrop).position === 'fixed',
+    });
+    checks.push({ action: 'close skill detail dialog', clicked: await clickButton('关闭'), hasText: !document.querySelector('.detail-dialog-card') });
     checks.push({ action: 'open settings', clicked: await clickButton('设置'), hasText: document.body.innerText.includes('设置') && document.body.innerText.includes('通用') });
-    checks.push({ action: 'click model settings', clicked: await clickButton('模型'), hasText: document.body.innerText.includes('统一模型配置') && document.body.innerText.includes('API 端点') });
-    checks.push({ action: 'close settings', clicked: await clickButton('完成'), hasText: !document.body.innerText.includes('API 端点') });
+    checks.push({ action: 'click model settings', clicked: await clickButton('模型'), hasText: document.body.innerText.includes('Provider 连接配置') && document.body.innerText.includes('文字端点') });
+    checks.push({ action: 'close settings', clicked: await clickButton('完成'), hasText: !document.body.innerText.includes('文字端点') });
     return {
       checks,
       failed: checks.filter((check) => !check.clicked || !check.hasText),
       finalText: document.body.innerText.slice(0, 1000),
     };
   })()`, true);
+  const uiWorkflowState = await evaluate(cdp, `(async () => {
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const bodyText = () => document.body.innerText;
+    const waitFor = async (label, predicate, timeoutMs = 8000) => {
+      const started = Date.now();
+      let lastText = '';
+      while (Date.now() - started < timeoutMs) {
+        lastText = bodyText();
+        if (predicate()) return true;
+        await wait(120);
+      }
+      throw new Error('UI workflow timeout: ' + label + '\\n' + lastText.slice(0, 1200));
+    };
+    const clickButton = async (label) => {
+      const findButton = () => {
+        const scopes = [document.querySelector('.settings-modal'), document.querySelector('.detail-dialog-card'), document].filter(Boolean);
+        return scopes.flatMap((scope) => Array.from(scope.querySelectorAll('button'))).find((item) => {
+          const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
+          return accessibleText.includes(label) && !item.disabled;
+        });
+      };
+      await waitFor('button ' + label, () => Boolean(findButton()), 6000);
+      const button = findButton();
+      if (!button) throw new Error('按钮不可点击：' + label);
+      button.click();
+      await wait(120);
+    };
+    const checks = [];
+
+    await waitFor('default workspace ready', () => !bodyText().includes('尚未选择工作区') && !bodyText().includes('请先选择 Workspace'));
+    checks.push({ step: 'default workspace ready', ok: true });
+
+    await clickButton('生成提示词包');
+    await waitFor('prompt pack blocked', () => bodyText().includes('文字模型未配置'));
+    checks.push({ step: 'prompt pack blocked without provider', ok: true });
+
+    await clickButton('文章生成');
+    await clickButton('生成大纲 / 正文 / 发布检查');
+    await waitFor('article blocked', () => bodyText().includes('文字模型未配置'));
+    checks.push({ step: 'article blocked without provider', ok: true });
+
+    await clickButton('图片引擎');
+    await clickButton('启动渲染引擎');
+    await waitFor('image blocked', () => bodyText().includes('图片 provider 未配置') && bodyText().includes('未生成占位素材'));
+    checks.push({ step: 'image blocked without provider', ok: true });
+
+    await clickButton('视频引擎');
+    await clickButton('真实拆解');
+    await waitFor('video breakdown blocked', () => bodyText().includes('请先选择本地视频') || bodyText().includes('真实视频理解模型未配置'));
+    checks.push({ step: 'video breakdown blocked without provider', ok: true });
+    await clickButton('生成脚本');
+    await waitFor('video script blocked', () => bodyText().includes('文字模型未配置'));
+    checks.push({ step: 'video script blocked without provider', ok: true });
+    await clickButton('生成视频队列');
+    await waitFor('video queue blocked', () => bodyText().includes('视频 provider 未配置') && bodyText().includes('队列产物'));
+    checks.push({ step: 'video queue blocked', ok: true });
+
+    await clickButton('素材库 / 历史');
+    await waitFor('history hydrated', () => bodyText().includes('生成历史 / 素材库') && bodyText().includes('图片素材生成未完成') && bodyText().includes('视频生成队列请求'));
+    checks.push({ step: 'history hydrated', ok: true });
+
+    await clickButton('Skills 管理');
+    await waitFor('skills usable', () => bodyText().includes('高级能力库') && bodyText().includes('已启用') && !bodyText().includes('选择 workspace 后可启用'));
+    checks.push({ step: 'skills usable', ok: true });
+
+    return {
+      checks,
+      workspaceLabel: Array.from(document.querySelectorAll('.workspace-card strong')).map((item) => item.innerText).join(' '),
+      finalText: bodyText().slice(0, 1400),
+    };
+  })()`, true);
+  const scrollState = await evaluate(cdp, `(() => {
+    const stage = document.querySelector('.stage');
+    const params = document.querySelector('.params-panel');
+    if (!stage || !params) return { ok: false, reason: 'missing stage or params scroll container' };
+    stage.scrollTop = 0;
+    params.scrollTop = 0;
+    const stageScrollable = stage.scrollHeight > stage.clientHeight;
+    const paramsScrollable = params.scrollHeight > params.clientHeight;
+    stage.scrollTop = stage.scrollHeight;
+    params.scrollTop = params.scrollHeight;
+    return {
+      ok: stageScrollable && stage.scrollTop > 0 && (!paramsScrollable || params.scrollTop > 0),
+      stage: { scrollHeight: stage.scrollHeight, clientHeight: stage.clientHeight, scrollTop: stage.scrollTop },
+      params: { scrollHeight: params.scrollHeight, clientHeight: params.clientHeight, scrollTop: params.scrollTop },
+    };
+  })()`);
 
   const failedChecks = [
     ['preload bridge', bridgeState.hasBridge],
@@ -310,15 +383,19 @@ try {
     ['image engine text', bridgeState.hasImageEngine],
     ['knowledge entry text', bridgeState.hasKnowledgeEntry],
     ['skills entry text', bridgeState.hasSkillsEntry],
+    ['redundant workbench hint removed', !bridgeState.hasRedundantWorkbenchHint],
     ['builtin skills >= 4', bridgeState.builtinSkillsCount >= 4],
     ['bridge methods >= 20', bridgeState.bridgeMethodCount >= 20],
     ['core flow citations >= 1', coreFlowState.citationCount >= 1],
-    ['core flow scene cards >= 3', coreFlowState.sceneCardCount >= 3],
-    ['core flow image asset', coreFlowState.imageAssetCount >= 1],
+    ['core flow prompt pack blocked', coreFlowState.promptPackBlocked],
+    ['core flow image blocked without asset', coreFlowState.imageStatus === 'blocked' && coreFlowState.imageAssetCount === 0],
+    ['core flow video breakdown blocked', coreFlowState.breakdownBlocked],
     ['core flow video assets', coreFlowState.videoAssetCount >= 2],
-    ['core flow logs >= 7', coreFlowState.logCount >= 7],
-    ['core flow duration logs >= 7', coreFlowState.logsWithDuration >= 7],
+    ['core flow logs >= 4', coreFlowState.logCount >= 4],
+    ['core flow duration logs >= 4', coreFlowState.logsWithDuration >= 4],
     ['click flow all checks', clickFlowState.failed.length === 0],
+    ['ui workflow all checks', uiWorkflowState.checks.length >= 8],
+    ['stage and params scrollable', scrollState.ok],
   ].filter(([, ok]) => !ok).map(([name]) => name);
 
   if (cdp.exceptions.length) {
@@ -328,7 +405,7 @@ try {
     throw new Error(`GUI smoke 检查失败：${failedChecks.join(', ')}`);
   }
 
-  console.log(JSON.stringify({ ok: true, target: { title: target.title, url: target.url }, rendererState, bridgeState, coreFlowState, clickFlowState }, null, 2));
+  console.log(JSON.stringify({ ok: true, target: { title: target.title, url: target.url }, rendererState, bridgeState, coreFlowState, clickFlowState, uiWorkflowState, scrollState }, null, 2));
 } catch (error) {
   if (output.length) console.error(output.join('').slice(-4000));
   throw error;
