@@ -24,10 +24,9 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
   { title: '图片', items: [{ key: 'image', label: '图片生成', badge: '主流程' }, { label: '合规检测', disabled: true, badge: '后续接入' }, { label: '图片精修', disabled: true, badge: '后续接入' }] },
   { title: '视频', items: [{ key: 'video', label: '视频生成', badge: '爆款拆解' }, { label: '创意视频', disabled: true, badge: '后续接入' }, { label: '自定义视频', disabled: true, badge: '后续接入' }] },
   { title: '文案', items: [{ key: 'article', label: '文章生成', badge: '文字模型' }] },
-  { title: '助手', items: [{ key: 'ai', label: '内容助手', badge: '@图片' }] },
   { title: '知识库', items: [{ key: 'knowledge', label: '成型知识库' }] },
-  { title: '资产', items: [{ key: 'assets', label: '素材库 / 历史' }] },
-  { title: '管理', items: [{ key: 'skills', label: '能力管理' }] },
+  { title: '资产', items: [{ key: 'assets', label: '素材库' }] },
+  { title: '管理', items: [{ key: 'skills', label: 'skills 管理' }] },
 ];
 
 export const PIPELINE_STEPS = ['知识库', '提示词包', '场景库', '图片素材', '视频队列', '文章生成'];

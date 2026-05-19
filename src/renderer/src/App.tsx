@@ -5,13 +5,13 @@ import { BuguAuthGate } from "./components/BuguAuthGate";
 import { ModuleOutlet } from "./components/ModuleOutlet";
 import { ParamsPanel } from "./components/ParamsPanel";
 import { SettingsDialogOutlet } from "./components/SettingsDialogOutlet";
-import { StageHeader } from "./components/StageHeader";
 
 const AUTH_ONBOARDING_SKIP_KEY = "buguai:auth-onboarding-skipped";
 
 export function App() {
   const app = useContentStudioApp();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [paramsPanelCollapsed, setParamsPanelCollapsed] = useState(false);
   const [authOnboardingSkipped, setAuthOnboardingSkipped] = useState(() =>
     typeof window === "undefined"
       ? false
@@ -44,19 +44,16 @@ export function App() {
       data-theme={app.effectiveTheme}
       data-color={app.colorTheme}
       data-sidebar={sidebarCollapsed ? "collapsed" : "expanded"}
+      data-params={paramsPanelCollapsed ? "collapsed" : "expanded"}
     >
       <AppSidebar
         activeModule={app.activeModule}
-        runMode={app.params.runMode}
         workspacePath={app.workspacePath}
         updateState={app.updateState}
         authState={app.authState}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
         onSelectModule={app.setActiveModule}
-        onSetRunMode={(runMode) =>
-          app.setParams((current) => ({ ...current, runMode }))
-        }
         onChooseWorkspace={() => app.runAction(app.chooseWorkspace)}
         onRefreshWorkspace={() =>
           app.runAction(() => app.refresh(app.workspacePath))
@@ -70,17 +67,6 @@ export function App() {
       />
 
       <section className="stage">
-        <StageHeader
-          busy={app.busy}
-          currentActionLabel={app.currentActionLabel}
-          workspaceReady={Boolean(app.workspacePath)}
-          onGeneratePromptPack={() => {
-            app.setActiveModule("knowledge");
-            app.runAction(app.generatePromptPack);
-          }}
-          onCancelAction={app.cancelCurrentAction}
-        />
-
         {app.error ? <div className="error-banner">{app.error}</div> : null}
         <div className="stage-module-surface">
           <ModuleOutlet app={app} />
@@ -92,6 +78,8 @@ export function App() {
         citations={app.citationsForRequest}
         logs={app.logs}
         skillSelection={app.skillSelection}
+        collapsed={paramsPanelCollapsed}
+        onToggleCollapsed={() => setParamsPanelCollapsed((current) => !current)}
         setParams={app.setParams}
         onOpenModelSettings={() => {
           app.setShowSettingsDialog(true);

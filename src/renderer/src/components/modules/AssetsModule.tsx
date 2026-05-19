@@ -1,209 +1,203 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useMemo, useState } from 'react';
 import type { GenerationLogEntry } from '../../../../shared/types';
-import { HISTORY_FILTERS } from '../../app/constants';
 import {
   extractLocalRefsFromLog,
   extractPromptFromLog,
-  extractSkillSlugsFromLog,
+  fileNameFromPath,
   formatDuration,
-  imageRequestFromLog,
   kindLabel,
-  statusLabel,
 } from '../../app/formatters';
 
 interface AssetsModuleProps {
   logsCount: number;
-  filteredLogs: GenerationLogEntry[];
-  historyFilter: GenerationLogEntry['kind'] | 'all';
-  setHistoryFilter: Dispatch<SetStateAction<GenerationLogEntry['kind'] | 'all'>>;
+  logs: GenerationLogEntry[];
   copiedLogId: string | null;
   onCopyLogPrompt: (log: GenerationLogEntry) => void;
   onRevealLogPath: (log: GenerationLogEntry) => void;
   onReuseImageLogInput: (log: GenerationLogEntry) => void;
-  onRetryLog: (log: GenerationLogEntry) => void;
 }
 
-function jsonPreview(value: unknown): string {
-  if (value === undefined || value === null) return '未记录';
-  return JSON.stringify(value, null, 2).slice(0, 3600);
+type AssetKind = 'image' | 'video';
+
+interface AssetItem {
+  id: string;
+  kind: AssetKind;
+  path: string;
+  log: GenerationLogEntry;
+}
+
+function isImagePath(path: string): boolean {
+  return /\.(png|jpe?g|webp|gif|avif)$/i.test(path);
+}
+
+function isVideoPath(path: string): boolean {
+  return /\.(mp4|mov|webm|m4v)$/i.test(path);
+}
+
+function localAssetSource(assetRef: string): string {
+  if (/^(https?:|data:image\/|blob:|local-asset:)/i.test(assetRef)) return assetRef;
+  const normalized = assetRef.replace(/\\/g, '/');
+  let absolutePath = normalized;
+  if (/^[A-Za-z]:\//.test(normalized)) absolutePath = `/${normalized}`;
+  else if (!normalized.startsWith('/')) absolutePath = `/${normalized}`;
+  return `local-asset://${encodeURI(absolutePath).replace(/#/g, '%23')}`;
+}
+
+function collectAssets(logs: GenerationLogEntry[]): AssetItem[] {
+  return logs.flatMap((log) => {
+    if (log.status !== 'succeeded' || (log.kind !== 'image' && log.kind !== 'video')) return [];
+    return extractLocalRefsFromLog(log)
+      .filter((path) => isImagePath(path) || isVideoPath(path))
+      .map((path, index) => ({
+        id: `${log.id}:${index}:${path}`,
+        kind: isVideoPath(path) ? 'video' : 'image',
+        path,
+        log,
+      }));
+  });
 }
 
 export function AssetsModule({
   logsCount,
-  filteredLogs,
-  historyFilter,
-  setHistoryFilter,
+  logs,
   copiedLogId,
   onCopyLogPrompt,
   onRevealLogPath,
   onReuseImageLogInput,
-  onRetryLog,
 }: AssetsModuleProps) {
-  const [selectedLog, setSelectedLog] = useState<GenerationLogEntry | null>(null);
-  const selectedImageInput = imageRequestFromLog(selectedLog ?? undefined);
-  const selectedLocalRefs = useMemo(
-    () => (selectedLog ? extractLocalRefsFromLog(selectedLog) : []),
-    [selectedLog],
+  const [assetFilter, setAssetFilter] = useState<AssetKind | 'all'>('all');
+  const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null);
+  const assets = useMemo(() => collectAssets(logs), [logs]);
+  const visibleAssets = useMemo(
+    () => assets.filter((asset) => assetFilter === 'all' || asset.kind === assetFilter),
+    [assetFilter, assets],
   );
-  const selectedSkillSlugs = useMemo(
-    () => (selectedLog ? extractSkillSlugsFromLog(selectedLog) : []),
-    [selectedLog],
-  );
+  const imageCount = assets.filter((asset) => asset.kind === 'image').length;
+  const videoCount = assets.filter((asset) => asset.kind === 'video').length;
 
   return (
-    <section className="panel full-panel">
-      <div className="panel-title"><div><p className="eyebrow">素材沉淀</p><h3>生成历史 / 素材库</h3></div><span className="status-pill">{logsCount} 条记录</span></div>
+    <section className="panel full-panel asset-library-panel">
+      <div className="panel-title">
+        <div>
+          <p className="eyebrow">素材沉淀</p>
+          <h3>素材库</h3>
+        </div>
+        <span className="status-pill">{assets.length} 个素材</span>
+      </div>
       <div className="chip-row">
-        {HISTORY_FILTERS.map((filter) => (
-          <button key={filter.value} className={`chip-button ${historyFilter === filter.value ? 'active' : ''}`} onClick={() => setHistoryFilter(filter.value)}>
+        {[
+          { value: 'all' as const, label: `全部 ${assets.length}` },
+          { value: 'image' as const, label: `图片 ${imageCount}` },
+          { value: 'video' as const, label: `视频 ${videoCount}` },
+        ].map((filter) => (
+          <button
+            key={filter.value}
+            className={`chip-button ${assetFilter === filter.value ? 'active' : ''}`}
+            onClick={() => setAssetFilter(filter.value)}
+          >
             {filter.label}
           </button>
         ))}
       </div>
-      <div className="log-list">
-        {filteredLogs.map((log) => {
-          const localRefs = extractLocalRefsFromLog(log);
-          const skillSlugs = extractSkillSlugsFromLog(log);
-          return (
-            <article key={log.id} className={`log-card ${log.status}`}>
-              <span>{kindLabel(log.kind)}</span>
-              <strong>{log.title}</strong>
-              <p>{log.summary ?? log.error ?? '无摘要'}</p>
-              <small>{statusLabel(log.status)} · {formatDuration(log.durationMs)} · {log.model ?? 'local'} · 引用 {log.citations?.length ?? 0} · 能力 {skillSlugs.length} · 素材 {localRefs.length} · {new Date(log.createdAt).toLocaleString()}</small>
-              {skillSlugs.length ? (
-                <div className="skill-chip-row">
-                  {skillSlugs.map((slug) => <span key={slug}>{slug}</span>)}
-                </div>
+      <div className="asset-gallery">
+        {visibleAssets.map((asset) => (
+          <article key={asset.id} className="asset-tile">
+            <button className="asset-preview-button" onClick={() => setSelectedAsset(asset)}>
+              {asset.kind === 'image'
+                ? <img src={localAssetSource(asset.path)} alt={fileNameFromPath(asset.path)} />
+                : <video src={localAssetSource(asset.path)} muted playsInline preload="metadata" />}
+            </button>
+            <div className="asset-tile-meta">
+              <strong>{fileNameFromPath(asset.path)}</strong>
+              <small>{kindLabel(asset.log.kind)} · {asset.log.model ?? 'local'} · {formatDuration(asset.log.durationMs)}</small>
+            </div>
+            <div className="log-actions">
+              <button className="ghost small" onClick={() => setSelectedAsset(asset)}>详情</button>
+              <button className="ghost small" onClick={() => onRevealLogPath(asset.log)}>打开位置</button>
+              {asset.log.kind === 'image' ? (
+                <button className="primary small" onClick={() => onReuseImageLogInput(asset.log)}>复用参数</button>
               ) : null}
-              <div className="log-actions">
-                <button className="ghost small" onClick={() => setSelectedLog(log)}>详情</button>
-                <button className="ghost small" onClick={() => onCopyLogPrompt(log)}>{copiedLogId === log.id ? '已复制' : '复制提示词'}</button>
-                <button className="ghost small" disabled={localRefs.length === 0} onClick={() => onRevealLogPath(log)}>打开素材位置</button>
-                <button className="primary small" disabled={!log.input} onClick={() => onRetryLog(log)}>重试本次请求</button>
-              </div>
-            </article>
-          );
-        })}
-        {filteredLogs.length === 0 ? <div className="empty-state">生成提示词包、场景卡、文章、图片或视频后会在这里沉淀历史。</div> : null}
+            </div>
+          </article>
+        ))}
+        {visibleAssets.length === 0 ? (
+          <div className="empty-state">
+            还没有可展示的成功图片或视频素材。失败、阻塞和纯日志不会进入素材库。
+            {logsCount > 0 ? ` 当前已有 ${logsCount} 条生成记录。` : ''}
+          </div>
+        ) : null}
       </div>
-      {selectedLog ? (
+
+      {selectedAsset ? (
         <div
           className="detail-dialog-backdrop"
           role="presentation"
-          onClick={() => setSelectedLog(null)}
+          onClick={() => setSelectedAsset(null)}
         >
           <article
-            className="detail-dialog-card asset-log-detail-dialog"
+            className="detail-dialog-card asset-detail-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="生成历史详情"
+            aria-label="素材详情"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="detail-dialog-header">
               <div>
-                <p className="eyebrow">生成历史</p>
-                <h3>{selectedLog.title}</h3>
+                <p className="eyebrow">{selectedAsset.kind === 'image' ? '图片素材' : '视频素材'}</p>
+                <h3>{fileNameFromPath(selectedAsset.path)}</h3>
               </div>
-              <button className="ghost small" onClick={() => setSelectedLog(null)}>
-                关闭
-              </button>
+              <button className="ghost small" onClick={() => setSelectedAsset(null)}>关闭</button>
             </div>
-            <div className="detail-dialog-body asset-log-detail-body">
+            <div className="detail-dialog-body asset-detail-body">
+              <div className="asset-detail-preview">
+                {selectedAsset.kind === 'image'
+                  ? <img src={localAssetSource(selectedAsset.path)} alt={fileNameFromPath(selectedAsset.path)} />
+                  : <video src={localAssetSource(selectedAsset.path)} controls />}
+              </div>
               <div className="asset-log-detail-grid">
                 <span>
-                  <strong>类型</strong>
-                  <em>{kindLabel(selectedLog.kind)}</em>
-                </span>
-                <span>
-                  <strong>状态</strong>
-                  <em>{statusLabel(selectedLog.status)}</em>
+                  <strong>来源</strong>
+                  <em>{selectedAsset.log.title}</em>
                 </span>
                 <span>
                   <strong>模型</strong>
-                  <em>{selectedLog.model ?? '未记录'}</em>
-                </span>
-                <span>
-                  <strong>模板</strong>
-                  <em>{selectedImageInput?.template ?? '未记录'}</em>
+                  <em>{selectedAsset.log.model ?? '未记录'}</em>
                 </span>
                 <span>
                   <strong>耗时</strong>
-                  <em>{formatDuration(selectedLog.durationMs)}</em>
+                  <em>{formatDuration(selectedAsset.log.durationMs)}</em>
                 </span>
                 <span>
-                  <strong>引用</strong>
-                  <em>{selectedLog.citations?.length ?? 0} 条</em>
-                </span>
-                <span>
-                  <strong>能力</strong>
-                  <em>{selectedSkillSlugs.length} 个</em>
-                </span>
-                <span>
-                  <strong>素材</strong>
-                  <em>{selectedLocalRefs.length} 个</em>
-                </span>
-                <span className="wide">
                   <strong>生成时间</strong>
-                  <em>{new Date(selectedLog.createdAt).toLocaleString()}</em>
+                  <em>{new Date(selectedAsset.log.createdAt).toLocaleString()}</em>
                 </span>
                 <span className="wide">
-                  <strong>日志编号</strong>
-                  <em>{selectedLog.id}</em>
+                  <strong>路径</strong>
+                  <em>{selectedAsset.path}</em>
                 </span>
               </div>
               <label className="image-result-prompt">
-                <span>历史提示词</span>
-                <textarea readOnly value={extractPromptFromLog(selectedLog)} />
+                <span>提示词</span>
+                <textarea readOnly value={extractPromptFromLog(selectedAsset.log)} />
               </label>
-              {selectedLocalRefs.length ? (
-                <div className="asset-log-path-list">
-                  <strong>素材路径</strong>
-                  {selectedLocalRefs.map((path) => (
-                    <code key={path} className="path-code">{path}</code>
-                  ))}
-                </div>
-              ) : null}
-              <div className="asset-log-json-grid">
-                <div className="asset-log-json-card">
-                  <strong>输入</strong>
-                  <pre>{jsonPreview(selectedLog.input)}</pre>
-                </div>
-                <div className="asset-log-json-card">
-                  <strong>输出</strong>
-                  <pre>{jsonPreview(selectedLog.output ?? selectedLog.error)}</pre>
-                </div>
-              </div>
-              {selectedLog.error ? (
-                <div className="error-banner">{selectedLog.error}</div>
-              ) : null}
               <div className="modal-actions">
-                <button className="ghost" onClick={() => onCopyLogPrompt(selectedLog)}>
-                  {copiedLogId === selectedLog.id ? '已复制' : '复制提示词'}
+                <button className="ghost" onClick={() => onCopyLogPrompt(selectedAsset.log)}>
+                  {copiedLogId === selectedAsset.log.id ? '已复制' : '复制提示词'}
                 </button>
-                <button
-                  className="ghost"
-                  disabled={selectedLocalRefs.length === 0}
-                  onClick={() => onRevealLogPath(selectedLog)}
-                >
-                  打开素材位置
+                <button className="ghost" onClick={() => onRevealLogPath(selectedAsset.log)}>
+                  打开位置
                 </button>
-                <button
-                  className="ghost"
-                  disabled={!selectedImageInput}
-                  onClick={() => {
-                    setSelectedLog(null);
-                    onReuseImageLogInput(selectedLog);
-                  }}
-                >
-                  复用图片参数
-                </button>
-                <button
-                  className="primary"
-                  disabled={!selectedLog.input}
-                  onClick={() => onRetryLog(selectedLog)}
-                >
-                  重试本次请求
-                </button>
+                {selectedAsset.log.kind === 'image' ? (
+                  <button
+                    className="primary"
+                    onClick={() => {
+                      setSelectedAsset(null);
+                      onReuseImageLogInput(selectedAsset.log);
+                    }}
+                  >
+                    复用图片参数
+                  </button>
+                ) : null}
               </div>
             </div>
           </article>

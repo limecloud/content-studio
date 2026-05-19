@@ -3,20 +3,17 @@ import { NAV_GROUPS } from "../app/constants";
 import type {
   AutoUpdateState,
   BuguAuthState,
-  GlobalGenerationParams,
 } from "../../../shared/types";
 import type { ModuleKey } from "../app/types";
 
 interface AppSidebarProps {
   activeModule: ModuleKey;
-  runMode: GlobalGenerationParams["runMode"];
   workspacePath?: string;
   updateState: AutoUpdateState;
   authState: BuguAuthState | null;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   onSelectModule: (module: ModuleKey) => void;
-  onSetRunMode: (mode: GlobalGenerationParams["runMode"]) => void;
   onChooseWorkspace: () => void;
   onRefreshWorkspace: () => void;
   onOpenAccountSettings: () => void;
@@ -37,22 +34,19 @@ const NAV_ICONS = new Map<string, string>([
   ["创意视频", "🎞️"],
   ["自定义视频", "🎥"],
   ["文章生成", "✍️"],
-  ["内容助手", "🤖"],
   ["成型知识库", "📚"],
-  ["素材库 / 历史", "🗂️"],
-  ["能力管理", "🧩"],
+  ["素材库", "🗂️"],
+  ["skills 管理", "🧩"],
 ]);
 
 export function AppSidebar({
   activeModule,
-  runMode,
   workspacePath,
   updateState,
   authState,
   collapsed,
   onToggleCollapsed,
   onSelectModule,
-  onSetRunMode,
   onChooseWorkspace,
   onRefreshWorkspace,
   onOpenAccountSettings,
@@ -129,27 +123,6 @@ export function AppSidebar({
           </div>
         ))}
       </nav>
-
-      <section className="mode-card">
-        <p className="eyebrow">处理模式</p>
-        <div className="mode-grid">
-          <button
-            className={runMode === "single" ? "active" : ""}
-            onClick={() => onSetRunMode("single")}
-          >
-            单次
-          </button>
-          <button
-            className={runMode === "parallel" ? "active" : ""}
-            onClick={() => onSetRunMode("parallel")}
-          >
-            批量
-          </button>
-          <button disabled title="定时任务需要批量队列接入后启用">
-            定时
-          </button>
-        </div>
-      </section>
 
       <div className="sidebar-bottom">
         <div

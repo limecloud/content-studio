@@ -12,10 +12,10 @@ interface ArticleModelOutput {
 
 function lengthLabel(length: ArticleGenerationRequest['length']): string {
   return {
-    short: '短内容',
-    medium: '中等篇幅',
-    long: '长文',
-    custom: '自定义篇幅',
+    short: '短内容，约 600-900 字',
+    medium: '中等篇幅，约 900-1300 字',
+    long: '长文，约 1300-1800 字',
+    custom: '按自定义要求控制篇幅',
   }[length];
 }
 
@@ -28,6 +28,12 @@ function compactList(values: unknown, fallback: string[], max = 8): string[] {
   if (!Array.isArray(values)) return fallback;
   const normalized = values.map((item) => String(item ?? '').trim()).filter(Boolean);
   return (normalized.length ? normalized : fallback).slice(0, max);
+}
+
+function normalizeMarkdown(value: unknown, fallbackTitle: string): string {
+  const markdown = compactText(value, `# ${fallbackTitle}\n\n> 文字模型未返回正文，请重试。`);
+  if (/^\s*#/m.test(markdown)) return markdown;
+  return `# ${fallbackTitle}\n\n${markdown}`;
 }
 
 function citationPayload(input: ArticleGenerationRequest): Array<Record<string, string>> {
@@ -74,7 +80,7 @@ export class ArticleGenerationService {
       const { value, model } = await this.text.generateJson<ArticleModelOutput>({
         workspacePath: input.workspacePath,
         model: input.params.textModel,
-        systemPrompt: '你是中文内容主编，擅长把成型知识库转成可发布但仍需人工复核的公众号、小红书和电商内容草稿。',
+        systemPrompt: '你是中文内容主编。输出要像可直接交给用户审阅的正文草稿：精简、具体、少废话，只写和选题相关的内容。',
         schema: ARTICLE_SCHEMA,
         maxTurns: 3,
         prompt: JSON.stringify({
@@ -92,22 +98,25 @@ export class ArticleGenerationService {
           selectedSkillSlugs: input.selectedSkillSlugs,
           citations: citationPayload(input),
           requirements: [
-            '正文必须用 Markdown 输出。',
+            '正文 markdown 必须用 Markdown 输出，从一个 H1 标题开始。',
+            'markdown 只放正文，不要写“本文/本次/内容工程演示/以下是/总结一下”等元话术。',
+            '不要在正文前后额外解释生成思路、素材规划、执行方案或方法论。',
+            '标题候选最多 3 个，summary 一句话，不超过 60 个中文字符。',
             '引用事实时用 [1] [2] 这类编号回指 citations。',
             '不得把未在知识库出现的功效、收益、身份背书写成事实。',
-            'publishCheck 需要指出缺少资料、合规风险和人工复核点。',
+            'publishCheck 只保留 2-4 条最关键的缺少资料、合规风险和人工复核点。',
           ],
         }, null, 2),
       });
 
-      const titleCandidates = compactList(value.titleCandidates, [`${titleSeed}：先把真实问题讲清楚`, `为什么现在要重新理解 ${titleSeed}`, `从用户顾虑出发，讲清 ${titleSeed}`], 6);
+      const titleCandidates = compactList(value.titleCandidates, [`${titleSeed}：先把真实问题讲清楚`, `为什么现在要重新理解 ${titleSeed}`, `从用户顾虑出发，讲清 ${titleSeed}`], 3);
       const outline = compactList(value.outline, ['开头：用目标读者正在遇到的具体问题切入', '事实源：引用知识库资料', '场景化：把卖点放进真实使用场景', '风险边界：明确不能越过的表达', '行动闭环：给读者下一步动作'], 10);
       const summary = compactText(value.summary, `围绕「${titleSeed}」生成一篇 ${input.platform} 草稿。`);
-      const markdown = compactText(value.markdown, `# ${titleCandidates[0]}\n\n> 文字模型未返回正文，请重试。`);
+      const markdown = normalizeMarkdown(value.markdown, titleCandidates[0]);
       const publishCheck = (Array.isArray(value.publishCheck) ? value.publishCheck : [])
         .map((item) => ({ level: item.level ?? 'warning', message: compactText(item.message, '需要人工复核。') }))
         .filter((item) => item.message)
-        .slice(0, 8);
+        .slice(0, 4);
       const result: Omit<ArticleGenerationResult, 'logId'> = {
         titleCandidates,
         outline,

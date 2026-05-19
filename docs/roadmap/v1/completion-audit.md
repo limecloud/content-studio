@@ -20,7 +20,7 @@
 
 | 明确要求 | 当前证据 | 验证方式 | 状态 | 未覆盖 / 弱覆盖 |
 | --- | --- | --- | --- | --- |
-| 一级列表不做弹窗，详情才弹窗 | `src/renderer/src/App.tsx` 直接渲染 `ModuleOutlet`；`src/renderer/src/components/DetailDialog.tsx`；`src/renderer/src/components/modules/能力Module.tsx` | `npm run smoke:electron` 检查 能力 详情弹窗打开 / 关闭，且 `hasRedundantWorkbenchHint=false` | 完成 | 知识库章节详情、历史详情仍有部分 inline 展示，后续可继续抽屉化 |
+| 一级列表不做弹窗，详情才弹窗 | `src/renderer/src/App.tsx` 直接渲染 `ModuleOutlet`；`src/renderer/src/components/DetailDialog.tsx`；`src/renderer/src/components/modules/SkillsModule.tsx` | `npm run smoke:electron` 检查 skills 详情弹窗打开 / 关闭，且 `hasRedundantWorkbenchHint=false` | 完成 | 知识库章节详情、历史详情仍有部分 inline 展示，后续可继续抽屉化 |
 | 文字生成服务路由 | `src/main/services/textGenerationService.ts`；`src/main/providers/textGenerationProvider.ts`；`src/main/services/claudeSdk运行底座.ts`；提示词包 / 场景卡 / 文章 / 视频脚本服务都注入 `TextGenerationService` | `npm run test:functional` 覆盖 Anthropic Messages、OpenAI Chat、Gemini GenerateContent JSON；`npm run smoke:electron` 用 `CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY=1` 验证无认证 blocked | 完成 | Claude 官方费用链路仍需用户提供登录 / Key 后手工验证 |
 | 图片真实生成服务 / blocked | `src/main/providers/mediaProvider.ts` 委托 `src/main/providers/imageGenerationProvider.ts`，支持 OpenAI Responses、OpenAI Chat data URI、Gemini GenerateContent；未配置时 blocked | `npm run test:functional` 用本地 HTTP 生成服务 验证真实适配和图片落盘；`npm run smoke:electron` 验证无 Key 不生成占位 | 完成 | 商业 生成服务费用 E2E 依赖用户确认凭证和外发风险 |
 | 上一代图片模板参数化 | `src/shared/imageTemplates.ts` 作为 9 个模板共享事实源；`ImageModule` 渲染参数卡；`imageGenerationProvider` 把 `templateInputs` 格式化为中文「模板参数」；AI 创建 / 本地 JSON 导入都归一化为当前模板字段 | `npm run test:functional` 覆盖模板参数格式化、AI 创建技能和本地 JSON 导入；`npm run test:e2e` 覆盖导入按钮可用 | 完成 | 复杂模板的字段联动、模板市场和模板持久化后置 |
@@ -31,7 +31,7 @@
 | 知识库导入 / 搜索 / 引用 | `src/main/services/knowledgeBaseStore.ts`；`src/renderer/src/components/modules/KnowledgeModule.tsx` | `npm run test:functional` 覆盖 Markdown 导入、结构化、搜索引用；smoke 覆盖内置知识库安装和检索 | 完成 | DOCX 解析未在本轮功能测试中单独覆盖 |
 | 提示词包和场景卡派生 | `src/main/services/promptPackService.ts`；`src/main/services/sceneLibraryStore.ts` | `npm run test:functional` 覆盖提示词包、场景卡生成和日志 | 完成 | 完整字段编辑和版本历史后置 |
 | 文章生成和 Markdown 导出 | `src/main/services/articleGenerationService.ts`；`src/renderer/src/components/modules/ArticleModule.tsx`；`src/main/ipc.ts` 的 `article:exportMarkdown` | `npm run test:functional` 覆盖文章标题 / 大纲 / Markdown / 发布检查；smoke 覆盖 blocked 分支 | 基本完成 | 导出 Markdown 依赖系统 save dialog，未在 headless smoke 中点击真实保存 |
-| 能力管理和详情 | `src/main/services/skillManager.ts`；`src/main/services/skillSelectionStore.ts`；`src/renderer/src/components/modules/能力Module.tsx` | `npm run smoke:electron` 覆盖扫描、启用态、详情弹窗打开 / 关闭 | 完成 | 未提供 能力编辑器，符合 v1 边界 |
+| skills 管理和详情 | `src/main/services/skillManager.ts`；`src/main/services/skillSelectionStore.ts`；`src/renderer/src/components/modules/SkillsModule.tsx` | `npm run smoke:electron` 覆盖扫描、启用态、详情弹窗打开 / 关闭 | 完成 | 未提供 skills 编辑器，符合 v1 边界 |
 | 历史 / 素材可追溯 | `src/main/services/generationLogStore.ts`；`src/renderer/src/components/modules/AssetsModule.tsx` | `npm run smoke:electron` 验证历史填充、blocked 日志、产物 refs；`npm run test:functional` 验证日志 kind / status / artifactRefs | 完成 | 旧历史缺少 input 时不能重试 |
 | 设置 / 生成服务配置 | `src/main/services/modelConfigStore.ts`；`src/renderer/src/components/SettingsDialog.tsx`；`src/renderer/src/app/useContentStudioApp.ts` | `npm run smoke:electron` 覆盖设置弹窗和模型页；`npm run typecheck` 覆盖共享类型 | 完成 | `getModelCatalog()` 仍是本地种子，不拉远端 metadata；协议必须由用户显式选择 |
 | 入口占位 | `src/renderer/src/app/constants.ts` | GUI smoke 主要入口点击不进入 disabled 假功能 | 完成 | 合规检测、内容助手、图片精修、创意视频、自定义视频仍是后续入口 |
@@ -56,7 +56,7 @@ npm run verify:local
   - 媒体生成服务 可以调用 OpenAI Responses、OpenAI Chat data URI、Gemini GenerateContent 和视频 Generic HTTP 适配器并沉淀产物。
   - 视频拆解可以调用真实 Generic HTTP 理解生成服务 并写入日志。
 - `npm run smoke:electron`：通过。
-  - 验证 preload bridge、内置 能力、导航、设置弹窗、能力 详情弹窗、滚动容器。
+  - 验证 preload bridge、内置 skills、导航、设置弹窗、skills 详情弹窗、滚动容器。
   - 验证无生成服务 / 无显式 Key 时，提示词包、文章、图片、视频拆解、视频脚本、视频队列进入 blocked / 队列分支，不生成假产物。
 
 ## 4. 完成判定

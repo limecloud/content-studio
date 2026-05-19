@@ -1,7 +1,6 @@
 import type { ContentStudioAppController } from '../app/useContentStudioApp';
 import { ArticleModule } from './modules/ArticleModule';
 import { AssetsModule } from './modules/AssetsModule';
-import { AiAssistantModule } from './modules/AiAssistantModule';
 import { ImageModule } from './modules/ImageModule';
 import { KnowledgeModule } from './modules/KnowledgeModule';
 import { SkillsModule } from './modules/SkillsModule';
@@ -12,15 +11,6 @@ interface ModuleOutletProps {
 }
 
 export function ModuleOutlet({ app }: ModuleOutletProps) {
-  if (app.activeModule === 'ai') {
-    return (
-      <AiAssistantModule
-        workspaceReady={Boolean(app.workspacePath)}
-        onRouteImageCommand={app.routeAiImageCommand}
-      />
-    );
-  }
-
   if (app.activeModule === 'image') {
     return (
       <ImageModule
@@ -59,6 +49,8 @@ export function ModuleOutlet({ app }: ModuleOutletProps) {
       <VideoModule
         busy={app.busy}
         workspaceReady={Boolean(app.workspacePath)}
+        productImageRefs={app.productImageRefs}
+        referenceImageRefs={app.referenceImageRefs}
         videoUrl={app.videoUrl}
         setVideoUrl={app.setVideoUrl}
         videoProductName={app.videoProductName}
@@ -85,6 +77,8 @@ export function ModuleOutlet({ app }: ModuleOutletProps) {
         mediaResult={app.mediaResult}
         onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
         onExportAsset={(path) => app.runAction(() => app.exportAsset(path))}
+        onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
+        onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
         onSelectVideo={() => app.runAction(() => app.selectAssetFiles('video'))}
         onAnalyzeReferenceVideo={() => app.runAction(app.analyzeReferenceVideo)}
         onGenerateVideoScript={() => app.runAction(app.generateVideoScript)}
@@ -162,14 +156,11 @@ export function ModuleOutlet({ app }: ModuleOutletProps) {
     return (
       <AssetsModule
         logsCount={app.logs.length}
-        filteredLogs={app.filteredLogs}
-        historyFilter={app.historyFilter}
-        setHistoryFilter={app.setHistoryFilter}
+        logs={app.logs}
         copiedLogId={app.copiedLogId}
         onCopyLogPrompt={(log) => app.runAction(() => app.copyLogPrompt(log))}
         onRevealLogPath={(log) => app.runAction(() => app.revealLogPath(log))}
         onReuseImageLogInput={(log) => app.reuseImageLogInput(log)}
-        onRetryLog={(log) => app.runAction((context) => app.retryLog(log, context))}
       />
     );
   }

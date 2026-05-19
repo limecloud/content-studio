@@ -1,5 +1,3 @@
-import { PIPELINE_STEPS } from '../app/constants';
-
 interface StageHeaderProps {
   busy: boolean;
   currentActionLabel: string | null;
@@ -13,13 +11,6 @@ export function StageHeader({ busy, currentActionLabel, workspaceReady, onGenera
     <header className="stage-header">
       <div>
         <p className="eyebrow">布谷AI 内容工厂</p>
-        <div className="pipeline-breadcrumbs">
-          {PIPELINE_STEPS.map((item, idx) => (
-            <span key={item} className="breadcrumb-item">
-              <em>0{idx + 1}</em> {item}
-            </span>
-          ))}
-        </div>
       </div>
       <div className="header-actions">
         {busy ? <span className="action-status">{currentActionLabel ?? '正在处理当前任务'}</span> : null}

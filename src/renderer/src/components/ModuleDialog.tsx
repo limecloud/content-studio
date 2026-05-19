@@ -7,9 +7,8 @@ const MODULE_TITLES: Record<ModuleKey, { eyebrow: string; title: string; descrip
   video: { eyebrow: '视频素材', title: '视频生成', description: '基于知识库生成脚本；未配置真实视频生成服务时只创建 blocked 队列。' },
   article: { eyebrow: '文案生产', title: '文章生成', description: '基于知识引用、提示词包和场景卡生成正文草稿。' },
   knowledge: { eyebrow: '知识来源', title: '成型知识库', description: '管理产品型 / 个人 IP 知识库、引用片段和提示词包。' },
-  assets: { eyebrow: '素材沉淀', title: '素材库 / 历史', description: '回看生成记录、输入输出、素材路径和重试入口。' },
-  skills: { eyebrow: '能力管理', title: '能力管理', description: '扫描、安装、启用并检查当前内容生成能力。' },
-  ai: { eyebrow: '内容助手', title: '内容助手', description: '使用受控命令把自然语言需求路由到内容工厂模块。' },
+  assets: { eyebrow: '素材沉淀', title: '素材库', description: '集中查看成功生成的图片和视频产物。' },
+  skills: { eyebrow: 'skills 管理', title: 'skills 管理', description: '扫描、安装、启用并检查当前内容生成 skills。' },
 };
 
 interface ModuleDialogProps {

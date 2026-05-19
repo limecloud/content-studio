@@ -1240,123 +1240,127 @@ export function ImageModule({
                 关闭
               </button>
             </div>
-            <div className="editor-tabs">
-              <button
-                className={templateEditorMode === "direct" ? "active" : ""}
-                onClick={() => setTemplateEditorMode("direct")}
-              >
-                直接编辑
-              </button>
-              <button
-                className={templateEditorMode === "system" ? "active" : ""}
-                onClick={() => setTemplateEditorMode("system")}
-              >
-                系统提示词
-              </button>
-              <button
-                className={templateEditorMode === "ai" ? "active" : ""}
-                onClick={() => setTemplateEditorMode("ai")}
-              >
-                AI 辅助修改
-              </button>
-            </div>
-            {templateEditorMode === "direct" ? (
-              <>
-                <p>
-                  直接编辑当前技能的 JSON
-                  配置；保存后会立即影响本次会话的模板表单和后续图片生成
-                  payload。
-                </p>
-                <textarea
-                  className="json-editor"
-                  value={templateEditorDraft}
-                  onChange={(event) =>
-                    setTemplateEditorDraft(event.target.value)
-                  }
-                />
-              </>
-            ) : templateEditorMode === "system" ? (
-              templateEditorPreview.config ? (
-                <div className="template-prompt-editor">
-                  <div className="template-prompt-summary">
-                    <span>System Prompt</span>
-                    <strong>
-                      {templateEditorPreview.config.prompts.system.length} 字符
-                    </strong>
-                    <small>
-                      {templateEditorPreview.config.fields.length} 个参数 ·{" "}
-                      {templateEditorPreview.config.category}
-                    </small>
-                  </div>
-                  <p>
-                    系统提示词是图片技能的核心，会和用户提示词、图片引用、模板参数一起进入生成请求。
-                  </p>
-                  <label>
-                    <span>系统提示词 prompts.system</span>
-                    <textarea
-                      value={templateEditorPreview.config.prompts.system}
-                      onChange={(event) =>
-                        updateTemplatePromptDraft("system", event.target.value)
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span>英文增强关键词 prompts.enhance</span>
-                    <textarea
-                      value={templateEditorPreview.config.prompts.enhance}
-                      onChange={(event) =>
-                        updateTemplatePromptDraft("enhance", event.target.value)
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span>负面关键词 prompts.negative</span>
-                    <textarea
-                      value={templateEditorPreview.config.prompts.negative}
-                      onChange={(event) =>
-                        updateTemplatePromptDraft("negative", event.target.value)
-                      }
-                    />
-                  </label>
-                </div>
-              ) : (
-                <div className="agent-status-card blocked">
-                  <span>!</span>
-                  <div>
-                    <strong>当前 JSON 暂时无法解析</strong>
-                    <p>{templateEditorPreview.error}</p>
-                  </div>
-                </div>
-              )
-            ) : (
-              <div className="agent-status-card blocked">
-                <span>AI</span>
-                <div>
-                  <strong>AI 辅助修改等待本地服务接入</strong>
-                  <p>
-                    上一代提供 AI
-                    辅助修改入口；当前先保留边界，不在本地服务接入前伪造技能生成。
-                  </p>
-                </div>
+            <div className="detail-dialog-body template-editor-body">
+              <div className="editor-tabs">
+                <button
+                  className={templateEditorMode === "direct" ? "active" : ""}
+                  onClick={() => setTemplateEditorMode("direct")}
+                >
+                  直接编辑
+                </button>
+                <button
+                  className={templateEditorMode === "system" ? "active" : ""}
+                  onClick={() => setTemplateEditorMode("system")}
+                >
+                  系统提示词
+                </button>
+                <button
+                  className={templateEditorMode === "ai" ? "active" : ""}
+                  onClick={() => setTemplateEditorMode("ai")}
+                >
+                  AI 辅助修改
+                </button>
               </div>
-            )}
-            {templateEditorError ? (
-              <div className="error-banner">{templateEditorError}</div>
-            ) : null}
-            <div className="modal-actions">
-              <button
-                className="ghost"
-                onClick={() => openTemplateEditor(activeTemplate)}
-              >
-                重置
-              </button>
-              <button
-                className="primary"
-                disabled={templateEditorMode === "ai"}
-                onClick={saveTemplateEditorDraft}
-              >
-                保存修改
-              </button>
+              <div className="template-editor-scroll">
+                {templateEditorMode === "direct" ? (
+                  <>
+                    <p>
+                      直接编辑当前技能的 JSON
+                      配置；保存后会立即影响本次会话的模板表单和后续图片生成
+                      payload。
+                    </p>
+                    <textarea
+                      className="json-editor"
+                      value={templateEditorDraft}
+                      onChange={(event) =>
+                        setTemplateEditorDraft(event.target.value)
+                      }
+                    />
+                  </>
+                ) : templateEditorMode === "system" ? (
+                  templateEditorPreview.config ? (
+                    <div className="template-prompt-editor">
+                      <div className="template-prompt-summary">
+                        <span>System Prompt</span>
+                        <strong>
+                          {templateEditorPreview.config.prompts.system.length} 字符
+                        </strong>
+                        <small>
+                          {templateEditorPreview.config.fields.length} 个参数 ·{" "}
+                          {templateEditorPreview.config.category}
+                        </small>
+                      </div>
+                      <p>
+                        系统提示词是图片技能的核心，会和用户提示词、图片引用、模板参数一起进入生成请求。
+                      </p>
+                      <label>
+                        <span>系统提示词 prompts.system</span>
+                        <textarea
+                          value={templateEditorPreview.config.prompts.system}
+                          onChange={(event) =>
+                            updateTemplatePromptDraft("system", event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>英文增强关键词 prompts.enhance</span>
+                        <textarea
+                          value={templateEditorPreview.config.prompts.enhance}
+                          onChange={(event) =>
+                            updateTemplatePromptDraft("enhance", event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>负面关键词 prompts.negative</span>
+                        <textarea
+                          value={templateEditorPreview.config.prompts.negative}
+                          onChange={(event) =>
+                            updateTemplatePromptDraft("negative", event.target.value)
+                          }
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="agent-status-card blocked">
+                      <span>!</span>
+                      <div>
+                        <strong>当前 JSON 暂时无法解析</strong>
+                        <p>{templateEditorPreview.error}</p>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div className="agent-status-card blocked">
+                    <span>AI</span>
+                    <div>
+                      <strong>AI 辅助修改等待本地服务接入</strong>
+                      <p>
+                        上一代提供 AI
+                        辅助修改入口；当前先保留边界，不在本地服务接入前伪造技能生成。
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {templateEditorError ? (
+                  <div className="error-banner">{templateEditorError}</div>
+                ) : null}
+              </div>
+              <div className="modal-actions">
+                <button
+                  className="ghost"
+                  onClick={() => openTemplateEditor(activeTemplate)}
+                >
+                  重置
+                </button>
+                <button
+                  className="primary"
+                  disabled={templateEditorMode === "ai"}
+                  onClick={saveTemplateEditorDraft}
+                >
+                  保存修改
+                </button>
+              </div>
             </div>
           </article>
         </div>

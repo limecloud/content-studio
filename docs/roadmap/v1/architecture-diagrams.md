@@ -22,7 +22,7 @@ flowchart LR
     Image[图片生成]
     Video[视频生成]
     Assets[素材库 / 生成历史]
-    能力UI[能力管理]
+    能力UI[skills 管理]
     SettingsUI[模型配置]
   end
 

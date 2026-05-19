@@ -13,6 +13,8 @@ interface ParamsPanelProps {
   citations: KnowledgeCitation[];
   logs: GenerationLogEntry[];
   skillSelection: SkillSelectionView | null;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
   onOpenModelSettings: () => void;
   setParams: SetGlobalParams;
 }
@@ -24,32 +26,49 @@ export function ParamsPanel({
   citations,
   logs,
   skillSelection,
+  collapsed,
+  onToggleCollapsed,
   onOpenModelSettings,
   setParams,
 }: ParamsPanelProps) {
   const [activeTab, setActiveTab] = useState<ParamsPanelTab>('params');
   const recentLogs = useMemo(() => logs.slice(0, 8), [logs]);
+  const collapseButton = (
+    <button
+      className="params-panel-collapse-btn"
+      onClick={onToggleCollapsed}
+      aria-label={collapsed ? '展开右侧参数栏' : '折叠右侧参数栏'}
+      title={collapsed ? '展开右侧参数栏' : '折叠右侧参数栏'}
+    >
+      {collapsed ? '‹' : '›'}
+    </button>
+  );
 
   return (
-    <aside className="params-panel">
-      <div className="params-panel-tabs" role="tablist" aria-label="右侧辅助面板">
-        <button
-          role="tab"
-          aria-selected={activeTab === 'params'}
-          className={activeTab === 'params' ? 'active' : ''}
-          onClick={() => setActiveTab('params')}
-        >
-          参数
-        </button>
-        <button
-          role="tab"
-          aria-selected={activeTab === 'logs'}
-          className={activeTab === 'logs' ? 'active' : ''}
-          onClick={() => setActiveTab('logs')}
-        >
-          日志
-          <span>{logs.length}</span>
-        </button>
+    <aside className={`params-panel ${collapsed ? 'collapsed' : ''}`} aria-label="右侧参数与日志面板">
+      {collapsed ? collapseButton : (
+        <>
+      <div className="params-panel-toolbar">
+        <div className="params-panel-tabs" role="tablist" aria-label="右侧辅助面板">
+          <button
+            role="tab"
+            aria-selected={activeTab === 'params'}
+            className={activeTab === 'params' ? 'active' : ''}
+            onClick={() => setActiveTab('params')}
+          >
+            参数
+          </button>
+          <button
+            role="tab"
+            aria-selected={activeTab === 'logs'}
+            className={activeTab === 'logs' ? 'active' : ''}
+            onClick={() => setActiveTab('logs')}
+          >
+            日志
+            <span>{logs.length}</span>
+          </button>
+        </div>
+        {collapseButton}
       </div>
 
       {activeTab === 'params' ? (
@@ -140,13 +159,13 @@ export function ParamsPanel({
           </section>
 
           <section className="panel compact">
-            <p className="eyebrow">当前启用能力</p>
+            <p className="eyebrow">当前启用 skills</p>
             <div className="selected-citations">
               {(skillSelection?.enabledSkills ?? []).map((skill) => (
                 <span key={skillKey(skill)}>{skill.slug}</span>
               ))}
               {!skillSelection?.enabledSkills.length ? (
-                <p>选择工作区后可启用内容生成能力。</p>
+                <p>选择工作区后可启用内容生成 skills。</p>
               ) : null}
             </div>
           </section>
@@ -180,6 +199,8 @@ export function ParamsPanel({
             ) : null}
           </div>
         </section>
+      )}
+        </>
       )}
     </aside>
   );

@@ -1,24 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 :root {
-  --bg: #f8f9fa;
+  --bg: #f4f6f8;
   --panel: #ffffff;
-  --panel-strong: #f3f4f6;
-  --line: #e5e7eb;
-  --text: #111827;
-  --text-secondary: #4b5563;
-  --muted: #9ca3af;
+  --panel-strong: #ebeef2;
+  --line: rgba(17, 24, 39, 0.07);
+  --text: #1a202c;
+  --text-secondary: #4a5568;
+  --muted: #8a99ad;
   --cyan: #395745;
-  --cyan-light: rgba(57, 87, 69, 0.08);
-  --pink: #4b5563;
+  --cyan-light: rgba(57, 87, 69, 0.05);
+  --pink: #4a5568;
   --green: #395745;
   --danger: #ef4444;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  --shadow-lg:
-    0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  
+  /* Ultra-smooth multi-layered ambient occlusion shadows */
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.01), 0 2px 6px rgba(17, 24, 39, 0.03);
+  --shadow: 
+    0 4px 12px rgba(17, 24, 39, 0.02), 
+    0 16px 36px rgba(17, 24, 39, 0.05), 
+    0 0 0 1px rgba(17, 24, 39, 0.01);
+  --shadow-lg: 
+    0 12px 24px rgba(17, 24, 39, 0.03), 
+    0 32px 80px rgba(17, 24, 39, 0.08), 
+    0 0 0 1px rgba(17, 24, 39, 0.02);
+    
+  /* Organic iOS/macOS inspired border radii */
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  /* Glassmorphism styling blocks */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.45);
+  --glass-blur: 20px;
+
+  /* CSS Transition Curves */
+  --transition-fast: 0.18s cubic-bezier(0.25, 1, 0.5, 1);
+  --transition: 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  --transition-slow: 0.5s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 * {
@@ -26,11 +47,13 @@
   margin: 0;
   padding: 0;
 }
+
 body {
   width: 100vw;
   min-width: 0;
   min-height: 100vh;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   font-family:
     "Inter",
     -apple-system,
@@ -42,13 +65,15 @@ body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   width: 100vw;
-  height: 100vh;
+  min-height: 100vh;
+  height: auto;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 button,
@@ -57,15 +82,19 @@ textarea,
 select {
   font: inherit;
 }
+
 button {
   border: 0;
   color: inherit;
   cursor: pointer;
   background: transparent;
+  outline: none;
+  user-select: none;
 }
+
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 input,
@@ -75,24 +104,53 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   color: var(--text);
-  background: #ffffff;
+  background: var(--panel);
   outline: none;
-  padding: 10px 12px;
+  padding: 10px 14px;
   font-size: 13px;
-  transition: all 0.2s ease;
+  transition: var(--transition-fast);
   box-shadow: var(--shadow-sm);
 }
+
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: var(--cyan);
-  box-shadow: 0 0 0 2px var(--cyan-light);
+  box-shadow: 0 0 0 3px var(--cyan-light);
+  background: var(--panel);
 }
+
 textarea {
   min-height: 140px;
   resize: vertical;
-  line-height: 1.5;
+  line-height: 1.6;
 }
+
 pre {
   white-space: pre-wrap;
   word-break: break-word;
+  font-family: "JetBrains Mono", monospace;
 }
+
+/* Elegant Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(17, 24, 39, 0.12);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(17, 24, 39, 0.24);
+}
+.app-shell[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+.app-shell[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+

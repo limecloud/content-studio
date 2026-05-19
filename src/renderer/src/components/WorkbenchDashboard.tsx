@@ -11,8 +11,8 @@ const DASHBOARD_CARDS: Array<{
   { module: 'image', index: '02', title: '图片素材工作台', description: '使用场景卡、产品图和参考图调用真实图片生成服务。', statLabel: '场景卡' },
   { module: 'video', index: '03', title: '视频脚本工作台', description: '生成短视频脚本；视频服务未配置时只保存队列文件。', statLabel: '视频队列' },
   { module: 'article', index: '04', title: '文章生成工作台', description: '把知识引用和场景卡转成大纲、正文和发布检查。', statLabel: '正文草稿' },
-  { module: 'assets', index: '05', title: '素材库 / 历史', description: '回看输入输出、素材路径、模型参数和重试入口。', statLabel: '历史记录' },
-  { module: 'skills', index: '06', title: '能力管理', description: '管理参与内容生成链路的内置、项目和用户级能力。', statLabel: '启用能力' },
+  { module: 'assets', index: '05', title: '素材库', description: '集中查看成功生成的图片和视频产物。', statLabel: '素材记录' },
+  { module: 'skills', index: '06', title: 'skills 管理', description: '管理参与内容生成链路的内置、项目和用户级 skills。', statLabel: '已启用 skills' },
 ];
 
 interface WorkbenchDashboardProps {

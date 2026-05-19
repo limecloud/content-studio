@@ -13,10 +13,10 @@
 - 官方 `@anthropic-ai/claude-agent-sdk` 依赖。
 - `SettingsStore` 保存 Anthropic API Key 与 工作区。
 - `SkillManager` 扫描内置、用户、项目 能力。
-- 4 个内容生产内置 能力。
+- 4 个内容生产内置 skills。
 - 首版浅色 布谷AI UI。
 
-v1 需要把当前通用布谷AI内容工厂骨架改造成深色 AI 电商内容生产工作台，覆盖文章、已成型知识库接入、图片、视频、能力管理和生成历史；策略分析和 AI 自动搭建知识库后置。
+v1 需要把当前通用布谷AI内容工厂骨架改造成深色 AI 电商内容生产工作台，覆盖文章、已成型知识库接入、图片、视频、skills 管理和生成历史；策略分析和 AI 自动搭建知识库后置。
 
 ## 1. 模块事实源
 
@@ -36,7 +36,7 @@ v1 需要把当前通用布谷AI内容工厂骨架改造成深色 AI 电商内�
 | new current | `src/main/providers/imageGenerationProvider.ts` | 图片协议生成服务，负责 Responses / Chat data URI / Gemini inlineData 和图片落盘。 |
 | new current | `src/shared/imageTemplates.ts` | 图片模板参数共享事实源，Renderer 渲染表单，Main 生成服务 格式化中文模板参数。 |
 | new current | `src/renderer/src/features/workbench/*` | v1 工作台 UI。 |
-| new current | `src/renderer/src/features/skills/*` | 能力管理 UI。 |
+| new current | `src/renderer/src/features/skills/*` | skills 管理 UI。 |
 | new current | `src/renderer/src/features/article-engine/*` | 文章生成 UI。 |
 | new current | `src/renderer/src/features/knowledge-base/*` | 知识库 UI。 |
 | new current | `src/renderer/src/features/prompt-workbench/*` | 提示词包与产品场景库 UI。 |
@@ -74,7 +74,7 @@ v1 需要把当前通用布谷AI内容工厂骨架改造成深色 AI 电商内�
 2. 增加图片 / 视频 Tab。
 3. 增加图片生成、视频生成、文章生成、知识库、素材库、生成历史入口。
 4. 增加合规检测、内容助手、图片精修、创意视频、自定义视频占位入口。
-5. 增加模型配置和 能力管理入口。
+5. 增加模型配置和 skills 管理入口。
 6. 增加处理模式：单次处理可用，批量 / 定时 disabled。
 7. 按截图改成暗色霓虹视觉。
 
@@ -83,7 +83,7 @@ v1 需要把当前通用布谷AI内容工厂骨架改造成深色 AI 电商内�
 - 不接真实模型也能静态展示 Image #1 / #3 / #4 / #5 的主要结构。
 - 文章生成、知识库、素材库、生成历史入口清晰可见，P1 可先展示静态壳。
 - 页面在 1440px 和 1920px 宽度下不破版。
-- 能力管理入口清晰可见，但 P1 可先展示静态壳。
+- skills 管理入口清晰可见，但 P1 可先展示静态壳。
 
 最小验证：
 
@@ -117,7 +117,7 @@ npm run build
 - Renderer 不可读取 API Key 明文。
 - 配置错误有明确内联错误。
 
-### P3：能力管理
+### P3：skills 管理
 
 写集：
 
@@ -131,17 +131,17 @@ npm run build
 任务：
 
 1. 复用 `SkillManager.scan()` 展示内置、工作区和兼容来源能力。
-2. 复用 `SkillManager.installBuiltin()` 将内置 能力 安装到当前工作区。
+2. 复用 `SkillManager.installBuiltin()` 将内置 skills 安装到当前工作区。
 3. 增加当前工作区 的启用列表，只存 `slug + source`，不复制 能力 内容。
 4. 无效 能力 展示校验错误，不允许启用。
 5. 在图片 / 视频生成请求中带上启用的 `selectedSkillSlugs`。
-6. 能力管理页展示来源、路径、描述、frontmatter 和安装状态。
+6. skills 管理页展示来源、路径、描述、frontmatter 和安装状态。
 
 验收：
 
-- 至少 4 个内置 能力 可见。
+- 至少 4 个内置 skills 可见。
 - 没有工作区 时，安装动作禁用且说明原因。
-- 安装后重新扫描能看到工作区能力。
+- 安装后重新扫描能看到工作区 skills。
 - 启用列表刷新后不丢失。
 - 生成请求能拿到当前启用的 能力。
 
@@ -597,10 +597,10 @@ v1 新增建议：
 
 管理策略：
 
-- `能力管理` 是高级页面，可以展示 能力名称、来源、路径和校验错误。
+- `skills 管理` 是高级页面，可以展示 skills 名称、来源、路径和校验错误。
 - 生成主链只展示业务化名称，不把 `能力路径` 放到普通用户流程里。
 - v1 只做本地文件系统 能力，不接在线市场。
-- 内置 能力 可以安装到工作区；工作区能力 只扫描、启用、禁用，不主动覆盖。
+- 内置 skills 可以安装到工作区；工作区 skills 只扫描、启用、禁用，不主动覆盖。
 
 ## 5. 验证策略
 
@@ -652,8 +652,8 @@ Pi 作为后续 `会话运行底座` 预留，不进入当前第一刀：
 | 图片 / 视频生成服务 API 不稳定 | 通过 `mediaProvider` adapter 隔离。 |
 | Claude SDK 被误用为万能 运行底座 | 模型设置必须显式选择协议；OpenAI / Gemini / 兼容网关走 生成服务路由，不硬塞 Claude SDK。 |
 | UI 一次性复刻过多页面导致复杂 | 先做静态 shell，再接生成链路。 |
-| 能力 与预设提示词概念混淆 | UI 翻译成用户语言，内部保留 能力管理。 |
-| 能力管理误覆盖用户文件 | 只允许安装内置 能力到工作区；覆盖动作如需保留，后续加确认与备份。 |
+| skills 与预设提示词概念混淆 | UI 翻译成用户语言，内部保留 skills 管理。 |
+| skills 管理误覆盖用户文件 | 只允许安装内置 skills 到工作区；覆盖动作如需保留，后续加确认与备份。 |
 | 知识库范围膨胀成复杂 向量检索 平台 | v1 只消费已成型知识库，做本地索引、关键词检索和手动引用；策略分析、自动搭建、向量、网页抓取和云同步后置。 |
 | 文章生成事实漂移 | 生成请求必须记录知识引用；未引用时 UI 明确提示。 |
 | API Key 泄漏 | 继续只在 Electron main 保存，不经 Renderer 回传。 |
