@@ -174,6 +174,7 @@ export class ReferenceReverseService {
       const message = '真实视觉理解服务未配置：对标图反推不会用普通文字模板伪造结果。请配置 CONTENT_STUDIO_VISION_ENDPOINT 后重试。';
       await this.logs.append({
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         kind: 'reference-reverse',
         status: 'blocked',
         title: '对标图反推未完成',
@@ -203,6 +204,7 @@ export class ReferenceReverseService {
       const artifactPath = await writeAnalysisArtifact(input, analysis);
       const draft = await this.promptDrafts.createFromContent({
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         title: '对标图反推 Prompt 草稿',
         purpose: 'image',
         userIntent: input.userIntent,
@@ -214,6 +216,7 @@ export class ReferenceReverseService {
       });
       const log = await this.logs.append({
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         kind: 'reference-reverse',
         status: 'succeeded',
         title: '对标图反推结果',
@@ -237,6 +240,7 @@ export class ReferenceReverseService {
       const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
       await this.logs.append({
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         kind: 'reference-reverse',
         status: 'failed',
         title: '对标图反推失败',

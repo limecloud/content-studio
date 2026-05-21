@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   ContinueAgentPromptSessionInput,
   ArticleGenerationRequest,
+  CreatePromptDraftFromContentInput,
   GenerateBrandKnowledgeBaseInput,
   GenerateIpKnowledgeBaseInput,
   ReviewAssetInput,
@@ -67,6 +68,7 @@ import { InputSourceStore } from './services/inputSourceStore';
 import { KnowledgeBaseStore } from './services/knowledgeBaseStore';
 import { ModelConfigStore } from './services/modelConfigStore';
 import { MixPackageStore } from './services/mixPackageStore';
+import { getOemRuntimeConfig } from './services/oemRuntimeConfig';
 import { OverlayCardStore } from './services/overlayCardStore';
 import { PromptDraftStore } from './services/promptDraftStore';
 import { PromptPackService } from './services/promptPackService';
@@ -145,6 +147,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const publish = (event: AgentEvent) => {
     mainWindow.webContents.send(`agent:event:${event.taskId}`, event);
   };
+  const productName = getOemRuntimeConfig().productName || '布谷AI';
 
   ipcMain.handle('auth:getSession', () => buguAuth.getAuthState());
   ipcMain.handle('auth:loginByPassword', (_event, input: BuguPasswordLoginInput) => buguAuth.loginByPassword(input));
@@ -168,7 +171,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   mainWindow.on('closed', () => autoUpdates.dispose());
   ipcMain.handle('workspace:select', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: '选择布谷AI工作区',
+      title: `选择${productName}工作区`,
       properties: ['openDirectory', 'createDirectory'],
     });
     return result.canceled ? null : result.filePaths[0] ?? null;
@@ -303,6 +306,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   });
   ipcMain.handle('promptDrafts:list', (_event, workspacePath: string) => promptDrafts.list(workspacePath));
   ipcMain.handle('promptDrafts:generate', (_event, input: GeneratePromptDraftInput) => promptDrafts.generate(input));
+  ipcMain.handle('promptDrafts:createFromContent', (_event, input: CreatePromptDraftFromContentInput) => promptDrafts.createFromContent(input));
   ipcMain.handle('promptDrafts:update', (_event, input: UpdatePromptDraftInput) => promptDrafts.update(input));
   ipcMain.handle('promptDrafts:recordCopy', (_event, input: RecordPromptDraftCopyInput) => promptDrafts.recordCopy(input));
   ipcMain.handle('agentPromptSessions:list', (_event, workspacePath: string) => agentPromptSessions.list(workspacePath));

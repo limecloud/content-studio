@@ -60,6 +60,11 @@ function statusClass(draft?: PromptDraft): string {
   return 'idle';
 }
 
+function shortId(value?: string): string {
+  if (!value) return '';
+  return value.length > 12 ? value.slice(0, 8) : value;
+}
+
 function splitPromptItems(content: string): Array<{ title: string; content: string }> {
   const trimmed = content.trim();
   if (!trimmed) return [];
@@ -204,6 +209,12 @@ export function ScenePromptModule({
                 <span>
                   <strong>{scene.title}</strong>
                   <small>{scene.audience} · {scene.usageScene}</small>
+                  <small>
+                    提示词包 {shortId(scene.promptPackId)}
+                    {scene.workflowRunId ? ` · SOP ${shortId(scene.workflowRunId)}` : ''}
+                    {scene.inputSourceIds?.length ? ` · 输入源 ${scene.inputSourceIds.length}` : ''}
+                    {scene.citations.length ? ` · 引用 ${scene.citations.length}` : ''}
+                  </small>
                   <em>{scene.painPoint}</em>
                 </span>
               </label>
@@ -331,6 +342,11 @@ export function ScenePromptModule({
                 <span>画面：{scene.visualComposition}</span>
                 <span>图片：{scene.imageMaterialSuggestion}</span>
                 <span>视频：{scene.videoMaterialSuggestion}</span>
+                <span>
+                  来源：提示词包 {shortId(scene.promptPackId)}
+                  {scene.workflowRunId ? ` · SOP ${shortId(scene.workflowRunId)}` : ''}
+                  {scene.inputSourceIds?.length ? ` · 输入源 ${scene.inputSourceIds.length} 个` : ''}
+                </span>
               </article>
             ))}
           </div>
@@ -349,6 +365,11 @@ export function ScenePromptModule({
             <article key={draft.id} className={draft.id === activeDraft?.id ? 'active' : ''}>
               <strong>{draft.title}</strong>
               <span>{draft.purpose} · {draft.versions.length} 个版本 · {statusText(draft)}</span>
+              <small>
+                来源：{draft.inputSourceIds.length} 个输入源
+                {draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}
+                {draft.workflowRunId ? ` · SOP ${shortId(draft.workflowRunId)}` : ''}
+              </small>
               <small>更新于 {formatTime(draft.updatedAt)}</small>
             </article>
           ))}

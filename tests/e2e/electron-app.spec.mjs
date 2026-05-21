@@ -444,6 +444,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     await expect(page.locator('.image-workbench-layout')).toBeVisible();
     await expect(page.locator('.image-workbench-layout > .v2-feature-hero')).toHaveCount(0);
     await expect(page.locator('.image-workbench-layout > .module-command-center')).toHaveCount(0);
+    await expect(page.locator('.image-input-mode-tabs')).toHaveCount(0);
     await expect(page.locator('.image-input-rail')).toBeVisible();
     await expect(page.locator('.image-canvas-stage')).toBeVisible();
     await expect(page.getByText('图片预览大盘区 - 待命')).toBeVisible();
@@ -869,6 +870,33 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
         summary: 'Skill 输入源',
         tags: ['skill'],
       });
+      await api.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'brand-kb',
+        title: '品牌知识库输入源',
+        text: '品牌调性：专业、克制、真实。合规：不夸大效果，不做无依据承诺。',
+        summary: '品牌知识库输入源',
+        tags: ['brand'],
+      });
+      await api.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'ip-kb',
+        title: 'IP 知识库输入源',
+        text: 'IP 体系：身份、价值观、语言、判断方法、素材、创作引擎。',
+        summary: 'IP 知识库输入源',
+        tags: ['ip'],
+      });
+      await api.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'product-brief',
+        title: '产品资料输入源',
+        text: '产品事实：便携条包。场景：早餐后、办公室抽屉。',
+        summary: '产品资料输入源',
+        tags: ['product'],
+      });
       const skillDraft = await api.generatePromptDraft({
         workspacePath,
         title: 'Product Prompt Skill',
@@ -893,9 +921,17 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
     ).toBe(true);
 
     await clickNavItem(page, 'Prompt 工作台');
+    await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
+    await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).toBeChecked();
+    await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).toBeChecked();
+    await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
     await page.locator('.prompt-source-panel select').first().selectOption('skill');
     await expect(page.locator('.prompt-source-panel input').first()).toHaveValue('Skill 草案');
     await expect(page.locator('.prompt-source-panel textarea')).toHaveValue(/本地 skill/);
+    await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
+    await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).not.toBeChecked();
+    await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
+    await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).not.toBeChecked();
     const editor = page.locator('.prompt-editor-panel');
     await expect(editor).toContainText('Product Prompt Skill', { timeout: 20_000 });
     await expect(editor.locator('button').filter({ hasText: '物化为 Skill' })).toBeVisible();
@@ -927,6 +963,10 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
     await page.locator('.prompt-source-panel select').first().selectOption('sop');
     await expect(page.locator('.prompt-source-panel input').first()).toHaveValue('SOP 草案');
     await expect(page.locator('.prompt-source-panel textarea')).toHaveValue(/发布运行的 SOP 草案/);
+    await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
+    await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).not.toBeChecked();
+    await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
+    await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).not.toBeChecked();
     await expect(editor).toContainText('Reusable SOP Method', { timeout: 20_000 });
     await expect(editor.locator('button').filter({ hasText: '物化为 SOP' })).toBeVisible();
     await expect(editor.locator('button').filter({ hasText: '发送到图片' })).toHaveCount(0);
@@ -1009,21 +1049,128 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     await expect(page.locator('.mix-export-workbench')).toBeVisible({ timeout: 20_000 });
     const importedVideoCard = page.locator('.mix-asset-card').filter({ hasText: 'third-party-finished-video.mp4' }).first();
     await expect(importedVideoCard).toBeVisible();
+    await expect(importedVideoCard).toContainText('SOP 已关联');
+    await expect(importedVideoCard.getByRole('button', { name: 'Prompt', exact: true })).toBeVisible();
+    await expect(importedVideoCard.getByRole('button', { name: 'SOP', exact: true })).toBeVisible();
     await importedVideoCard.getByRole('button', { name: '通过', exact: true }).click();
     await expect(importedVideoCard).toContainText('已通过');
+    await expect(importedVideoCard.getByRole('button', { name: '沉淀 Prompt', exact: true })).toBeVisible();
+    await importedVideoCard.getByRole('button', { name: '沉淀 Prompt', exact: true }).click();
+    await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.prompt-draft-editor')).toHaveValue(/成功素材反向沉淀 Prompt|third-party-finished-video\.mp4|视频 Prompt/, { timeout: 20_000 });
+
+    const distilledVideoTrace = await page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      const runs = await api.listWorkflowRuns(workspacePath);
+      const sources = await api.listInputSources(workspacePath);
+      const drafts = await api.listPromptDrafts(workspacePath);
+      const run = runs.find((item) => item.workflowKey === 'video-material-package');
+      const distilledSource = sources.find((item) =>
+        item.workflowRunId === run?.id
+        && item.purpose === 'successful-asset'
+        && item.kind === 'video'
+        && item.tags.includes('prompt-distilled'),
+      );
+      const distilledDraft = drafts.find((item) =>
+        Boolean(distilledSource?.id && item.inputSourceIds.includes(distilledSource.id)),
+      );
+      return {
+        runId: run?.id,
+        sourceId: distilledSource?.id,
+        sourcePurpose: distilledSource?.purpose,
+        sourceKind: distilledSource?.kind,
+        sourcePath: distilledSource?.sourcePath,
+        draftPurpose: distilledDraft?.purpose,
+        draftModel: distilledDraft?.model,
+        draftWorkflowRunId: distilledDraft?.workflowRunId,
+        runHasDistilledSourceRef: distilledSource ? run?.artifactRefs.includes(`input-source:${distilledSource.id}`) : false,
+        runHasDistilledDraftRef: distilledDraft ? run?.artifactRefs.includes(`prompt-draft:${distilledDraft.id}`) : false,
+      };
+    }, workspaceDir);
+    expect(distilledVideoTrace.sourcePurpose, JSON.stringify(distilledVideoTrace)).toBe('successful-asset');
+    expect(distilledVideoTrace.sourceKind, JSON.stringify(distilledVideoTrace)).toBe('video');
+    expect(distilledVideoTrace.sourcePath, JSON.stringify(distilledVideoTrace)).toContain('third-party-finished-video.mp4');
+    expect(distilledVideoTrace.draftPurpose, JSON.stringify(distilledVideoTrace)).toBe('video');
+    expect(distilledVideoTrace.draftModel, JSON.stringify(distilledVideoTrace)).toBe('local-successful-asset-distiller');
+    expect(distilledVideoTrace.draftWorkflowRunId, JSON.stringify(distilledVideoTrace)).toBe(distilledVideoTrace.runId);
+    expect(distilledVideoTrace.runHasDistilledSourceRef, JSON.stringify(distilledVideoTrace)).toBe(true);
+    expect(distilledVideoTrace.runHasDistilledDraftRef, JSON.stringify(distilledVideoTrace)).toBe(true);
+
+    await clickNavItem(page, 'Prompt 工作台');
+    await expect(page.locator('.prompt-source-option').filter({ hasText: '追溯源' }).locator('input')).toBeDisabled();
+    await page.getByRole('button', { name: '补输入源', exact: true }).click();
+    await expect(page.locator('.input-sources-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.input-source-list .input-source-card').first()).toContainText('Prompt 溯源', { timeout: 20_000 });
+    await expect(page.locator('.input-source-list .input-source-card').first()).toContainText('成功素材沉淀 / third-party-finished-video.mp4', { timeout: 20_000 });
+
+    await clickNavItem(page, '混剪包导出');
+    await expect(page.locator('.mix-export-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(importedVideoCard).toContainText('已通过', { timeout: 20_000 });
     const overlayCard = page.locator('.mix-asset-card').filter({ hasText: /标题卡|早餐后顺手一次/ }).first();
     await expect(overlayCard).toBeVisible();
+    await expect(overlayCard).toContainText('SOP 已关联');
+    await expect(overlayCard.getByRole('button', { name: 'Prompt', exact: true })).toBeVisible();
     await overlayCard.getByRole('button', { name: '通过', exact: true }).click();
     await expect(overlayCard).toContainText('已通过');
     await expect(page.locator('.mix-export-config-panel button').filter({ hasText: '导出混剪包' })).toBeEnabled();
     await page.locator('.mix-export-config-panel button').filter({ hasText: '导出混剪包' }).click();
     await expect(page.locator('.mix-package-card').first()).toContainText('短视频混剪素材包', { timeout: 20_000 });
+    await expect(page.locator('.mix-package-card').first()).toContainText('SOP 已关联');
+    await expect(page.locator('.mix-package-card').first().getByRole('button', { name: '打开 SOP' })).toBeVisible();
 
     await clickNavItem(page, 'SOP 工作流');
     await expect(page.locator('.workflow-latest-run')).toContainText('完成', { timeout: 20_000 });
     await expect(latestNextAction).toContainText('查看混剪包');
     await page.locator('.workflow-latest-run button').filter({ hasText: '查看运行详情' }).click();
     await expect(runDetail.locator('.workflow-run-action-panel')).toContainText('查看混剪包');
+
+    const exportedTrace = await page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      const [pack] = await api.listMixPackages(workspacePath);
+      const relatedRun = (await api.listWorkflowRuns(workspacePath))
+        .find((run) => run.id === pack?.workflowRunId);
+      return {
+        workflowRunId: pack?.workflowRunId,
+        runStatus: relatedRun?.status,
+        runRefs: relatedRun?.artifactRefs ?? [],
+      };
+    }, workspaceDir);
+    expect(exportedTrace.workflowRunId, JSON.stringify(exportedTrace)).toBeTruthy();
+    expect(exportedTrace.runStatus, JSON.stringify(exportedTrace)).toBe('succeeded');
+    expect(exportedTrace.runRefs.some((ref) => ref.startsWith('mix-package:')), JSON.stringify(exportedTrace)).toBe(true);
+
+    await clickNavItem(page, 'SOP 工作流');
+    await page.locator('.workflow-view-tabs button').filter({ hasText: '执行表单' }).click();
+    await expect(page.locator('.workflow-view-tabs button[aria-selected="true"]')).toContainText('执行表单');
+    const repeatedVideoSopCard = page.locator('.workflow-definition-list .record-card').filter({ hasText: '视频素材包 SOP' }).first();
+    await expect(repeatedVideoSopCard).toBeVisible();
+    await repeatedVideoSopCard.click();
+    await expect(page.locator('.workflow-runner-panel')).toContainText('视频素材包 SOP');
+    await page.locator('.workflow-runner-panel textarea').nth(0).fill('品牌场景库、脚本和产品素材。');
+    await page.locator('.workflow-runner-panel textarea').nth(1).fill('生成 15 秒视频素材 Prompt，第三方生成后手动导入，再生成绿幕图和混剪 manifest。');
+    await page.locator('.workflow-runner-panel input[type="number"]').fill('15');
+    await page.locator('.workflow-runner-panel button').filter({ hasText: '运行 SOP' }).click();
+
+    const repeatedRunTrace = await page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      const runs = await api.listWorkflowRuns(workspacePath);
+      const sources = await api.listInputSources(workspacePath);
+      const latestRun = runs
+        .filter((item) => item.workflowKey === 'video-material-package')
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      return {
+        runId: latestRun?.id,
+        inputSourceIds: latestRun?.inputSourceIds ?? [],
+        promptDistilledSourceIds: sources
+          .filter((source) => source.tags.includes('prompt-distilled'))
+          .map((source) => source.id),
+      };
+    }, workspaceDir);
+    expect(repeatedRunTrace.promptDistilledSourceIds.length, JSON.stringify(repeatedRunTrace)).toBeGreaterThan(0);
+    expect(
+      repeatedRunTrace.promptDistilledSourceIds.some((id) => repeatedRunTrace.inputSourceIds.includes(id)),
+      JSON.stringify(repeatedRunTrace),
+    ).toBe(false);
   });
 });
 
@@ -1384,7 +1531,7 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
           },
           inputSourceIds: [reference.id, product.id],
         });
-        return { status: run.status, summary: run.summary };
+        return { runId: run.id, status: run.status, summary: run.summary };
       }, { workspacePath: workspaceDir, endpoint: baseUrl });
 
       expect(setup.status, JSON.stringify(setup)).toBe('queued');
@@ -1410,7 +1557,7 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
 
       await clickNavItem(page, 'SOP 工作流');
       await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await actionPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
+      await artifactPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
       await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.asset-library-workbench')).toContainText('合规检测 / 人工审核台');
       const generatedAsset = page.locator('.asset-tile').filter({ hasText: 'test-image-model' }).first();
@@ -1423,16 +1570,87 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
       await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
       await expect(runDetail).toContainText(/已驳回素材并等待回炉|驳回|回炉/, { timeout: 20_000 });
       await expect(runDetail.locator('.workflow-summary-stack')).toContainText('阻塞');
+      await expect(runDetail).toContainText('原驳回素材', { timeout: 20_000 });
+
+      await artifactPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
+      await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
+      await generatedAsset.getByRole('button', { name: '回炉', exact: true }).click();
+      await expect(page.locator('.image-workbench-layout')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.image-prompt-composer textarea')).toHaveValue(/回炉原因|驳回素材|真实手机实拍/, { timeout: 20_000 });
+      await page.locator('.image-render-button').click();
+      await expect(page.locator('.image-generated-grid')).toBeVisible({ timeout: 20_000 });
+      await expect.poll(
+        async () => page.locator('.image-generated-card').count(),
+        { message: '等待回炉图片进入预览大盘', timeout: 20_000 },
+      ).toBeGreaterThanOrEqual(2);
+      await page.getByRole('tab', { name: '生成日志' }).click();
+      await expect(page.locator('.image-preview-log-list')).toContainText('test-image-model', { timeout: 20_000 });
+
+      await clickNavItem(page, 'SOP 工作流');
+      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
+      await expect(runDetail.locator('.workflow-summary-stack')).toContainText('排队', { timeout: 20_000 });
+      await expect(runDetail).toContainText('回炉生成', { timeout: 20_000 });
 
       await actionPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
       await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
-      await generatedAsset.getByRole('button', { name: '通过', exact: true }).click();
-      await expect(generatedAsset).toContainText('已通过', { timeout: 20_000 });
+      const reworkedAsset = page.locator('.asset-tile').filter({ hasText: '回炉生成' }).first();
+      await expect(reworkedAsset).toBeVisible({ timeout: 20_000 });
+      await reworkedAsset.getByRole('button', { name: '通过', exact: true }).click();
+      await expect(reworkedAsset).toContainText('已通过', { timeout: 20_000 });
 
       await clickNavItem(page, 'SOP 工作流');
       await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
       await expect(runDetail).toContainText('小红书种草图 SOP 已完成', { timeout: 20_000 });
       await expect(runDetail.locator('.workflow-summary-stack')).toContainText('完成');
+      await expect(runDetail).toContainText('新通过素材', { timeout: 20_000 });
+
+      await artifactPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
+      await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
+      const approvedReworkedAsset = page.locator('.asset-tile').filter({ hasText: '回炉生成' }).first();
+      await approvedReworkedAsset.getByRole('button', { name: '沉淀 Prompt', exact: true }).click();
+      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/成功素材反向沉淀 Prompt|复用 Prompt 草稿|真实手机实拍/, { timeout: 20_000 });
+
+      const persistedTrace = await page.evaluate(async ({ workspacePath, runId }) => {
+        const api = window.contentStudio;
+        const logs = await api.listGenerationLogs(workspacePath);
+        const reviews = await api.listAssetReviews(workspacePath);
+        const sources = await api.listInputSources(workspacePath);
+        const drafts = await api.listPromptDrafts(workspacePath);
+        const runs = await api.listWorkflowRuns(workspacePath);
+        const imageLogs = logs.filter((log) => log.workflowRunId === runId && log.kind === 'image');
+        const reworkLog = imageLogs.find((log) => log.reworkSource);
+        const review = reviews.find((item) => item.workflowRunId === runId && item.sourceId === reworkLog?.id);
+        const rejected = reviews.find((item) => item.workflowRunId === runId && item.status === 'rejected');
+        const distilledSource = sources.find((item) => item.workflowRunId === runId && item.purpose === 'successful-asset');
+        const distilledDraft = drafts.find((item) => distilledSource?.id && item.inputSourceIds.includes(distilledSource.id));
+        const run = runs.find((item) => item.id === runId);
+        return {
+          imageLogWorkflowRunId: reworkLog?.workflowRunId,
+          reworkSourceAssetKey: reworkLog?.reworkSource?.assetKey,
+          rejectedAssetKey: rejected?.assetKey,
+          reviewWorkflowRunId: review?.workflowRunId,
+          reviewStatus: review?.status,
+          distilledSourcePurpose: distilledSource?.purpose,
+          distilledSourcePromptDraftId: distilledSource?.relatedPromptDraftId,
+          distilledDraftWorkflowRunId: distilledDraft?.workflowRunId,
+          distilledDraftModel: distilledDraft?.model,
+          distilledDraftStatus: distilledDraft?.status,
+          runHasDistilledSourceRef: distilledSource ? run?.artifactRefs.includes(`input-source:${distilledSource.id}`) : false,
+          runHasDistilledDraftRef: distilledDraft ? run?.artifactRefs.includes(`prompt-draft:${distilledDraft.id}`) : false,
+        };
+      }, { workspacePath: workspaceDir, runId: setup.runId });
+      expect(persistedTrace.imageLogWorkflowRunId, JSON.stringify(persistedTrace)).toBe(setup.runId);
+      expect(persistedTrace.reworkSourceAssetKey, JSON.stringify(persistedTrace)).toBe(persistedTrace.rejectedAssetKey);
+      expect(persistedTrace.reviewWorkflowRunId, JSON.stringify(persistedTrace)).toBe(setup.runId);
+      expect(persistedTrace.reviewStatus, JSON.stringify(persistedTrace)).toBe('approved');
+      expect(persistedTrace.distilledSourcePurpose, JSON.stringify(persistedTrace)).toBe('successful-asset');
+      expect(persistedTrace.distilledSourcePromptDraftId, JSON.stringify(persistedTrace)).toBeTruthy();
+      expect(persistedTrace.distilledDraftWorkflowRunId, JSON.stringify(persistedTrace)).toBe(setup.runId);
+      expect(persistedTrace.distilledDraftModel, JSON.stringify(persistedTrace)).toBe('local-successful-asset-distiller');
+      expect(persistedTrace.distilledDraftStatus, JSON.stringify(persistedTrace)).toBe('confirmed');
+      expect(persistedTrace.runHasDistilledSourceRef, JSON.stringify(persistedTrace)).toBe(true);
+      expect(persistedTrace.runHasDistilledDraftRef, JSON.stringify(persistedTrace)).toBe(true);
     }, {
       env: {
         CONTENT_STUDIO_VISION_ENDPOINT: `${baseUrl}/vision`,
@@ -1536,6 +1754,34 @@ test('IP 长文 SOP 运行详情可以打开 Agent Prompt 并进入文章生成'
       await artifactPanel.locator('button').filter({ hasText: '打开 IP 知识库' }).click();
       await expect(page.locator('.knowledge-brand-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.brand-kb-detail')).toContainText('内容工程顾问');
+      await page.getByRole('button', { name: '生成口播 Prompt' }).click();
+      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/IP 场景延伸知识库|延伸场景：口播|内容工程顾问/, { timeout: 20_000 });
+      const scenarioTrace = await page.evaluate(async (workspacePath) => {
+        const [run] = (await window.contentStudio.listWorkflowRuns(workspacePath))
+          .filter((item) => item.workflowKey === 'ip-longform');
+        const sources = await window.contentStudio.listInputSources(workspacePath);
+        const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
+        const scenarioSource = sources.find((source) => source.purpose === 'ip-scenario-kb' && /口播/.test(source.title));
+        const scenarioDraft = drafts.find((draft) => scenarioSource?.id && draft.inputSourceIds.includes(scenarioSource.id));
+        return {
+          runId: run?.id ?? '',
+          sourcePurpose: scenarioSource?.purpose,
+          sourceWorkflowRunId: scenarioSource?.workflowRunId,
+          draftWorkflowRunId: scenarioDraft?.workflowRunId,
+          draftPurpose: scenarioDraft?.purpose,
+          draftModel: scenarioDraft?.model,
+          runHasSourceRef: scenarioSource ? run?.artifactRefs.includes(`input-source:${scenarioSource.id}`) : false,
+          runHasDraftRef: scenarioDraft ? run?.artifactRefs.includes(`prompt-draft:${scenarioDraft.id}`) : false,
+        };
+      }, workspaceDir);
+      expect(scenarioTrace.sourcePurpose, JSON.stringify(scenarioTrace)).toBe('ip-scenario-kb');
+      expect(scenarioTrace.sourceWorkflowRunId, JSON.stringify(scenarioTrace)).toBe(scenarioTrace.runId);
+      expect(scenarioTrace.draftWorkflowRunId, JSON.stringify(scenarioTrace)).toBe(scenarioTrace.runId);
+      expect(scenarioTrace.draftPurpose, JSON.stringify(scenarioTrace)).toBe('video');
+      expect(scenarioTrace.draftModel, JSON.stringify(scenarioTrace)).toBe('local-ip-scenario-extension');
+      expect(scenarioTrace.runHasSourceRef, JSON.stringify(scenarioTrace)).toBe(true);
+      expect(scenarioTrace.runHasDraftRef, JSON.stringify(scenarioTrace)).toBe(true);
 
       await clickNavItem(page, 'SOP 工作流');
       await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();

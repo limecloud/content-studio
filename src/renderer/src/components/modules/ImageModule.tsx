@@ -176,9 +176,6 @@ export function ImageModule({
   const [customPromptDrafts, setCustomPromptDrafts] = useState<
     CustomPromptDraft[]
   >([]);
-  const [inputLabelMode, setInputLabelMode] = useState<"label" | "fixed">(
-    "label",
-  );
   const [previewPanel, setPreviewPanel] = useState<"preview" | "logs">(
     "preview",
   );
@@ -720,25 +717,6 @@ export function ImageModule({
   return (
     <section className="image-workbench-layout">
       <aside className="image-input-rail" aria-label="素材输入栏">
-        <div
-          className="image-input-mode-tabs"
-          role="tablist"
-          aria-label="提示词输入方式"
-        >
-          <button
-            className={inputLabelMode === "label" ? "active" : ""}
-            onClick={() => setInputLabelMode("label")}
-          >
-            打标
-          </button>
-          <button
-            className={inputLabelMode === "fixed" ? "active" : ""}
-            onClick={() => setInputLabelMode("fixed")}
-          >
-            固定
-          </button>
-        </div>
-
         <div className="image-upload-stack">
           <button
             className="image-upload-panel product"

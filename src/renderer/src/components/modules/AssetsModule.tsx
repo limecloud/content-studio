@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  AssetReworkSource,
   AssetReviewRecord,
   AssetReviewStatus,
   GenerationLogEntry,
@@ -14,6 +15,7 @@ import {
   fileNameFromPath,
   formatDuration,
   isImageFilePath,
+  isPromptDistilledSource,
   isVideoFilePath,
   kindLabel,
   localAssetUrl,
@@ -35,13 +37,32 @@ interface AssetsModuleProps {
   onReviewAsset: (input: Omit<ReviewAssetInput, 'workspacePath'>) => void;
   onReworkAsset: (input: {
     kind: AssetKind;
+    assetKey?: string;
     path: string;
+    title?: string;
     sourceType: 'generation-log' | 'input-source' | 'manual';
     sourceId?: string;
     promptDraftId?: string;
     promptText?: string;
+    sceneCardIds?: string[];
+    workflowRunId?: string;
+  }) => void;
+  onDistillAssetPrompt: (input: {
+    kind: AssetKind;
+    assetKey?: string;
+    path: string;
+    title?: string;
+    sourceType: 'generation-log' | 'input-source' | 'manual';
+    sourceId?: string;
+    promptDraftId?: string;
+    promptText?: string;
+    sceneCardIds?: string[];
+    workflowRunId?: string;
   }) => void;
   onOpenMixExport: () => void;
+  onOpenPromptDraft: (draftId: string) => void;
+  onOpenSceneCards: (sceneCardIds: string[]) => void;
+  onOpenWorkflowRun: (workflowRunId: string) => void;
 }
 
 type AssetKind = 'image' | 'video';
@@ -59,6 +80,10 @@ interface AssetItem {
   tags: string[];
   model?: string;
   durationMs?: number;
+  promptDraftId?: string;
+  sceneCardIds?: string[];
+  workflowRunId?: string;
+  reworkSource?: AssetReworkSource;
   log?: GenerationLogEntry;
   inputSource?: InputSourceRecord;
   relatedPromptDraft?: PromptDraft;
@@ -79,9 +104,18 @@ function importedAssetRefs(source: InputSourceRecord): string[] {
   return Array.from(new Set(refs)).filter((path) => isImageFilePath(path) || isVideoFilePath(path));
 }
 
-function collectGeneratedAssets(logs: GenerationLogEntry[]): AssetItem[] {
+function relatedDraftForLog(log: GenerationLogEntry, promptDrafts: PromptDraft[]): PromptDraft | undefined {
+  if (!log.workflowRunId && !log.sceneCardIds?.length) return undefined;
+  return promptDrafts.find((draft) => {
+    if (log.workflowRunId && draft.workflowRunId === log.workflowRunId) return true;
+    return Boolean(log.sceneCardIds?.some((sceneId) => draft.sceneCardIds?.includes(sceneId)));
+  });
+}
+
+function collectGeneratedAssets(logs: GenerationLogEntry[], promptDrafts: PromptDraft[]): AssetItem[] {
   return logs.flatMap((log) => {
     if (log.status !== 'succeeded' || (log.kind !== 'image' && log.kind !== 'video')) return [];
+    const relatedDraft = relatedDraftForLog(log, promptDrafts);
     return extractGeneratedAssetRefsFromLog(log)
       .filter((path) => isImageFilePath(path) || isVideoFilePath(path))
       .map((path, index) => ({
@@ -96,7 +130,12 @@ function collectGeneratedAssets(logs: GenerationLogEntry[]): AssetItem[] {
         tags: [kindLabel(log.kind), log.model ?? '', log.status].filter(Boolean),
         model: log.model,
         durationMs: log.durationMs,
+        promptDraftId: relatedDraft?.id,
+        sceneCardIds: log.sceneCardIds ?? relatedDraft?.sceneCardIds ?? [],
+        workflowRunId: log.workflowRunId ?? relatedDraft?.workflowRunId,
+        reworkSource: log.reworkSource,
         log,
+        relatedPromptDraft: relatedDraft,
       }));
   });
 }
@@ -107,6 +146,7 @@ function collectImportedAssets(
 ): AssetItem[] {
   return inputSources.flatMap((source) => {
     if (source.purpose !== 'successful-asset') return [];
+    if (isPromptDistilledSource(source)) return [];
     return importedAssetRefs(source).map((path, index) => {
       const relatedDraft = source.relatedPromptDraftId
         ? promptDrafts.find((draft) => draft.id === source.relatedPromptDraftId)
@@ -121,6 +161,9 @@ function collectImportedAssets(
         prompt: activeDraftContent(relatedDraft) || source.summary || '',
         createdAt: source.createdAt,
         tags: Array.from(new Set(['手动导入', source.kind, ...source.tags].filter(Boolean))),
+        promptDraftId: relatedDraft?.id,
+        sceneCardIds: source.relatedSceneCardIds ?? relatedDraft?.sceneCardIds ?? [],
+        workflowRunId: source.workflowRunId ?? relatedDraft?.workflowRunId,
         inputSource: source,
         relatedPromptDraft: relatedDraft,
       };
@@ -154,7 +197,11 @@ export function AssetsModule({
   onReuseImageLogInput,
   onReviewAsset,
   onReworkAsset,
+  onDistillAssetPrompt,
   onOpenMixExport,
+  onOpenPromptDraft,
+  onOpenSceneCards,
+  onOpenWorkflowRun,
 }: AssetsModuleProps) {
   const [assetFilter, setAssetFilter] = useState<AssetKind | 'all'>(variant === 'library' ? 'all' : 'image');
   const [reviewFilter, setReviewFilter] = useState<AssetReviewStatus | 'all'>('all');
@@ -167,7 +214,7 @@ export function AssetsModule({
   const assets = useMemo(
     () => [
       ...collectImportedAssets(inputSources, promptDrafts),
-      ...collectGeneratedAssets(logs),
+      ...collectGeneratedAssets(logs, promptDrafts),
     ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [inputSources, logs, promptDrafts],
   );
@@ -229,6 +276,7 @@ export function AssetsModule({
   function reviewAsset(asset: AssetItem, status: AssetReviewStatus): void {
     onReviewAsset({
       assetKey: asset.id,
+      workflowRunId: asset.workflowRunId,
       kind: asset.kind,
       sourceType: asset.source === 'generation' ? 'generation-log' : 'input-source',
       sourceId: asset.log?.id ?? asset.inputSource?.id,
@@ -243,11 +291,30 @@ export function AssetsModule({
   function reworkAsset(asset: AssetItem): void {
     onReworkAsset({
       kind: asset.kind,
+      assetKey: asset.id,
       path: asset.path,
+      title: asset.title,
       sourceType: asset.source === 'generation' ? 'generation-log' : 'input-source',
       sourceId: asset.log?.id ?? asset.inputSource?.id,
-      promptDraftId: asset.inputSource?.relatedPromptDraftId,
+      promptDraftId: asset.promptDraftId,
       promptText: asset.prompt,
+      sceneCardIds: asset.sceneCardIds,
+      workflowRunId: asset.workflowRunId,
+    });
+  }
+
+  function distillAssetPrompt(asset: AssetItem): void {
+    onDistillAssetPrompt({
+      kind: asset.kind,
+      assetKey: asset.id,
+      path: asset.path,
+      title: asset.title,
+      sourceType: asset.source === 'generation' ? 'generation-log' : 'input-source',
+      sourceId: asset.log?.id ?? asset.inputSource?.id,
+      promptDraftId: asset.promptDraftId,
+      promptText: asset.prompt,
+      sceneCardIds: asset.sceneCardIds,
+      workflowRunId: asset.workflowRunId,
     });
   }
 
@@ -314,12 +381,21 @@ export function AssetsModule({
             <div className="asset-tile-meta">
               <strong>{asset.title}</strong>
               <small>{asset.subtitle}</small>
+              <small>
+                {asset.workflowRunId ? 'SOP 已关联' : 'SOP 未关联'}
+                {asset.promptDraftId ? ' · Prompt 已关联' : ''}
+                {asset.sceneCardIds?.length ? ` · 场景 ${asset.sceneCardIds.length}` : ''}
+                {asset.reworkSource ? ' · 回炉生成' : ''}
+              </small>
               <span className={`status-pill ${reviewClass(review?.status)}`}>{reviewLabel(review?.status)}</span>
             </div>
             <div className="log-actions">
               <button className="ghost small" onClick={() => setSelectedAsset(asset)}>详情</button>
               <button className="ghost small" onClick={() => reviewAsset(asset, 'rejected')}>驳回</button>
               <button className="primary small" onClick={() => reviewAsset(asset, 'approved')}>通过</button>
+              {review?.status === 'approved' ? (
+                <button className="primary small" onClick={() => distillAssetPrompt(asset)}>沉淀 Prompt</button>
+              ) : null}
               <button className="ghost small" onClick={() => reworkAsset(asset)}>回炉</button>
               <button className="ghost small" onClick={() => revealAsset(asset)}>打开位置</button>
               {asset.log?.kind === 'image' ? (
@@ -374,7 +450,19 @@ export function AssetsModule({
                 </span>
                 <span>
                   <strong>关联 Prompt</strong>
-                  <em>{selectedAsset.relatedPromptDraft?.title ?? '未关联'}</em>
+                  <em>{selectedAsset.relatedPromptDraft?.title ?? selectedAsset.promptDraftId ?? '未关联'}</em>
+                </span>
+                <span>
+                  <strong>SOP 运行</strong>
+                  <em>{selectedAsset.workflowRunId ?? '未关联'}</em>
+                </span>
+                <span>
+                  <strong>场景卡</strong>
+                  <em>{selectedAsset.sceneCardIds?.length ? `${selectedAsset.sceneCardIds.length} 张` : '未关联'}</em>
+                </span>
+                <span>
+                  <strong>回炉来源</strong>
+                  <em>{selectedAsset.reworkSource?.title ?? selectedAsset.reworkSource?.assetKey ?? '非回炉生成'}</em>
                 </span>
                 <span>
                   <strong>入库时间</strong>
@@ -400,12 +488,32 @@ export function AssetsModule({
                 <button className="ghost" onClick={() => revealAsset(selectedAsset)}>
                   打开位置
                 </button>
+                {selectedAsset.promptDraftId ? (
+                  <button className="ghost" onClick={() => onOpenPromptDraft(selectedAsset.promptDraftId as string)}>
+                    打开 Prompt
+                  </button>
+                ) : null}
+                {selectedAsset.sceneCardIds?.length ? (
+                  <button className="ghost" onClick={() => onOpenSceneCards(selectedAsset.sceneCardIds ?? [])}>
+                    打开场景
+                  </button>
+                ) : null}
+                {selectedAsset.workflowRunId ? (
+                  <button className="ghost" onClick={() => onOpenWorkflowRun(selectedAsset.workflowRunId as string)}>
+                    打开 SOP
+                  </button>
+                ) : null}
                 <button className="ghost" onClick={() => reviewAsset(selectedAsset, 'rejected')}>
                   驳回素材
                 </button>
                 <button className="primary" onClick={() => reviewAsset(selectedAsset, 'approved')}>
                   通过审核
                 </button>
+                {reviewMap.get(selectedAsset.id)?.status === 'approved' ? (
+                  <button className="primary" onClick={() => distillAssetPrompt(selectedAsset)}>
+                    沉淀 Prompt
+                  </button>
+                ) : null}
                 <button className="ghost" onClick={() => reworkAsset(selectedAsset)}>
                   回炉重做
                 </button>

@@ -756,6 +756,10 @@ function applyManualEvent(
       },
       error: 'WORKFLOW_ASSET_REVIEW_REJECTED',
     }, now);
+  } else if (input.event === 'asset-prompt-distilled') {
+    if (input.inputSourceId) refs.push(`input-source:${input.inputSourceId}`);
+    if (input.promptDraftId) refs.push(`prompt-draft:${input.promptDraftId}`);
+    if (input.assetKey) refs.push(input.assetKey);
   } else if (input.event === 'mix-package-exported') {
     if (input.mixPackageId) refs.push(`mix-package:${input.mixPackageId}`);
     if (input.manifestPath) refs.push(input.manifestPath);
@@ -829,6 +833,7 @@ function applyIpLongformManualEvent(
   const summary = input.summary?.trim();
 
   if (input.promptDraftId) refs.push(`prompt-draft:${input.promptDraftId}`);
+  if (input.inputSourceId) refs.push(`input-source:${input.inputSourceId}`);
   if (input.generationLogId) refs.push(`generation-log:${input.generationLogId}`);
 
   if (input.event === 'article-draft-generated') {
@@ -860,6 +865,8 @@ function applyIpLongformManualEvent(
         archivedAt: now,
       },
     }, now);
+  } else if (input.event === 'ip-scenario-extended') {
+    // 只追加 IP 场景延伸产物引用，不改变长文 SOP 当前停顿节点。
   } else {
     throw new Error('当前手工事件不适用于公众号 IP 内容 SOP。');
   }
@@ -935,7 +942,10 @@ function applyContentManualEvent(
   if (input.assetKey) refs.push(input.assetKey);
   const imageAssetRefs = input.assetRefs?.filter(Boolean) ?? [];
 
-  if (input.event === 'workflow-review-approved') {
+  if (input.event === 'asset-prompt-distilled') {
+    if (input.inputSourceId) refs.push(`input-source:${input.inputSourceId}`);
+    if (input.promptDraftId) refs.push(`prompt-draft:${input.promptDraftId}`);
+  } else if (input.event === 'workflow-review-approved') {
     next = updateStep(next, 'human_review', {
       status: 'succeeded',
       summary: summary || '已人工确认本次 SOP 产物可进入归档。',
@@ -1050,7 +1060,8 @@ function canApplyContentManualEvent(run: WorkflowRunRecord, input: RecordWorkflo
     || input.event === 'workflow-asset-archived'
     || input.event === 'image-candidates-generated'
     || input.event === 'asset-reviewed'
-    || input.event === 'asset-review-rejected';
+    || input.event === 'asset-review-rejected'
+    || input.event === 'asset-prompt-distilled';
   if (!eventSupported) return false;
   if (input.event === 'image-candidates-generated' && !run.steps.some((stepItem) => stepItem.stepId === 'image_generate')) {
     return false;

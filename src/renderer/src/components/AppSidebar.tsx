@@ -1,4 +1,3 @@
-import logoUrl from "../logo.png";
 import { NAV_GROUPS } from "../app/constants";
 import type {
   AutoUpdateState,
@@ -92,34 +91,45 @@ export function AppSidebar({
   const accountAction = hasUpdate ? onOpenUpdates : onOpenAccountSettings;
   const user = authState?.user;
   const isAuthenticated = Boolean(authState?.authenticated);
+  const brandName =
+    authState?.bootstrap?.branding?.shortName ||
+    authState?.bootstrap?.branding?.appName ||
+    authState?.bootstrap?.tenant?.name ||
+    "布谷AI";
+  const logoUrl = authState?.bootstrap?.branding?.logoUrl;
+  const brandInitial = brandName.trim().slice(0, 1).toUpperCase() || "C";
   const displayName = isAuthenticated
-    ? user?.displayName || user?.username || user?.email || "布谷用户"
+    ? user?.displayName || user?.username || user?.email || `${brandName}用户`
     : "本地模式";
   const email = isAuthenticated
     ? user?.email || user?.username || "账号已登录"
-    : "未登录布谷账号";
+    : `未登录${brandName}账号`;
   const avatarText = displayName.trim().slice(0, 1).toUpperCase() || "B";
   const visibleActiveModule = NAV_ACTIVE_PARENT.get(activeModule) ?? activeModule;
 
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
       <span className="visually-hidden">
-        布谷AI 内容工厂 图片生成 视频生成 文章生成 成型知识库 素材库 skills 管理
+        {brandName} 内容工厂 图片生成 视频生成 文章生成 成型知识库 素材库 skills 管理
       </span>
       <section className="brand-card">
         <button
           className={`brand-logo-button ${collapsed ? "can-expand" : ""}`}
           type="button"
-          aria-label={collapsed ? "展开侧边栏" : "布谷AI"}
-          title={collapsed ? "展开侧边栏" : "布谷AI"}
+          aria-label={collapsed ? "展开侧边栏" : brandName}
+          title={collapsed ? "展开侧边栏" : brandName}
           onClick={() => {
             if (collapsed) onToggleCollapsed();
           }}
         >
-          <img src={logoUrl} alt="Logo" className="brand-logo-img" />
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo" className="brand-logo-img" />
+          ) : (
+            <span className="brand-logo-fallback">{brandInitial}</span>
+          )}
         </button>
         <div className="brand-copy">
-          <p className="eyebrow">布谷AI</p>
+          <p className="eyebrow">{brandName}</p>
           <h1>内容工厂</h1>
         </div>
         <button

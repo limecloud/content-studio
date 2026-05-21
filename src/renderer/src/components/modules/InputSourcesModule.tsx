@@ -19,6 +19,7 @@ interface InputSourcesModuleProps {
 const PURPOSE_OPTIONS: Array<{ value: InputSourcePurpose; label: string }> = [
   { value: 'brand-kb', label: '品牌 / 产品知识库' },
   { value: 'ip-kb', label: 'IP 知识库' },
+  { value: 'ip-scenario-kb', label: 'IP 场景延伸库' },
   { value: 'reference', label: '参考素材' },
   { value: 'product-brief', label: '产品资料' },
   { value: 'sop-input', label: 'SOP 输入' },
@@ -155,6 +156,9 @@ export function InputSourcesModule({
               <article key={source.id} className="input-source-card">
                 <div className="workflow-run-head">
                   <span className={`status-pill ${statusClass(source.status)}`}>{STATUS_LABELS[source.status]}</span>
+                  {source.tags.includes('prompt-distilled') ? (
+                    <span className="status-pill ready">Prompt 溯源</span>
+                  ) : null}
                   <div>
                     <strong>{source.title}</strong>
                     <small>{source.kind} · {purposeLabel(source.purpose)} · {formatTime(source.createdAt)}</small>

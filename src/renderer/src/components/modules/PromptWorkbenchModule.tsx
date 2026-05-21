@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ModuleKey, V2ModuleKey } from '../../app/types';
 import type {
   AgentPromptSession,
   InputSourceRecord,
+  InputSourcePurpose,
   PromptDraft,
   PromptDraftPurpose,
   PromptDraftStatus,
@@ -97,6 +98,15 @@ const PURPOSE_DEFAULTS: Record<PromptDraftPurpose, { title: string; userIntent: 
   },
 };
 
+const PURPOSE_SOURCE_PRIORITIES: Record<PromptDraftPurpose, InputSourcePurpose[]> = {
+  image: ['ip-scenario-kb', 'brand-kb', 'product-brief', 'reference', 'successful-asset', 'sop-input'],
+  video: ['ip-scenario-kb', 'brand-kb', 'product-brief', 'reference', 'successful-asset', 'sop-input'],
+  article: ['ip-scenario-kb', 'ip-kb', 'brand-kb', 'product-brief', 'sop-input', 'successful-asset', 'reference'],
+  'green-screen': ['ip-scenario-kb', 'brand-kb', 'product-brief', 'sop-input', 'successful-asset'],
+  sop: ['sop-input', 'brand-kb', 'ip-kb', 'ip-scenario-kb', 'product-brief', 'successful-asset', 'reference'],
+  skill: ['sop-input', 'brand-kb', 'ip-kb', 'ip-scenario-kb', 'product-brief', 'successful-asset', 'reference'],
+};
+
 const STATUS_LABELS: Record<PromptDraftStatus, string> = {
   draft: '草稿',
   confirmed: '已确认',
@@ -141,6 +151,48 @@ function sourceTitle(source: InputSourceRecord): string {
   return `${source.title} · ${source.kind}/${source.status}`;
 }
 
+function isTraceSource(source: InputSourceRecord): boolean {
+  return source.tags.includes('prompt-distilled');
+}
+
+function sourcePurposeRank(source: InputSourceRecord, purpose: PromptDraftPurpose): number {
+  const index = PURPOSE_SOURCE_PRIORITIES[purpose].indexOf(source.purpose);
+  return index === -1 ? 99 : index;
+}
+
+function isRecommendedSource(source: InputSourceRecord, purpose: PromptDraftPurpose): boolean {
+  return sourcePurposeRank(source, purpose) < 99;
+}
+
+function isReadyForDefaultSelection(source: InputSourceRecord): boolean {
+  return source.status === 'converted' || source.status === 'registered';
+}
+
+function defaultSourceIdsForPurpose(
+  purpose: PromptDraftPurpose,
+  sources: InputSourceRecord[],
+  activeDraft?: PromptDraft,
+): string[] {
+  if (activeDraft) return activeDraft.inputSourceIds.slice(0, 8);
+  return [...sources]
+    .filter((source) => isRecommendedSource(source, purpose) && isReadyForDefaultSelection(source))
+    .sort((a, b) => sourcePurposeRank(a, purpose) - sourcePurposeRank(b, purpose) || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 3)
+    .map((source) => source.id);
+}
+
+function sourceFitLabel(source: InputSourceRecord, purpose: PromptDraftPurpose): string {
+  if (isTraceSource(source)) return '追溯源';
+  if (!isRecommendedSource(source, purpose)) return '其他输入源';
+  if (!isReadyForDefaultSelection(source)) return '推荐但待解析';
+  return '推荐输入源';
+}
+
+function shortId(value?: string): string {
+  if (!value) return '';
+  return value.length > 12 ? value.slice(0, 8) : value;
+}
+
 export function PromptWorkbenchModule({
   featureKey = 'assets-prompt-workbench',
   initialPurpose = 'image',
@@ -172,6 +224,8 @@ export function PromptWorkbenchModule({
   const [title, setTitle] = useState(initialTitle);
   const [userIntent, setUserIntent] = useState(initialUserIntent);
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+  const sourceSelectionModeRef = useRef<'auto' | 'manual'>('auto');
+  const lastAutoSelectionContextRef = useRef<string>('');
   const visibleDrafts = useMemo(
     () => promptDrafts.filter((draft) => draft.purpose === purpose),
     [promptDrafts, purpose],
@@ -196,6 +250,16 @@ export function PromptWorkbenchModule({
     () => inputSources.filter((source) => selectedSourceIds.includes(source.id)),
     [inputSources, selectedSourceIds],
   );
+  const orderedInputSources = useMemo(
+    () => [...inputSources].sort((a, b) => {
+      const rankDiff = sourcePurposeRank(a, purpose) - sourcePurposeRank(b, purpose);
+      if (rankDiff !== 0) return rankDiff;
+      const statusDiff = Number(!isReadyForDefaultSelection(a)) - Number(!isReadyForDefaultSelection(b));
+      if (statusDiff !== 0) return statusDiff;
+      return b.createdAt.localeCompare(a.createdAt);
+    }),
+    [inputSources, purpose],
+  );
 
   useEffect(() => {
     setDraftContent(activeContent(activeDraft));
@@ -208,9 +272,13 @@ export function PromptWorkbenchModule({
   }, [featureKey, initialPurpose, initialTitle, initialUserIntent]);
 
   useEffect(() => {
-    if (selectedSourceIds.length || inputSources.length === 0) return;
-    setSelectedSourceIds(inputSources.slice(0, 3).map((source) => source.id));
-  }, [inputSources, selectedSourceIds.length]);
+    const selectionContext = `${purpose}:${activeDraft?.id ?? 'none'}`;
+    const nextSelectedIds = defaultSourceIdsForPurpose(purpose, inputSources, activeDraft);
+    if (sourceSelectionModeRef.current === 'manual' && lastAutoSelectionContextRef.current === selectionContext) return;
+    setSelectedSourceIds(nextSelectedIds);
+    sourceSelectionModeRef.current = 'auto';
+    lastAutoSelectionContextRef.current = selectionContext;
+  }, [activeDraft?.id, inputSources, purpose]);
 
   const canGenerate = workspaceReady && !busy && userIntent.trim().length > 0;
   const canStartSession = canGenerate;
@@ -223,6 +291,8 @@ export function PromptWorkbenchModule({
     setPurpose(nextPurpose);
     setTitle(PURPOSE_DEFAULTS[nextPurpose].title);
     setUserIntent(PURPOSE_DEFAULTS[nextPurpose].userIntent);
+    sourceSelectionModeRef.current = 'auto';
+    setSelectedSourceIds(defaultSourceIdsForPurpose(nextPurpose, inputSources));
   }
 
   return (
@@ -268,12 +338,15 @@ export function PromptWorkbenchModule({
             </label>
           </div>
           <div className="prompt-source-list">
-            {inputSources.map((source) => (
+            {orderedInputSources.map((source) => (
               <label key={source.id} className="prompt-source-option">
                 <input
                   type="checkbox"
                   checked={selectedSourceIds.includes(source.id)}
+                  disabled={isTraceSource(source)}
+                  title={isTraceSource(source) ? '追溯源，仅供查看' : undefined}
                   onChange={(event) => {
+                    sourceSelectionModeRef.current = 'manual';
                     setSelectedSourceIds((current) =>
                       event.target.checked
                         ? [...current, source.id].slice(0, 8)
@@ -283,6 +356,7 @@ export function PromptWorkbenchModule({
                 />
                 <span>
                   <strong>{sourceTitle(source)}</strong>
+                  <small>{sourceFitLabel(source, purpose)} · {source.purpose}</small>
                   <small>{source.summary ?? source.blockedReason ?? '未记录摘要'}</small>
                   {source.markdownPath ? <small>Markdown：{source.markdownPath}</small> : null}
                 </span>
@@ -321,6 +395,9 @@ export function PromptWorkbenchModule({
               <div className="workflow-summary-stack compact">
                 <StatusPill tone={statusClass(activeDraft.status)}>{STATUS_LABELS[activeDraft.status]}</StatusPill>
                 <StatusPill tone={modelStatusClass(activeDraft.model)}>{modelLabel(activeDraft.model)}</StatusPill>
+                {activeDraft.workflowRunId ? (
+                  <StatusPill tone="ready">SOP {shortId(activeDraft.workflowRunId)}</StatusPill>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -435,7 +512,7 @@ export function PromptWorkbenchModule({
                 status={STATUS_LABELS[draft.status]}
                 statusTone={statusClass(draft.status)}
                 title={draft.title}
-                meta={`${draft.purpose} · ${draft.versions.length} 个版本 · ${modelLabel(draft.model)}`}
+                meta={`${draft.purpose} · ${draft.versions.length} 个版本 · ${draft.inputSourceIds.length} 个输入源${draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}${draft.workflowRunId ? ` · SOP ${shortId(draft.workflowRunId)}` : ''} · ${modelLabel(draft.model)}`}
                 onClick={() => onSelectDraft(draft.id)}
               />
             ))}
@@ -464,7 +541,7 @@ export function PromptWorkbenchModule({
                   className="prompt-session-card"
                   active={session.id === activeSession?.id}
                   title={session.title}
-                  meta={`${session.purpose} · ${session.messages.length} 条消息 · ${session.promptDraftIds.length} 个草稿`}
+                  meta={`${session.purpose} · ${session.messages.length} 条消息 · ${session.promptDraftIds.length} 个草稿${session.workflowRunId ? ` · SOP ${shortId(session.workflowRunId)}` : ''}`}
                   onClick={() => onSelectSession(session.id)}
                 />
               ))}
@@ -514,6 +591,8 @@ export function PromptWorkbenchModule({
         <section className="panel prompt-source-footprint">
           <p className="eyebrow">来源追溯</p>
           <div className="workflow-run-steps">
+            {activeDraft?.workflowRunId ? <span>SOP：{shortId(activeDraft.workflowRunId)}</span> : null}
+            {activeDraft?.sceneCardIds?.length ? <span>场景卡：{activeDraft.sceneCardIds.length} 张</span> : null}
             {selectedSources.map((source) => (
               <span key={source.id}>{source.title}</span>
             ))}

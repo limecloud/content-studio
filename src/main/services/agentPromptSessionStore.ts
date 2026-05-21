@@ -14,6 +14,7 @@ import type {
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { InputSourceStore } from './inputSourceStore';
+import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { PromptDraftStore } from './promptDraftStore';
 import { TextGenerationService, TextProviderBlockedError, TextProviderFailedError } from './textGenerationService';
 
@@ -124,6 +125,7 @@ export class AgentPromptSessionStore {
     const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id));
     const draft = await this.promptDrafts.generate({
       workspacePath: input.workspacePath,
+      workflowRunId: input.workflowRunId,
       title: input.title,
       purpose: input.purpose,
       userIntent: input.userIntent,
@@ -160,6 +162,7 @@ export class AgentPromptSessionStore {
     const session: AgentPromptSession = {
       id: randomUUID(),
       workspacePath: input.workspacePath,
+      workflowRunId: input.workflowRunId,
       title: input.title?.trim() || draft.title,
       purpose: input.purpose,
       status: draft.model?.startsWith('blocked:') ? 'blocked' : 'draft-created',
@@ -243,7 +246,7 @@ export class AgentPromptSessionStore {
       const result = await this.textGeneration.generateJson<RefinePromptOutput>({
         workspacePath: session.workspacePath,
         systemPrompt: [
-          '你是布谷AI内容工厂的 Prompt 多轮调整 Agent。',
+          `你是${getOemRuntimeConfig().productName}内容工厂的 Prompt 多轮调整 Agent。`,
           '你必须基于会话输入源、已有 Prompt 草稿和用户本轮调整要求改写 Prompt。',
           '必须保留来源约束，不编造输入源没有的卖点、功效、背书或用户案例。',
           '如果调整要求缺少必要信息，要给出追问；如果来源存在 blocked，要提醒人工确认。',

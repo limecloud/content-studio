@@ -4,6 +4,7 @@ import type {
 } from '../../shared/imageTemplates';
 import type { GenerateImageSkillInput, GenerateImageSkillResult } from '../../shared/types';
 import { readFile } from 'node:fs/promises';
+import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import type { TextGenerationService } from './textGenerationService';
 
 type LegacyVariable = {
@@ -246,7 +247,7 @@ function normalizeTemplate(value: ImageSkillModelOutput, description: string): I
     name,
     icon: firstEmoji(value.icon),
     version: cleanText(value.version, 'v1.0.0'),
-    author: '布谷AI',
+    author: getOemRuntimeConfig().shortName,
     category: cleanText(value.category, '自定义'),
     description: cleanText(value.description, description.slice(0, 80) || '自定义图片生成技能'),
     defaultRatio,

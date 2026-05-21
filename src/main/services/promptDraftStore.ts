@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type {
+  CreatePromptDraftFromContentInput,
   GeneratePromptDraftInput,
   InputSourceRecord,
   PromptDraft,
   PromptDraftPurpose,
-  PromptDraftStatus,
   PromptDraftVersion,
   RecordPromptDraftCopyInput,
   UpdatePromptDraftInput,
@@ -13,6 +13,7 @@ import type {
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { InputSourceStore } from './inputSourceStore';
+import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { TextGenerationService, TextProviderBlockedError, TextProviderFailedError } from './textGenerationService';
 
 function promptDraftsFilePath(workspacePath: string): string {
@@ -170,6 +171,7 @@ export class PromptDraftStore {
     const draft: PromptDraft = {
       id: randomUUID(),
       workspacePath: input.workspacePath,
+      workflowRunId: input.workflowRunId,
       title: input.title?.trim() || generated.title || `${purposeLabel(input.purpose)} Prompt 草稿`,
       purpose: input.purpose,
       status: 'draft',
@@ -188,18 +190,7 @@ export class PromptDraftStore {
     return draft;
   }
 
-  async createFromContent(input: {
-    workspacePath: string;
-    title: string;
-    purpose: PromptDraftPurpose;
-    userIntent: string;
-    inputSourceIds: string[];
-    sceneCardIds?: string[];
-    content: string;
-    note?: string;
-    model?: string;
-    status?: PromptDraftStatus;
-  }): Promise<PromptDraft> {
+  async createFromContent(input: CreatePromptDraftFromContentInput): Promise<PromptDraft> {
     if (!input.userIntent.trim()) throw new Error('创建 Prompt 草稿需要先填写用户意图。');
     if (!input.content.trim()) throw new Error('Prompt 草稿内容不能为空。');
     const now = new Date().toISOString();
@@ -213,6 +204,7 @@ export class PromptDraftStore {
     const draft: PromptDraft = {
       id: randomUUID(),
       workspacePath: input.workspacePath,
+      workflowRunId: input.workflowRunId,
       title: input.title.trim() || `${purposeLabel(input.purpose)} Prompt 草稿`,
       purpose: input.purpose,
       status: input.status ?? 'draft',
@@ -240,7 +232,7 @@ export class PromptDraftStore {
       const result = await this.textGeneration.generateJson<PromptDraftModelOutput>({
         workspacePath: input.workspacePath,
         systemPrompt: [
-          '你是布谷AI内容工厂的 Prompt 生成 Agent。',
+          `你是${getOemRuntimeConfig().productName}内容工厂的 Prompt 生成 Agent。`,
           '你会读取用户选择的本地输入源文本，结合用户意图生成可执行 Prompt 草稿。',
           '必须把知识库当事实源：只使用输入源中可追溯的信息，不编造功效、背书、品牌数据或用户案例。',
           '如果资料缺失，要输出需要追问的问题；如果输入源被 blocked，要明确提醒人工确认。',

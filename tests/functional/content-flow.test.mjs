@@ -823,8 +823,12 @@ test('WorkflowEngine 可以执行 IP SOP 到 PromptDraft 并停在人工审核',
     assert.ok(run.artifactRefs.some((ref) => ref.startsWith('prompt-draft:')));
     assert.ok((await inputSources.list(workspacePath)).length >= 1);
     assert.equal((await ipKnowledgeBases.list(workspacePath)).length, 1);
-    assert.ok((await sessions.list(workspacePath)).length >= 1);
-    assert.ok((await promptDrafts.list(workspacePath)).length >= 1);
+    const storedSessions = await sessions.list(workspacePath);
+    assert.ok(storedSessions.length >= 1);
+    assert.equal(storedSessions[0].workflowRunId, run.id);
+    const storedDrafts = await promptDrafts.list(workspacePath);
+    assert.ok(storedDrafts.length >= 1);
+    assert.equal(storedDrafts[0].workflowRunId, run.id);
     const [storedRun] = await workflows.listRuns(workspacePath);
     assert.equal(storedRun.id, run.id);
     assert.equal(storedRun.status, 'queued');
@@ -950,11 +954,22 @@ test('WorkflowEngine 可以执行品牌知识库到场景库和 Prompt 组 SOP',
     assert.equal((await brandKnowledgeBases.list(workspacePath)).length, 1);
     const storedPacks = await promptPacks.list(workspacePath);
     assert.equal(storedPacks.length, 1);
+    assert.equal(storedPacks[0].workflowRunId, run.id);
+    assert.ok(storedPacks[0].inputSourceIds.length >= 1);
     assert.ok(storedPacks[0].citations.some((item) => item.knowledgeBaseId.startsWith('brand-kb:')));
-    assert.equal((await sceneCards.list(workspacePath)).length, 3);
+    const storedSceneCards = await sceneCards.list(workspacePath);
+    assert.equal(storedSceneCards.length, 3);
+    assert.equal(storedSceneCards.every((card) => card.workflowRunId === run.id), true);
+    assert.equal(storedSceneCards.every((card) => card.inputSourceIds.length >= 1), true);
     const storedDrafts = await promptDrafts.list(workspacePath);
     assert.equal(storedDrafts.length, 1);
+    assert.equal(storedDrafts[0].workflowRunId, run.id);
+    assert.ok(storedDrafts[0].inputSourceIds.length >= 1);
+    assert.equal(storedDrafts[0].sceneCardIds.length, 3);
     assert.match(storedDrafts[0].versions[0].content, /办公室早餐场景/);
+    const storedLogs = await logs.list(workspacePath);
+    assert.equal(storedLogs.filter((log) => log.kind === 'prompt-pack').every((log) => log.workflowRunId === run.id), true);
+    assert.equal(storedLogs.filter((log) => log.kind === 'scene-card').every((log) => log.workflowRunId === run.id), true);
     const [storedRun] = await workflows.listRuns(workspacePath);
     assert.equal(storedRun.id, run.id);
     assert.equal(storedRun.citations.length, citations.length);
@@ -1043,7 +1058,10 @@ test('WorkflowEngine 会从 SOP 输入源路径自动导入文件并生成知识
     assert.equal(run.steps.find((step) => step.stepId === 'brand_extract')?.status, 'succeeded');
     assert.equal(run.steps.find((step) => step.stepId === 'prompt_group')?.status, 'succeeded');
     const importedSources = await inputSources.list(workspacePath);
-    assert.ok(importedSources.some((source) => source.title === '唯他瑞葡聚糖知识库.md' && source.status === 'converted'));
+    const importedKnowledgeSource = importedSources.find((source) => source.title === '唯他瑞葡聚糖知识库.md' && source.status === 'converted');
+    assert.ok(importedKnowledgeSource);
+    assert.equal(importedKnowledgeSource.workflowRunId, run.id);
+    assert.equal(importedSources.every((source) => source.workflowRunId === run.id), true);
     const inputStep = run.steps.find((step) => step.stepId === 'input_register');
     assert.match(JSON.stringify(inputStep?.output ?? {}), /importedInputSourceIds/);
     assert.ok(run.artifactRefs.some((ref) => ref.endsWith('唯他瑞葡聚糖知识库.md')));
@@ -1131,10 +1149,12 @@ test('WorkflowEngine 图片步骤成功后会自动进入素材审核台', async
       const storedLogs = await logs.list(workspacePath);
       assert.equal(storedLogs.length, 1);
       assert.equal(storedLogs[0].status, 'succeeded');
+      assert.equal(storedLogs[0].workflowRunId, run.id);
       assert.equal(existsSync(storedLogs[0].artifactRefs[0]), true);
       const reviews = await assetReviews.list(workspacePath);
       assert.equal(reviews.length, 1);
       assert.equal(reviews[0].status, 'pending');
+      assert.equal(reviews[0].workflowRunId, run.id);
       assert.equal(reviews[0].sourceType, 'generation-log');
       assert.equal(reviews[0].sourceId, storedLogs[0].id);
       assert.equal(reviews[0].assetKey, `generated:${storedLogs[0].id}:0:${storedLogs[0].artifactRefs[0]}`);
@@ -1163,6 +1183,127 @@ test('WorkflowEngine 图片步骤成功后会自动进入素材审核台', async
       assert.equal(completed.steps.find((step) => step.stepId === 'asset_store')?.status, 'succeeded');
       assert.ok(completed.artifactRefs.includes(`asset-review:${reviews[0].id}`));
       assert.ok(completed.artifactRefs.includes(reviews[0].assetKey));
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test('图片素材回炉会生成 PromptDraft 新版本并让新日志关联原审核记录', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const server = createServer((request, response) => {
+      if (request.url === '/v1/responses') {
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify({ output: [{ type: 'image_generation_call', result: ONE_PIXEL_PNG }] }));
+        return;
+      }
+      response.statusCode = 404;
+      response.end('not found');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+      const oldAssetPath = join(workspacePath, 'old-rejected.png');
+      await writeFile(oldAssetPath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
+      const logs = new GenerationLogStore();
+      const inputSources = new InputSourceStore();
+      const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+      const assetReviews = new AssetReviewStore();
+      const source = await inputSources.register({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'product-brief',
+        title: '回炉产品资料',
+        text: '产品事实：便携条包。回炉要求：保持真实早餐桌自然光。',
+      });
+      const draft = await promptDrafts.createFromContent({
+        workspacePath,
+        title: '回炉图片 Prompt',
+        purpose: 'image',
+        userIntent: '重做一张更真实的小红书图片。',
+        inputSourceIds: [source.id],
+        sceneCardIds: ['scene-rework-001'],
+        workflowRunId: 'workflow-run-rework',
+        content: '原始 Prompt：早餐桌自然光，产品主体清晰。',
+        status: 'confirmed',
+      });
+      const review = await assetReviews.review({
+        workspacePath,
+        workflowRunId: 'workflow-run-rework',
+        assetKey: `generated:old-log:0:${oldAssetPath}`,
+        kind: 'image',
+        sourceType: 'generation-log',
+        sourceId: 'old-log',
+        path: oldAssetPath,
+        title: 'old-rejected.png',
+        status: 'rejected',
+        note: '构图太像广告棚拍，回炉为真实手机实拍。',
+        tags: ['回炉'],
+      });
+      const updatedDraft = await promptDrafts.update({
+        workspacePath,
+        draftId: draft.id,
+        content: [
+          '基于驳回素材回炉重做，保留事实来源。',
+          `回炉原因：${review.note}`,
+          '原始 Prompt：早餐桌自然光，产品主体清晰。',
+        ].join('\n'),
+        note: `素材回炉：${review.note}`,
+        status: 'draft',
+      });
+      const provider = new MediaProvider({
+        async readView() {
+          return {
+            imageProvider: 'openai-responses',
+            imageProtocol: 'openai-responses',
+            imageApiEndpoint: baseUrl,
+            imageOuterModel: 'test-outer-model',
+            hasImageApiKey: true,
+            imageModels: ['test-image-model'],
+          };
+        },
+        async getImageApiKey() { return 'test-image-key'; },
+      }, logs);
+      const result = await provider.generateImage({
+        workspacePath,
+        workflowRunId: 'workflow-run-rework',
+        reworkSource: {
+          assetKey: review.assetKey,
+          kind: 'image',
+          sourceType: 'generation-log',
+          sourceId: 'old-log',
+          path: oldAssetPath,
+          title: review.title,
+          reviewId: review.id,
+          reviewNote: review.note,
+          promptDraftId: draft.id,
+          workflowRunId: 'workflow-run-rework',
+        },
+        productImageRefs: [],
+        referenceImageRefs: [oldAssetPath],
+        prompt: updatedDraft.versions.at(-1).content,
+        promptMode: 'free',
+        generationMode: 'smart',
+        template: '回炉图',
+        watermark: false,
+        promptPackId: 'prompt-pack-rework',
+        sceneCardIds: ['scene-rework-001'],
+        citations: [citation],
+        selectedSkillSlugs: ['ecommerce-image-prompt'],
+        params: { textModel: 'fake', imageModel: 'test-image-model', videoModel: 'test-video-model', runMode: 'single', count: 1, aspectRatio: '4:5', resolution: '1k', quality: 'low' },
+      });
+
+      assert.equal(result.status, 'succeeded');
+      const [storedDraft] = await promptDrafts.list(workspacePath);
+      assert.equal(storedDraft.versions.length, 2);
+      assert.match(storedDraft.versions.at(-1).content, /回炉原因/);
+      const [storedLog] = await logs.list(workspacePath);
+      assert.equal(storedLog.id, result.logId);
+      assert.equal(storedLog.workflowRunId, 'workflow-run-rework');
+      assert.equal(storedLog.reworkSource.reviewId, review.id);
+      assert.equal(storedLog.reworkSource.assetKey, review.assetKey);
+      assert.equal(storedLog.reworkSource.promptDraftId, draft.id);
+      assert.equal(storedLog.sceneCardIds[0], 'scene-rework-001');
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
@@ -1297,9 +1438,14 @@ test('视频素材包 SOP 可以通过手工事件推进到混剪 manifest', asy
     const videoPath = join(workspacePath, 'third-party-finished-video.mp4');
     await writeFile(videoPath, TEST_VIDEO);
     const imported = await inputSources.importFile(workspacePath, videoPath, 'successful-asset', {
+      workflowRunId: copied.id,
       relatedPromptDraftId: promptDraftId,
+      relatedSceneCardIds: ['scene-card-video-001'],
       tags: ['第三方生成', '成品视频'],
     });
+    assert.equal(imported.workflowRunId, copied.id);
+    assert.equal(imported.relatedPromptDraftId, promptDraftId);
+    assert.deepEqual(imported.relatedSceneCardIds, ['scene-card-video-001']);
     const importedRun = await workflows.recordManualEvent({
       workspacePath,
       workflowRunId: copied.id,
@@ -1380,6 +1526,7 @@ test('视频素材包 SOP 可以通过手工事件推进到混剪 manifest', asy
     const promptText = draft.versions.find((version) => version.id === draft.activeVersionId)?.content ?? draft.versions[0].content;
     const pack = await mixPackages.exportPackage({
       workspacePath,
+      workflowRunId: reviewedRun.id,
       title: '视频素材包 SOP 功能测试',
       platform: 'third-party-mix-tool',
       assets: [
@@ -1423,6 +1570,9 @@ test('视频素材包 SOP 可以通过手工事件推进到混剪 manifest', asy
     assert.ok(completed.artifactRefs.includes(`asset-review:${earlyVideoReview.id}`));
     assert.ok(completed.artifactRefs.includes(`mix-package:${pack.id}`));
     assert.ok(existsSync(pack.manifestPath));
+    assert.equal(pack.workflowRunId, reviewedRun.id);
+    const manifest = JSON.parse(await readFile(pack.manifestPath, 'utf-8'));
+    assert.equal(manifest.workflowRunId, reviewedRun.id);
     assert.equal(pack.assets.find((asset) => asset.kind === 'video')?.promptDraftId, promptDraftId);
     assert.equal(pack.assets.find((asset) => asset.kind === 'video')?.sourceId, imported.id);
     assert.match(pack.assets.find((asset) => asset.kind === 'video')?.promptText ?? '', /视频 Prompt|任务/);
@@ -1621,6 +1771,10 @@ test('小红书种草图 SOP 可以携带参考图输入并通过视觉反推进
       assert.equal(run.steps.find((step) => step.stepId === 'image_generate')?.status, 'blocked');
       assert.ok(run.artifactRefs.some((ref) => ref.startsWith('prompt-draft:')));
       assert.ok(run.artifactRefs.some((ref) => ref.startsWith('generation-log:')));
+      const referenceLog = (await logs.list(workspacePath)).find((log) => log.kind === 'reference-reverse');
+      assert.equal(referenceLog?.workflowRunId, run.id);
+      const [storedDraft] = await promptDrafts.list(workspacePath);
+      assert.equal(storedDraft.workflowRunId, run.id);
     } finally {
       if (previousEndpoint === undefined) delete process.env.CONTENT_STUDIO_VISION_ENDPOINT;
       else process.env.CONTENT_STUDIO_VISION_ENDPOINT = previousEndpoint;

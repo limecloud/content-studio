@@ -5,6 +5,7 @@ import { isImageGenerationProtocol, type ImageGenerationProtocol, type ImageGene
 import { generateImageAssets } from './imageGenerationProvider';
 import { GenerationLogStore } from '../services/generationLogStore';
 import { ModelConfigStore } from '../services/modelConfigStore';
+import { getOemRuntimeConfig } from '../services/oemRuntimeConfig';
 import { getWorkspaceAssetDir } from '../services/paths';
 
 function nowSlug(): string {
@@ -67,8 +68,9 @@ async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: st
     citations: input.citations,
     createdAt: new Date().toISOString(),
   };
+  const productName = getOemRuntimeConfig().productName;
   const markdown = [
-    '# 布谷AI 视频生成队列',
+    `# ${productName} 视频生成队列`,
     '',
     '> 真实视频生成服务尚未配置，本文件只保存可追溯的视频生成请求，不代表视频已生成。',
     '',
@@ -194,6 +196,8 @@ export class MediaProvider {
         title: '图片素材生成未完成',
         summary: '图片生成服务未配置，未生成 SVG 占位或伪素材。',
         model,
+        workflowRunId: input.workflowRunId,
+        reworkSource: input.reworkSource,
         promptPackId: input.promptPackId,
         sceneCardIds: input.sceneCardIds,
         citations: input.citations,
@@ -227,6 +231,8 @@ export class MediaProvider {
         title: '图片素材生成结果',
         summary: `真实图片生成服务已生成 ${result.assetRefs.length} 个素材文件。`,
         model,
+        workflowRunId: input.workflowRunId,
+        reworkSource: input.reworkSource,
         promptPackId: input.promptPackId,
         sceneCardIds: input.sceneCardIds,
         citations: input.citations,
@@ -250,6 +256,8 @@ export class MediaProvider {
         title: '图片素材生成失败',
         summary: '真实图片生成服务调用失败，未生成占位素材。',
         model,
+        workflowRunId: input.workflowRunId,
+        reworkSource: input.reworkSource,
         promptPackId: input.promptPackId,
         sceneCardIds: input.sceneCardIds,
         citations: input.citations,

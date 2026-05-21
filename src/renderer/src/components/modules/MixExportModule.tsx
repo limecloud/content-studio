@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  AssetReworkSource,
   AssetReviewRecord,
   AssetReviewStatus,
   GenerationLogEntry,
@@ -18,6 +19,7 @@ import {
   fileNameFromPath,
   formatDuration,
   isImageFilePath,
+  isPromptDistilledSource,
   isVideoFilePath,
   kindLabel,
   localAssetUrl,
@@ -43,13 +45,32 @@ interface MixExportModuleProps {
   onReviewAsset: (input: Omit<ReviewAssetInput, 'workspacePath'>) => void;
   onReworkAsset: (input: {
     kind: MixPackageAssetKind;
+    assetKey?: string;
     path: string;
+    title?: string;
     sourceType: 'generation-log' | 'input-source' | 'overlay-card' | 'manual';
     sourceId?: string;
     promptDraftId?: string;
     promptText?: string;
+    sceneCardIds?: string[];
+    workflowRunId?: string;
+  }) => void;
+  onDistillAssetPrompt: (input: {
+    kind: MixPackageAssetKind;
+    assetKey?: string;
+    path: string;
+    title?: string;
+    sourceType: 'generation-log' | 'input-source' | 'overlay-card' | 'manual';
+    sourceId?: string;
+    promptDraftId?: string;
+    promptText?: string;
+    sceneCardIds?: string[];
+    workflowRunId?: string;
   }) => void;
   onRevealPath: (path: string) => void;
+  onOpenPromptDraft: (draftId: string) => void;
+  onOpenSceneCards: (sceneCardIds: string[]) => void;
+  onOpenWorkflowRun: (workflowRunId: string) => void;
   onSelectModule: (module: ModuleKey) => void;
 }
 
@@ -65,6 +86,8 @@ interface MixAssetCandidate {
   promptDraftId?: string;
   promptText?: string;
   relatedSceneCardIds?: string[];
+  workflowRunId?: string;
+  reworkSource?: AssetReworkSource;
   durationSeconds?: number;
   tags: string[];
   createdAt: string;
@@ -91,9 +114,18 @@ function assetKindFromPath(path: string): MixPackageAssetKind | null {
   return null;
 }
 
-function collectGeneratedCandidates(logs: GenerationLogEntry[]): MixAssetCandidate[] {
+function relatedDraftForLog(log: GenerationLogEntry, promptDrafts: PromptDraft[]): PromptDraft | undefined {
+  if (!log.workflowRunId && !log.sceneCardIds?.length) return undefined;
+  return promptDrafts.find((draft) => {
+    if (log.workflowRunId && draft.workflowRunId === log.workflowRunId) return true;
+    return Boolean(log.sceneCardIds?.some((sceneId) => draft.sceneCardIds?.includes(sceneId)));
+  });
+}
+
+function collectGeneratedCandidates(logs: GenerationLogEntry[], promptDrafts: PromptDraft[]): MixAssetCandidate[] {
   return logs.flatMap((log) => {
     if (log.status !== 'succeeded' || (log.kind !== 'image' && log.kind !== 'video')) return [];
+    const relatedDraft = relatedDraftForLog(log, promptDrafts);
     return extractGeneratedAssetRefsFromLog(log).flatMap((path, index) => {
       const kind = assetKindFromPath(path);
       if (!kind) return [];
@@ -104,7 +136,11 @@ function collectGeneratedCandidates(logs: GenerationLogEntry[]): MixAssetCandida
         title: fileNameFromPath(path),
         path,
         sourceId: log.id,
+        promptDraftId: relatedDraft?.id,
         promptText: extractPromptFromLog(log),
+        relatedSceneCardIds: log.sceneCardIds ?? relatedDraft?.sceneCardIds ?? [],
+        workflowRunId: log.workflowRunId ?? relatedDraft?.workflowRunId,
+        reworkSource: log.reworkSource,
         tags: [kindLabel(log.kind), log.model ?? '', log.status].filter(Boolean),
         createdAt: log.createdAt,
         subtitle: `${kindLabel(log.kind)} · ${log.model ?? 'local'} · ${formatDuration(log.durationMs)}`,
@@ -119,6 +155,7 @@ function collectImportedCandidates(
 ): MixAssetCandidate[] {
   return inputSources.flatMap((source) => {
     if (source.purpose !== 'successful-asset') return [];
+    if (isPromptDistilledSource(source)) return [];
     const refs = Array.from(new Set([source.sourcePath, ...source.artifactRefs].filter((item): item is string => Boolean(item))));
     const relatedDraft = source.relatedPromptDraftId
       ? promptDrafts.find((draft) => draft.id === source.relatedPromptDraftId)
@@ -136,6 +173,7 @@ function collectImportedCandidates(
         promptDraftId: source.relatedPromptDraftId,
         promptText: activeDraftContent(relatedDraft) || source.summary,
         relatedSceneCardIds: source.relatedSceneCardIds,
+        workflowRunId: source.workflowRunId ?? relatedDraft?.workflowRunId,
         tags: Array.from(new Set(['手动导入', source.kind, ...source.tags].filter(Boolean))),
         createdAt: source.createdAt,
         subtitle: `手动导入 · ${relatedDraft?.title ?? '未关联 Prompt'}`,
@@ -144,21 +182,28 @@ function collectImportedCandidates(
   });
 }
 
-function collectOverlayCandidates(overlayCards: OverlayCardRecord[]): MixAssetCandidate[] {
-  return overlayCards.map((card) => ({
-    id: `overlay:${card.id}`,
-    kind: 'overlay' as const,
-    source: 'overlay' as const,
-    title: card.title,
-    path: card.assetPath,
-    sourceId: card.id,
-    promptDraftId: card.promptDraftId,
-    promptText: card.text,
-    durationSeconds: card.durationSeconds,
-    tags: card.tags,
-    createdAt: card.createdAt,
-    subtitle: `绿幕图 · ${card.type} · ${card.durationSeconds}s`,
-  }));
+function collectOverlayCandidates(overlayCards: OverlayCardRecord[], promptDrafts: PromptDraft[]): MixAssetCandidate[] {
+  return overlayCards.map((card) => {
+    const draft = card.promptDraftId
+      ? promptDrafts.find((item) => item.id === card.promptDraftId)
+      : undefined;
+    return {
+      id: `overlay:${card.id}`,
+      kind: 'overlay' as const,
+      source: 'overlay' as const,
+      title: card.title,
+      path: card.assetPath,
+      sourceId: card.id,
+      promptDraftId: card.promptDraftId,
+      promptText: card.text,
+      relatedSceneCardIds: draft?.sceneCardIds,
+      workflowRunId: draft?.workflowRunId,
+      durationSeconds: card.durationSeconds,
+      tags: card.tags,
+      createdAt: card.createdAt,
+      subtitle: `绿幕图 · ${card.type} · ${card.durationSeconds}s`,
+    };
+  });
 }
 
 function dedupeCandidates(candidates: MixAssetCandidate[]): MixAssetCandidate[] {
@@ -213,7 +258,11 @@ export function MixExportModule({
   onExportMixPackage,
   onReviewAsset,
   onReworkAsset,
+  onDistillAssetPrompt,
   onRevealPath,
+  onOpenPromptDraft,
+  onOpenSceneCards,
+  onOpenWorkflowRun,
   onSelectModule,
 }: MixExportModuleProps) {
   const feature = V2_FEATURES['video-mix-export'];
@@ -231,9 +280,9 @@ export function MixExportModule({
 
   const candidates = useMemo(
     () => dedupeCandidates([
-      ...collectOverlayCandidates(overlayCards),
+      ...collectOverlayCandidates(overlayCards, promptDrafts),
       ...collectImportedCandidates(inputSources, promptDrafts),
-      ...collectGeneratedCandidates(logs),
+      ...collectGeneratedCandidates(logs, promptDrafts),
     ]).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [inputSources, logs, overlayCards, promptDrafts],
   );
@@ -263,6 +312,7 @@ export function MixExportModule({
         promptDraftId: candidate.promptDraftId,
         promptText: candidate.promptText,
         relatedSceneCardIds: candidate.relatedSceneCardIds,
+        workflowRunId: candidate.workflowRunId,
         durationSeconds: candidate.durationSeconds,
         reviewStatus: reviewMap.get(candidate.id)?.status ?? 'pending',
         tags: candidate.tags,
@@ -311,6 +361,7 @@ export function MixExportModule({
     setFocusedCandidateId(candidate.id);
     onReviewAsset({
       assetKey: candidate.id,
+      workflowRunId: candidate.workflowRunId,
       kind: candidate.kind,
       sourceType: sourceTypeForCandidate(candidate),
       sourceId: candidate.sourceId,
@@ -330,11 +381,31 @@ export function MixExportModule({
   function reworkCandidate(candidate: MixAssetCandidate): void {
     onReworkAsset({
       kind: candidate.kind,
+      assetKey: candidate.id,
       path: candidate.path,
+      title: candidate.title,
       sourceType: sourceTypeForCandidate(candidate),
       sourceId: candidate.sourceId,
       promptDraftId: candidate.promptDraftId,
       promptText: candidate.promptText,
+      sceneCardIds: candidate.relatedSceneCardIds,
+      workflowRunId: candidate.workflowRunId,
+    });
+  }
+
+  function distillCandidatePrompt(candidate: MixAssetCandidate): void {
+    if (candidate.kind === 'overlay') return;
+    onDistillAssetPrompt({
+      kind: candidate.kind,
+      assetKey: candidate.id,
+      path: candidate.path,
+      title: candidate.title,
+      sourceType: sourceTypeForCandidate(candidate),
+      sourceId: candidate.sourceId,
+      promptDraftId: candidate.promptDraftId,
+      promptText: candidate.promptText,
+      sceneCardIds: candidate.relatedSceneCardIds,
+      workflowRunId: candidate.workflowRunId,
     });
   }
 
@@ -458,13 +529,31 @@ export function MixExportModule({
                 >
                   <strong>{candidate.title}</strong>
                   <small>{kindLabelForMix(candidate.kind)} · {sourceLabel(candidate.source)} · {candidate.subtitle}</small>
+                  <small>
+                    {candidate.workflowRunId ? 'SOP 已关联' : 'SOP 未关联'}
+                    {candidate.promptDraftId ? ' · Prompt 已关联' : ''}
+                    {candidate.relatedSceneCardIds?.length ? ` · 场景 ${candidate.relatedSceneCardIds.length}` : ''}
+                    {candidate.reworkSource ? ' · 回炉生成' : ''}
+                  </small>
                   <span className={`status-pill ${reviewClass(review?.status)}`}>{reviewLabel(review?.status)}</span>
                   <p>{candidate.promptText || '未记录提示词。'}</p>
                 </button>
                 <div className="log-actions">
                   <button className="ghost small" onClick={() => onRevealPath(candidate.path)}>打开位置</button>
+                  {candidate.promptDraftId ? (
+                    <button className="ghost small" onClick={() => onOpenPromptDraft(candidate.promptDraftId as string)}>Prompt</button>
+                  ) : null}
+                  {candidate.relatedSceneCardIds?.length ? (
+                    <button className="ghost small" onClick={() => onOpenSceneCards(candidate.relatedSceneCardIds ?? [])}>场景</button>
+                  ) : null}
+                  {candidate.workflowRunId ? (
+                    <button className="ghost small" onClick={() => onOpenWorkflowRun(candidate.workflowRunId as string)}>SOP</button>
+                  ) : null}
                   <button className="ghost small" onClick={() => reviewCandidate(candidate, 'rejected')}>驳回</button>
                   <button className="primary small" onClick={() => reviewCandidate(candidate, 'approved')}>通过</button>
+                  {approved && candidate.kind !== 'overlay' ? (
+                    <button className="primary small" onClick={() => distillCandidatePrompt(candidate)}>沉淀 Prompt</button>
+                  ) : null}
                   <button className="ghost small" onClick={() => reworkCandidate(candidate)}>回炉</button>
                   <button
                     className="ghost small"
@@ -548,10 +637,14 @@ export function MixExportModule({
                   <span>images {pack.assets.filter((asset) => asset.kind === 'image').length}</span>
                   <span>videos {pack.assets.filter((asset) => asset.kind === 'video').length}</span>
                   <span>overlays {pack.assets.filter((asset) => asset.kind === 'overlay').length}</span>
+                  {pack.workflowRunId ? <span>SOP 已关联</span> : null}
                 </div>
                 <div className="log-actions">
                   <button className="ghost small" onClick={() => onRevealPath(pack.packageDir)}>打开文件夹</button>
                   <button className="ghost small" onClick={() => onRevealPath(pack.manifestPath)}>打开 manifest</button>
+                  {pack.workflowRunId ? (
+                    <button className="ghost small" onClick={() => onOpenWorkflowRun(pack.workflowRunId as string)}>打开 SOP</button>
+                  ) : null}
                 </div>
               </article>
             ))}

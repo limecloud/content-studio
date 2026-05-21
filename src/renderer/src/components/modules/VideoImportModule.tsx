@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ModuleKey } from '../../app/types';
 import type { InputSourceRecord, InputSourceStatus, PromptDraft } from '../../../../shared/types';
+import { isPromptDistilledSource } from '../../app/formatters';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 
@@ -65,7 +66,9 @@ export function VideoImportModule({
     videoDrafts.find((draft) => draft.id === activePromptDraftId) ??
     videoDrafts[0];
   const importedVideos = useMemo(
-    () => inputSources.filter((source) => source.purpose === 'successful-asset' && source.kind === 'video'),
+    () => inputSources.filter((source) =>
+      source.purpose === 'successful-asset' && source.kind === 'video' && !isPromptDistilledSource(source),
+    ),
     [inputSources],
   );
   const selectedDraftContent = activeContent(selectedDraft);

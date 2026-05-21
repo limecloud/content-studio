@@ -12,7 +12,9 @@ import type {
   BuguPasswordLoginInput,
   BuguTenantSession,
   BuguTenantUser,
+  ContentStudioBrandingConfig,
 } from '../../shared/types';
+import { buildRuntimeBranding, getOemRuntimeConfig } from './oemRuntimeConfig';
 
 interface ApiEnvelope<T> {
   code?: number;
@@ -28,8 +30,10 @@ interface StoredBuguSession {
   savedAt?: string;
 }
 
-const DEFAULT_API_BASE_URL = process.env.BUGU_API_BASE_URL || 'https://api.bugu.run/api';
-const DEFAULT_TENANT_ID = process.env.BUGU_TENANT_ID || 'tenant-2230';
+const OEM_RUNTIME_CONFIG = getOemRuntimeConfig();
+const DEFAULT_API_BASE_URL = OEM_RUNTIME_CONFIG.apiBaseUrl || 'https://api.bugu.run/api';
+const DEFAULT_TENANT_ID = OEM_RUNTIME_CONFIG.tenantId || 'tenant-2230';
+const DEFAULT_BRANDING = buildRuntimeBranding(OEM_RUNTIME_CONFIG);
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
@@ -47,7 +51,44 @@ function isAutomationSession(): boolean {
   return process.env.CONTENT_STUDIO_SMOKE === '1' || process.env.CONTENT_STUDIO_E2E === '1';
 }
 
+function mergeBranding(branding?: ContentStudioBrandingConfig): ContentStudioBrandingConfig {
+  return {
+    ...DEFAULT_BRANDING,
+    ...branding,
+  };
+}
+
+function buildLocalBootstrap(): BuguClientBootstrap {
+  const appName = DEFAULT_BRANDING.appName || '布谷AI';
+  return {
+    tenant: {
+      id: DEFAULT_TENANT_ID,
+      name: appName,
+      slug: DEFAULT_BRANDING.brandId || 'bugu',
+    },
+    branding: DEFAULT_BRANDING,
+    agentAppCatalog: {
+      apps: [
+        {
+          appId: DEFAULT_BRANDING.brandId || 'bugu',
+          displayName: `${appName} 内容生产系统`,
+          enabled: true,
+        },
+      ],
+    },
+  };
+}
+
+function withRuntimeBranding(bootstrap: BuguClientBootstrap): BuguClientBootstrap {
+  return {
+    ...bootstrap,
+    tenant: bootstrap.tenant ?? buildLocalBootstrap().tenant,
+    branding: mergeBranding(bootstrap.branding),
+  };
+}
+
 function buildAutomationAuthState(): BuguAuthState {
+  const bootstrap = buildLocalBootstrap();
   return {
     authenticated: true,
     user: {
@@ -60,23 +101,10 @@ function buildAutomationAuthState(): BuguAuthState {
       id: 'local-automation-session',
     },
     bootstrap: {
-      tenant: {
-        id: DEFAULT_TENANT_ID,
-        name: '布谷 AI',
-        slug: 'buguai',
-      },
+      ...bootstrap,
       subscription: {
         status: 'active',
         planName: '本地验证',
-      },
-      agentAppCatalog: {
-        apps: [
-          {
-            appId: 'buguai',
-            displayName: '布谷 AI 内容生产系统',
-            enabled: true,
-          },
-        ],
       },
     },
   };
@@ -90,7 +118,7 @@ export class BuguAuthService {
     if (isAutomationSession()) return buildAutomationAuthState();
 
     const token = await this.readToken();
-    if (!token) return { authenticated: false };
+    if (!token) return { authenticated: false, bootstrap: buildLocalBootstrap() };
 
     try {
       const [current, bootstrap] = await Promise.all([
@@ -102,12 +130,13 @@ export class BuguAuthService {
         authenticated: true,
         user: current.user,
         session: current.session,
-        bootstrap,
+        bootstrap: withRuntimeBranding(bootstrap),
       };
     } catch (error) {
       await this.clearSession();
       return {
         authenticated: false,
+        bootstrap: buildLocalBootstrap(),
         error: error instanceof Error ? error.message : '登录状态已失效，请重新登录。',
       };
     }
@@ -157,7 +186,7 @@ export class BuguAuthService {
       ).catch(() => undefined);
     }
     await this.clearSession();
-    return { authenticated: false };
+    return { authenticated: false, bootstrap: buildLocalBootstrap() };
   }
 
   private async persistAndBuildState(session: BuguCurrentSession): Promise<BuguAuthState> {

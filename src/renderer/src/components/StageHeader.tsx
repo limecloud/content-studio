@@ -10,7 +10,7 @@ export function StageHeader({ busy, currentActionLabel, workspaceReady, onGenera
   return (
     <header className="stage-header">
       <div>
-        <p className="eyebrow">布谷AI 内容工厂</p>
+        <p className="eyebrow">内容工厂</p>
       </div>
       <div className="header-actions">
         {busy ? <span className="action-status">{currentActionLabel ?? '正在处理当前任务'}</span> : null}

@@ -1,5 +1,4 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import logoUrl from '../logo.png';
 import { COLOR_THEME_OPTIONS } from '../app/constants';
 import type {
   AutoUpdateState,
@@ -73,6 +72,13 @@ function updateStatusText(updateState: AutoUpdateState) {
   return '开启后，正式安装包启动时会自动检查更新。';
 }
 
+function resolveBrandName(authState?: BuguAuthState | null): string {
+  return authState?.bootstrap?.branding?.shortName
+    || authState?.bootstrap?.branding?.appName
+    || authState?.bootstrap?.tenant?.name
+    || '布谷AI';
+}
+
 export function SettingsDialog({
   settingsTab,
   setSettingsTab,
@@ -111,14 +117,17 @@ export function SettingsDialog({
   onLogoutAuth,
   onClose,
 }: SettingsDialogProps) {
+  const brandName = resolveBrandName(authState);
+  const logoUrl = authState?.bootstrap?.branding?.logoUrl;
+  const brandInitial = brandName.trim().slice(0, 1).toUpperCase() || 'C';
   const accountUser = authState?.user;
   const isAccountAuthenticated = Boolean(authState?.authenticated);
   const accountName = isAccountAuthenticated
-    ? accountUser?.displayName || accountUser?.username || accountUser?.email || '布谷用户'
+    ? accountUser?.displayName || accountUser?.username || accountUser?.email || `${brandName}用户`
     : '本地模式';
   const accountEmail = isAccountAuthenticated
     ? accountUser?.email || accountUser?.username || '账号已登录'
-    : '未登录布谷账号';
+    : `未登录${brandName}账号`;
   const accountInitial = accountName.trim().slice(0, 1).toUpperCase() || 'B';
   const subscription = authState?.bootstrap?.subscription;
   const subscriptionText =
@@ -146,7 +155,7 @@ export function SettingsDialog({
     try {
       const result = await onSetSkillFileAssociationDefault();
       setSkillAssociation(result);
-      setSkillAssociationMessage(result.ok ? '已设置 .skill 默认由布谷AI打开。' : result.error ?? result.message);
+      setSkillAssociationMessage(result.ok ? `已设置 .skill 默认由${brandName}打开。` : result.error ?? result.message);
     } catch (error) {
       setSkillAssociationMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -197,7 +206,7 @@ export function SettingsDialog({
                 <div className="settings-row-item">
                   <div className="item-info">
                     <strong>菜单栏</strong>
-                    <span>在菜单栏中显示 布谷AI</span>
+                    <span>在菜单栏中显示 {brandName}</span>
                   </div>
                   <div className={`switch ${menubarShow ? 'active' : ''}`} onClick={() => setMenubarShow(!menubarShow)}></div>
                 </div>
@@ -205,7 +214,7 @@ export function SettingsDialog({
                 <div className="settings-row-item">
                   <div className="item-info">
                     <strong>开机自动</strong>
-                    <span>登录计算机时自动启动 布谷AI</span>
+                    <span>登录计算机时自动启动 {brandName}</span>
                   </div>
                   <div className={`switch ${autoStart ? 'active' : ''}`} onClick={() => setAutoStart(!autoStart)}></div>
                 </div>
@@ -213,7 +222,7 @@ export function SettingsDialog({
                 <div className="settings-row-item">
                   <div className="item-info">
                     <strong>通知</strong>
-                    <span>在 布谷AI 完成长时间生成任务时接收通知。</span>
+                    <span>在 {brandName} 完成长时间生成任务时接收通知。</span>
                   </div>
                   <div className={`switch ${notificationsEnabled ? 'active' : ''}`} onClick={() => setNotificationsEnabled(!notificationsEnabled)}></div>
                 </div>
@@ -245,7 +254,7 @@ export function SettingsDialog({
                 <div className="settings-row-item">
                   <div className="item-info">
                     <strong>快捷键唤起小窗</strong>
-                    <span>在桌面任意位置唤起 布谷AI</span>
+                    <span>在桌面任意位置唤起 {brandName}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <span className="hotkey-capsule">⌥ ␣</span>
@@ -267,7 +276,7 @@ export function SettingsDialog({
                     <span>
                       {skillAssociationMessage
                         ?? skillAssociation?.message
-                        ?? '检查 .skill 是否默认由布谷AI打开。'}
+                        ?? `检查 .skill 是否默认由${brandName}打开。`}
                     </span>
                   </div>
                   <div className="settings-inline-actions">
@@ -463,7 +472,7 @@ export function SettingsDialog({
                     <span className="section-label">头像</span>
                     <div className="avatar-row">
                       <div className="avatar-circle">{accountInitial}</div>
-                      <span className="change-avatar-text">布谷 AI 账号已登录</span>
+                      <span className="change-avatar-text">{brandName} 账号已登录</span>
                     </div>
                   </div>
 
@@ -505,7 +514,7 @@ export function SettingsDialog({
                   <BuguAuthForm
                     compact
                     authState={authState}
-                    title="连接布谷 AI 账号"
+                    title={`连接${brandName}账号`}
                     description="使用邮箱 + 密码同步企业权益、下载和账号状态；不登录不会影响本地工作区。"
                     onPasswordLogin={onPasswordLogin}
                   />
@@ -519,10 +528,14 @@ export function SettingsDialog({
               </div>
 
               <div className="about-brand-section">
-                <img src={logoUrl} alt="Logo" className="about-logo" />
-                <h4 className="about-app-name">布谷AI</h4>
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Logo" className="about-logo" />
+                ) : (
+                  <span className="about-logo brand-logo-fallback">{brandInitial}</span>
+                )}
+                <h4 className="about-app-name">{brandName}</h4>
                 <span className="about-version">当前版本 {formatVersion(updateState.currentVersion)} (Build 2026.05.19)</span>
-                <p className="about-copyright">© 2026 布谷AI. All rights reserved.</p>
+                <p className="about-copyright">© 2026 {brandName}. All rights reserved.</p>
               </div>
 
               <div className={`update-status-card ${updateState.status === 'update-available' ? 'has-update' : ''}`}>

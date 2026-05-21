@@ -1,0 +1,17 @@
+{
+  "brandId": "seenx",
+  "tenantId": "seenx",
+  "appId": "ai.limecloud.seenx",
+  "productName": "seenx",
+  "shortName": "seenx",
+  "artifactName": "seenx",
+  "apiBaseUrl": "https://api.bugu.run/api",
+  "skillPackageName": "seenx Skill Package",
+  "skillPackageDescription": "seenx Skill 安装包",
+  "skillMimeType": "application/vnd.seenx.skill",
+  "icons": {
+    "png": "oem/brands/seenx/icon.png",
+    "icns": "oem/brands/seenx/icon.icns",
+    "ico": "oem/brands/seenx/icon.ico"
+  }
+}

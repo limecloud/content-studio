@@ -110,9 +110,11 @@ export class PromptPackService {
       const pack: PromptPack = {
         id: randomUUID(),
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         name: compactText(value.name || input.name, baseType === 'personal-ip-kb' ? '个人 IP 品牌提示词包' : '产品品牌提示词包'),
         baseType,
         citations: input.citations,
+        inputSourceIds: input.inputSourceIds ?? [],
         brandVoice: compactText(value.brandVoice, '表达要克制、可信、像真实经营者在解释，不夸大效果。'),
         visualStyle: compactText(value.visualStyle, baseType === 'personal-ip-kb' ? '真实人物感、专业但不端着、弱滤镜、保留生活化细节。' : '干净商业质感、突出产品主体、自然光、高可信度电商画面。'),
         sellingPointRules: compactList(value.sellingPointRules, ['先讲使用场景，再讲产品卖点；避免无来源的绝对化承诺。']),
@@ -127,6 +129,7 @@ export class PromptPackService {
       await writeJsonFile(filePathFor(input.workspacePath), [pack, ...packs].slice(0, 80));
       await this.logs.append({
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         kind: 'prompt-pack',
         status: 'succeeded',
         title: pack.name,
@@ -142,6 +145,7 @@ export class PromptPackService {
       const status = error instanceof TextProviderBlockedError ? 'blocked' : 'failed';
       await this.logs.append({
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         kind: 'prompt-pack',
         status,
         title: input.name?.trim() || '提示词包生成未完成',

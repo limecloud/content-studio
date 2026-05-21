@@ -1,12 +1,9 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { mkdir } from 'node:fs/promises';
 import type { AutoUpdateAsset, AutoUpdateState, UpdateActionResult, UpdateCheckOptions } from '../../shared/types';
+import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { SettingsStore } from './settingsStore';
 
-const LIMECORE_LATEST_URL = process.env.CONTENT_STUDIO_UPDATE_API_URL
-  || 'https://api.bugu.run/api/v1/public/agent-apps/buguai/downloads/latest?channel=stable';
-const R2_LATEST_URL = process.env.CONTENT_STUDIO_UPDATE_MANIFEST_URL
-  || 'https://downloads.bugu.run/bugu/stable/latest.json';
 const GITHUB_RELEASES_URL = 'https://github.com/limecloud/content-studio/releases/latest';
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const STARTUP_CHECK_DELAY_MS = 5000;
@@ -43,6 +40,31 @@ interface DownloadSource {
 
 function normalizeText(value: unknown): string {
   return String(value ?? '').trim();
+}
+
+function getRuntimeBrandId(): string {
+  return normalizeText(getOemRuntimeConfig().brandId) || 'bugu';
+}
+
+function getRuntimeApiBaseUrl(): string {
+  return normalizeText(getOemRuntimeConfig().apiBaseUrl).replace(/\/+$/, '') || 'https://api.bugu.run/api';
+}
+
+function getLatestApiUrl(): string {
+  const brandId = getRuntimeBrandId();
+  const appId = brandId === 'bugu' ? 'buguai' : brandId;
+  return process.env.CONTENT_STUDIO_UPDATE_API_URL
+    || `${getRuntimeApiBaseUrl()}/v1/public/agent-apps/${encodeURIComponent(appId)}/downloads/latest?channel=stable`;
+}
+
+function getLatestManifestUrl(): string {
+  const brandId = getRuntimeBrandId();
+  return process.env.CONTENT_STUDIO_UPDATE_MANIFEST_URL
+    || `https://downloads.bugu.run/${encodeURIComponent(brandId)}/stable/latest.json`;
+}
+
+function getUpdateSourceLabel(): string {
+  return `${getOemRuntimeConfig().productName || getRuntimeBrandId()}更新服务`;
 }
 
 function normalizeVersion(value: string | undefined): string | undefined {
@@ -151,12 +173,14 @@ async function fetchJson(url: string): Promise<unknown> {
 }
 
 async function loadLatestSource(): Promise<DownloadSource> {
+  const latestApiUrl = getLatestApiUrl();
+  const latestManifestUrl = getLatestManifestUrl();
   try {
-    const json = await fetchJson(LIMECORE_LATEST_URL);
-    return sourceFromJson(json, LIMECORE_LATEST_URL, '布谷AI更新服务');
+    const json = await fetchJson(latestApiUrl);
+    return sourceFromJson(json, latestApiUrl, getUpdateSourceLabel());
   } catch (error) {
-    const json = await fetchJson(R2_LATEST_URL);
-    const source = sourceFromJson(json, R2_LATEST_URL, 'R2 兜底清单');
+    const json = await fetchJson(latestManifestUrl);
+    const source = sourceFromJson(json, latestManifestUrl, 'R2 兜底清单');
     if (!source.payload.releaseNotesUrl && !source.payload.releasePageUrl) {
       source.payload.releasePageUrl = GITHUB_RELEASES_URL;
     }

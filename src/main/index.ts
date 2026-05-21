@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, net, protocol, type MenuItemConstruc
 import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { registerIpc } from './ipc';
+import { getOemRuntimeConfig } from './services/oemRuntimeConfig';
 
 let mainWindow: BrowserWindow | null = null;
 const pendingSkillPackages: string[] = [];
@@ -83,12 +84,13 @@ function registerContextMenu(mainWindow: BrowserWindow): void {
 function createWindow(): BrowserWindow {
   rendererAcceptsSkillPackages = false;
   const hideWindowForTests = shouldHideWindowForTests();
+  const appTitle = getOemRuntimeConfig().productName || '布谷AI';
   mainWindow = new BrowserWindow({
     width: 1320,
     height: 860,
     minWidth: 1080,
     minHeight: 720,
-    title: '布谷AI',
+    title: appTitle,
     show: !hideWindowForTests,
     paintWhenInitiallyHidden: true,
     backgroundColor: '#060514',

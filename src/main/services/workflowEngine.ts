@@ -110,6 +110,7 @@ function clipCitationExcerpt(value?: string): string {
 }
 
 function sourceSectionType(source: InputSourceRecord, definition: WorkflowDefinition): KnowledgeSectionType {
+  if (source.purpose === 'ip-scenario-kb') return 'scenario-script';
   if (source.purpose === 'ip-kb' || definition.key.includes('ip') || definition.key.includes('longform')) return 'profile';
   if (source.purpose === 'brand-kb') return 'brand';
   if (source.purpose === 'product-brief') return 'product';
@@ -236,10 +237,15 @@ function citationsForPromptPack(run: WorkflowRunRecord, context: WorkflowExecuti
 
 function baseImageRequest(input: {
   run: WorkflowRunRecord;
+  context: WorkflowExecutionContext;
   prompt: string;
 }): ImageGenerationRequest {
+  const sceneCardIds = input.context.sceneCards?.map((card) => card.id)
+    ?? input.context.promptDraft?.sceneCardIds
+    ?? [];
   return {
     workspacePath: input.run.workspacePath,
+    workflowRunId: input.run.id,
     productImageRefs: [],
     referenceImageRefs: [],
     prompt: input.prompt,
@@ -247,7 +253,9 @@ function baseImageRequest(input: {
     generationMode: 'smart',
     template: '场景图',
     watermark: false,
-    citations: [],
+    promptPackId: input.context.promptPack?.id,
+    sceneCardIds,
+    citations: input.run.citations ?? [],
     selectedSkillSlugs: [],
     params: {
       imageModel: '',
@@ -427,6 +435,7 @@ export class WorkflowEngine {
     ].join('\n');
     const source = await this.inputSources.register({
       workspacePath: run.workspacePath,
+      workflowRunId: run.id,
       kind: 'manual-note',
       purpose,
       title: `${definition.title} / ${new Date(run.createdAt).toLocaleString()}`,
@@ -438,6 +447,7 @@ export class WorkflowEngine {
     const importedSources: InputSourceRecord[] = [];
     for (const filePath of extractLocalFilePaths(run.inputs.source)) {
       importedSources.push(await this.inputSources.importFile(run.workspacePath, filePath, purpose, {
+        workflowRunId: run.id,
         tags: ['workflow-run', definition.key, 'auto-import'],
       }));
     }
@@ -612,8 +622,10 @@ export class WorkflowEngine {
 
     const pack = await this.promptPacks.generate({
       workspacePath: run.workspacePath,
+      workflowRunId: run.id,
       name: `${run.inputs.source?.trim() || definition.title} 提示词包`,
       citations,
+      inputSourceIds: context.inputSourceIds,
     });
     context.promptPack = pack;
     return {
@@ -659,7 +671,9 @@ export class WorkflowEngine {
 
     const cards = await this.sceneCards.generate({
       workspacePath: run.workspacePath,
+      workflowRunId: run.id,
       promptPackId: promptPack.id,
+      inputSourceIds: context.inputSourceIds,
       citations: promptPack.citations,
       count: 5,
     });
@@ -712,6 +726,7 @@ export class WorkflowEngine {
     );
     const draft = await this.promptDrafts.createFromContent({
       workspacePath: run.workspacePath,
+      workflowRunId: run.id,
       title: `${definition.title} Prompt 组`,
       purpose,
       userIntent: run.inputs.intent?.trim() || definition.description,
@@ -783,6 +798,7 @@ export class WorkflowEngine {
 
     const result = await this.referenceReverse.generate({
       workspacePath: run.workspacePath,
+      workflowRunId: run.id,
       referenceSourceIds,
       productSourceIds,
       userIntent: compactText(run.inputs.intent, definition.description),
@@ -825,6 +841,7 @@ export class WorkflowEngine {
 
     const result = await this.agentSessions.start({
       workspacePath: run.workspacePath,
+      workflowRunId: run.id,
       title: `${definition.title} Agent 会话`,
       purpose: promptPurposeFor(definition, step),
       userIntent: [
@@ -879,6 +896,7 @@ export class WorkflowEngine {
     if (!draft || draft.purpose !== promptPurposeFor(definition, step)) {
       draft = await this.promptDrafts.generate({
         workspacePath: run.workspacePath,
+        workflowRunId: run.id,
         title: `${definition.title} ${step.kind === 'video-prompt' ? '视频 Prompt' : 'Prompt'} 草稿`,
         purpose: promptPurposeFor(definition, step),
         userIntent: compactText(run.inputs.intent, definition.description),
@@ -927,6 +945,7 @@ export class WorkflowEngine {
 
     const result = await this.media.generateImage(baseImageRequest({
       run,
+      context,
       prompt,
     }));
     const status = workflowStatusFromMedia(result);
@@ -968,6 +987,7 @@ export class WorkflowEngine {
     for (const [index, assetRef] of result.assetRefs.entries()) {
       records.push(await this.assetReviews.review({
         workspacePath: run.workspacePath,
+        workflowRunId: run.id,
         assetKey: `generated:${result.logId}:${index}:${assetRef}`,
         kind: 'image',
         sourceType: 'generation-log',

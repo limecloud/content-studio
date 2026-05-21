@@ -8,6 +8,7 @@ release/
 .env.*
 *.log
 npm-debug.log*
+*.iconset/
 .playwright-mcp/
 .tmp/
 .codex/

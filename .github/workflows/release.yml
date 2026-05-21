@@ -8,21 +8,104 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '要打包发布的 tag，例如 v0.3'
+        description: '要打包发布的 tag，例如 v0.7.0'
         required: true
-        default: 'v0.3'
+        default: 'v0.7.0'
+      brand:
+        description: '品牌：bugu / seenx / all'
+        required: true
+        default: 'seenx'
+      platform:
+        description: '平台：mac / win / linux / all'
+        required: true
+        default: 'mac'
+      publish:
+        description: '是否发布到 GitHub Release：true / false'
+        required: true
+        default: 'false'
+      sync_r2:
+        description: '是否同步到 Cloudflare R2：true / false'
+        required: true
+        default: 'true'
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.brand || 'bugu' }}-${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'all' }}
   cancel-in-progress: false
 
 jobs:
+  resolve:
+    name: Resolve OEM Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      publish: ${{ steps.resolve.outputs.publish }}
+      sync_r2: ${{ steps.resolve.outputs.sync_r2 }}
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      brands_json: ${{ steps.resolve.outputs.brands_json }}
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Resolve matrix
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_BRAND: ${{ inputs.brand }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_SYNC_R2: ${{ inputs.sync_r2 }}
+        run: |
+          node -e '
+          const path = require("path");
+          const fs = require("fs");
+          const eventName = process.env.EVENT_NAME;
+          const brandDir = path.join(process.cwd(), "oem", "brands");
+          const allBrands = fs.readdirSync(brandDir)
+            .filter((name) => name.endsWith(".json"))
+            .map((name) => {
+              const manifest = JSON.parse(fs.readFileSync(path.join(brandDir, name), "utf8"));
+              return String(manifest.brandId || name.replace(/\.json$/, "")).trim();
+            })
+            .filter(Boolean)
+            .sort();
+          if (!allBrands.includes("bugu")) throw new Error("oem/brands 必须包含自动发布品牌 bugu");
+          const allPlatforms = [
+            { platform: "mac", osName: "macOS", os: "macos-latest", target: "--mac dmg zip" },
+            { platform: "win", osName: "Windows", os: "windows-latest", target: "--win nsis" },
+            { platform: "linux", osName: "Linux", os: "ubuntu-latest", target: "--linux AppImage" },
+          ];
+          const brandInput = eventName === "workflow_dispatch" ? (process.env.INPUT_BRAND || "seenx") : "bugu";
+          const platformInput = eventName === "workflow_dispatch" ? (process.env.INPUT_PLATFORM || "mac") : "mac";
+          const publish = eventName === "workflow_dispatch" ? String(process.env.INPUT_PUBLISH || "false").toLowerCase() === "true" : true;
+          const syncR2 = eventName === "workflow_dispatch" ? String(process.env.INPUT_SYNC_R2 || "true").toLowerCase() === "true" : true;
+          const brands = brandInput === "all" ? allBrands : [brandInput];
+          const platforms = platformInput === "all" ? allPlatforms : allPlatforms.filter((item) => item.platform === platformInput);
+          const unknownBrands = brands.filter((brand) => !allBrands.includes(brand));
+          if (unknownBrands.length) throw new Error(`未知品牌：${unknownBrands.join(", ")}`);
+          if (!platforms.length) throw new Error(`未知平台：${platformInput}`);
+          const include = [];
+          for (const brand of brands) {
+            for (const platform of platforms) include.push({ brand, ...platform });
+          }
+          const releaseTag = eventName === "workflow_dispatch" ? process.env.INPUT_TAG : process.env.REF_NAME;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({ include })}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `publish=${publish ? "true" : "false"}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `sync_r2=${syncR2 ? "true" : "false"}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `release_tag=${releaseTag}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `brands_json=${JSON.stringify(brands)}\n`);
+          '
+
   verify:
     name: Verify Release Candidate
     runs-on: ubuntu-latest
+    needs: resolve
     env:
       CI: 'true'
       CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '1'
@@ -30,7 +113,7 @@ jobs:
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: ${{ needs.resolve.outputs.release_tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -61,32 +144,25 @@ jobs:
             .playwright-mcp/e2e-report
 
   build:
-    name: Build ${{ matrix.name }}
+    name: Build ${{ matrix.brand }} ${{ matrix.osName }}
     runs-on: ${{ matrix.os }}
-    needs: verify
+    needs:
+      - resolve
+      - verify
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: macOS
-            os: macos-latest
-            command: npm run build && npx electron-builder --config electron-builder.yml --mac dmg zip --publish never
-          - name: Windows
-            os: windows-latest
-            command: npm run build && npx electron-builder --config electron-builder.yml --win nsis --publish never
-          - name: Linux
-            os: ubuntu-latest
-            command: npm run build && npx electron-builder --config electron-builder.yml --linux AppImage --publish never
+      max-parallel: 1
+      matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}
 
     env:
-      # CI 默认不做 Developer ID / notarization；生产签名后续用 CSC_* 和 APPLE_* secrets 接入。
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      OEM_BRAND: ${{ matrix.brand }}
 
     steps:
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: ${{ needs.resolve.outputs.release_tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -103,60 +179,166 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Package renderer and main process
+        run: npm run build
+
+      - name: Prepare OEM build
+        run: node scripts/prepare-oem-build.mjs --brand=${{ matrix.brand }}
+
       - name: Package desktop app
-        run: ${{ matrix.command }}
+        run: npx electron-builder --config .tmp/oem/${{ matrix.brand }}/electron-builder.json ${{ matrix.target }} --publish never
+
+      - name: Assert OEM artifact scope
+        run: node scripts/assert-oem-artifact-scope.mjs --brand=${{ matrix.brand }}
 
       - name: Upload packaged artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: content-studio-${{ matrix.name }}
+          name: ${{ matrix.brand }}__${{ matrix.platform }}
           if-no-files-found: error
+          retention-days: 7
           path: |
-            release/*.AppImage
-            release/*.dmg
-            release/*.zip
-            release/*.exe
-            release/*.blockmap
-            release/latest*.yml
+            release/${{ matrix.brand }}/*.dmg
+            release/${{ matrix.brand }}/*.zip
+            release/${{ matrix.brand }}/*.exe
+            release/${{ matrix.brand }}/*.AppImage
+            release/${{ matrix.brand }}/*.blockmap
+            release/${{ matrix.brand }}/latest*.yml
+            release/${{ matrix.brand }}/latest*.yaml
 
-  publish:
-    name: Publish GitHub Release
+  sync-r2:
+    name: Sync OEM Packages to Cloudflare R2
     runs-on: ubuntu-latest
-    needs: build
+    needs:
+      - resolve
+      - build
+    if: ${{ needs.resolve.outputs.sync_r2 == 'true' }}
     steps:
-      - name: Checkout release notes
+      - name: Checkout release scripts
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: ${{ needs.resolve.outputs.release_tag }}
 
       - name: Download packaged artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: '*__*'
+          path: release-artifacts
+
+      - name: Prepare R2 directory layout
+        run: |
+          node scripts/prepare-oem-r2-layout.mjs \
+            --tag=${{ needs.resolve.outputs.release_tag }} \
+            --artifact-root=release-artifacts \
+            --out=.tmp/r2-upload \
+            --base-prefix=desktop/content-studio
+
+      - name: Upload R2 layout manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: oem-r2-layout
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            .tmp/r2-upload/**/*
+
+      - name: Check R2 credentials
+        id: r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.CONTENT_STUDIO_R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.CONTENT_STUDIO_R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.CONTENT_STUDIO_R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.CONTENT_STUDIO_R2_BUCKET }}
+        run: |
+          if [ -z "${R2_ACCOUNT_ID}" ] || [ -z "${R2_ACCESS_KEY_ID}" ] || [ -z "${R2_SECRET_ACCESS_KEY}" ] || [ -z "${R2_BUCKET}" ]; then
+            echo "::warning::Missing CONTENT_STUDIO_R2_* secrets; skipped Cloudflare R2 sync."
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "enabled=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure R2 credentials
+        if: ${{ steps.r2.outputs.enabled == 'true' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.CONTENT_STUDIO_R2_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.CONTENT_STUDIO_R2_SECRET_ACCESS_KEY }}
+          aws-region: auto
+
+      - name: Sync packages to Cloudflare R2
+        if: ${{ steps.r2.outputs.enabled == 'true' }}
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.CONTENT_STUDIO_R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.CONTENT_STUDIO_R2_BUCKET }}
+        run: |
+          aws s3 sync ".tmp/r2-upload" "s3://${R2_BUCKET}" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --only-show-errors
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - build
+    if: ${{ needs.resolve.outputs.publish == 'true' }}
+    steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.release_tag }}
+
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*__*'
           path: release-artifacts
           merge-multiple: true
 
       - name: List release artifacts
-        run: find release-artifacts -type f -maxdepth 2 -print | sort
+        run: find release-artifacts -maxdepth 2 -type f -print | sort
+
+      - name: Collect release files
+        id: release-files
+        run: |
+          {
+            find release-artifacts -type f \( \
+              -name '*.dmg' -o \
+              -name '*.zip' -o \
+              -name '*.exe' -o \
+              -name '*.AppImage' -o \
+              -name '*.blockmap' -o \
+              -name 'latest*.yml' -o \
+              -name 'latest*.yaml' \
+            \) -print | sort
+          } > release-files.txt
+          if [ ! -s release-files.txt ]; then
+            echo "::error::No release files found."
+            exit 1
+          fi
+          {
+            echo 'files<<EOF'
+            cat release-files.txt
+            echo 'EOF'
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          tag_name: ${{ needs.resolve.outputs.release_tag }}
+          name: ${{ needs.resolve.outputs.release_tag }}
           body_path: RELEASE_NOTES.md
-          files: |
-            release-artifacts/**/*
-            build/icon.png
-            build/icon.icns
+          files: ${{ steps.release-files.outputs.files }}
           fail_on_unmatched_files: true
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trigger Bugu website R2 sync
+        if: ${{ contains(needs.resolve.outputs.brands_json, '"bugu"') }}
         env:
           GH_TOKEN: ${{ secrets.BUGU_RELEASE_GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
         run: |
           if [ -z "${GH_TOKEN}" ]; then
             echo "::warning::Missing BUGU_RELEASE_GITHUB_TOKEN; skipped Bugu website R2 sync."

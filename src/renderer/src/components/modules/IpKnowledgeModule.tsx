@@ -19,6 +19,7 @@ interface IpKnowledgeModuleProps {
   activeIpKnowledgeBaseId: string;
   setActiveIpKnowledgeBaseId: (recordId: string) => void;
   onGenerateIpKnowledgeBase: () => void;
+  onCreateScenarioPrompt: (scene: string) => void;
   onOpenKnowledgeScenes: () => void;
   onOpenPromptWorkbench: () => void;
 }
@@ -34,6 +35,7 @@ export function IpKnowledgeModule({
   activeIpKnowledgeBaseId,
   setActiveIpKnowledgeBaseId,
   onGenerateIpKnowledgeBase,
+  onCreateScenarioPrompt,
   onOpenKnowledgeScenes,
   onOpenPromptWorkbench,
 }: IpKnowledgeModuleProps) {
@@ -102,6 +104,18 @@ export function IpKnowledgeModule({
               ))}
               <label><span>缺口</span><textarea readOnly value={activeIpKnowledgeBase.missingLayers.join('\n') || '无'} /></label>
               <label><span>场景延伸</span><textarea readOnly value={activeIpKnowledgeBase.extensionScenes.join('\n')} /></label>
+              <div className="workflow-run-artifact-actions">
+                {activeIpKnowledgeBase.extensionScenes.map((scene) => (
+                  <button
+                    key={scene}
+                    className="primary small"
+                    disabled={!workspaceReady || busy}
+                    onClick={() => onCreateScenarioPrompt(scene)}
+                  >
+                    生成{scene} Prompt
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="empty-state">选择知识引用后，生成 IP 六层知识库记录。</div>

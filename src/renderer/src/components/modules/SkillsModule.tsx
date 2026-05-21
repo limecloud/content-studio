@@ -16,6 +16,7 @@ interface SkillsModuleProps {
   activeSkill?: LoadedSkill;
   activeSkillKey: string;
   copiedSkillKey: string | null;
+  brandName: string;
   workspaceReady: boolean;
   onSelectSkill: (key: string) => void;
   onInstallSkill: (slug: string) => void;
@@ -415,6 +416,7 @@ export function SkillsModule({
   activeSkill,
   activeSkillKey,
   copiedSkillKey,
+  brandName,
   workspaceReady,
   onSelectSkill,
   onInstallSkill,
@@ -849,7 +851,7 @@ export function SkillsModule({
                 <dl className="skill-doc-meta">
                   <div>
                     <dt>Added by</dt>
-                    <dd>{selectedSkill.metadata.author ?? (selectedSkill.source === 'builtin' ? '布谷AI' : 'You')}</dd>
+                    <dd>{selectedSkill.metadata.author ?? (selectedSkill.source === 'builtin' ? brandName : 'You')}</dd>
                   </div>
                   <div>
                     <dt>Last updated</dt>

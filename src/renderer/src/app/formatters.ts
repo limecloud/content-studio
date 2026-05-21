@@ -105,6 +105,10 @@ export function isVideoFilePath(path: string): boolean {
   return /\.(mp4|mov|webm|m4v)(?:[?#].*)?$/i.test(path);
 }
 
+export function isPromptDistilledSource(source: Pick<InputSourceRecord, 'tags'>): boolean {
+  return source.tags.includes('prompt-distilled');
+}
+
 export function clip(value: string, length = 180): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
   return normalized.length > length ? `${normalized.slice(0, length)}...` : normalized;

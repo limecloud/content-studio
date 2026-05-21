@@ -461,6 +461,11 @@
   transform: rotate(6deg) scale(1.05);
 }
 
+.bugu-auth-brand .brand-logo-fallback {
+  width: 48px;
+  height: 48px;
+}
+
 .bugu-auth-brand strong,
 .bugu-auth-brand span {
   display: block;
@@ -1007,6 +1012,19 @@ p {
   object-fit: contain;
   border-radius: 8px;
   background: transparent;
+}
+
+.brand-logo-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--cyan-light);
+  color: var(--cyan);
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .sidebar-bottom {

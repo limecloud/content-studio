@@ -4,11 +4,10 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import type { SkillFileAssociationResult, SkillFileAssociationState } from '../../shared/types';
+import { getOemRuntimeConfig } from './oemRuntimeConfig';
 
 const execFileAsync = promisify(execFile);
-const APP_BUNDLE_ID = 'ai.limecloud.contentstudio';
 const SKILL_EXTENSION = 'skill';
-const SKILL_CONTENT_TYPE = 'ai.limecloud.contentstudio.skill';
 const LEGACY_SKILL_CONTENT_TYPE = 'com.limecloud.lime.skill';
 const LS_DOMAIN = 'com.apple.LaunchServices/com.apple.launchservices.secure';
 const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
@@ -50,26 +49,34 @@ function isSkillHandler(handler: LaunchServiceHandler, contentTypes: Set<string>
   return isSkillExtensionHandler(handler) || isSkillContentTypeHandler(handler, contentTypes);
 }
 
-function createRoleHandlers(descriptor: Pick<LaunchServiceHandler, 'LSHandlerContentTag' | 'LSHandlerContentTagClass' | 'LSHandlerContentType'>): LaunchServiceHandler[] {
+function getRuntimeAppBundleId(): string {
+  return getOemRuntimeConfig().appId || 'ai.limecloud.contentstudio';
+}
+
+function getRuntimeProductName(): string {
+  return getOemRuntimeConfig().productName || '布谷AI';
+}
+
+function createRoleHandlers(appBundleId: string, descriptor: Pick<LaunchServiceHandler, 'LSHandlerContentTag' | 'LSHandlerContentTagClass' | 'LSHandlerContentType'>): LaunchServiceHandler[] {
   return HANDLER_ROLE_KEYS.map((roleKey) => ({
     ...descriptor,
     LSHandlerPreferredVersions: { [roleKey]: '-' },
-    [roleKey]: APP_BUNDLE_ID,
+    [roleKey]: appBundleId,
   }) as LaunchServiceHandler);
 }
 
-function messageFor(state: Omit<SkillFileAssociationState, 'message'>): string {
+function messageFor(state: Omit<SkillFileAssociationState, 'message'>, productName: string): string {
   if (state.platform !== 'darwin') {
     return '当前平台由安装包注册 .skill 文件关联；如仍未生效，请重新安装正式包。';
   }
   if (!state.supported || !state.canSetDefault) {
-    return '请使用正式安装包启动布谷AI后再设置 .skill 默认打开方式。';
+    return `请使用正式安装包启动${productName}后再设置 .skill 默认打开方式。`;
   }
   if (state.isDefault) {
-    return '.skill 当前默认由布谷AI打开。';
+    return `.skill 当前默认由${productName}打开。`;
   }
   if (state.currentHandler === state.appBundleId) {
-    return '.skill 扩展名已指向布谷AI，但系统内容类型关联仍需修复。';
+    return `.skill 扩展名已指向${productName}，但系统内容类型关联仍需修复。`;
   }
   return state.currentHandler
     ? `.skill 当前默认处理器是 ${state.currentHandler}。`
@@ -78,21 +85,23 @@ function messageFor(state: Omit<SkillFileAssociationState, 'message'>): string {
 
 export class FileAssociationService {
   async getSkillAssociationState(): Promise<SkillFileAssociationState> {
+    const appBundleId = getRuntimeAppBundleId();
+    const productName = getRuntimeProductName();
     const platform = process.platform;
     const appPath = findAppBundlePath();
     const currentBundleId = platform === 'darwin' ? await this.readAppBundleIdentifier(appPath) : undefined;
     const base = {
       platform,
       supported: platform === 'darwin',
-      canSetDefault: platform === 'darwin' && Boolean(appPath) && currentBundleId === APP_BUNDLE_ID,
+      canSetDefault: platform === 'darwin' && Boolean(appPath) && currentBundleId === appBundleId,
       isDefault: false,
-      appBundleId: APP_BUNDLE_ID,
+      appBundleId,
       appPath,
       currentHandler: undefined as string | undefined,
     };
 
     if (platform !== 'darwin') {
-      return { ...base, message: messageFor(base) };
+      return { ...base, message: messageFor(base, productName) };
     }
 
     const contentTypes = new Set(await this.resolveSkillContentTypes());
@@ -103,7 +112,7 @@ export class FileAssociationService {
       currentHandler,
       isDefault: this.hasDefaultHandlers(handlers, contentTypes),
     };
-    return { ...state, message: messageFor(state) };
+    return { ...state, message: messageFor(state, productName) };
   }
 
   async setSkillAssociationDefault(): Promise<SkillFileAssociationResult> {
@@ -123,12 +132,12 @@ export class FileAssociationService {
       }
       const handlers = await this.readHandlers();
       const nextHandlers = handlers.filter((handler) => !isSkillHandler(handler, new Set(contentTypes)));
-      nextHandlers.push(...createRoleHandlers({
+      nextHandlers.push(...createRoleHandlers(before.appBundleId, {
         LSHandlerContentTag: SKILL_EXTENSION,
         LSHandlerContentTagClass: 'public.filename-extension',
       }));
       for (const contentType of contentTypes) {
-        nextHandlers.push(...createRoleHandlers({ LSHandlerContentType: contentType }));
+        nextHandlers.push(...createRoleHandlers(before.appBundleId, { LSHandlerContentType: contentType }));
       }
       await this.writeHandlers(nextHandlers);
       await execFileAsync(LSREGISTER, ['-kill', '-r', '-domain', 'local', '-domain', 'system', '-domain', 'user']);
@@ -137,7 +146,7 @@ export class FileAssociationService {
       return {
         ...after,
         ok: after.isDefault,
-        error: after.isDefault ? undefined : '系统已写入默认打开方式，但 LaunchServices 尚未刷新到布谷AI。',
+        error: after.isDefault ? undefined : `系统已写入默认打开方式，但 LaunchServices 尚未刷新到${getRuntimeProductName()}。`,
       };
     } catch (error) {
       return {
@@ -152,7 +161,7 @@ export class FileAssociationService {
     const script = [
       'import CoreServices',
       'import Foundation',
-      `let status = LSSetDefaultRoleHandlerForContentType(${JSON.stringify(contentType)} as NSString, LSRolesMask.all, ${JSON.stringify(APP_BUNDLE_ID)} as NSString)`,
+      `let status = LSSetDefaultRoleHandlerForContentType(${JSON.stringify(contentType)} as NSString, LSRolesMask.all, ${JSON.stringify(getRuntimeAppBundleId())} as NSString)`,
       'if status != 0 { Foundation.exit(Int32(status)) }',
     ].join('\n');
     await execFileAsync('/usr/bin/swift', ['-e', script]);
@@ -174,13 +183,14 @@ export class FileAssociationService {
 
   private hasDefaultHandlers(handlers: LaunchServiceHandler[], contentTypes: Set<string>): boolean {
     const extensionHandler = this.findLastHandler(handlers, isSkillExtensionHandler);
-    if (extensionHandler !== APP_BUNDLE_ID) return false;
+    const appBundleId = getRuntimeAppBundleId();
+    if (extensionHandler !== appBundleId) return false;
     for (const contentType of contentTypes) {
       const contentTypeHandler = this.findLastHandler(
         handlers,
         (handler) => handler.LSHandlerContentType === contentType,
       );
-      if (contentTypeHandler !== APP_BUNDLE_ID) return false;
+      if (contentTypeHandler !== appBundleId) return false;
     }
     return true;
   }
@@ -200,7 +210,7 @@ export class FileAssociationService {
   }
 
   private async resolveSkillContentTypes(): Promise<string[]> {
-    const contentTypes = new Set([SKILL_CONTENT_TYPE, LEGACY_SKILL_CONTENT_TYPE]);
+    const contentTypes = new Set([`${getRuntimeAppBundleId()}.skill`, LEGACY_SKILL_CONTENT_TYPE]);
     const tempDir = await mkdtemp(join(tmpdir(), 'bugu-skill-uti-'));
     const probePath = join(tempDir, `probe.${SKILL_EXTENSION}`);
     try {

@@ -85,6 +85,7 @@ export class InputSourceStore {
     const record: InputSourceRecord = {
       id: randomUUID(),
       workspacePath: input.workspacePath,
+      workflowRunId: input.workflowRunId?.trim() || undefined,
       kind,
       status: statusFor(kind, text),
       purpose: input.purpose,
@@ -147,6 +148,7 @@ export class InputSourceStore {
       tags: [purpose, kind, ...(options?.tags ?? [])],
       summary: extractionSummary ?? `已复制到工作区输入源：${basename(filePath)}`,
       text: extractedText,
+      workflowRunId: options?.workflowRunId,
       relatedPromptDraftId: options?.relatedPromptDraftId,
       relatedSceneCardIds: options?.relatedSceneCardIds,
     });

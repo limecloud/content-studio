@@ -124,7 +124,9 @@ export class SceneLibraryStore {
       const cards: SceneCard[] = sourceCards.map((card, index) => ({
         id: randomUUID(),
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         promptPackId: input.promptPackId,
+        inputSourceIds: input.inputSourceIds ?? [],
         title: compactText(card.title, `场景卡 ${index + 1}`),
         audience: compactText(card.audience, '需要更明确的目标人群'),
         painPoint: compactText(card.painPoint, '需要更明确的用户痛点'),
@@ -142,12 +144,14 @@ export class SceneLibraryStore {
       await writeJsonFile(filePathFor(input.workspacePath), [...cards, ...existing].slice(0, 120));
       await this.logs.append({
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         kind: 'scene-card',
         status: 'succeeded',
         title: '产品场景库',
         summary: `文字模型基于提示词包生成 ${cards.length} 张场景卡`,
         model,
         promptPackId: input.promptPackId,
+        sceneCardIds: cards.map((card) => card.id),
         citations,
         input,
         output: cards,
@@ -158,6 +162,7 @@ export class SceneLibraryStore {
       const status = error instanceof TextProviderBlockedError ? 'blocked' : 'failed';
       await this.logs.append({
         workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
         kind: 'scene-card',
         status,
         title: '场景库生成未完成',

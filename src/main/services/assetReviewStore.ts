@@ -33,6 +33,7 @@ export class AssetReviewStore {
     const record: AssetReviewRecord = {
       id: existing?.id ?? randomUUID(),
       workspacePath: input.workspacePath,
+      workflowRunId: normalizeText(input.workflowRunId) || existing?.workflowRunId,
       assetKey,
       kind: input.kind,
       sourceType: input.sourceType,

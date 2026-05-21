@@ -97,6 +97,7 @@ export class MixPackageStore {
     const record: MixPackageRecord = {
       id,
       workspacePath: input.workspacePath,
+      workflowRunId: input.workflowRunId?.trim() || undefined,
       title: normalizeText(input.title),
       platform: normalizeText(input.platform) || 'third-party-mix-tool',
       packageDir,
@@ -109,6 +110,7 @@ export class MixPackageStore {
     await writeFile(manifestPath, `${JSON.stringify({
       schema: 'buguai.mix-package.v1',
       id: record.id,
+      workflowRunId: record.workflowRunId,
       title: record.title,
       platform: record.platform,
       createdAt: record.createdAt,

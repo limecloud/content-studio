@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { WorkflowDefinition, WorkflowRunRecord, WorkflowRunStatus } from '../../../../shared/types';
+import type { AssetReviewRecord, GenerationLogEntry, WorkflowDefinition, WorkflowRunRecord, WorkflowRunStatus } from '../../../../shared/types';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 import { ActionGroup, SelectableRecordCard, StatusPill, type StatusPillTone } from '../WorkbenchPrimitives';
@@ -34,6 +34,8 @@ interface WorkflowFeatureModuleProps {
   busy: boolean;
   definitions: WorkflowDefinition[];
   runs: WorkflowRunRecord[];
+  logs: GenerationLogEntry[];
+  assetReviews: AssetReviewRecord[];
   activeDefinitionId: string;
   activeRunId: string;
   onSelectDefinition: (definitionId: string) => void;
@@ -409,6 +411,41 @@ function workflowRunArtifactActions(run: WorkflowRunRecord): Array<{
   }
 
   return actions;
+}
+
+function assetKeyForLogAsset(logId: string, index: number, path: string): string {
+  return `generated:${logId}:${index}:${path}`;
+}
+
+function assetLineageForRun(run: WorkflowRunRecord, logs: GenerationLogEntry[], reviews: AssetReviewRecord[]) {
+  const runLogs = logs.filter((log) => log.workflowRunId === run.id && (log.kind === 'image' || log.kind === 'video'));
+  const runReviews = reviews.filter((review) => review.workflowRunId === run.id);
+  const reviewByKey = new Map(runReviews.map((review) => [review.assetKey, review]));
+  const reworkLogs = runLogs.filter((log) => Boolean(log.reworkSource));
+  const reworkLogIds = new Set(reworkLogs.map((log) => log.id));
+  const rejectedReviews = runReviews.filter((review) => review.status === 'rejected');
+  const approvedReworkReviews = runReviews.filter((review) =>
+    review.status === 'approved' &&
+    (review.sourceId ? reworkLogIds.has(review.sourceId) : reworkLogs.some((log) => review.assetKey.includes(log.id))),
+  );
+  const approvedBaseReviews = runReviews.filter((review) =>
+    review.status === 'approved' &&
+    !approvedReworkReviews.some((item) => item.id === review.id),
+  );
+
+  return {
+    runLogs,
+    reworkLogs,
+    rejectedReviews,
+    approvedReworkReviews,
+    approvedBaseReviews,
+    reviewByKey,
+  };
+}
+
+function shortRef(value?: string): string {
+  if (!value) return '未记录';
+  return value.length > 36 ? `${value.slice(0, 32)}...` : value;
 }
 
 function DefinitionCard({
@@ -845,6 +882,8 @@ function SopRunner({
 
 function RunDetail({
   run,
+  logs,
+  assetReviews,
   selectedStepId,
   onSelectStepId,
   workspaceReady,
@@ -852,6 +891,8 @@ function RunDetail({
   onRunAction,
 }: {
   run?: WorkflowRunRecord;
+  logs: GenerationLogEntry[];
+  assetReviews: AssetReviewRecord[];
   selectedStepId: string;
   onSelectStepId: (stepId: string) => void;
   workspaceReady: boolean;
@@ -863,6 +904,7 @@ function RunDetail({
     run?.steps[0];
   const nextAction = run ? nextWorkflowRunAction(run) : null;
   const artifactActions = run ? workflowRunArtifactActions(run) : [];
+  const lineage = run ? assetLineageForRun(run, logs, assetReviews) : null;
 
   if (!run) {
     return (
@@ -971,6 +1013,59 @@ function RunDetail({
         </div>
       ) : null}
 
+      {lineage && (
+        lineage.rejectedReviews.length > 0 ||
+        lineage.reworkLogs.length > 0 ||
+        lineage.approvedReworkReviews.length > 0 ||
+        lineage.approvedBaseReviews.length > 0
+      ) ? (
+        <div className="workflow-citation-panel">
+          <h4>素材审核与回炉</h4>
+          <div className="workflow-citation-list">
+            {lineage.rejectedReviews.map((review) => (
+              <article key={`rejected:${review.id}`} className="workflow-citation-card">
+                <strong>原驳回素材：{review.title}</strong>
+                <small>{review.kind} · {review.assetKey}</small>
+                <p>{review.note ?? '未记录驳回原因。'}</p>
+              </article>
+            ))}
+            {lineage.reworkLogs.map((log) => (
+              <article key={`rework:${log.id}`} className="workflow-citation-card">
+                <strong>回炉生成：{log.title}</strong>
+                <small>
+                  原素材 {shortRef(log.reworkSource?.assetKey)} · 新日志 {log.id}
+                </small>
+                <p>{log.reworkSource?.reviewNote ?? log.summary ?? '已基于驳回素材回炉生成候选图。'}</p>
+                <div className="workflow-run-steps">
+                  {(log.artifactRefs ?? []).map((assetRef, index) => {
+                    const review = lineage.reviewByKey.get(assetKeyForLogAsset(log.id, index, assetRef));
+                    return (
+                      <span key={assetRef} className={review?.status === 'approved' ? 'ready' : review?.status === 'rejected' ? 'blocked' : 'idle'}>
+                        {review?.status === 'approved' ? '新通过素材' : review?.status === 'rejected' ? '新素材驳回' : '新候选素材'} · {shortRef(assetRef)}
+                      </span>
+                    );
+                  })}
+                </div>
+              </article>
+            ))}
+            {lineage.approvedReworkReviews.map((review) => (
+              <article key={`approved-rework:${review.id}`} className="workflow-citation-card">
+                <strong>新通过素材：{review.title}</strong>
+                <small>{review.kind} · {review.assetKey}</small>
+                <p>{review.note ?? '回炉后人工审核通过，可进入素材库。'}</p>
+              </article>
+            ))}
+            {lineage.approvedBaseReviews.map((review) => (
+              <article key={`approved-base:${review.id}`} className="workflow-citation-card">
+                <strong>通过素材：{review.title}</strong>
+                <small>{review.kind} · {review.assetKey}</small>
+                <p>{review.note ?? '人工审核通过，可进入素材库。'}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="workflow-run-step-layout">
         <aside className="workflow-run-step-list">
           {run.steps.map((step, index) => (
@@ -1028,6 +1123,8 @@ function RunDetail({
 function RunHistory({
   runs,
   selectedRun,
+  logs,
+  assetReviews,
   onSelectRun,
   workspaceReady,
   busy,
@@ -1035,6 +1132,8 @@ function RunHistory({
 }: {
   runs: WorkflowRunRecord[];
   selectedRun?: WorkflowRunRecord;
+  logs: GenerationLogEntry[];
+  assetReviews: AssetReviewRecord[];
   onSelectRun: (runId: string) => void;
   workspaceReady: boolean;
   busy: boolean;
@@ -1084,6 +1183,8 @@ function RunHistory({
         </aside>
         <RunDetail
           run={selectedRun}
+          logs={logs}
+          assetReviews={assetReviews}
           selectedStepId={selectedStepId}
           onSelectStepId={setSelectedStepId}
           workspaceReady={workspaceReady}
@@ -1101,6 +1202,8 @@ export function WorkflowFeatureModule({
   busy,
   definitions,
   runs,
+  logs,
+  assetReviews,
   activeDefinitionId,
   activeRunId,
   onSelectDefinition,
@@ -1220,6 +1323,8 @@ export function WorkflowFeatureModule({
             <RunHistory
               runs={runs}
               selectedRun={activeRun}
+              logs={logs}
+              assetReviews={assetReviews}
               onSelectRun={onSelectRun}
               workspaceReady={workspaceReady}
               busy={busy}

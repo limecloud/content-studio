@@ -65,6 +65,7 @@ export interface BuguClientBootstrap {
     name?: string;
     slug?: string;
   };
+  branding?: ContentStudioBrandingConfig;
   user?: BuguTenantUser;
   subscription?: {
     status?: string;
@@ -77,6 +78,30 @@ export interface BuguClientBootstrap {
   agentAppCatalog?: {
     apps?: Array<{ appId?: string; displayName?: string; enabled?: boolean }>;
   };
+}
+
+export interface ContentStudioBrandingConfig {
+  brandId?: string;
+  tenantId?: string;
+  appName?: string;
+  shortName?: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  copyrightName?: string;
+  supportUrl?: string;
+  downloadChannel?: string;
+}
+
+export interface OemRuntimeConfig {
+  schemaVersion?: number;
+  brandId?: string;
+  tenantId?: string;
+  appId?: string;
+  productName?: string;
+  shortName?: string;
+  logoUrl?: string;
+  supportUrl?: string;
+  apiBaseUrl?: string;
 }
 
 export interface BuguCurrentSession {
@@ -373,9 +398,11 @@ export interface KnowledgeSearchResult {
 export interface PromptPack {
   id: string;
   workspacePath: string;
+  workflowRunId?: string;
   name: string;
   baseType: KnowledgeBaseType;
   citations: KnowledgeCitation[];
+  inputSourceIds?: string[];
   brandVoice: string;
   visualStyle: string;
   sellingPointRules: string[];
@@ -389,8 +416,10 @@ export interface PromptPack {
 
 export interface GeneratePromptPackInput {
   workspacePath: string;
+  workflowRunId?: string;
   name?: string;
   citations: KnowledgeCitation[];
+  inputSourceIds?: string[];
 }
 
 export type BrandKnowledgeBaseStatus = 'draft' | 'ready' | 'blocked' | 'archived';
@@ -456,7 +485,9 @@ export interface GenerateIpKnowledgeBaseInput {
 export interface SceneCard {
   id: string;
   workspacePath: string;
+  workflowRunId?: string;
   promptPackId: string;
+  inputSourceIds?: string[];
   title: string;
   audience: string;
   painPoint: string;
@@ -473,7 +504,9 @@ export interface SceneCard {
 
 export interface GenerateSceneCardsInput {
   workspacePath: string;
+  workflowRunId?: string;
   promptPackId: string;
+  inputSourceIds?: string[];
   citations?: KnowledgeCitation[];
   count?: number;
 }
@@ -491,6 +524,7 @@ export type InputSourceStatus = 'registered' | 'converted' | 'blocked' | 'failed
 export type InputSourcePurpose =
   | 'brand-kb'
   | 'ip-kb'
+  | 'ip-scenario-kb'
   | 'reference'
   | 'product-brief'
   | 'sop-input'
@@ -499,6 +533,7 @@ export type InputSourcePurpose =
 export interface InputSourceRecord {
   id: string;
   workspacePath: string;
+  workflowRunId?: string;
   kind: InputSourceKind;
   status: InputSourceStatus;
   purpose: InputSourcePurpose;
@@ -519,6 +554,7 @@ export interface InputSourceRecord {
 
 export interface RegisterInputSourceInput {
   workspacePath: string;
+  workflowRunId?: string;
   kind: InputSourceKind;
   purpose: InputSourcePurpose;
   title: string;
@@ -532,6 +568,7 @@ export interface RegisterInputSourceInput {
 }
 
 export interface ImportInputSourceFromFileOptions {
+  workflowRunId?: string;
   relatedPromptDraftId?: string;
   relatedSceneCardIds?: string[];
   tags?: string[];
@@ -551,6 +588,7 @@ export interface PromptDraftVersion {
 export interface PromptDraft {
   id: string;
   workspacePath: string;
+  workflowRunId?: string;
   title: string;
   purpose: PromptDraftPurpose;
   status: PromptDraftStatus;
@@ -570,11 +608,26 @@ export interface PromptDraft {
 
 export interface GeneratePromptDraftInput {
   workspacePath: string;
+  workflowRunId?: string;
   title?: string;
   purpose: PromptDraftPurpose;
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+}
+
+export interface CreatePromptDraftFromContentInput {
+  workspacePath: string;
+  workflowRunId?: string;
+  title: string;
+  purpose: PromptDraftPurpose;
+  userIntent: string;
+  inputSourceIds: string[];
+  sceneCardIds?: string[];
+  content: string;
+  note?: string;
+  model?: string;
+  status?: PromptDraftStatus;
 }
 
 export interface UpdatePromptDraftInput {
@@ -621,6 +674,7 @@ export interface AgentPromptMessage {
 export interface AgentPromptSession {
   id: string;
   workspacePath: string;
+  workflowRunId?: string;
   title: string;
   purpose: PromptDraftPurpose;
   status: AgentPromptSessionStatus;
@@ -637,6 +691,7 @@ export interface AgentPromptSession {
 
 export interface StartAgentPromptSessionInput {
   workspacePath: string;
+  workflowRunId?: string;
   title?: string;
   purpose: PromptDraftPurpose;
   userIntent: string;
@@ -696,6 +751,7 @@ export type AssetReviewSourceType = 'generation-log' | 'input-source' | 'overlay
 export interface AssetReviewRecord {
   id: string;
   workspacePath: string;
+  workflowRunId?: string;
   assetKey: string;
   kind: MixPackageAssetKind;
   sourceType: AssetReviewSourceType;
@@ -712,6 +768,7 @@ export interface AssetReviewRecord {
 
 export interface ReviewAssetInput {
   workspacePath: string;
+  workflowRunId?: string;
   assetKey: string;
   kind: MixPackageAssetKind;
   sourceType: AssetReviewSourceType;
@@ -721,6 +778,19 @@ export interface ReviewAssetInput {
   status: AssetReviewStatus;
   note?: string;
   tags?: string[];
+}
+
+export interface AssetReworkSource {
+  assetKey: string;
+  kind: MixPackageAssetKind;
+  sourceType: AssetReviewSourceType;
+  sourceId?: string;
+  path?: string;
+  title?: string;
+  reviewId?: string;
+  reviewNote?: string;
+  promptDraftId?: string;
+  workflowRunId?: string;
 }
 
 export interface MixPackageAssetInput {
@@ -755,6 +825,7 @@ export interface MixPackageManifestAsset {
 export interface MixPackageRecord {
   id: string;
   workspacePath: string;
+  workflowRunId?: string;
   title: string;
   platform: string;
   packageDir: string;
@@ -767,6 +838,7 @@ export interface MixPackageRecord {
 
 export interface ExportMixPackageInput {
   workspacePath: string;
+  workflowRunId?: string;
   title: string;
   platform: string;
   assets: MixPackageAssetInput[];
@@ -886,9 +958,11 @@ export type WorkflowManualEventKind =
   | 'image-candidates-generated'
   | 'asset-reviewed'
   | 'asset-review-rejected'
+  | 'asset-prompt-distilled'
   | 'mix-package-exported'
   | 'article-draft-generated'
   | 'article-markdown-exported'
+  | 'ip-scenario-extended'
   | 'workflow-review-approved'
   | 'workflow-asset-archived';
 
@@ -913,6 +987,7 @@ export interface RecordWorkflowManualEventInput {
 export type GenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled';
 export interface ReferenceReverseRequest {
   workspacePath: string;
+  workflowRunId?: string;
   referenceSourceIds: string[];
   productSourceIds: string[];
   userIntent: string;
@@ -941,6 +1016,8 @@ export type GenerationKind = 'article' | 'image' | 'video' | 'video-breakdown' |
 export interface GenerationLogEntry {
   id: string;
   workspacePath: string;
+  workflowRunId?: string;
+  reworkSource?: AssetReworkSource;
   kind: GenerationKind;
   status: GenerationStatus;
   title: string;
@@ -997,6 +1074,8 @@ export interface ArticleGenerationResult {
 
 export interface ImageGenerationRequest {
   workspacePath: string;
+  workflowRunId?: string;
+  reworkSource?: AssetReworkSource;
   productImageRefs: string[];
   referenceImageRefs: string[];
   prompt: string;
@@ -1215,6 +1294,7 @@ export interface ContentStudioApi {
 
   listPromptDrafts(workspacePath: string): Promise<PromptDraft[]>;
   generatePromptDraft(input: GeneratePromptDraftInput): Promise<PromptDraft>;
+  createPromptDraftFromContent(input: CreatePromptDraftFromContentInput): Promise<PromptDraft>;
   updatePromptDraft(input: UpdatePromptDraftInput): Promise<PromptDraft>;
   recordPromptDraftCopy(input: RecordPromptDraftCopyInput): Promise<PromptDraft>;
   listAgentPromptSessions(workspacePath: string): Promise<AgentPromptSession[]>;

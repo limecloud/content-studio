@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "布谷AI内容工厂桌面应用，用于知识库、提示词、图片、视频和文章生产。",
   "type": "module",
   "main": "out/main/index.js",
@@ -13,6 +13,9 @@
     "build": "tsc --noEmit && electron-vite build",
     "start": "electron-vite preview",
     "dist": "npm run build && electron-builder --config electron-builder.yml",
+    "oem:prepare": "node scripts/prepare-oem-build.mjs",
+    "oem:clean": "node scripts/clean-oem-build.mjs",
+    "oem:assert": "node scripts/assert-oem-artifact-scope.mjs",
     "typecheck": "tsc --noEmit",
     "dist:mac": "npm run build && electron-builder --config electron-builder.yml --mac dmg zip --publish never",
     "dist:win": "npm run build && electron-builder --config electron-builder.yml --win nsis --publish never",

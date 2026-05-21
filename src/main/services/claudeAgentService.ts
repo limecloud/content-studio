@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { AgentEvent, RunTaskInput } from '../../shared/types';
 import { buildClaudeSubprocessEnv, ensureClaudeConfig } from './claudeSdkRuntime';
 import { ModelConfigStore } from './modelConfigStore';
+import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { SettingsStore } from './settingsStore';
 
 export type AgentEventSink = (event: AgentEvent) => void;
@@ -78,7 +79,7 @@ export class ClaudeAgentService {
         env: buildClaudeSubprocessEnv({ apiKey, baseUrl: modelView.textApiEndpoint }),
         settingSources: ['user', 'project'],
         appendSystemPrompt: [
-          '你是布谷AI内容工厂里的内容生产助手。',
+          `你是${getOemRuntimeConfig().productName}内容工厂里的内容生产助手。`,
           '优先使用当前工作区中的内容生成能力。',
           '输出要清晰标注：资料判断、内容策略、草稿、下一步确认。',
         ].join('\n'),

@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { GenerationKind, GenerationLogEntry, GenerationStatus, KnowledgeCitation } from '../../shared/types';
+import type { AssetReworkSource, GenerationKind, GenerationLogEntry, GenerationStatus, KnowledgeCitation } from '../../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 
 interface CreateLogInput {
   workspacePath: string;
+  workflowRunId?: string;
+  reworkSource?: AssetReworkSource;
   kind: GenerationKind;
   status: GenerationStatus;
   title: string;
@@ -36,6 +38,8 @@ export class GenerationLogStore {
     const entry: GenerationLogEntry = {
       id: randomUUID(),
       workspacePath: input.workspacePath,
+      workflowRunId: input.workflowRunId?.trim() || undefined,
+      reworkSource: input.reworkSource,
       kind: input.kind,
       status: input.status,
       title: input.title,

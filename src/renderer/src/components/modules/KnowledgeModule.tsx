@@ -63,6 +63,11 @@ const KNOWLEDGE_TABS: Array<{ key: KnowledgeTab; label: string }> = [
   { key: 'scene', label: '场景卡' },
 ];
 
+function shortId(value?: string): string {
+  if (!value) return '';
+  return value.length > 12 ? value.slice(0, 8) : value;
+}
+
 export function KnowledgeModule({
   busy,
   workspaceReady,
@@ -308,6 +313,11 @@ export function KnowledgeModule({
                 {activePromptPack ? (
                   <div className="prompt-pack edit-stack">
                     <strong>{activePromptPack.name}</strong>
+                    <small>
+                      引用 {activePromptPack.citations.length} 条
+                      {activePromptPack.inputSourceIds?.length ? ` · 输入源 ${activePromptPack.inputSourceIds.length} 个` : ''}
+                      {activePromptPack.workflowRunId ? ` · SOP ${shortId(activePromptPack.workflowRunId)}` : ''}
+                    </small>
                     <label><span>品牌口吻</span><textarea value={promptPackDraft.brandVoice} onChange={(event) => setPromptPackDraft((current) => ({ ...current, brandVoice: event.target.value }))} /></label>
                     <label><span>视觉风格</span><textarea value={promptPackDraft.visualStyle} onChange={(event) => setPromptPackDraft((current) => ({ ...current, visualStyle: event.target.value }))} /></label>
                     <button className="primary small" onClick={onSavePromptPackDraft}>保存提示词包</button>
@@ -336,6 +346,12 @@ export function KnowledgeModule({
             {activeEditableScene ? (
               <div className="prompt-pack edit-stack">
                 <strong>{activeEditableScene.title}</strong>
+                <small>
+                  提示词包 {activeEditableScene.promptPackId}
+                  {activeEditableScene.inputSourceIds?.length ? ` · 输入源 ${activeEditableScene.inputSourceIds.length} 个` : ''}
+                  {activeEditableScene.citations.length ? ` · 引用 ${activeEditableScene.citations.length} 条` : ''}
+                  {activeEditableScene.workflowRunId ? ` · SOP ${shortId(activeEditableScene.workflowRunId)}` : ''}
+                </small>
                 <label><span>场景标题</span><input value={sceneCardDraft.title} onChange={(event) => setSceneCardDraft((current) => ({ ...current, title: event.target.value }))} /></label>
                 <label><span>图片素材建议</span><textarea value={sceneCardDraft.imageMaterialSuggestion} onChange={(event) => setSceneCardDraft((current) => ({ ...current, imageMaterialSuggestion: event.target.value }))} /></label>
                 <label><span>视频素材建议</span><textarea value={sceneCardDraft.videoMaterialSuggestion} onChange={(event) => setSceneCardDraft((current) => ({ ...current, videoMaterialSuggestion: event.target.value }))} /></label>

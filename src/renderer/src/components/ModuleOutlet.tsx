@@ -25,6 +25,11 @@ interface ModuleOutletProps {
 }
 
 export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
+  const brandName = app.authState?.bootstrap?.branding?.shortName
+    || app.authState?.bootstrap?.branding?.appName
+    || app.authState?.bootstrap?.tenant?.name
+    || '布谷AI';
+
   const renderAssetsModule = (variant: 'library' | 'compliance' | 'retouch' = 'library') => (
     <AssetsModule
       variant={variant}
@@ -39,8 +44,12 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
       onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
       onReuseImageLogInput={(log) => app.reuseImageLogInput(log)}
       onReviewAsset={(input) => app.runAction(() => app.reviewAsset(input), '正在记录素材审核')}
-      onReworkAsset={app.reworkAsset}
+      onReworkAsset={(input) => app.runAction(() => app.reworkAsset(input), '正在准备回炉')}
+      onDistillAssetPrompt={(input) => app.runAction(() => app.distillAssetPrompt(input), '正在沉淀成功素材 Prompt')}
       onOpenMixExport={() => app.setActiveModule('video-mix-export')}
+      onOpenPromptDraft={app.openTracePromptDraft}
+      onOpenSceneCards={app.openTraceSceneCards}
+      onOpenWorkflowRun={app.openTraceWorkflowRun}
     />
   );
 
@@ -219,6 +228,9 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         activeIpKnowledgeBaseId={app.activeIpKnowledgeBaseId}
         setActiveIpKnowledgeBaseId={app.setActiveIpKnowledgeBaseId}
         onGenerateIpKnowledgeBase={() => app.runAction(app.generateIpKnowledgeBase, '正在生成 IP 知识库')}
+        onCreateScenarioPrompt={(scene) =>
+          app.runAction(() => app.createIpScenarioPrompt(scene), '正在生成 IP 场景延伸 Prompt')
+        }
         onOpenKnowledgeScenes={() => app.runAction(app.generateSceneCards, '正在基于 IP 知识库生成场景延伸库')}
         onOpenPromptWorkbench={() => app.setActiveModule('assets-prompt-workbench')}
       />
@@ -414,8 +426,14 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onReviewAsset={(input) =>
             app.runAction(() => app.reviewAsset(input), '正在记录素材审核')
           }
-          onReworkAsset={app.reworkAsset}
+          onReworkAsset={(input) => app.runAction(() => app.reworkAsset(input), '正在准备回炉')}
+          onDistillAssetPrompt={(input) =>
+            app.runAction(() => app.distillAssetPrompt(input), '正在沉淀成功素材 Prompt')
+          }
           onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
+          onOpenPromptDraft={app.openTracePromptDraft}
+          onOpenSceneCards={app.openTraceSceneCards}
+          onOpenWorkflowRun={app.openTraceWorkflowRun}
           onSelectModule={app.setActiveModule}
         />
       );
@@ -467,6 +485,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           busy={app.busy}
           definitions={app.workflowDefinitions}
           runs={app.workflowRuns}
+          logs={app.logs}
+          assetReviews={app.assetReviews}
           activeDefinitionId={app.activeWorkflowDefinitionId}
           activeRunId={app.activeWorkflowRunId}
           onSelectDefinition={app.setActiveWorkflowDefinitionId}
@@ -557,6 +577,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         activeSkill={app.activeSkill}
         activeSkillKey={app.activeSkillKey}
         copiedSkillKey={app.copiedSkillKey}
+        brandName={brandName}
         workspaceReady={Boolean(app.workspacePath)}
         onSelectSkill={app.setActiveSkillKey}
         onInstallSkill={(slug) => app.runAction(() => app.installSkill(slug))}
