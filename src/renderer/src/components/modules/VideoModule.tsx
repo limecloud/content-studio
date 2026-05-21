@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import type { MediaGenerationResult, SceneCard, VideoBreakdownResult, VideoScriptGenerationResult } from '../../../../shared/types';
 import { VIDEO_DIMENSIONS } from '../../app/constants';
 import { fileNameFromPath, statusLabel } from '../../app/formatters';
@@ -6,6 +6,7 @@ import { fileNameFromPath, statusLabel } from '../../app/formatters';
 type VideoStage = 'breakdown' | 'script' | 'generate';
 
 interface VideoModuleProps {
+  initialStage?: VideoStage;
   busy: boolean;
   workspaceReady: boolean;
   productImageRefs: string[];
@@ -45,6 +46,7 @@ interface VideoModuleProps {
 }
 
 export function VideoModule({
+  initialStage = 'breakdown',
   busy,
   workspaceReady,
   productImageRefs,
@@ -82,7 +84,7 @@ export function VideoModule({
   onGenerateVideoScript,
   onGenerateVideo,
 }: VideoModuleProps) {
-  const [activeStage, setActiveStage] = useState<VideoStage>('breakdown');
+  const [activeStage, setActiveStage] = useState<VideoStage>(initialStage);
   const sourceCount = videoAssetRefs.length + (videoUrl.trim() ? 1 : 0);
   const imageMaterialRefs = useMemo(
     () => [...productImageRefs, ...referenceImageRefs],
@@ -90,6 +92,10 @@ export function VideoModule({
   );
   const storyboardShots = videoScript?.storyboard ?? [];
   const hasVideoMaterial = imageMaterialRefs.length > 0 || videoAssetRefs.length > 0;
+
+  useEffect(() => {
+    setActiveStage(initialStage);
+  }, [initialStage]);
 
   return (
     <section className="video-replica-workbench">
@@ -292,7 +298,7 @@ export function VideoModule({
             <div className="video-card-title">
               <div>
                 <h4>生成视频历史</h4>
-                <p>后续接入真实视频接口后，生成结果会显示在这里。</p>
+                <p>配置真实视频接口后，生成结果会显示在这里；未配置时只保留可追溯的 blocked 记录。</p>
               </div>
             </div>
             {mediaResult ? (

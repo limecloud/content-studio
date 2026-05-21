@@ -1,6 +1,7 @@
 import type {
   GenerationLogEntry,
   ImageGenerationRequest,
+  InputSourceRecord,
   KnowledgeBaseView,
   KnowledgeCitation,
   KnowledgeSection,
@@ -54,6 +55,7 @@ export function kindLabel(kind: GenerationLogEntry['kind']): string {
     'video-script': '视频脚本',
     'prompt-pack': '提示词包',
     'scene-card': '场景卡',
+    'reference-reverse': '对标反推',
   }[kind];
 }
 
@@ -86,6 +88,23 @@ export function fileNameFromPath(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
+export function localAssetUrl(assetRef: string): string {
+  if (/^(https?:|data:image\/|blob:|local-asset:)/i.test(assetRef)) return assetRef;
+  const normalized = assetRef.replace(/\\/g, '/');
+  let absolutePath = normalized;
+  if (/^[A-Za-z]:\//.test(normalized)) absolutePath = `/${normalized}`;
+  else if (!normalized.startsWith('/')) absolutePath = `/${normalized}`;
+  return `local-asset://${encodeURI(absolutePath).replace(/#/g, '%23')}`;
+}
+
+export function isImageFilePath(path: string): boolean {
+  return /\.(png|jpe?g|webp|gif|avif|svg)(?:[?#].*)?$/i.test(path);
+}
+
+export function isVideoFilePath(path: string): boolean {
+  return /\.(mp4|mov|webm|m4v)(?:[?#].*)?$/i.test(path);
+}
+
 export function clip(value: string, length = 180): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
   return normalized.length > length ? `${normalized.slice(0, length)}...` : normalized;
@@ -108,6 +127,22 @@ export function citationFromSection(base: KnowledgeBaseView, section: KnowledgeS
     title: `${base.title} / ${section.title}`,
     sectionType: section.sectionType,
     excerpt: clip(section.content || section.summary || section.title, 220),
+  };
+}
+
+export function citationFromInputSource(source: InputSourceRecord): KnowledgeCitation {
+  const sectionType: KnowledgeCitation['sectionType'] =
+    source.purpose === 'ip-kb'
+      ? 'profile'
+      : source.purpose === 'brand-kb' || source.purpose === 'product-brief'
+        ? 'product'
+        : 'scenario-script';
+  return {
+    knowledgeBaseId: `input-source:${source.id}`,
+    sectionId: source.markdownPath ? 'markdown' : 'summary',
+    title: `${source.title} / ${source.purpose}`,
+    sectionType,
+    excerpt: clip(source.extractedText || source.summary || source.blockedReason || source.title, 220),
   };
 }
 
@@ -141,6 +176,14 @@ export function extractLocalRefsFromLog(log: GenerationLogEntry): string[] {
     ...collectStringArray(log.input, 'imageAssetRefs'),
     ...collectStringArray(log.input, 'videoAssetRefs'),
     ...collectStringArray(log.input, 'assetRefs'),
+    ...collectStringArray(log.output, 'assetRefs'),
+    ...(log.artifactRefs ?? []),
+  ];
+  return Array.from(new Set(refs.filter((item) => !/^https?:\/\//i.test(item))));
+}
+
+export function extractGeneratedAssetRefsFromLog(log: GenerationLogEntry): string[] {
+  const refs = [
     ...collectStringArray(log.output, 'assetRefs'),
     ...(log.artifactRefs ?? []),
   ];

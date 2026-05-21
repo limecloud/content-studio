@@ -7,10 +7,47 @@ files:
   - out/**
   - resources/**
   - package.json
+fileAssociations:
+  - ext: skill
+    name: Bugu AI Skill Package
+    description: 布谷AI Skill 安装包
+    role: Viewer
+    rank: Owner
+    mimeType: application/vnd.bugu.skill
 mac:
   category: public.app-category.productivity
   icon: build/icon.icns
   identity: null
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: Bugu AI Skill Package
+        CFBundleTypeRole: Viewer
+        CFBundleTypeExtensions:
+          - skill
+        LSHandlerRank: Owner
+        LSItemContentTypes:
+          - ai.limecloud.contentstudio.skill
+          - com.limecloud.lime.skill
+    UTExportedTypeDeclarations:
+      - UTTypeIdentifier: ai.limecloud.contentstudio.skill
+        UTTypeDescription: 布谷AI Skill 安装包
+        UTTypeConformsTo:
+          - public.zip-archive
+        UTTypeTagSpecification:
+          public.filename-extension:
+            - skill
+          public.mime-type:
+            - application/vnd.bugu.skill
+      - UTTypeIdentifier: com.limecloud.lime.skill
+        UTTypeDescription: 布谷AI Skill 安装包
+        UTTypeConformsTo:
+          - public.zip-archive
+          - public.data
+        UTTypeTagSpecification:
+          public.filename-extension:
+            - skill
+          public.mime-type:
+            - application/vnd.lime.skill+zip
 win:
   target: nsis
 linux:

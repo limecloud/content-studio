@@ -11,6 +11,7 @@ import type {
 } from '../../../../shared/types';
 import { KNOWLEDGE_BASE_FILTERS, KNOWLEDGE_SECTION_FILTERS } from '../../app/constants';
 import { baseLabel, clip, knowledgeBaseKey, sectionLabel } from '../../app/formatters';
+import { ModuleCommandCenter } from '../ModuleCommandCenter';
 
 type KnowledgeTab = 'library' | 'search' | 'pack' | 'scene';
 
@@ -35,9 +36,10 @@ interface KnowledgeModuleProps {
   availableKnowledgeTags: string[];
   activeKnowledgeBase?: KnowledgeBaseView;
   activeKnowledgeBaseKey: string;
-  setActiveKnowledgeBaseKey: Dispatch<SetStateAction<string>>;
+  setActiveKnowledgeBaseKey: (key: string) => void;
   searchResults: KnowledgeSearchResult[];
   selectedCitations: KnowledgeCitation[];
+  effectiveCitationCount: number;
   activePromptPack?: PromptPack;
   promptPackDraft: { brandVoice: string; visualStyle: string };
   setPromptPackDraft: Dispatch<SetStateAction<{ brandVoice: string; visualStyle: string }>>;
@@ -79,6 +81,7 @@ export function KnowledgeModule({
   setActiveKnowledgeBaseKey,
   searchResults,
   selectedCitations,
+  effectiveCitationCount,
   activePromptPack,
   promptPackDraft,
   setPromptPackDraft,
@@ -135,26 +138,42 @@ export function KnowledgeModule({
   const knowledgeTabHint = (tab: KnowledgeTab): string => {
     if (tab === 'library') return `${knowledgeBases.length} 个`;
     if (tab === 'search') return `${searchResults.length} 条`;
-    if (tab === 'pack') return `${selectedCitations.length} 条`;
+    if (tab === 'pack') return `${effectiveCitationCount} 条`;
     return activeEditableScene ? '已选中' : '待生成';
   };
 
   return (
     <section className="knowledge-workbench">
-      <div className="knowledge-tab-bar" role="tablist" aria-label="知识工作台标签">
-        {KNOWLEDGE_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            role="tab"
-            aria-selected={activeTab === tab.key}
-            className={activeTab === tab.key ? 'active' : ''}
-            onClick={() => setActiveTab(tab.key)}
-          >
-            <strong>{tab.label}</strong>
-            <span>{knowledgeTabHint(tab.key)}</span>
-          </button>
-        ))}
-      </div>
+      <ModuleCommandCenter
+        eyebrow="知识库 / 主流程"
+        title="成型知识库"
+        description="导入 DOCX / Markdown / JSON，检索并引用知识章节，继续生成提示词包、场景卡和下游内容。"
+        density="managed"
+        actions={(
+          <div className="workflow-summary-stack">
+            <span className="status-pill">{knowledgeBases.length} 个知识库</span>
+            <span className="status-pill">{selectedCitations.length} 条已选引用</span>
+            <span className={`status-pill ${activePromptPack ? 'ready' : 'idle'}`}>
+              {activePromptPack ? '提示词包已连接' : '待生成提示词包'}
+            </span>
+          </div>
+        )}
+      >
+        <div className="knowledge-tab-bar module-command-tabs" role="tablist" aria-label="知识工作台标签">
+          {KNOWLEDGE_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              className={activeTab === tab.key ? 'active' : ''}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              <strong>{tab.label}</strong>
+              <span>{knowledgeTabHint(tab.key)}</span>
+            </button>
+          ))}
+        </div>
+      </ModuleCommandCenter>
 
       <div className="knowledge-tab-panel">
         {activeTab === 'library' ? (
@@ -270,15 +289,21 @@ export function KnowledgeModule({
                 <h3>提示词包</h3>
               </div>
               <div className="knowledge-panel-actions">
-                <span className="status-pill">{selectedCitations.length} 个引用</span>
-                <button className="primary small" disabled={!activePromptPack || busy} onClick={onGenerateSceneCards}>生成场景卡</button>
+                <span className="status-pill">{effectiveCitationCount} 个有效引用</span>
+                <button
+                  className="primary small"
+                  disabled={!workspaceReady || busy || effectiveCitationCount === 0}
+                  onClick={onGenerateSceneCards}
+                >
+                  {activePromptPack ? '生成场景卡' : '生成场景卡并补提示词包'}
+                </button>
               </div>
             </div>
             <div className="knowledge-pack-grid">
               <div className="knowledge-pack-column">
                 <div className="selected-citations">
                   {selectedCitations.map((citation) => <span key={`${citation.knowledgeBaseId}:${citation.sectionId}`}>{sectionLabel(citation.sectionType)} · {citation.title}</span>)}
-                  {selectedCitations.length === 0 ? <p>未手动选择引用时，会默认使用检索结果前三条。</p> : null}
+                  {selectedCitations.length === 0 ? <p>未手动选择引用时，会默认使用检索结果、当前知识库重点章节或已解析输入源。</p> : null}
                 </div>
                 {activePromptPack ? (
                   <div className="prompt-pack edit-stack">
@@ -287,7 +312,7 @@ export function KnowledgeModule({
                     <label><span>视觉风格</span><textarea value={promptPackDraft.visualStyle} onChange={(event) => setPromptPackDraft((current) => ({ ...current, visualStyle: event.target.value }))} /></label>
                     <button className="primary small" onClick={onSavePromptPackDraft}>保存提示词包</button>
                   </div>
-                ) : <div className="empty-state">先生成品牌 / 产品提示词包。</div>}
+                ) : <div className="empty-state">当前还没有提示词包。点击“生成场景卡并补提示词包”会先生成提示词包，再生成场景卡。</div>}
               </div>
               <div className="knowledge-pack-column">
                 <div className="prompt-pack edit-stack">

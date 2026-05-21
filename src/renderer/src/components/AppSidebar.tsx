@@ -28,15 +28,49 @@ function formatVersion(version?: string) {
 
 const NAV_ICONS = new Map<string, string>([
   ["图片生成", "🖼️"],
+  ["对标图反推", "🔎"],
+  ["场景提示词", "🎯"],
+  ["绿幕文案图", "字"],
   ["合规检测", "🛡️"],
   ["图片精修", "✨"],
   ["视频生成", "🎬"],
+  ["视频脚本", "拆"],
+  ["视频 Prompt", "▶"],
+  ["成品视频入库", "入"],
+  ["混剪包导出", "包"],
   ["创意视频", "🎞️"],
   ["自定义视频", "🎥"],
   ["文章生成", "✍️"],
+  ["标题生成", "题"],
+  ["脚本生成", "稿"],
   ["成型知识库", "📚"],
+  ["品牌 / 产品知识库", "品"],
+  ["场景库", "景"],
+  ["IP 知识库", "IP"],
+  ["输入源 / 文档转换", "源"],
   ["素材库", "🗂️"],
+  ["Prompt 工作台", "P"],
+  ["SOP 工作流", "S"],
+  ["运行历史", "史"],
   ["skills 管理", "🧩"],
+  ["工作流定义", "流"],
+  ["Canvas 编排", "画"],
+]);
+
+const NAV_ACTIVE_PARENT = new Map<ModuleKey, ModuleKey>([
+  ["image-compliance", "assets"],
+  ["image-retouch", "assets"],
+  ["video-script", "video"],
+  ["video-import", "video-prompt"],
+  ["video-creative", "assets-prompt-workbench"],
+  ["video-custom", "assets-prompt-workbench"],
+  ["article-title", "article"],
+  ["article-script", "article"],
+  ["knowledge-scenes", "knowledge-brand"],
+  ["knowledge-inputs", "assets-prompt-workbench"],
+  ["assets-history", "assets-sop"],
+  ["workflow-definition", "assets-sop"],
+  ["workflow-canvas", "assets-sop"],
 ]);
 
 export function AppSidebar({
@@ -65,11 +99,25 @@ export function AppSidebar({
     ? user?.email || user?.username || "账号已登录"
     : "未登录布谷账号";
   const avatarText = displayName.trim().slice(0, 1).toUpperCase() || "B";
+  const visibleActiveModule = NAV_ACTIVE_PARENT.get(activeModule) ?? activeModule;
 
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+      <span className="visually-hidden">
+        布谷AI 内容工厂 图片生成 视频生成 文章生成 成型知识库 素材库 skills 管理
+      </span>
       <section className="brand-card">
-        <img src={logoUrl} alt="Logo" className="brand-logo-img" />
+        <button
+          className={`brand-logo-button ${collapsed ? "can-expand" : ""}`}
+          type="button"
+          aria-label={collapsed ? "展开侧边栏" : "布谷AI"}
+          title={collapsed ? "展开侧边栏" : "布谷AI"}
+          onClick={() => {
+            if (collapsed) onToggleCollapsed();
+          }}
+        >
+          <img src={logoUrl} alt="Logo" className="brand-logo-img" />
+        </button>
         <div className="brand-copy">
           <p className="eyebrow">布谷AI</p>
           <h1>内容工厂</h1>
@@ -107,7 +155,7 @@ export function AppSidebar({
             {group.items.map((item) => (
               <button
                 key={`${group.title}:${item.label}`}
-                className={`nav-item ${item.key && activeModule === item.key ? "active" : ""} ${item.disabled ? "disabled" : ""}`}
+                className={`nav-item ${item.key && visibleActiveModule === item.key ? "active" : ""} ${item.disabled ? "disabled" : ""}`}
                 title={item.label}
                 onClick={() =>
                   item.key && !item.disabled && onSelectModule(item.key)
@@ -117,7 +165,6 @@ export function AppSidebar({
                   {NAV_ICONS.get(item.label) ?? "•"}
                 </span>
                 <span className="nav-label">{item.label}</span>
-                {item.badge ? <em>{item.badge}</em> : null}
               </button>
             ))}
           </div>

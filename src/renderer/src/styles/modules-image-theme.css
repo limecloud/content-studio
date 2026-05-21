@@ -1,0 +1,51 @@
+@keyframes image-preview-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.image-scene-log-dock {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+}
+
+.compact-preview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.compact-preview-grid .scene-tile {
+  min-height: 96px;
+}
+
+.app-shell[data-theme="dark"] .template-tab,
+.app-shell[data-theme="dark"] .image-preview-tabs,
+.app-shell[data-theme="dark"] .image-mention-trigger,
+.app-shell[data-theme="dark"] .image-mention-menu,
+.app-shell[data-theme="dark"] .image-mention-option,
+.app-shell[data-theme="dark"] .image-preview-log,
+.app-shell[data-theme="dark"] .image-preview-empty,
+.app-shell[data-theme="dark"] .image-preview-loading,
+.app-shell[data-theme="dark"] .image-generated-card,
+.app-shell[data-theme="dark"] .image-result-detail-preview,
+.app-shell[data-theme="dark"] .image-result-detail-info span,
+.app-shell[data-theme="dark"] .image-log-detail-grid span,
+.app-shell[data-theme="dark"] .asset-log-detail-grid span,
+.app-shell[data-theme="dark"] .image-result-param-grid span,
+.app-shell[data-theme="dark"] .asset-log-json-card,
+.app-shell[data-theme="dark"] .image-fullscreen-card,
+.app-shell[data-theme="dark"] .image-fullscreen-toolbar {
+  background: var(--panel);
+}
+
+.app-shell[data-theme="dark"] .asset-log-json-card pre {
+  background: color-mix(in srgb, var(--panel) 86%, #000000);
+}
+
+.app-shell[data-theme="dark"] .image-preview-canvas {
+  background: var(--panel);
+}
+
+.app-shell[data-theme="dark"] .image-fullscreen-backdrop {
+  background: rgba(2, 6, 23, 0.9);
+}

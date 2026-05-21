@@ -1,128 +1,337 @@
-import { useMemo, useState } from 'react';
-import type { GenerationLogEntry } from '../../../../shared/types';
+import { useEffect, useMemo, useState } from 'react';
+import type {
+  AssetReviewRecord,
+  AssetReviewStatus,
+  GenerationLogEntry,
+  InputSourceRecord,
+  PromptDraft,
+  ReviewAssetInput,
+} from '../../../../shared/types';
 import {
+  extractGeneratedAssetRefsFromLog,
   extractLocalRefsFromLog,
   extractPromptFromLog,
   fileNameFromPath,
   formatDuration,
+  isImageFilePath,
+  isVideoFilePath,
   kindLabel,
+  localAssetUrl,
 } from '../../app/formatters';
+import { ModuleCommandCenter } from '../ModuleCommandCenter';
 
 interface AssetsModuleProps {
+  variant?: 'library' | 'compliance' | 'retouch';
   logsCount: number;
   logs: GenerationLogEntry[];
+  inputSources: InputSourceRecord[];
+  promptDrafts: PromptDraft[];
+  assetReviews: AssetReviewRecord[];
   copiedLogId: string | null;
   onCopyLogPrompt: (log: GenerationLogEntry) => void;
   onRevealLogPath: (log: GenerationLogEntry) => void;
+  onRevealPath: (path: string) => void;
   onReuseImageLogInput: (log: GenerationLogEntry) => void;
+  onReviewAsset: (input: Omit<ReviewAssetInput, 'workspacePath'>) => void;
+  onReworkAsset: (input: {
+    kind: AssetKind;
+    path: string;
+    sourceType: 'generation-log' | 'input-source' | 'manual';
+    sourceId?: string;
+    promptDraftId?: string;
+    promptText?: string;
+  }) => void;
+  onOpenMixExport: () => void;
 }
 
 type AssetKind = 'image' | 'video';
+type AssetSource = 'generation' | 'imported';
 
 interface AssetItem {
   id: string;
   kind: AssetKind;
+  source: AssetSource;
   path: string;
-  log: GenerationLogEntry;
+  title: string;
+  subtitle: string;
+  prompt: string;
+  createdAt: string;
+  tags: string[];
+  model?: string;
+  durationMs?: number;
+  log?: GenerationLogEntry;
+  inputSource?: InputSourceRecord;
+  relatedPromptDraft?: PromptDraft;
 }
 
-function isImagePath(path: string): boolean {
-  return /\.(png|jpe?g|webp|gif|avif)$/i.test(path);
+function activeDraftContent(draft?: PromptDraft): string {
+  if (!draft) return '';
+  return draft.versions.find((version) => version.id === draft.activeVersionId)?.content
+    ?? draft.versions[draft.versions.length - 1]?.content
+    ?? '';
 }
 
-function isVideoPath(path: string): boolean {
-  return /\.(mp4|mov|webm|m4v)$/i.test(path);
+function importedAssetRefs(source: InputSourceRecord): string[] {
+  const refs = [
+    source.sourcePath,
+    ...source.artifactRefs,
+  ].filter((item): item is string => Boolean(item));
+  return Array.from(new Set(refs)).filter((path) => isImageFilePath(path) || isVideoFilePath(path));
 }
 
-function localAssetSource(assetRef: string): string {
-  if (/^(https?:|data:image\/|blob:|local-asset:)/i.test(assetRef)) return assetRef;
-  const normalized = assetRef.replace(/\\/g, '/');
-  let absolutePath = normalized;
-  if (/^[A-Za-z]:\//.test(normalized)) absolutePath = `/${normalized}`;
-  else if (!normalized.startsWith('/')) absolutePath = `/${normalized}`;
-  return `local-asset://${encodeURI(absolutePath).replace(/#/g, '%23')}`;
-}
-
-function collectAssets(logs: GenerationLogEntry[]): AssetItem[] {
+function collectGeneratedAssets(logs: GenerationLogEntry[]): AssetItem[] {
   return logs.flatMap((log) => {
     if (log.status !== 'succeeded' || (log.kind !== 'image' && log.kind !== 'video')) return [];
-    return extractLocalRefsFromLog(log)
-      .filter((path) => isImagePath(path) || isVideoPath(path))
+    return extractGeneratedAssetRefsFromLog(log)
+      .filter((path) => isImageFilePath(path) || isVideoFilePath(path))
       .map((path, index) => ({
-        id: `${log.id}:${index}:${path}`,
-        kind: isVideoPath(path) ? 'video' : 'image',
+        id: `generated:${log.id}:${index}:${path}`,
+        kind: isVideoFilePath(path) ? 'video' : 'image',
+        source: 'generation' as const,
         path,
+        title: fileNameFromPath(path),
+        subtitle: `${kindLabel(log.kind)} · ${log.model ?? 'local'} · ${formatDuration(log.durationMs)}`,
+        prompt: extractPromptFromLog(log),
+        createdAt: log.createdAt,
+        tags: [kindLabel(log.kind), log.model ?? '', log.status].filter(Boolean),
+        model: log.model,
+        durationMs: log.durationMs,
         log,
       }));
   });
 }
 
+function collectImportedAssets(
+  inputSources: InputSourceRecord[],
+  promptDrafts: PromptDraft[],
+): AssetItem[] {
+  return inputSources.flatMap((source) => {
+    if (source.purpose !== 'successful-asset') return [];
+    return importedAssetRefs(source).map((path, index) => {
+      const relatedDraft = source.relatedPromptDraftId
+        ? promptDrafts.find((draft) => draft.id === source.relatedPromptDraftId)
+        : undefined;
+      return {
+        id: `imported:${source.id}:${index}:${path}`,
+        kind: isVideoFilePath(path) ? 'video' : 'image',
+        source: 'imported' as const,
+        path,
+        title: source.title || fileNameFromPath(path),
+        subtitle: `${source.kind} · 手动导入 · ${relatedDraft?.title ?? '未关联 Prompt'}`,
+        prompt: activeDraftContent(relatedDraft) || source.summary || '',
+        createdAt: source.createdAt,
+        tags: Array.from(new Set(['手动导入', source.kind, ...source.tags].filter(Boolean))),
+        inputSource: source,
+        relatedPromptDraft: relatedDraft,
+      };
+    });
+  });
+}
+
+function reviewLabel(status?: AssetReviewStatus): string {
+  if (status === 'approved') return '已通过';
+  if (status === 'rejected') return '已驳回';
+  return '待审核';
+}
+
+function reviewClass(status?: AssetReviewStatus): string {
+  if (status === 'approved') return 'ready';
+  if (status === 'rejected') return 'blocked';
+  return 'idle';
+}
+
 export function AssetsModule({
+  variant = 'library',
   logsCount,
   logs,
+  inputSources,
+  promptDrafts,
+  assetReviews,
   copiedLogId,
   onCopyLogPrompt,
   onRevealLogPath,
+  onRevealPath,
   onReuseImageLogInput,
+  onReviewAsset,
+  onReworkAsset,
+  onOpenMixExport,
 }: AssetsModuleProps) {
-  const [assetFilter, setAssetFilter] = useState<AssetKind | 'all'>('all');
+  const [assetFilter, setAssetFilter] = useState<AssetKind | 'all'>(variant === 'library' ? 'all' : 'image');
+  const [reviewFilter, setReviewFilter] = useState<AssetReviewStatus | 'all'>('all');
   const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null);
-  const assets = useMemo(() => collectAssets(logs), [logs]);
+  const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
+  const reviewMap = useMemo(
+    () => new Map(assetReviews.map((review) => [review.assetKey, review])),
+    [assetReviews],
+  );
+  const assets = useMemo(
+    () => [
+      ...collectImportedAssets(inputSources, promptDrafts),
+      ...collectGeneratedAssets(logs),
+    ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [inputSources, logs, promptDrafts],
+  );
   const visibleAssets = useMemo(
-    () => assets.filter((asset) => assetFilter === 'all' || asset.kind === assetFilter),
-    [assetFilter, assets],
+    () => assets.filter((asset) => {
+      const kindMatched = assetFilter === 'all' || asset.kind === assetFilter;
+      const reviewStatus = reviewMap.get(asset.id)?.status ?? 'pending';
+      const reviewMatched = reviewFilter === 'all' || reviewStatus === reviewFilter;
+      return kindMatched && reviewMatched;
+    }),
+    [assetFilter, assets, reviewFilter, reviewMap],
   );
   const imageCount = assets.filter((asset) => asset.kind === 'image').length;
   const videoCount = assets.filter((asset) => asset.kind === 'video').length;
+  const importedCount = assets.filter((asset) => asset.source === 'imported').length;
+  const approvedCount = assets.filter((asset) => reviewMap.get(asset.id)?.status === 'approved').length;
+  const rejectedCount = assets.filter((asset) => reviewMap.get(asset.id)?.status === 'rejected').length;
+  const header = {
+    library: {
+      eyebrow: '素材沉淀',
+      title: '素材库',
+      description: '成功生成或手动导入的图片 / 视频素材在这里审核、复用、回炉和进入混剪包。',
+    },
+    compliance: {
+      eyebrow: '图片审核',
+      title: '合规检测 / 人工审核台',
+      description: '先把生成图和导入素材拉进同一个审核台，逐张标记通过、驳回或回炉，不伪造自动检测结论。',
+    },
+    retouch: {
+      eyebrow: '图片回炉',
+      title: '图片精修 / 回炉',
+      description: '选择问题图片后回到图片生成模块复用原 Prompt 和参考图，保留原图、审核状态和重做路径。',
+    },
+  }[variant];
+
+  useEffect(() => {
+    if (variant === 'library') return;
+    setAssetFilter('image');
+  }, [variant]);
+
+  async function copyAssetPrompt(asset: AssetItem): Promise<void> {
+    if (asset.log) {
+      onCopyLogPrompt(asset.log);
+      return;
+    }
+    await navigator.clipboard.writeText(asset.prompt);
+    setCopiedAssetId(asset.id);
+    window.setTimeout(
+      () => setCopiedAssetId((current) => (current === asset.id ? null : current)),
+      1400,
+    );
+  }
+
+  function revealAsset(asset: AssetItem): void {
+    if (asset.log) onRevealLogPath(asset.log);
+    else onRevealPath(asset.path);
+  }
+
+  function reviewAsset(asset: AssetItem, status: AssetReviewStatus): void {
+    onReviewAsset({
+      assetKey: asset.id,
+      kind: asset.kind,
+      sourceType: asset.source === 'generation' ? 'generation-log' : 'input-source',
+      sourceId: asset.log?.id ?? asset.inputSource?.id,
+      path: asset.path,
+      title: asset.title,
+      status,
+      note: status === 'approved' ? '人工审核通过，可进入混剪包。' : '人工审核驳回，暂不进入混剪包。',
+      tags: asset.tags,
+    });
+  }
+
+  function reworkAsset(asset: AssetItem): void {
+    onReworkAsset({
+      kind: asset.kind,
+      path: asset.path,
+      sourceType: asset.source === 'generation' ? 'generation-log' : 'input-source',
+      sourceId: asset.log?.id ?? asset.inputSource?.id,
+      promptDraftId: asset.inputSource?.relatedPromptDraftId,
+      promptText: asset.prompt,
+    });
+  }
 
   return (
-    <section className="panel full-panel asset-library-panel">
-      <div className="panel-title">
-        <div>
-          <p className="eyebrow">素材沉淀</p>
-          <h3>素材库</h3>
+    <section className="asset-library-workbench">
+      <ModuleCommandCenter
+        eyebrow={header.eyebrow}
+        title={header.title}
+        description={header.description}
+        density="managed"
+        actions={(
+          <div className="workflow-actions">
+            <span className="status-pill">{assets.length} 个素材</span>
+            <span className="status-pill ready">{approvedCount} 个已通过</span>
+            <button className="ghost small" disabled={approvedCount === 0} onClick={onOpenMixExport}>
+              去混剪包
+            </button>
+          </div>
+        )}
+      >
+        <div className="chip-row module-command-filters">
+          {[
+            { value: 'all' as const, label: `全部 ${assets.length}` },
+            { value: 'image' as const, label: `图片 ${imageCount}` },
+            { value: 'video' as const, label: `视频 ${videoCount}` },
+          ].map((filter) => (
+            <button
+              key={filter.value}
+              className={`chip-button ${assetFilter === filter.value ? 'active' : ''}`}
+              onClick={() => setAssetFilter(filter.value)}
+            >
+              {filter.label}
+            </button>
+          ))}
+          <span className="status-pill ready">手动导入 {importedCount}</span>
+          {[
+            { value: 'all' as const, label: `审核全部 ${assets.length}` },
+            { value: 'pending' as const, label: `待审核 ${assets.length - approvedCount - rejectedCount}` },
+            { value: 'approved' as const, label: `已通过 ${approvedCount}` },
+            { value: 'rejected' as const, label: `已驳回 ${rejectedCount}` },
+          ].map((filter) => (
+            <button
+              key={filter.value}
+              className={`chip-button ${reviewFilter === filter.value ? 'active' : ''}`}
+              onClick={() => setReviewFilter(filter.value)}
+            >
+              {filter.label}
+            </button>
+          ))}
         </div>
-        <span className="status-pill">{assets.length} 个素材</span>
-      </div>
-      <div className="chip-row">
-        {[
-          { value: 'all' as const, label: `全部 ${assets.length}` },
-          { value: 'image' as const, label: `图片 ${imageCount}` },
-          { value: 'video' as const, label: `视频 ${videoCount}` },
-        ].map((filter) => (
-          <button
-            key={filter.value}
-            className={`chip-button ${assetFilter === filter.value ? 'active' : ''}`}
-            onClick={() => setAssetFilter(filter.value)}
-          >
-            {filter.label}
-          </button>
-        ))}
-      </div>
+      </ModuleCommandCenter>
+
+      <section className="panel full-panel asset-library-panel">
       <div className="asset-gallery">
-        {visibleAssets.map((asset) => (
-          <article key={asset.id} className="asset-tile">
+        {visibleAssets.map((asset) => {
+          const review = reviewMap.get(asset.id);
+          return (
+          <article key={asset.id} className={`asset-tile ${review?.status ?? 'pending'}`}>
             <button className="asset-preview-button" onClick={() => setSelectedAsset(asset)}>
               {asset.kind === 'image'
-                ? <img src={localAssetSource(asset.path)} alt={fileNameFromPath(asset.path)} />
-                : <video src={localAssetSource(asset.path)} muted playsInline preload="metadata" />}
+                ? <img src={localAssetUrl(asset.path)} alt={fileNameFromPath(asset.path)} />
+                : <video src={localAssetUrl(asset.path)} muted playsInline preload="metadata" />}
             </button>
             <div className="asset-tile-meta">
-              <strong>{fileNameFromPath(asset.path)}</strong>
-              <small>{kindLabel(asset.log.kind)} · {asset.log.model ?? 'local'} · {formatDuration(asset.log.durationMs)}</small>
+              <strong>{asset.title}</strong>
+              <small>{asset.subtitle}</small>
+              <span className={`status-pill ${reviewClass(review?.status)}`}>{reviewLabel(review?.status)}</span>
             </div>
             <div className="log-actions">
               <button className="ghost small" onClick={() => setSelectedAsset(asset)}>详情</button>
-              <button className="ghost small" onClick={() => onRevealLogPath(asset.log)}>打开位置</button>
-              {asset.log.kind === 'image' ? (
-                <button className="primary small" onClick={() => onReuseImageLogInput(asset.log)}>复用参数</button>
+              <button className="ghost small" onClick={() => reviewAsset(asset, 'rejected')}>驳回</button>
+              <button className="primary small" onClick={() => reviewAsset(asset, 'approved')}>通过</button>
+              <button className="ghost small" onClick={() => reworkAsset(asset)}>回炉</button>
+              <button className="ghost small" onClick={() => revealAsset(asset)}>打开位置</button>
+              {asset.log?.kind === 'image' ? (
+                <button className="primary small" onClick={() => asset.log && onReuseImageLogInput(asset.log)}>复用参数</button>
               ) : null}
             </div>
           </article>
-        ))}
+        );})}
         {visibleAssets.length === 0 ? (
           <div className="empty-state">
             还没有可展示的成功图片或视频素材。失败、阻塞和纯日志不会进入素材库。
+            手动导入的第三方成品视频会在关联 Prompt 后展示在这里。
             {logsCount > 0 ? ` 当前已有 ${logsCount} 条生成记录。` : ''}
           </div>
         ) : null}
@@ -151,25 +360,29 @@ export function AssetsModule({
             <div className="detail-dialog-body asset-detail-body">
               <div className="asset-detail-preview">
                 {selectedAsset.kind === 'image'
-                  ? <img src={localAssetSource(selectedAsset.path)} alt={fileNameFromPath(selectedAsset.path)} />
-                  : <video src={localAssetSource(selectedAsset.path)} controls />}
+                  ? <img src={localAssetUrl(selectedAsset.path)} alt={fileNameFromPath(selectedAsset.path)} />
+                  : <video src={localAssetUrl(selectedAsset.path)} controls />}
               </div>
               <div className="asset-log-detail-grid">
                 <span>
                   <strong>来源</strong>
-                  <em>{selectedAsset.log.title}</em>
+                  <em>{selectedAsset.log?.title ?? selectedAsset.inputSource?.title ?? '手动导入'}</em>
                 </span>
                 <span>
                   <strong>模型</strong>
-                  <em>{selectedAsset.log.model ?? '未记录'}</em>
+                  <em>{selectedAsset.model ?? (selectedAsset.source === 'imported' ? '第三方平台 / 手动导入' : '未记录')}</em>
                 </span>
                 <span>
-                  <strong>耗时</strong>
-                  <em>{formatDuration(selectedAsset.log.durationMs)}</em>
+                  <strong>关联 Prompt</strong>
+                  <em>{selectedAsset.relatedPromptDraft?.title ?? '未关联'}</em>
                 </span>
                 <span>
-                  <strong>生成时间</strong>
-                  <em>{new Date(selectedAsset.log.createdAt).toLocaleString()}</em>
+                  <strong>入库时间</strong>
+                  <em>{new Date(selectedAsset.createdAt).toLocaleString()}</em>
+                </span>
+                <span>
+                  <strong>审核状态</strong>
+                  <em>{reviewLabel(reviewMap.get(selectedAsset.id)?.status)}</em>
                 </span>
                 <span className="wide">
                   <strong>路径</strong>
@@ -178,21 +391,35 @@ export function AssetsModule({
               </div>
               <label className="image-result-prompt">
                 <span>提示词</span>
-                <textarea readOnly value={extractPromptFromLog(selectedAsset.log)} />
+                <textarea readOnly value={selectedAsset.prompt || '未记录关联 Prompt。'} />
               </label>
               <div className="modal-actions">
-                <button className="ghost" onClick={() => onCopyLogPrompt(selectedAsset.log)}>
-                  {copiedLogId === selectedAsset.log.id ? '已复制' : '复制提示词'}
+                <button className="ghost" onClick={() => void copyAssetPrompt(selectedAsset)}>
+                  {copiedLogId === selectedAsset.log?.id || copiedAssetId === selectedAsset.id ? '已复制' : '复制提示词'}
                 </button>
-                <button className="ghost" onClick={() => onRevealLogPath(selectedAsset.log)}>
+                <button className="ghost" onClick={() => revealAsset(selectedAsset)}>
                   打开位置
                 </button>
-                {selectedAsset.log.kind === 'image' ? (
+                <button className="ghost" onClick={() => reviewAsset(selectedAsset, 'rejected')}>
+                  驳回素材
+                </button>
+                <button className="primary" onClick={() => reviewAsset(selectedAsset, 'approved')}>
+                  通过审核
+                </button>
+                <button className="ghost" onClick={() => reworkAsset(selectedAsset)}>
+                  回炉重做
+                </button>
+                {reviewMap.get(selectedAsset.id)?.status === 'approved' ? (
+                  <button className="primary" onClick={onOpenMixExport}>
+                    去混剪包
+                  </button>
+                ) : null}
+                {selectedAsset.log?.kind === 'image' ? (
                   <button
                     className="primary"
                     onClick={() => {
                       setSelectedAsset(null);
-                      onReuseImageLogInput(selectedAsset.log);
+                      onReuseImageLogInput(selectedAsset.log as GenerationLogEntry);
                     }}
                   >
                     复用图片参数
@@ -203,6 +430,7 @@ export function AssetsModule({
           </article>
         </div>
       ) : null}
+      </section>
     </section>
   );
 }

@@ -1,0 +1,195 @@
+.image-result-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.image-generated-board {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 3px;
+  scrollbar-width: thin;
+}
+
+.image-generated-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+  align-content: start;
+  gap: 12px;
+  min-height: 100%;
+}
+
+.image-generated-card {
+  display: block;
+  aspect-ratio: 3 / 4;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, var(--cyan));
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+  cursor: zoom-in;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.image-generated-card:hover {
+  border-color: color-mix(in srgb, var(--cyan) 46%, var(--line));
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--cyan) 12%, transparent);
+  transform: translateY(-2px);
+}
+
+.image-generated-card.is-broken {
+  cursor: default;
+}
+
+.image-generated-frame {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    linear-gradient(45deg, rgba(15, 23, 42, 0.04) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(15, 23, 42, 0.04) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(15, 23, 42, 0.04) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(15, 23, 42, 0.04) 75%),
+    #f8fafc;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  background-size: 16px 16px;
+}
+
+.image-generated-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.7s ease;
+}
+
+.image-generated-card:hover .image-generated-frame img {
+  transform: scale(1.045);
+}
+
+.image-generated-index {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #ffffff;
+  padding: 4px 8px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  backdrop-filter: blur(12px);
+}
+
+.image-generated-zoom-hint {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px;
+  min-height: 48%;
+  padding: 12px;
+  background: linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.76));
+  color: rgba(255, 255, 255, 0.92);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.image-generated-card:hover .image-generated-zoom-hint {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.image-generated-zoom-hint > span {
+  min-width: 0;
+}
+
+.image-generated-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.image-generated-actions .ghost,
+.image-generated-actions .primary {
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: none;
+}
+
+.image-generated-actions .ghost {
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(15, 23, 42, 0.46);
+}
+
+.image-generated-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding: 10px;
+}
+
+.image-generated-meta > div:first-child {
+  min-width: 0;
+}
+
+.image-generated-meta strong,
+.image-generated-meta small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-generated-meta strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.image-generated-meta small {
+  max-width: 260px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.image-generated-meta .log-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+.image-generated-broken {
+  display: grid;
+  place-content: center;
+  height: 100%;
+  padding: 18px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.image-generated-broken strong {
+  color: #b45309;
+  font-size: 13px;
+}

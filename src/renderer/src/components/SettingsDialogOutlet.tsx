@@ -40,6 +40,8 @@ export function SettingsDialogOutlet({ app }: SettingsDialogOutletProps) {
       onOpenUpdateDownload={() => app.runAction(app.openUpdateDownload, '正在打开更新下载')}
       onOpenUpdateReleaseNotes={() => app.runAction(app.openUpdateReleaseNotes, '正在打开更新日志')}
       onOpenLogsDirectory={() => app.runAction(app.openLogsDirectory, '正在打开日志目录')}
+      onGetSkillFileAssociation={app.getSkillFileAssociation}
+      onSetSkillFileAssociationDefault={app.setSkillFileAssociationDefault}
       onSaveModelConfig={() => app.runAction(app.saveModelConfig)}
       onPasswordLogin={app.loginByPassword}
       onLogoutAuth={() => app.runAction(app.logoutAuth, '正在退出登录')}

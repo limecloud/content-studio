@@ -217,6 +217,8 @@ export interface SaveModelConfigInput {
 export interface SkillMetadata {
   name: string;
   description: string;
+  version?: string;
+  author?: string;
   globs?: string[];
   alwaysAllow?: string[];
   requiredSources?: string[];
@@ -229,6 +231,84 @@ export interface LoadedSkill {
   path: string;
   metadata: SkillMetadata;
   valid: boolean;
+  content?: string;
+  files?: SkillPackageFileNode[];
+  updatedAt?: string;
+  error?: string;
+}
+
+export interface RenameSkillInput {
+  workspacePath: string;
+  skill: SkillRef;
+  nextSlug: string;
+}
+
+export interface CreateSkillInput {
+  workspacePath: string;
+  slug: string;
+  name?: string;
+  description?: string;
+  instructions?: string;
+}
+
+export interface SkillWorkspaceInput {
+  workspacePath: string;
+  skill: SkillRef;
+}
+
+export interface ReplaceSkillPackageInput extends SkillWorkspaceInput {
+  packagePath?: string;
+}
+
+export interface SkillPackageFileNode {
+  name: string;
+  path: string;
+  kind: 'file' | 'directory';
+  children?: SkillPackageFileNode[];
+}
+
+export interface SkillPackagePreview {
+  packagePath: string;
+  slug: string;
+  metadata: SkillMetadata;
+  rootDir: string;
+  targetPath?: string;
+  targetExists: boolean;
+  files: SkillPackageFileNode[];
+  selectedPath: string;
+  selectedContent: string;
+}
+
+export interface InstallSkillPackageInput {
+  packagePath: string;
+  workspacePath: string;
+  overwrite?: boolean;
+}
+
+export interface StageSkillPackageInput {
+  fileName: string;
+  data: ArrayBuffer;
+}
+
+export interface InstallSkillPackageResult {
+  skill: LoadedSkill;
+  skills: LoadedSkill[];
+  targetPath: string;
+}
+
+export interface SkillFileAssociationState {
+  platform: string;
+  supported: boolean;
+  canSetDefault: boolean;
+  isDefault: boolean;
+  appBundleId: string;
+  currentHandler?: string;
+  appPath?: string;
+  message: string;
+}
+
+export interface SkillFileAssociationResult extends SkillFileAssociationState {
+  ok: boolean;
   error?: string;
 }
 
@@ -313,6 +393,66 @@ export interface GeneratePromptPackInput {
   citations: KnowledgeCitation[];
 }
 
+export type BrandKnowledgeBaseStatus = 'draft' | 'ready' | 'blocked' | 'archived';
+
+export interface BrandKnowledgeBaseRecord {
+  id: string;
+  workspacePath: string;
+  title: string;
+  status: BrandKnowledgeBaseStatus;
+  sourceKnowledgeBaseId?: string;
+  sourceCitationIds: string[];
+  brandVoice: string;
+  audience: string;
+  productFacts: string[];
+  coreSellingPoints: string[];
+  complianceBoundaries: string[];
+  sceneSeeds: string[];
+  promptFragments: string[];
+  model?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateBrandKnowledgeBaseInput {
+  workspacePath: string;
+  title?: string;
+  citations: KnowledgeCitation[];
+}
+
+export type IpKnowledgeBaseStatus = 'draft' | 'ready' | 'blocked' | 'archived';
+
+export interface IpKnowledgeBaseLayers {
+  identity: string;
+  values: string;
+  language: string;
+  methodology: string;
+  materials: string;
+  engine: string;
+}
+
+export interface IpKnowledgeBaseRecord {
+  id: string;
+  workspacePath: string;
+  title: string;
+  status: IpKnowledgeBaseStatus;
+  sourceKnowledgeBaseId?: string;
+  sourceCitationIds: string[];
+  layers: IpKnowledgeBaseLayers;
+  missingLayers: string[];
+  completeness: number;
+  extensionScenes: string[];
+  model?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateIpKnowledgeBaseInput {
+  workspacePath: string;
+  title?: string;
+  citations: KnowledgeCitation[];
+}
+
 export interface SceneCard {
   id: string;
   workspacePath: string;
@@ -338,8 +478,465 @@ export interface GenerateSceneCardsInput {
   count?: number;
 }
 
+export type InputSourceKind =
+  | 'docx'
+  | 'markdown'
+  | 'text'
+  | 'image'
+  | 'video'
+  | 'sku-table'
+  | 'url'
+  | 'manual-note';
+export type InputSourceStatus = 'registered' | 'converted' | 'blocked' | 'failed';
+export type InputSourcePurpose =
+  | 'brand-kb'
+  | 'ip-kb'
+  | 'reference'
+  | 'product-brief'
+  | 'sop-input'
+  | 'successful-asset';
+
+export interface InputSourceRecord {
+  id: string;
+  workspacePath: string;
+  kind: InputSourceKind;
+  status: InputSourceStatus;
+  purpose: InputSourcePurpose;
+  title: string;
+  sourcePath?: string;
+  sourceUrl?: string;
+  tags: string[];
+  summary?: string;
+  extractedText?: string;
+  markdownPath?: string;
+  artifactRefs: string[];
+  relatedPromptDraftId?: string;
+  relatedSceneCardIds?: string[];
+  blockedReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterInputSourceInput {
+  workspacePath: string;
+  kind: InputSourceKind;
+  purpose: InputSourcePurpose;
+  title: string;
+  sourcePath?: string;
+  sourceUrl?: string;
+  tags?: string[];
+  summary?: string;
+  text?: string;
+  relatedPromptDraftId?: string;
+  relatedSceneCardIds?: string[];
+}
+
+export interface ImportInputSourceFromFileOptions {
+  relatedPromptDraftId?: string;
+  relatedSceneCardIds?: string[];
+  tags?: string[];
+}
+
+export type PromptDraftPurpose = 'image' | 'video' | 'article' | 'green-screen' | 'sop' | 'skill';
+export type PromptDraftStatus = 'draft' | 'confirmed' | 'materialized' | 'archived';
+
+export interface PromptDraftVersion {
+  id: string;
+  version: number;
+  content: string;
+  note?: string;
+  createdAt: string;
+}
+
+export interface PromptDraft {
+  id: string;
+  workspacePath: string;
+  title: string;
+  purpose: PromptDraftPurpose;
+  status: PromptDraftStatus;
+  userIntent: string;
+  inputSourceIds: string[];
+  sceneCardIds?: string[];
+  copyCount?: number;
+  lastCopiedAt?: string;
+  lastCopiedTarget?: string;
+  model?: string;
+  versions: PromptDraftVersion[];
+  activeVersionId: string;
+  materializedTarget?: 'prompt-pack' | 'workflow' | 'skill';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeneratePromptDraftInput {
+  workspacePath: string;
+  title?: string;
+  purpose: PromptDraftPurpose;
+  userIntent: string;
+  inputSourceIds: string[];
+  sceneCardIds?: string[];
+}
+
+export interface UpdatePromptDraftInput {
+  workspacePath: string;
+  draftId: string;
+  content: string;
+  note?: string;
+  status?: PromptDraftStatus;
+  model?: string;
+  materializedTarget?: PromptDraft['materializedTarget'];
+}
+
+export interface RecordPromptDraftCopyInput {
+  workspacePath: string;
+  draftId: string;
+  target?: string;
+}
+
+export type AgentPromptSessionStatus = 'active' | 'waiting-user' | 'draft-created' | 'blocked' | 'closed';
+export type AgentPromptMessageRole = 'user' | 'assistant' | 'system';
+export type AgentPromptMessageKind = 'intent' | 'draft' | 'adjustment' | 'note';
+
+export interface AgentPromptSourceSnapshot {
+  sourceId: string;
+  title: string;
+  kind: InputSourceKind;
+  purpose: InputSourcePurpose;
+  status: InputSourceStatus;
+  summary?: string;
+  markdownPath?: string;
+  blockedReason?: string;
+}
+
+export interface AgentPromptMessage {
+  id: string;
+  role: AgentPromptMessageRole;
+  kind: AgentPromptMessageKind;
+  content: string;
+  model?: string;
+  promptDraftId?: string;
+  createdAt: string;
+}
+
+export interface AgentPromptSession {
+  id: string;
+  workspacePath: string;
+  title: string;
+  purpose: PromptDraftPurpose;
+  status: AgentPromptSessionStatus;
+  userIntent: string;
+  inputSourceIds: string[];
+  sceneCardIds?: string[];
+  promptDraftIds: string[];
+  sourceSnapshots: AgentPromptSourceSnapshot[];
+  messages: AgentPromptMessage[];
+  model?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StartAgentPromptSessionInput {
+  workspacePath: string;
+  title?: string;
+  purpose: PromptDraftPurpose;
+  userIntent: string;
+  inputSourceIds: string[];
+  sceneCardIds?: string[];
+}
+
+export interface ContinueAgentPromptSessionInput {
+  workspacePath: string;
+  sessionId: string;
+  message: string;
+}
+
+export interface AgentPromptSessionResult {
+  session: AgentPromptSession;
+  draft: PromptDraft;
+}
+
+export type OverlayCardType = 'title' | 'selling-point' | 'quote' | 'cta' | 'subtitle';
+export type OverlayCardStatus = 'draft' | 'exported' | 'archived';
+
+export interface OverlayCardDraft {
+  type: OverlayCardType;
+  title: string;
+  text: string;
+  durationSeconds?: number;
+  tags?: string[];
+}
+
+export interface OverlayCardRecord {
+  id: string;
+  workspacePath: string;
+  promptDraftId?: string;
+  type: OverlayCardType;
+  title: string;
+  text: string;
+  durationSeconds: number;
+  status: OverlayCardStatus;
+  assetPath: string;
+  background: 'green-screen';
+  aspectRatio: '9:16';
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateOverlayCardsInput {
+  workspacePath: string;
+  promptDraftId?: string;
+  cards: OverlayCardDraft[];
+}
+
+export type MixPackageAssetKind = 'image' | 'video' | 'overlay';
+export type AssetReviewStatus = 'pending' | 'approved' | 'rejected';
+export type AssetReviewSourceType = 'generation-log' | 'input-source' | 'overlay-card' | 'manual';
+
+export interface AssetReviewRecord {
+  id: string;
+  workspacePath: string;
+  assetKey: string;
+  kind: MixPackageAssetKind;
+  sourceType: AssetReviewSourceType;
+  sourceId?: string;
+  path: string;
+  title: string;
+  status: AssetReviewStatus;
+  note?: string;
+  tags: string[];
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewAssetInput {
+  workspacePath: string;
+  assetKey: string;
+  kind: MixPackageAssetKind;
+  sourceType: AssetReviewSourceType;
+  sourceId?: string;
+  path: string;
+  title: string;
+  status: AssetReviewStatus;
+  note?: string;
+  tags?: string[];
+}
+
+export interface MixPackageAssetInput {
+  id: string;
+  kind: MixPackageAssetKind;
+  title: string;
+  path: string;
+  sourceType?: AssetReviewSourceType;
+  sourceId?: string;
+  promptDraftId?: string;
+  promptText?: string;
+  relatedSceneCardIds?: string[];
+  durationSeconds?: number;
+  tags?: string[];
+}
+
+export interface MixPackageManifestAsset {
+  id: string;
+  kind: MixPackageAssetKind;
+  title: string;
+  originalPath: string;
+  packagedPath?: string;
+  sourceType?: AssetReviewSourceType;
+  sourceId?: string;
+  promptDraftId?: string;
+  promptText?: string;
+  relatedSceneCardIds?: string[];
+  durationSeconds?: number;
+  tags: string[];
+}
+
+export interface MixPackageRecord {
+  id: string;
+  workspacePath: string;
+  title: string;
+  platform: string;
+  packageDir: string;
+  manifestPath: string;
+  assets: MixPackageManifestAsset[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExportMixPackageInput {
+  workspacePath: string;
+  title: string;
+  platform: string;
+  assets: MixPackageAssetInput[];
+  notes?: string;
+}
+
+export type WorkflowDefinitionStatus = 'draft' | 'published' | 'archived';
+export type WorkflowRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled';
+export type WorkflowPriority = 'P0' | 'P1' | 'P2';
+export type WorkflowInputFieldType = 'text' | 'textarea' | 'file' | 'select' | 'number';
+export type WorkflowStepKind =
+  | 'input'
+  | 'build-brand-knowledge-base'
+  | 'build-ip-knowledge-base'
+  | 'agent-read'
+  | 'reference-reverse'
+  | 'generate-prompt-pack'
+  | 'generate-scene-library'
+  | 'generate-prompt-group'
+  | 'prompt-generate'
+  | 'image-generate'
+  | 'video-prompt'
+  | 'manual-video-prompt-copy'
+  | 'manual-video-import'
+  | 'overlay-generate'
+  | 'review'
+  | 'asset-store'
+  | 'export';
+
+export interface WorkflowInputField {
+  key: string;
+  label: string;
+  type: WorkflowInputFieldType;
+  required?: boolean;
+  help?: string;
+  options?: string[];
+}
+
+export interface WorkflowStepDefinition {
+  id: string;
+  title: string;
+  kind: WorkflowStepKind;
+  description: string;
+  dependsOn: string[];
+  outputKeys: string[];
+  blockedReason?: string;
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  workspacePath: string;
+  key: string;
+  version: string;
+  title: string;
+  description: string;
+  status: WorkflowDefinitionStatus;
+  priority: WorkflowPriority;
+  inputSchema: WorkflowInputField[];
+  steps: WorkflowStepDefinition[];
+  reviewRules: string[];
+  outputSpec: string[];
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
+}
+
+export interface CreateWorkflowDraftInput {
+  workspacePath: string;
+  templateKey?: string;
+  title?: string;
+  description?: string;
+}
+
+export interface WorkflowRunStep {
+  stepId: string;
+  title: string;
+  status: WorkflowRunStatus;
+  summary?: string;
+  input?: unknown;
+  output?: unknown;
+  error?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface WorkflowRunRecord {
+  id: string;
+  workspacePath: string;
+  workflowDefinitionId: string;
+  workflowKey: string;
+  workflowVersion: string;
+  title: string;
+  status: WorkflowRunStatus;
+  summary: string;
+  inputs: Record<string, string>;
+  inputSourceIds?: string[];
+  citations?: KnowledgeCitation[];
+  steps: WorkflowRunStep[];
+  artifactRefs: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StartWorkflowRunInput {
+  workspacePath: string;
+  workflowDefinitionId: string;
+  inputs?: Record<string, string>;
+  inputSourceIds?: string[];
+  citations?: KnowledgeCitation[];
+}
+
+export type WorkflowManualEventKind =
+  | 'video-prompt-copied'
+  | 'finished-video-imported'
+  | 'overlay-cards-generated'
+  | 'image-candidates-generated'
+  | 'asset-reviewed'
+  | 'asset-review-rejected'
+  | 'mix-package-exported'
+  | 'article-draft-generated'
+  | 'article-markdown-exported'
+  | 'workflow-review-approved'
+  | 'workflow-asset-archived';
+
+export interface RecordWorkflowManualEventInput {
+  workspacePath: string;
+  workflowRunId: string;
+  event: WorkflowManualEventKind;
+  promptDraftId?: string;
+  inputSourceId?: string;
+  overlayCardIds?: string[];
+  assetReviewId?: string;
+  assetKey?: string;
+  mixPackageId?: string;
+  manifestPath?: string;
+  packageDir?: string;
+  generationLogId?: string;
+  assetRefs?: string[];
+  exportPath?: string;
+  summary?: string;
+}
+
 export type GenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled';
-export type GenerationKind = 'article' | 'image' | 'video' | 'video-breakdown' | 'video-script' | 'prompt-pack' | 'scene-card';
+export interface ReferenceReverseRequest {
+  workspacePath: string;
+  referenceSourceIds: string[];
+  productSourceIds: string[];
+  userIntent: string;
+}
+
+export interface ReferenceReverseAnalysis {
+  composition: string;
+  lighting: string;
+  textArea: string;
+  style: string;
+  reusableElements: string[];
+  risks: string[];
+  prompt: string;
+  negativePrompt: string;
+  qualityChecklist: string[];
+}
+
+export interface ReferenceReverseResult {
+  logId: string;
+  analysis: ReferenceReverseAnalysis;
+  promptDraft: PromptDraft;
+}
+
+export type GenerationKind = 'article' | 'image' | 'video' | 'video-breakdown' | 'video-script' | 'prompt-pack' | 'scene-card' | 'reference-reverse';
 
 export interface GenerationLogEntry {
   id: string;
@@ -571,6 +1168,22 @@ export interface ContentStudioApi {
 
   scanSkills(workspacePath?: string): Promise<LoadedSkill[]>;
   installBuiltinSkill(slug: string, workspacePath: string): Promise<LoadedSkill[]>;
+  createSkill(input: CreateSkillInput): Promise<InstallSkillPackageResult>;
+  uploadSkillPackage(workspacePath: string): Promise<InstallSkillPackageResult | null>;
+  openSkillFolder(workspacePath: string, skill: SkillRef): Promise<void>;
+  renameSkill(input: RenameSkillInput): Promise<LoadedSkill[]>;
+  replaceSkillPackage(input: ReplaceSkillPackageInput): Promise<InstallSkillPackageResult | null>;
+  uninstallSkill(input: SkillWorkspaceInput): Promise<LoadedSkill[]>;
+  readSkillFile(workspacePath: string | undefined, skill: SkillRef, relativePath: string): Promise<string>;
+  getPathForFile(file: File): string | null;
+  stageSkillPackage(input: StageSkillPackageInput): Promise<string>;
+  previewSkillPackage(packagePath: string, workspacePath?: string): Promise<SkillPackagePreview>;
+  readSkillPackageFile(packagePath: string, relativePath: string): Promise<string>;
+  installSkillPackage(input: InstallSkillPackageInput): Promise<InstallSkillPackageResult>;
+  onSkillPackageOpenRequest(callback: (packagePath: string) => void): () => void;
+  notifySkillPackageOpenReady(): void;
+  getSkillFileAssociation(): Promise<SkillFileAssociationState>;
+  setSkillFileAssociationDefault(): Promise<SkillFileAssociationResult>;
   getSkillSelection(workspacePath: string): Promise<SkillSelectionView>;
   setSkillEnabled(workspacePath: string, skill: SkillRef, enabled: boolean): Promise<SkillSelectionView>;
 
@@ -582,15 +1195,52 @@ export interface ContentStudioApi {
   listPromptPacks(workspacePath: string): Promise<PromptPack[]>;
   generatePromptPack(input: GeneratePromptPackInput): Promise<PromptPack>;
   updatePromptPack(input: PromptPack): Promise<PromptPack>;
+  listBrandKnowledgeBases(workspacePath: string): Promise<BrandKnowledgeBaseRecord[]>;
+  generateBrandKnowledgeBase(input: GenerateBrandKnowledgeBaseInput): Promise<BrandKnowledgeBaseRecord>;
+  updateBrandKnowledgeBase(input: BrandKnowledgeBaseRecord): Promise<BrandKnowledgeBaseRecord>;
+  listIpKnowledgeBases(workspacePath: string): Promise<IpKnowledgeBaseRecord[]>;
+  generateIpKnowledgeBase(input: GenerateIpKnowledgeBaseInput): Promise<IpKnowledgeBaseRecord>;
+  updateIpKnowledgeBase(input: IpKnowledgeBaseRecord): Promise<IpKnowledgeBaseRecord>;
   listSceneCards(workspacePath: string): Promise<SceneCard[]>;
   generateSceneCards(input: GenerateSceneCardsInput): Promise<SceneCard[]>;
   updateSceneCard(input: SceneCard): Promise<SceneCard>;
+
+  listInputSources(workspacePath: string): Promise<InputSourceRecord[]>;
+  registerInputSource(input: RegisterInputSourceInput): Promise<InputSourceRecord>;
+  importInputSourceFromFile(
+    workspacePath: string,
+    purpose: InputSourcePurpose,
+    options?: ImportInputSourceFromFileOptions,
+  ): Promise<InputSourceRecord | null>;
+
+  listPromptDrafts(workspacePath: string): Promise<PromptDraft[]>;
+  generatePromptDraft(input: GeneratePromptDraftInput): Promise<PromptDraft>;
+  updatePromptDraft(input: UpdatePromptDraftInput): Promise<PromptDraft>;
+  recordPromptDraftCopy(input: RecordPromptDraftCopyInput): Promise<PromptDraft>;
+  listAgentPromptSessions(workspacePath: string): Promise<AgentPromptSession[]>;
+  startAgentPromptSession(input: StartAgentPromptSessionInput): Promise<AgentPromptSessionResult>;
+  continueAgentPromptSession(input: ContinueAgentPromptSessionInput): Promise<AgentPromptSessionResult>;
+
+  listOverlayCards(workspacePath: string): Promise<OverlayCardRecord[]>;
+  generateOverlayCards(input: GenerateOverlayCardsInput): Promise<OverlayCardRecord[]>;
+  listAssetReviews(workspacePath: string): Promise<AssetReviewRecord[]>;
+  reviewAsset(input: ReviewAssetInput): Promise<AssetReviewRecord>;
+  listMixPackages(workspacePath: string): Promise<MixPackageRecord[]>;
+  exportMixPackage(input: ExportMixPackageInput): Promise<MixPackageRecord>;
+
+  listWorkflowDefinitions(workspacePath: string): Promise<WorkflowDefinition[]>;
+  createWorkflowDraft(input: CreateWorkflowDraftInput): Promise<WorkflowDefinition>;
+  updateWorkflowDefinition(input: WorkflowDefinition): Promise<WorkflowDefinition>;
+  listWorkflowRuns(workspacePath: string): Promise<WorkflowRunRecord[]>;
+  startWorkflowRun(input: StartWorkflowRunInput): Promise<WorkflowRunRecord>;
+  recordWorkflowManualEvent(input: RecordWorkflowManualEventInput): Promise<WorkflowRunRecord>;
 
   selectAssetFiles(kind: AssetFileKind): Promise<string[]>;
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>;
   exportAsset(input: ExportAssetInput): Promise<string | null>;
   exportMarkdown(input: ExportMarkdownInput): Promise<string | null>;
   generateArticle(input: ArticleGenerationRequest): Promise<ArticleGenerationResult>;
+  reverseReferencePrompt(input: ReferenceReverseRequest): Promise<ReferenceReverseResult>;
   analyzeVideo(input: VideoBreakdownRequest): Promise<VideoBreakdownResult>;
   generateVideoScript(input: VideoScriptGenerationRequest): Promise<VideoScriptGenerationResult>;
   generateImage(input: ImageGenerationRequest): Promise<MediaGenerationResult>;

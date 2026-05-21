@@ -1,7 +1,40 @@
-import { app, BrowserWindow, Menu, net, protocol, type MenuItemConstructorOptions } from 'electron';
-import { join } from 'node:path';
+import { app, BrowserWindow, ipcMain, Menu, net, protocol, type MenuItemConstructorOptions } from 'electron';
+import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { registerIpc } from './ipc';
+
+let mainWindow: BrowserWindow | null = null;
+const pendingSkillPackages: string[] = [];
+let rendererAcceptsSkillPackages = false;
+
+function shouldHideWindowForTests(): boolean {
+  if (process.env.CONTENT_STUDIO_TEST_SILENT === '0') return false;
+  return process.env.CONTENT_STUDIO_SMOKE === '1' || process.env.CONTENT_STUDIO_E2E === '1' || process.env.CONTENT_STUDIO_TEST_SILENT === '1';
+}
+
+function findSkillPackagePath(argv: string[]): string | null {
+  return argv.find((arg) => extname(arg).toLowerCase() === '.skill') ?? null;
+}
+
+function dispatchSkillPackage(packagePath: string): void {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents) {
+    pendingSkillPackages.push(packagePath);
+    return;
+  }
+  if (!mainWindow.webContents.isLoading() && rendererAcceptsSkillPackages) {
+    mainWindow.webContents.send('skills:packageOpenRequest', packagePath);
+    return;
+  }
+  pendingSkillPackages.push(packagePath);
+}
+
+function flushPendingSkillPackages(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || !rendererAcceptsSkillPackages) return;
+  const packages = pendingSkillPackages.splice(0);
+  for (const packagePath of packages) {
+    mainWindow.webContents.send('skills:packageOpenRequest', packagePath);
+  }
+}
 
 function registerContextMenu(mainWindow: BrowserWindow): void {
   mainWindow.webContents.on('context-menu', (_event, params) => {
@@ -47,13 +80,17 @@ function registerContextMenu(mainWindow: BrowserWindow): void {
   });
 }
 
-function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+function createWindow(): BrowserWindow {
+  rendererAcceptsSkillPackages = false;
+  const hideWindowForTests = shouldHideWindowForTests();
+  mainWindow = new BrowserWindow({
     width: 1320,
     height: 860,
     minWidth: 1080,
     minHeight: 720,
     title: '布谷AI',
+    show: !hideWindowForTests,
+    paintWhenInitiallyHidden: true,
     backgroundColor: '#060514',
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
@@ -65,29 +102,62 @@ function createWindow(): void {
 
   registerContextMenu(mainWindow);
   registerIpc(mainWindow);
+  mainWindow.webContents.on('did-finish-load', flushPendingSkillPackages);
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    rendererAcceptsSkillPackages = false;
+  });
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
+  return mainWindow;
 }
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local-asset', privileges: { bypassCSP: true, supportFetchAPI: true } },
 ]);
 
-app.whenReady().then(() => {
-  protocol.handle('local-asset', (request) => {
-    const filePath = decodeURIComponent(new URL(request.url).pathname);
-    return net.fetch(pathToFileURL(filePath).toString());
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  app.quit();
+} else {
+  const initialSkillPackage = findSkillPackagePath(process.argv);
+  if (initialSkillPackage) pendingSkillPackages.push(initialSkillPackage);
+
+  app.on('second-instance', (_event, argv) => {
+    const packagePath = findSkillPackagePath(argv);
+    if (!mainWindow) createWindow();
+    if (mainWindow?.isMinimized()) mainWindow.restore();
+    mainWindow?.focus();
+    if (packagePath) dispatchSkillPackage(packagePath);
   });
 
-  createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  app.on('open-file', (event, filePath) => {
+    if (extname(filePath).toLowerCase() !== '.skill') return;
+    event.preventDefault();
+    dispatchSkillPackage(filePath);
   });
-});
+
+  ipcMain.on('skills:packageOpenReady', () => {
+    rendererAcceptsSkillPackages = true;
+    flushPendingSkillPackages();
+  });
+
+  app.whenReady().then(() => {
+    protocol.handle('local-asset', (request) => {
+      const filePath = decodeURIComponent(new URL(request.url).pathname);
+      return net.fetch(pathToFileURL(filePath).toString());
+    });
+
+    createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

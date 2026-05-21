@@ -1,7 +1,7 @@
-import type { ModuleKey } from '../app/types';
+import type { CoreModuleKey, ModuleKey } from '../app/types';
 
 const DASHBOARD_CARDS: Array<{
-  module: ModuleKey;
+  module: CoreModuleKey;
   index: string;
   title: string;
   description: string;
@@ -26,7 +26,7 @@ interface WorkbenchDashboardProps {
   onOpenModule: (module: ModuleKey) => void;
 }
 
-function cardStat(module: ModuleKey, props: WorkbenchDashboardProps): string {
+function cardStat(module: CoreModuleKey, props: WorkbenchDashboardProps): string {
   if (module === 'knowledge') return `${props.promptPacksCount} 个`;
   if (module === 'image') return `${props.sceneCardsCount} 张`;
   if (module === 'video') return `${props.logsCount} 条历史`;

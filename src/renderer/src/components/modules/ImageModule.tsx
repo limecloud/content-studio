@@ -53,6 +53,22 @@ function imageAssetSource(assetRef: string): string {
   return `local-asset://${encodeURI(absolutePath).replace(/#/g, "%23")}`;
 }
 
+function isImageAssetRef(assetRef: string): boolean {
+  return /^(data:image\/|blob:|local-asset:)/i.test(assetRef) || /\.(png|jpe?g|webp|gif|avif)(?:[?#].*)?$/i.test(assetRef);
+}
+
+function imageAssetRefsFromLog(log: GenerationLogEntry): string[] {
+  if (log.kind !== "image" || log.status !== "succeeded") return [];
+  const output = log.output as { assetRefs?: unknown } | undefined;
+  if (!Array.isArray(output?.assetRefs)) return [];
+  return output.assetRefs.filter(
+    (ref): ref is string =>
+      typeof ref === "string" &&
+      ref.trim().length > 0 &&
+      isImageAssetRef(ref),
+  );
+}
+
 function activeMentionRange(
   value: string,
   cursorIndex: number,
@@ -237,18 +253,33 @@ export function ImageModule({
       })),
   ];
   const imageLogs = logs.filter((log) => log.kind === "image").slice(0, 8);
+  const previewAssetRefs = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...((mediaResult?.assetRefs ?? []).filter(isImageAssetRef)),
+          ...logs.flatMap(imageAssetRefsFromLog),
+        ]),
+      ),
+    [logs, mediaResult?.assetRefs],
+  );
   const isPreviewPanel = previewPanel === "preview";
+  const resultDetailImageLog = resultDetailAssetRef
+    ? logs.find((log) => imageAssetRefsFromLog(log).includes(resultDetailAssetRef))
+    : undefined;
   const currentImageLog =
+    resultDetailImageLog ??
     (mediaResult?.logId
       ? logs.find((log) => log.id === mediaResult.logId)
-      : undefined) ?? imageLogs[0];
+      : undefined) ??
+    imageLogs[0];
   const currentImageInput = imageRequestFromLog(currentImageLog);
   const selectedImageLogInput = imageRequestFromLog(selectedImageLog ?? undefined);
   const currentImagePrompt = currentImageLog
     ? extractPromptFromLog(currentImageLog)
     : imagePromptDraft;
   const resultDetailIndex = resultDetailAssetRef
-    ? (mediaResult?.assetRefs.indexOf(resultDetailAssetRef) ?? -1) + 1
+    ? previewAssetRefs.indexOf(resultDetailAssetRef) + 1
     : 0;
   const currentMentionRange = activeMentionRange(
     imagePromptDraft,
@@ -907,7 +938,7 @@ export function ImageModule({
           disabled={busy || !workspaceReady || isBatchShell}
           onClick={onGenerateImage}
         >
-          {isBatchShell ? "批量队列后续接入" : "启动渲染引擎"}
+          {isBatchShell ? "批量队列未启用" : "启动渲染引擎"}
         </button>
       </aside>
 
@@ -1068,10 +1099,10 @@ export function ImageModule({
           </div>
         ) : null}
         <section
-          className={`image-preview-canvas ${isPreviewPanel && mediaResult?.assetRefs.length ? "has-results" : ""}`}
+          className={`image-preview-canvas ${isPreviewPanel && previewAssetRefs.length ? "has-results" : ""}`}
           aria-label="图片预览大盘区"
         >
-          {isPreviewPanel && mediaResult?.assetRefs.length ? (
+          {isPreviewPanel && previewAssetRefs.length ? (
             <div className="image-preview-dock-handle" aria-hidden="true" />
           ) : (
             <div className="image-preview-head">
@@ -1132,10 +1163,10 @@ export function ImageModule({
               <strong>Engine Rendering...</strong>
               <small>正在调用真实图片服务，生成完成后会直接进入预览大盘。</small>
             </div>
-          ) : mediaResult?.assetRefs.length ? (
+          ) : previewAssetRefs.length ? (
             <div className="image-generated-board">
               <div className="image-generated-grid">
-                {mediaResult.assetRefs.map((assetRef, index) => {
+                {previewAssetRefs.map((assetRef, index) => {
                   const isBroken = brokenAssetRefs.has(assetRef);
                   return (
                     <article

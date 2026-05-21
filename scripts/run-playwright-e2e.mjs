@@ -13,7 +13,15 @@ function command(name) {
 
 function run(cmd, args) {
   return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(cmd, args, { cwd: projectRoot, stdio: 'inherit' });
+    const headed = args.includes('--headed') || process.env.CONTENT_STUDIO_TEST_SILENT === '0';
+    const child = spawn(cmd, args, {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        CONTENT_STUDIO_TEST_SILENT: headed ? '0' : '1',
+      },
+      stdio: 'inherit',
+    });
     child.on('error', rejectRun);
     child.on('close', (code) => resolveRun(code ?? 1));
   });

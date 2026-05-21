@@ -45,4 +45,23 @@ export class SkillSelectionStore {
     await writeJsonFile(filePathFor(workspacePath), next);
     return this.read(workspacePath);
   }
+
+  async renameSkill(workspacePath: string, current: SkillRef, next: SkillRef): Promise<SkillSelectionView> {
+    const selection = await this.read(workspacePath);
+    const enabledSkills = selection.enabledSkills.map((item) => (sameSkill(item, current) ? next : item));
+    await writeJsonFile(filePathFor(workspacePath), {
+      enabledSkills,
+      updatedAt: new Date().toISOString(),
+    });
+    return this.read(workspacePath);
+  }
+
+  async removeSkill(workspacePath: string, skill: SkillRef): Promise<SkillSelectionView> {
+    const selection = await this.read(workspacePath);
+    await writeJsonFile(filePathFor(workspacePath), {
+      enabledSkills: selection.enabledSkills.filter((item) => !sameSkill(item, skill)),
+      updatedAt: new Date().toISOString(),
+    });
+    return this.read(workspacePath);
+  }
 }

@@ -21,12 +21,51 @@ export const DEFAULT_PARAMS: GlobalGenerationParams = {
 };
 
 export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
-  { title: '图片', items: [{ key: 'image', label: '图片生成', badge: '主流程' }, { label: '合规检测', disabled: true, badge: '后续接入' }, { label: '图片精修', disabled: true, badge: '后续接入' }] },
-  { title: '视频', items: [{ key: 'video', label: '视频生成', badge: '爆款拆解' }, { label: '创意视频', disabled: true, badge: '后续接入' }, { label: '自定义视频', disabled: true, badge: '后续接入' }] },
-  { title: '文案', items: [{ key: 'article', label: '文章生成', badge: '文字模型' }] },
-  { title: '知识库', items: [{ key: 'knowledge', label: '成型知识库' }] },
-  { title: '资产', items: [{ key: 'assets', label: '素材库' }] },
-  { title: '管理', items: [{ key: 'skills', label: 'skills 管理' }] },
+  {
+    title: '图片',
+    items: [
+      { key: 'image', label: '图片生成' },
+      { key: 'image-reference-reverse', label: '对标图反推' },
+      { key: 'image-scene-prompts', label: '场景提示词' },
+      { key: 'image-green-screen', label: '绿幕文案图' },
+    ],
+  },
+  {
+    title: '视频',
+    items: [
+      { key: 'video', label: '视频生成' },
+      { key: 'video-prompt', label: '视频 Prompt' },
+      { key: 'video-mix-export', label: '混剪包导出' },
+    ],
+  },
+  {
+    title: '文案',
+    items: [
+      { key: 'article', label: '文章生成' },
+    ],
+  },
+  {
+    title: '知识库',
+    items: [
+      { key: 'knowledge', label: '成型知识库' },
+      { key: 'knowledge-brand', label: '品牌 / 产品知识库' },
+      { key: 'knowledge-ip', label: 'IP 知识库' },
+    ],
+  },
+  {
+    title: '资产',
+    items: [
+      { key: 'assets', label: '素材库' },
+      { key: 'assets-prompt-workbench', label: 'Prompt 工作台' },
+      { key: 'assets-sop', label: 'SOP 工作流' },
+    ],
+  },
+  {
+    title: '管理',
+    items: [
+      { key: 'skills', label: 'skills 管理' },
+    ],
+  },
 ];
 
 export const PIPELINE_STEPS = ['知识库', '提示词包', '场景库', '图片素材', '视频队列', '文章生成'];

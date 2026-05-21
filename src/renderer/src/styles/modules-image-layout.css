@@ -1,0 +1,50 @@
+/* Image workbench: replicate the legacy desktop density without changing theme. */
+.image-workbench-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.image-input-rail,
+.image-canvas-stage {
+  min-width: 0;
+}
+
+.image-input-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}
+
+.image-canvas-stage {
+  display: grid;
+  grid-template-rows:
+    auto
+    auto
+    auto
+    minmax(190px, 0.92fr)
+    minmax(280px, 1.08fr);
+  align-content: stretch;
+  height: 100%;
+  overflow-y: hidden;
+  overflow-x: hidden;
+}
+
+.image-canvas-stage[data-prompt-mode="free"] {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.image-canvas-stage .image-preview-canvas {
+  min-height: 0;
+  height: 100%;
+}

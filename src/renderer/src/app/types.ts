@@ -1,8 +1,34 @@
 import type { GlobalGenerationParams, ImageGenerationProtocol, TextGenerationProtocol } from '../../../shared/types';
 import type { Dispatch, SetStateAction } from 'react';
 
-export type ModuleKey = 'image' | 'video' | 'article' | 'knowledge' | 'assets' | 'skills';
-export type NavItem = { key?: ModuleKey; label: string; badge?: string; disabled?: boolean };
+export type CoreModuleKey = 'image' | 'video' | 'article' | 'knowledge' | 'assets' | 'skills';
+
+export type V2ModuleKey =
+  | 'image-reference-reverse'
+  | 'image-scene-prompts'
+  | 'image-green-screen'
+  | 'image-compliance'
+  | 'image-retouch'
+  | 'video-script'
+  | 'video-prompt'
+  | 'video-import'
+  | 'video-mix-export'
+  | 'video-creative'
+  | 'video-custom'
+  | 'article-title'
+  | 'article-script'
+  | 'knowledge-brand'
+  | 'knowledge-scenes'
+  | 'knowledge-ip'
+  | 'knowledge-inputs'
+  | 'assets-prompt-workbench'
+  | 'assets-sop'
+  | 'assets-history'
+  | 'workflow-definition'
+  | 'workflow-canvas';
+
+export type ModuleKey = CoreModuleKey | V2ModuleKey;
+export type NavItem = { key?: ModuleKey; label: string; disabled?: boolean };
 
 export type ModelDraft = {
   apiEndpoint: string;

@@ -10,3 +10,5 @@ release/
 npm-debug.log*
 .playwright-mcp/
 .tmp/
+.codex/
+docs/

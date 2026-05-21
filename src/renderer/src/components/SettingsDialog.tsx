@@ -1,7 +1,13 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import logoUrl from '../logo.png';
 import { COLOR_THEME_OPTIONS } from '../app/constants';
-import type { AutoUpdateState, BuguAuthState, ModelConfigView } from '../../../shared/types';
+import type {
+  AutoUpdateState,
+  BuguAuthState,
+  ModelConfigView,
+  SkillFileAssociationResult,
+  SkillFileAssociationState,
+} from '../../../shared/types';
 import type { ColorTheme, ModelDraft, SettingsTab } from '../app/types';
 import { BuguAuthForm, type BuguAuthActions } from './BuguAuthGate';
 
@@ -36,6 +42,8 @@ interface SettingsDialogProps extends BuguAuthActions {
   onOpenUpdateDownload: () => void;
   onOpenUpdateReleaseNotes: () => void;
   onOpenLogsDirectory: () => void;
+  onGetSkillFileAssociation: () => Promise<SkillFileAssociationState>;
+  onSetSkillFileAssociationDefault: () => Promise<SkillFileAssociationResult>;
   onSaveModelConfig: () => void;
   onLogoutAuth: () => void;
   onClose: () => void;
@@ -96,6 +104,8 @@ export function SettingsDialog({
   onOpenUpdateDownload,
   onOpenUpdateReleaseNotes,
   onOpenLogsDirectory,
+  onGetSkillFileAssociation,
+  onSetSkillFileAssociationDefault,
   onSaveModelConfig,
   onPasswordLogin,
   onLogoutAuth,
@@ -113,6 +123,41 @@ export function SettingsDialog({
   const subscription = authState?.bootstrap?.subscription;
   const subscriptionText =
     subscription?.planName || subscription?.planKey || subscription?.status || '企业开通';
+  const [skillAssociation, setSkillAssociation] = useState<SkillFileAssociationState | null>(null);
+  const [skillAssociationBusy, setSkillAssociationBusy] = useState(false);
+  const [skillAssociationMessage, setSkillAssociationMessage] = useState<string | null>(null);
+
+  async function refreshSkillAssociation(): Promise<void> {
+    setSkillAssociationBusy(true);
+    setSkillAssociationMessage(null);
+    try {
+      const state = await onGetSkillFileAssociation();
+      setSkillAssociation(state);
+    } catch (error) {
+      setSkillAssociationMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSkillAssociationBusy(false);
+    }
+  }
+
+  async function setSkillAssociationDefault(): Promise<void> {
+    setSkillAssociationBusy(true);
+    setSkillAssociationMessage(null);
+    try {
+      const result = await onSetSkillFileAssociationDefault();
+      setSkillAssociation(result);
+      setSkillAssociationMessage(result.ok ? '已设置 .skill 默认由布谷AI打开。' : result.error ?? result.message);
+    } catch (error) {
+      setSkillAssociationMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSkillAssociationBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (settingsTab !== 'general') return;
+    void refreshSkillAssociation();
+  }, [settingsTab]);
 
   return (
   <div className="modal-backdrop" onClick={() => onClose()}>
@@ -214,6 +259,29 @@ export function SettingsDialog({
                     <span>涉及本地文件和生成服务调用时保留人工确认边界</span>
                   </div>
                   <div className={`switch ${commandWhitelist ? 'active' : ''}`} onClick={() => setCommandWhitelist(!commandWhitelist)}></div>
+                </div>
+
+                <div className="settings-row-item file-association-setting">
+                  <div className="item-info">
+                    <strong>.skill 默认打开方式</strong>
+                    <span>
+                      {skillAssociationMessage
+                        ?? skillAssociation?.message
+                        ?? '检查 .skill 是否默认由布谷AI打开。'}
+                    </span>
+                  </div>
+                  <div className="settings-inline-actions">
+                    <button className="ghost small" disabled={skillAssociationBusy} onClick={() => void refreshSkillAssociation()}>
+                      刷新
+                    </button>
+                    <button
+                      className="primary small"
+                      disabled={skillAssociationBusy || !skillAssociation?.canSetDefault || skillAssociation?.isDefault}
+                      onClick={() => void setSkillAssociationDefault()}
+                    >
+                      {skillAssociation?.isDefault ? '已是默认' : '设为默认'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

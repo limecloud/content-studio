@@ -14,6 +14,7 @@ const mainEntry = join(projectRoot, 'out/main/index.js');
 const remoteDebuggingPort = 9333 + Math.floor(Math.random() * 400);
 const userDataDir = mkdtempSync(join(tmpdir(), `content-studio-smoke-${randomUUID()}-`));
 const workspaceDir = mkdtempSync(join(tmpdir(), `content-studio-workspace-${randomUUID()}-`));
+const headed = process.argv.slice(2).includes('--headed') || process.env.CONTENT_STUDIO_TEST_SILENT === '0';
 
 if (!existsSync(mainEntry)) {
   console.error(`缺少 ${mainEntry}，请先运行 npm run build。`);
@@ -134,6 +135,7 @@ const child = spawn(electronPath, electronArgs, {
     ...process.env,
     ELECTRON_ENABLE_LOGGING: '1',
     CONTENT_STUDIO_SMOKE: '1',
+    CONTENT_STUDIO_TEST_SILENT: headed ? '0' : '1',
     CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '1',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -165,6 +167,9 @@ try {
       hasImageEngine: bodyText.includes('图片生成') || bodyText.includes('图片引擎') || bodyText.includes('图片素材') || bodyText.includes('启动渲染引擎'),
       hasKnowledgeEntry: bodyText.includes('成型知识库') || bodyText.includes('知识库'),
       hasSkillsEntry: bodyText.includes('skills 管理') || bodyText.includes('能力管理') || bodyText.includes('Skills 管理') || bodyText.includes('SKILLS') || skills.length > 0,
+      hasSkillDragApi: typeof window.contentStudio.getPathForFile === 'function'
+        && typeof window.contentStudio.stageSkillPackage === 'function',
+      hasSkillFileReadApi: typeof window.contentStudio.readSkillFile === 'function',
       hasRedundantWorkbenchHint: document.body.innerText.includes('列表页留在主工作台') || document.body.innerText.includes('Main Workbench'),
       bridgeMethodCount: apiKeys.length,
       skillsCount: skills.length,
@@ -291,19 +296,18 @@ try {
     checks.push({ action: 'click article nav', clicked: await clickButton('文章生成'), hasText: document.body.innerText.includes('文章生成') && document.body.innerText.includes('正文 / 发布检查') });
     checks.push({ action: 'click knowledge nav', clicked: await clickButton('成型知识库'), hasText: document.body.innerText.includes('知识库') && document.body.innerText.includes('引用检索') && document.body.innerText.includes('提示词包') && document.body.innerText.includes('场景卡') });
     checks.push({ action: 'click assets nav', clicked: await clickAnyButton(['素材库', '素材库 / 历史']), hasText: document.body.innerText.includes('素材库') });
-    checks.push({ action: 'click skills nav', clicked: await clickAnyButton(['skills 管理', '能力管理', 'Skills 管理']), hasText: (document.body.innerText.includes('skills 管理') || document.body.innerText.includes('SKILLS 库') || document.body.innerText.includes('内容生成能力') || document.body.innerText.includes('高级能力库')) && document.body.innerText.includes('已启用') });
-    const skillDetailClicked = await clickButton('详情');
-    const detailBackdrop = document.querySelector('.detail-dialog-backdrop');
-    const detailCard = document.querySelector('.detail-dialog-card');
+    checks.push({ action: 'click skills nav', clicked: await clickAnyButton(['skills 管理', '能力管理', 'Skills 管理']), hasText: (document.body.innerText.includes('Skills') || document.body.innerText.includes('skills 管理') || document.body.innerText.includes('SKILLS 库') || document.body.innerText.includes('内容生成能力') || document.body.innerText.includes('高级能力库')) && (document.body.innerText.includes('Built-in skills') || document.body.innerText.includes('已启用')) });
     checks.push({
-      action: 'open skill detail dialog',
-      clicked: skillDetailClicked,
-      hasText: Boolean(detailBackdrop && detailCard)
-        && detailCard.innerText.includes('详情')
-        && Boolean(detailCard.querySelector('button'))
-        && window.getComputedStyle(detailBackdrop).position === 'fixed',
+      action: 'show skill document viewer',
+      clicked: true,
+      hasText: Boolean(document.querySelector('.skills-manager-shell'))
+        && Boolean(document.querySelector('.skills-manager-sidebar'))
+        && Boolean(document.querySelector('.skill-doc-card'))
+        && Boolean(document.querySelector('[data-skill-drop-target="true"]'))
+        && Boolean(document.querySelector('.skills-drop-target-button'))
+        && Boolean(document.querySelector('.skill-file-content'))
+        && document.body.innerText.includes('Slash command + auto'),
     });
-    checks.push({ action: 'close skill detail dialog', clicked: await clickButton('关闭'), hasText: !document.querySelector('.detail-dialog-card') });
     checks.push({ action: 'open settings', clicked: await clickButton('设置'), hasText: document.body.innerText.includes('设置') && document.body.innerText.includes('通用') });
     checks.push({ action: 'click model settings', clicked: await clickButton('模型'), hasText: (document.body.innerText.includes('生成服务连接配置') && document.body.innerText.includes('文字生成')) || (document.body.innerText.includes('Provider 连接配置') && document.body.innerText.includes('文字端点')) });
     checks.push({ action: 'close settings', clicked: await clickButton('完成'), hasText: !document.body.innerText.includes('生成服务连接配置') && !document.body.innerText.includes('文字端点') });
@@ -404,7 +408,7 @@ try {
     checks.push({ step: 'asset library hides failed and blocked logs', ok: true });
 
     await clickAnyButton(['skills 管理', '能力管理', 'Skills 管理']);
-    await waitFor('skills usable', () => (bodyText().includes('skills 管理') || bodyText().includes('SKILLS 库') || bodyText().includes('内容生成能力') || bodyText().includes('高级能力库')) && bodyText().includes('已启用') && !bodyText().includes('选择工作区后可启用') && !bodyText().includes('选择 workspace 后可启用'));
+    await waitFor('skills usable', () => (bodyText().includes('Skills') || bodyText().includes('skills 管理') || bodyText().includes('SKILLS 库') || bodyText().includes('内容生成能力') || bodyText().includes('高级能力库')) && (bodyText().includes('Built-in skills') || bodyText().includes('已启用')) && bodyText().includes('Slash command + auto') && document.querySelector('[data-skill-drop-target="true"]') && document.querySelector('.skills-drop-target-button') && !bodyText().includes('选择工作区后可启用') && !bodyText().includes('选择 workspace 后可启用'));
     checks.push({ step: 'skills usable', ok: true });
 
     return {
@@ -415,18 +419,24 @@ try {
   })()`, true);
   const scrollState = await evaluate(cdp, `(() => {
     const viewport = document.scrollingElement || document.documentElement;
-    const params = document.querySelector('.params-panel');
-    if (!viewport || !params) return { ok: false, reason: 'missing viewport or params scroll container' };
-    viewport.scrollTop = 0;
-    params.scrollTop = 0;
-    const viewportScrollable = viewport.scrollHeight > viewport.clientHeight;
-    const paramsScrollable = params.scrollHeight > params.clientHeight;
-    viewport.scrollTop = viewport.scrollHeight;
-    params.scrollTop = params.scrollHeight;
+    const containers = [viewport, document.querySelector('.module-dialog-body'), document.querySelector('.skills-manager-detail'), document.querySelector('.params-panel')].filter(Boolean);
+    if (!containers.length) return { ok: false, reason: 'missing scroll containers' };
+    const states = containers.map((container) => {
+      container.scrollTop = 0;
+      const scrollable = container.scrollHeight > container.clientHeight;
+      container.scrollTop = container.scrollHeight;
+      return {
+        className: container.className || container.tagName,
+        scrollable,
+        scrollHeight: container.scrollHeight,
+        clientHeight: container.clientHeight,
+        scrollTop: container.scrollTop,
+      };
+    });
+    const scrollableStates = states.filter((state) => state.scrollable);
     return {
-      ok: viewportScrollable && viewport.scrollTop > 0 && (!paramsScrollable || params.scrollTop > 0),
-      viewport: { scrollHeight: viewport.scrollHeight, clientHeight: viewport.clientHeight, scrollTop: viewport.scrollTop },
-      params: { scrollHeight: params.scrollHeight, clientHeight: params.clientHeight, scrollTop: params.scrollTop },
+      ok: scrollableStates.length === 0 || scrollableStates.every((state) => state.scrollTop > 0),
+      states,
     };
   })()`);
 
@@ -436,6 +446,8 @@ try {
     ['image engine text', bridgeState.hasImageEngine],
     ['knowledge entry text', bridgeState.hasKnowledgeEntry],
     ['skills entry text', bridgeState.hasSkillsEntry],
+    ['skill drag api', bridgeState.hasSkillDragApi],
+    ['skill file read api', bridgeState.hasSkillFileReadApi],
     ['redundant workbench hint removed', !bridgeState.hasRedundantWorkbenchHint],
     ['builtin skills >= 4', bridgeState.builtinSkillsCount >= 4],
     ['bridge methods >= 20', bridgeState.bridgeMethodCount >= 20],
@@ -448,7 +460,7 @@ try {
     ['core flow duration logs >= 4', coreFlowState.logsWithDuration >= 4],
     ['click flow all checks', clickFlowState.failed.length === 0],
     ['ui workflow all checks', uiWorkflowState.checks.length >= 8],
-    ['viewport and params scrollable', scrollState.ok],
+    ['scroll containers valid', scrollState.ok],
   ].filter(([, ok]) => !ok).map(([name]) => name);
 
   if (cdp.exceptions.length) {
