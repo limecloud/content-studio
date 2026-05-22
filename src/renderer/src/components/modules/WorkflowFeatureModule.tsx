@@ -272,7 +272,12 @@ function workflowRunInputLabel(key: string): string {
 }
 
 function workflowRunVersionLabel(run: Pick<WorkflowRunRecord, 'workflowVersion'>): string {
-  return `SOP v${run.workflowVersion}`;
+  return workflowVersionLabel(run.workflowVersion);
+}
+
+function workflowVersionLabel(version: string): string {
+  const normalized = version.trim();
+  return normalized.toLowerCase().startsWith('v') ? `SOP ${normalized}` : `SOP v${normalized}`;
 }
 
 function isRequiredWorkflowInput(field: WorkflowInputField): boolean {
@@ -396,8 +401,8 @@ function nextVideoMaterialAction(run: WorkflowRunRecord): WorkflowRunNextAction 
       action: 'open-video-prompt',
       title: promptDraftId ? '打开视频 Prompt' : '进入视频 Prompt',
       description: promptDraftId
-        ? '视频 Prompt 已保存但仍需确认或复制，进入视频 Prompt 工作台继续处理。'
-        : '生成视频 Prompt 阶段待配置或待处理，进入工作台补输入、确认 Prompt 或配置文字模型。',
+        ? '视频提示词已保存但仍需确认或复制，进入视频 Prompt 工作台继续处理。'
+        : '生成视频提示词阶段待配置或待处理，进入工作台补输入、确认提示词或配置文字模型。',
       primary: true,
     };
   }
@@ -407,8 +412,8 @@ function nextVideoMaterialAction(run: WorkflowRunRecord): WorkflowRunNextAction 
       action: 'open-video-prompt',
       title: promptDraftId ? '打开视频 Prompt' : '进入视频 Prompt',
       description: promptDraftId
-        ? '继续使用本次 SOP 生成的视频 Prompt，并复制到 RunningHub / Vidu / Runway。'
-        : '先生成或确认 15 秒视频素材 Prompt，再记录复制动作。',
+        ? '继续使用本次 SOP 生成的视频提示词，并复制到 RunningHub / Vidu / Runway。'
+        : '先生成或确认 15 秒视频素材提示词，再记录复制动作。',
       primary: true,
     };
   }
@@ -417,7 +422,7 @@ function nextVideoMaterialAction(run: WorkflowRunRecord): WorkflowRunNextAction 
     return {
       action: 'import-finished-video',
       title: '导入成品视频',
-      description: '选择第三方平台生成后的本地 mp4 / mov 文件，并关联原视频 Prompt。',
+      description: '选择第三方平台生成后的本地 mp4 / mov 文件，并关联原视频提示词。',
       primary: true,
     };
   }
@@ -426,7 +431,7 @@ function nextVideoMaterialAction(run: WorkflowRunRecord): WorkflowRunNextAction 
     return {
       action: 'open-overlay',
       title: '编辑并生成绿幕图',
-      description: '从 Prompt / 脚本拆标题卡、卖点卡、金句卡和 CTA 卡，生成本地绿幕文案图。',
+      description: '从提示词 / 脚本拆标题卡、卖点卡、金句卡和 CTA 卡，生成本地绿幕文案图。',
       primary: true,
     };
   }
@@ -464,7 +469,7 @@ function nextImageSopAction(run: WorkflowRunRecord): WorkflowRunNextAction | nul
     return {
       action: 'open-reference-reverse',
       title: '打开对标图反推',
-      description: '补参考图、产品资料或视觉理解配置，重新生成可追溯图片 Prompt。',
+      description: '补参考图、产品资料或视觉理解配置，重新生成可追溯图片提示词。',
       primary: true,
     };
   }
@@ -472,9 +477,9 @@ function nextImageSopAction(run: WorkflowRunRecord): WorkflowRunNextAction | nul
   if (!hasStepSucceeded(run, 'image_generate') && isStepPending(run, 'image_generate')) {
     return {
       action: promptDraftId ? 'open-image-workbench' : 'open-prompt-draft',
-      title: promptDraftId ? '打开图片工作台' : '打开 Prompt 草稿',
+      title: promptDraftId ? '打开图片工作台' : '打开提示词草稿',
       description: promptDraftId
-        ? '把本次 SOP 的图片 Prompt 带入图片生成工作台，继续执行真实图片生成服务。'
+        ? '把本次 SOP 的图片提示词带入图片生成工作台，继续执行真实图片生成服务。'
         : '先确认图片提示词草稿，再进入图片生成。',
       primary: true,
     };
@@ -509,7 +514,7 @@ function nextProductCommercialAction(run: WorkflowRunRecord): WorkflowRunNextAct
     return {
       action: 'open-input-sources',
       title: '登记产品资料',
-      description: '先补产品 brief、SKU 表或参考详情页，本次 SOP 才能生成可追溯的商业图片 Prompt。',
+      description: '先补产品 brief、SKU 表或参考详情页，本次 SOP 才能生成可追溯的商业图片提示词。',
       primary: true,
     };
   }
@@ -538,7 +543,7 @@ function nextProductCommercialAction(run: WorkflowRunRecord): WorkflowRunNextAct
     return {
       action: 'open-image-workbench',
       title: '打开图片工作台',
-      description: '把本次商业图片 Prompt 带入图片生成，继续执行真实图片生成服务或处理待配置项。',
+      description: '把本次商业图片提示词带入图片生成，继续执行真实图片生成服务或处理待配置项。',
       primary: true,
     };
   }
@@ -564,7 +569,7 @@ function nextProductCommercialAction(run: WorkflowRunRecord): WorkflowRunNextAct
   return {
     action: 'open-asset-review',
     title: '查看商业素材',
-    description: 'SOP 已完成，可继续在审核台查看素材来源、Prompt 和入库状态。',
+    description: 'SOP 已完成，可继续在审核台查看素材来源、提示词和入库状态。',
   };
 }
 
@@ -604,7 +609,7 @@ function nextFeedbackTopicAction(run: WorkflowRunRecord): WorkflowRunNextAction 
   if (!hasStepSucceeded(run, 'human_review') && isStepPending(run, 'human_review')) {
     return {
       action: 'open-prompt-draft',
-      title: '审核选题 Prompt',
+      title: '审核选题提示词',
       description: '检查标题方向、客服异议话术和合规边界，确认来自真实评论后再用于文案生产。',
       primary: true,
     };
@@ -654,7 +659,7 @@ function nextGreenScreenCardAction(run: WorkflowRunRecord): WorkflowRunNextActio
     return {
       action: 'open-overlay',
       title: '打开绿幕文案图',
-      description: '把本次 SOP 的脚本和 Prompt 带入绿幕文案图工作台，继续拆卡、编辑和生成。',
+      description: '把本次 SOP 的脚本和提示词带入绿幕文案图工作台，继续拆卡、编辑和生成。',
       primary: true,
     };
   }
@@ -708,7 +713,7 @@ function nextBrandSopAction(run: WorkflowRunRecord): WorkflowRunNextAction | nul
   return {
     action: 'open-scene-library',
     title: '查看场景库',
-    description: 'SOP 已完成，可继续从场景库派生图片、视频或文案 Prompt。',
+    description: 'SOP 已完成，可继续从场景库派生图片、视频或文案提示词。',
   };
 }
 
@@ -737,7 +742,7 @@ function nextIpLongformAction(run: WorkflowRunRecord): WorkflowRunNextAction | n
   if (!hasStepSucceeded(run, 'prompt_generate') && isStepPending(run, 'prompt_generate')) {
     return {
       action: 'open-prompt-draft',
-      title: '打开文章 Prompt',
+      title: '打开文章提示词',
       description: '确认文章提示词草稿后进入正文生成。',
       primary: true,
     };
@@ -747,7 +752,7 @@ function nextIpLongformAction(run: WorkflowRunRecord): WorkflowRunNextAction | n
     return {
       action: 'open-article-workbench',
       title: '进入文章生成',
-      description: '把本次 SOP 的 IP 知识库和文章 Prompt 带入文章生成工作台。',
+      description: '把本次 SOP 的 IP 知识库和文章提示词带入文章生成工作台。',
       primary: true,
     };
   }
@@ -833,7 +838,7 @@ function workflowRunArtifactActions(run: WorkflowRunRecord): Array<{
       actions,
       'open-scene-library',
       '打开场景库',
-      `${sceneCardIds.length || 0} 张场景卡，可继续生成图片、视频或文案 Prompt。`,
+      `${sceneCardIds.length || 0} 张场景卡，可继续生成图片、视频或文案提示词。`,
     );
   }
   if (promptDraftId || promptDraftRefIds.length > 0) {
@@ -1649,7 +1654,7 @@ function RunDetail({
         </div>
         <div className="workflow-summary-stack compact">
           <StatusPill tone={statusClass(run.status)}>{STATUS_LABELS[run.status]}</StatusPill>
-          <StatusPill>{run.workflowKey}@{run.workflowVersion}</StatusPill>
+          <StatusPill>{workflowRunVersionLabel(run)}</StatusPill>
         </div>
       </div>
 
@@ -1760,10 +1765,10 @@ function RunDetail({
       <div className="workflow-two-column">
         <article>
           <h4>输入</h4>
-          {Object.entries(run.inputs).map(([key, value]) => (
+          {workflowPayloadEntries(run.inputs).map(([key, value]) => (
             <div key={key} className="workflow-list-row">
-              <strong>{workflowRunInputLabel(key)}</strong>
-              <span>{value || '未填写'}</span>
+              <strong>{key}</strong>
+              <span>{value}</span>
             </div>
           ))}
         </article>
@@ -1967,7 +1972,7 @@ function RunHistory({
               status={STATUS_LABELS[run.status]}
               statusTone={statusClass(run.status)}
               title={run.title}
-              meta={`${run.workflowKey}@${run.workflowVersion} · ${formatTime(run.createdAt)}`}
+              meta={`${workflowRunVersionLabel(run)} · ${formatTime(run.createdAt)}`}
               description={run.summary}
               onClick={() => onSelectRun(run.id)}
             >
