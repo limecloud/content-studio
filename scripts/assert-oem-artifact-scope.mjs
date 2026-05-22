@@ -1,9 +1,10 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
-const rootDir = resolve(new URL('..', import.meta.url).pathname);
+const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function cliValue(name) {
   const prefix = `--${name}=`;

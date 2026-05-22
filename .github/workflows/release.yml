@@ -11,6 +11,10 @@ on:
         description: '要打包发布的 tag，例如 v0.7.0'
         required: true
         default: 'v0.7.0'
+      source_ref:
+        description: '构建使用的源码 ref；为空时使用 tag'
+        required: false
+        default: ''
       brand:
         description: '品牌：bugu / seenx / all'
         required: true
@@ -44,12 +48,13 @@ jobs:
       publish: ${{ steps.resolve.outputs.publish }}
       sync_r2: ${{ steps.resolve.outputs.sync_r2 }}
       release_tag: ${{ steps.resolve.outputs.release_tag }}
+      source_ref: ${{ steps.resolve.outputs.source_ref }}
       brands_json: ${{ steps.resolve.outputs.brands_json }}
     steps:
-      - name: Checkout release ref
+      - name: Checkout source ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.source_ref || inputs.tag) || github.ref }}
 
       - name: Resolve matrix
         id: resolve
@@ -61,6 +66,7 @@ jobs:
           INPUT_PLATFORM: ${{ inputs.platform }}
           INPUT_PUBLISH: ${{ inputs.publish }}
           INPUT_SYNC_R2: ${{ inputs.sync_r2 }}
+          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           node -e '
           const path = require("path");
@@ -95,10 +101,12 @@ jobs:
             for (const platform of platforms) include.push({ brand, ...platform });
           }
           const releaseTag = eventName === "workflow_dispatch" ? process.env.INPUT_TAG : process.env.REF_NAME;
+          const sourceRef = eventName === "workflow_dispatch" ? (process.env.INPUT_SOURCE_REF || releaseTag) : process.env.REF_NAME;
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({ include })}\n`);
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `publish=${publish ? "true" : "false"}\n`);
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `sync_r2=${syncR2 ? "true" : "false"}\n`);
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `release_tag=${releaseTag}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `source_ref=${sourceRef}\n`);
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `brands_json=${JSON.stringify(brands)}\n`);
           '
 
@@ -113,7 +121,7 @@ jobs:
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve.outputs.release_tag }}
+          ref: ${{ needs.resolve.outputs.source_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -162,7 +170,7 @@ jobs:
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve.outputs.release_tag }}
+          ref: ${{ needs.resolve.outputs.source_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -217,7 +225,7 @@ jobs:
       - name: Checkout release scripts
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve.outputs.release_tag }}
+          ref: ${{ needs.resolve.outputs.source_ref }}
 
       - name: Download packaged artifacts
         uses: actions/download-artifact@v4
@@ -286,7 +294,7 @@ jobs:
       - name: Checkout release notes
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve.outputs.release_tag }}
+          ref: ${{ needs.resolve.outputs.source_ref }}
 
       - name: Download packaged artifacts
         uses: actions/download-artifact@v4
