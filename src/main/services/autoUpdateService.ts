@@ -57,15 +57,15 @@ function normalizeText(value: unknown): string {
 }
 
 function getRuntimeBrandId(): string {
-  return normalizeText(getOemRuntimeConfig().brandId) || 'content-studio';
+  return normalizeText(getOemRuntimeConfig().brandId) || 'bugu';
 }
 
 function getRuntimeApiBaseUrl(): string {
-  return normalizeText(getOemRuntimeConfig().apiBaseUrl).replace(/\/+$/, '') || 'https://lime-api.limeai.run/api';
+  return normalizeText(getOemRuntimeConfig().apiBaseUrl).replace(/\/+$/, '') || 'https://api.bugu.run/api';
 }
 
 function getRuntimeDownloadBaseUrl(): string {
-  return normalizeText(getOemRuntimeConfig().downloadBaseUrl).replace(/\/+$/, '') || 'https://downloads.limeai.run';
+  return normalizeText(getOemRuntimeConfig().downloadBaseUrl).replace(/\/+$/, '') || 'https://downloads.bugu.run';
 }
 
 function getLatestApiUrl(): string {
