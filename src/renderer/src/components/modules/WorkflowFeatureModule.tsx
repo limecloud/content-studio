@@ -955,7 +955,7 @@ function DefinitionCard({
       status={DEFINITION_STATUS_LABELS[definition.status]}
       statusTone={statusClass(definition.status)}
       title={definition.title}
-      meta={`${definition.priority} · SOP v${definition.version} · ${definition.tags.join(' / ')}`}
+      meta={`${definition.priority} · ${workflowVersionLabel(definition.version)} · ${definition.tags.join(' / ')}`}
       description={definition.description}
       onClick={onSelect}
     />

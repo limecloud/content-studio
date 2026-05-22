@@ -1006,7 +1006,7 @@ test('SOP 执行页显式选择资料并写入运行记录', async ({}, testInfo
     await expect(runDetail).not.toContainText('不应误选的评论资料');
     const actionPanel = runDetail.locator('.workflow-run-action-panel');
     await expect(actionPanel).toContainText('打开图片工作台');
-    await expect(actionPanel).toContainText('商业图片 Prompt');
+    await expect(actionPanel).toContainText('商业图片提示词');
     const trace = await page.evaluate(async ({ workspacePath, productSourceId, feedbackSourceId }) => {
       const runs = await window.contentStudio.listWorkflowRuns(workspacePath);
       const run = runs.find((item) => item.workflowKey === 'product-commercial-assets');
