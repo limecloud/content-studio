@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ModuleKey } from '../../app/types';
 import type { InputSourcePurpose, InputSourceRecord, InputSourceStatus } from '../../../../shared/types';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
+import { inputSourceKindLabel } from '../../app/formatters';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 import { UserJourneyGuide } from '../UserJourneyGuide';
 
@@ -66,7 +67,7 @@ function SourcePicker({
             />
             <span>
               <strong>{source.title}</strong>
-              <small>{source.kind} / {INPUT_SOURCE_STATUS_LABELS[source.status]} · {sourceSummary(source)}</small>
+              <small>{inputSourceKindLabel(source.kind)} / {INPUT_SOURCE_STATUS_LABELS[source.status]} · {sourceSummary(source)}</small>
             </span>
           </label>
         ))}

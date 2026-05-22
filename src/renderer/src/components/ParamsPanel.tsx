@@ -5,7 +5,7 @@ import type {
   KnowledgeCitation,
   SkillSelectionView,
 } from '../../../shared/types';
-import { formatDuration, kindLabel, sectionLabel, skillKey, statusLabel } from '../app/formatters';
+import { formatDuration, generationServiceLabel, kindLabel, sectionLabel, skillKey, statusLabel } from '../app/formatters';
 import type { SetGlobalParams } from '../app/types';
 
 interface ParamsPanelProps {
@@ -189,7 +189,7 @@ export function ParamsPanel({
                 <strong>{log.title}</strong>
                 <p>{log.summary ?? log.error ?? '暂无摘要'}</p>
                 <small>
-                  {formatDuration(log.durationMs)} · {log.model ?? 'local'} ·{' '}
+                  {formatDuration(log.durationMs)} · {generationServiceLabel(log.model)} ·{' '}
                   {new Date(log.createdAt).toLocaleString()}
                 </small>
               </article>

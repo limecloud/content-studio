@@ -75,9 +75,8 @@ function statusClass(draft?: PromptDraft): string {
   return 'idle';
 }
 
-function shortId(value?: string): string {
-  if (!value) return '';
-  return value.length > 12 ? value.slice(0, 8) : value;
+function promptPurposeLabel(purpose: PromptDraftPurpose): string {
+  return PURPOSE_OPTIONS.find((option) => option.value === purpose)?.label ?? '提示词';
 }
 
 function splitPromptItems(content: string): Array<{ title: string; content: string }> {
@@ -418,9 +417,9 @@ export function ScenePromptModule({
                   <small>{scene.audience} · {scene.usageScene}</small>
                   <small>{isSceneConfirmed(scene) ? '已确认' : '待确认'} · 更新于 {formatTime(scene.updatedAt)}</small>
                   <small>
-                    提示词包 {shortId(scene.promptPackId)}
-                    {scene.workflowRunId ? ` · SOP ${shortId(scene.workflowRunId)}` : ''}
-                    {scene.inputSourceIds?.length ? ` · 输入源 ${scene.inputSourceIds.length}` : ''}
+                    已关联提示词包
+                    {scene.workflowRunId ? ' · 已关联 SOP' : ''}
+                    {scene.inputSourceIds?.length ? ` · 资料 ${scene.inputSourceIds.length} 份` : ''}
                     {scene.citations.length ? ` · 引用 ${scene.citations.length}` : ''}
                   </small>
                   <em>{scene.painPoint}</em>
@@ -701,9 +700,9 @@ export function ScenePromptModule({
                 <span>图片：{scene.imageMaterialSuggestion}</span>
                 <span>视频：{scene.videoMaterialSuggestion}</span>
                 <span>
-                  来源：提示词包 {shortId(scene.promptPackId)}
-                  {scene.workflowRunId ? ` · SOP ${shortId(scene.workflowRunId)}` : ''}
-                  {scene.inputSourceIds?.length ? ` · 输入源 ${scene.inputSourceIds.length} 个` : ''}
+                  来源：已关联提示词包
+                  {scene.workflowRunId ? ' · 已关联 SOP' : ''}
+                  {scene.inputSourceIds?.length ? ` · 资料 ${scene.inputSourceIds.length} 份` : ''}
                 </span>
               </article>
             ))}
@@ -722,11 +721,11 @@ export function ScenePromptModule({
           {relatedDrafts.map((draft) => (
             <article key={draft.id} className={draft.id === activeDraft?.id ? 'active' : ''}>
               <strong>{draft.title}</strong>
-              <span>{draft.purpose} · {draft.versions.length} 个版本 · {statusText(draft)}</span>
+              <span>{promptPurposeLabel(draft.purpose)} · {draft.versions.length} 个版本 · {statusText(draft)}</span>
               <small>
-                来源：{draft.inputSourceIds.length} 个输入源
+                来源：{draft.inputSourceIds.length} 份资料
                 {draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}
-                {draft.workflowRunId ? ` · 任务 ${shortId(draft.workflowRunId)}` : ''}
+                {draft.workflowRunId ? ' · 已关联 SOP' : ''}
               </small>
               <small>更新于 {formatTime(draft.updatedAt)}</small>
             </article>

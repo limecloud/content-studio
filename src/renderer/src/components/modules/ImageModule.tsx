@@ -166,7 +166,7 @@ export function ImageModule({
   const [templateEditorDraft, setTemplateEditorDraft] = useState("");
   const [templateEditorMode, setTemplateEditorMode] = useState<
     "direct" | "system" | "ai"
-  >("direct");
+  >("system");
   const [templateEditorError, setTemplateEditorError] = useState("");
   const [skillCreateOpen, setSkillCreateOpen] = useState(false);
   const [skillCreatePrompt, setSkillCreatePrompt] = useState("");
@@ -310,7 +310,7 @@ export function ImageModule({
       return {
         config: null,
         error:
-          error instanceof Error ? error.message : "JSON 配置暂时无法解析。",
+          error instanceof Error ? error.message : "高级配置暂时无法解析。",
       };
     }
   }, [editingTemplateName, templateEditorDraft]);
@@ -459,7 +459,7 @@ export function ImageModule({
   const openTemplateEditor = (template: ImageTemplateConfig) => {
     setEditingTemplateName(template.name);
     setTemplateEditorDraft(JSON.stringify(template, null, 2));
-    setTemplateEditorMode("direct");
+    setTemplateEditorMode("system");
     setTemplateEditorError("");
   };
 
@@ -467,8 +467,8 @@ export function ImageModule({
     if (!editingTemplateName) return;
     try {
       const parsed = JSON.parse(templateEditorDraft) as ImageTemplateConfig;
-      if (!Array.isArray(parsed.fields)) throw new Error("fields 必须是数组。");
-      if (!parsed.prompts?.system) throw new Error("prompts.system 必须存在。");
+      if (!Array.isArray(parsed.fields)) throw new Error("参数字段必须是列表。");
+      if (!parsed.prompts?.system) throw new Error("系统提示词必须存在。");
       const nextTemplate = { ...parsed, name: editingTemplateName };
       setTemplateOverrides((current) => ({
         ...current,
@@ -479,7 +479,7 @@ export function ImageModule({
       setTemplateEditorError("");
     } catch (error) {
       setTemplateEditorError(
-        error instanceof Error ? error.message : "JSON 配置解析失败。",
+        error instanceof Error ? error.message : "高级配置解析失败。",
       );
     }
   };
@@ -504,8 +504,8 @@ export function ImageModule({
     } catch (error) {
       setTemplateEditorError(
         error instanceof Error
-          ? `当前 JSON 无法解析：${error.message}`
-          : "当前 JSON 无法解析，不能单独修改系统提示词。",
+          ? `当前高级配置无法解析：${error.message}`
+          : "当前高级配置无法解析，不能单独修改系统提示词。",
       );
     }
   };
@@ -538,7 +538,7 @@ export function ImageModule({
       activateImportedTemplate(result.template);
     } catch (error) {
       setTemplateActionError(
-        error instanceof Error ? error.message : "图片技能导入失败，请检查 JSON 文件。",
+        error instanceof Error ? error.message : "图片技能导入失败，请检查配置文件。",
       );
     }
   };
@@ -1256,7 +1256,7 @@ export function ImageModule({
                   className={templateEditorMode === "direct" ? "active" : ""}
                   onClick={() => setTemplateEditorMode("direct")}
                 >
-                  直接编辑
+                  高级配置
                 </button>
                 <button
                   className={templateEditorMode === "system" ? "active" : ""}
@@ -1275,9 +1275,7 @@ export function ImageModule({
                 {templateEditorMode === "direct" ? (
                   <>
                     <p>
-                      直接编辑当前技能的 JSON
-                      配置；保存后会立即影响本次会话的模板表单和后续图片生成
-                      payload。
+                      面向内容工程师的完整技能配置。普通图片生成只需要调整系统提示词和页面参数。
                     </p>
                     <textarea
                       className="json-editor"
@@ -1291,7 +1289,7 @@ export function ImageModule({
                   templateEditorPreview.config ? (
                     <div className="template-prompt-editor">
                       <div className="template-prompt-summary">
-                        <span>System Prompt</span>
+                        <span>系统提示词</span>
                         <strong>
                           {templateEditorPreview.config.prompts.system.length} 字符
                         </strong>
@@ -1304,7 +1302,7 @@ export function ImageModule({
                         系统提示词是图片技能的核心，会和用户提示词、图片引用、模板参数一起进入生成请求。
                       </p>
                       <label>
-                        <span>系统提示词 prompts.system</span>
+                        <span>系统提示词</span>
                         <textarea
                           value={templateEditorPreview.config.prompts.system}
                           onChange={(event) =>
@@ -1313,7 +1311,7 @@ export function ImageModule({
                         />
                       </label>
                       <label>
-                        <span>英文增强关键词 prompts.enhance</span>
+                        <span>英文增强关键词</span>
                         <textarea
                           value={templateEditorPreview.config.prompts.enhance}
                           onChange={(event) =>
@@ -1322,7 +1320,7 @@ export function ImageModule({
                         />
                       </label>
                       <label>
-                        <span>负面关键词 prompts.negative</span>
+                        <span>负面关键词</span>
                         <textarea
                           value={templateEditorPreview.config.prompts.negative}
                           onChange={(event) =>
@@ -1335,7 +1333,7 @@ export function ImageModule({
                     <div className="agent-status-card blocked">
                       <span>!</span>
                       <div>
-                        <strong>当前 JSON 暂时无法解析</strong>
+                        <strong>当前高级配置暂时无法解析</strong>
                         <p>{templateEditorPreview.error}</p>
                       </div>
                     </div>
@@ -1411,7 +1409,7 @@ export function ImageModule({
               <span>AI</span>
               <div>
                 <strong>
-                  {skillCreateBusy ? "正在调用文字模型创建技能" : "AI 会生成完整技能 JSON"}
+                  {skillCreateBusy ? "正在调用文字模型创建技能" : "AI 会生成完整技能配置"}
                 </strong>
                 <p>
                   会生成系统提示词、增强词、反向词和参数字段；未配置文字模型时会直接报错，不伪造结果。
@@ -1546,7 +1544,7 @@ export function ImageModule({
               </span>
               <span>
                 <strong>模型</strong>
-                <em>{selectedImageLog.model ?? "未记录"}</em>
+                <em>{generationServiceLabel(selectedImageLog.model)}</em>
               </span>
               <span>
                 <strong>模板</strong>
@@ -1642,7 +1640,7 @@ export function ImageModule({
                 </span>
                 <span>
                   <strong>模型</strong>
-                  <em>{currentImageLog?.model ?? "未记录"}</em>
+                  <em>{generationServiceLabel(currentImageLog?.model)}</em>
                 </span>
                 <span>
                   <strong>生成时间</strong>

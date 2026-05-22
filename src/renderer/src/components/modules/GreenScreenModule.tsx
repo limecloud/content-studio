@@ -156,7 +156,7 @@ export function GreenScreenModule({
         <div className="module-command-flow">
           <div>
             <p className="eyebrow">业务边界</p>
-            <h3>Prompt / 脚本 → 绿幕文案图 → 混剪包 manifest</h3>
+            <h3>提示词 / 脚本 → 绿幕文案图 → 混剪清单</h3>
           </div>
           <div className="workflow-actions">
             <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('assets-prompt-workbench')}>

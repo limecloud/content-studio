@@ -167,10 +167,9 @@ async function launchContentStudio(testInfo, options = {}) {
     diagnostics.push(`[renderer:pageerror] ${error.message}`);
   });
 
-  await page.waitForLoadState('domcontentloaded');
   await expect.poll(
     async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-    { message: '等待 Electron preload bridge 和主工作台加载完成', timeout: 20_000 },
+    { message: '等待 Electron preload bridge 和主工作台加载完成', timeout: 30_000 },
   ).toBe(true);
 
   return { electronApp, page, userDataDir, workspaceDir, e2eProductAssetPath, e2eVideoAssetPath, diagnostics, testInfo };
@@ -590,18 +589,19 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
 
     await clickButton(page, '导出 / 编辑');
     await expect(page.getByRole('dialog', { name: /编辑技能/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: '直接编辑' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '高级配置' })).toBeVisible();
     await expect(page.getByRole('button', { name: '系统提示词' })).toBeVisible();
+    await expect(page.locator('.template-prompt-summary')).toContainText('系统提示词');
+    await expect(page.getByText('系统提示词是图片技能的核心')).toBeVisible();
+    await expect(page.locator('.template-prompt-editor label').filter({ hasText: '系统提示词' })).toBeVisible();
+    await expect(page.locator('.template-prompt-editor textarea').first()).toHaveValue(/professional/);
+    await expect(page.getByText('英文增强关键词')).toBeVisible();
+    await expect(page.getByText('负面关键词')).toBeVisible();
+    await clickButton(page, '高级配置');
     await expect(page.locator('.json-editor')).toContainText('电商白底主图');
     await expect(page.locator('.json-editor')).toContainText('prompts');
     await expect(page.locator('.json-editor')).not.toContainText(['光', '核'].join(''));
     await clickButton(page, '系统提示词');
-    await expect(page.locator('.template-prompt-summary')).toContainText('System Prompt');
-    await expect(page.getByText('系统提示词是图片技能的核心')).toBeVisible();
-    await expect(page.getByText('系统提示词 prompts.system')).toBeVisible();
-    await expect(page.locator('.template-prompt-editor textarea').first()).toHaveValue(/professional/);
-    await expect(page.getByText('英文增强关键词 prompts.enhance')).toBeVisible();
-    await expect(page.getByText('负面关键词 prompts.negative')).toBeVisible();
     await clickButton(page, 'AI 辅助修改');
     await expect(page.getByText('AI 辅助修改等待本地服务接入')).toBeVisible();
     await clickButton(page, '关闭');
@@ -634,7 +634,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     await expect(page.getByRole('heading', { name: '正文 / 发布检查' })).toBeVisible();
     await clickButton(page, '成型知识库');
     await expect(page.locator('.knowledge-tab-bar button').filter({ hasText: /^知识库/ })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('button', { name: '导入 DOCX / MD / JSON' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '导入知识库文档' })).toBeVisible();
     await expect(page.locator('.knowledge-list .kb-card')).toHaveCount(2);
     await expect(page.locator('.knowledge-list .kb-detail')).toHaveCount(0);
     const selectedKnowledgeTitle = await page.locator('.knowledge-list .kb-card').nth(1).locator('strong').first().innerText();
@@ -1723,11 +1723,11 @@ test('SOP 定义草案可以编辑、发布并从表单运行', async ({}, testI
     await editor.locator('label').filter({ hasText: '标签' }).locator('textarea').fill('UI 验证\n自定义 SOP');
     await editor.locator('label').filter({ hasText: '审核规则' }).locator('textarea').fill('资料来源必须清楚\n执行目标必须明确');
     await editor.locator('label').filter({ hasText: '输出规格' }).locator('textarea').fill('RunArchive');
-    await editor.locator('label').filter({ hasText: '输入字段 JSON' }).locator('textarea').fill(JSON.stringify([
+    await editor.locator('label').filter({ hasText: '输入字段（高级配置）' }).locator('textarea').fill(JSON.stringify([
       { key: 'source', label: '资料来源', type: 'textarea', required: true },
       { key: 'intent', label: '执行目标', type: 'textarea', required: true },
     ], null, 2));
-    await editor.locator('label').filter({ hasText: '执行步骤 JSON' }).locator('textarea').fill(JSON.stringify([
+    await editor.locator('label').filter({ hasText: '执行步骤（高级配置）' }).locator('textarea').fill(JSON.stringify([
       { id: 'input_register', title: '登记输入源', kind: 'input', description: '登记资料和目标。', dependsOn: [], outputKeys: ['InputSource'] },
       { id: 'human_review', title: '人工审核', kind: 'review', description: '确认输入和执行目标。', dependsOn: ['input_register'], outputKeys: ['ReviewResult'] },
       { id: 'asset_store', title: '入历史', kind: 'asset-store', description: '归档本次 SOP 运行。', dependsOn: ['human_review'], outputKeys: ['RunArchive'] },
@@ -1746,11 +1746,11 @@ test('SOP 定义草案可以编辑、发布并从表单运行', async ({}, testI
     await expect(canvas.locator('.workflow-canvas-node').filter({ hasText: '登记事实源' })).toBeVisible({ timeout: 20_000 });
 
     await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: '定义管理' }).click();
-    await expect(editor.locator('label').filter({ hasText: '执行步骤 JSON' }).locator('textarea')).toHaveValue(/登记事实源/);
-    await expect(editor.locator('label').filter({ hasText: '执行步骤 JSON' }).locator('textarea')).toHaveValue(/从 Canvas 轻编辑输入源节点/);
+    await expect(editor.locator('label').filter({ hasText: '执行步骤（高级配置）' }).locator('textarea')).toHaveValue(/登记事实源/);
+    await expect(editor.locator('label').filter({ hasText: '执行步骤（高级配置）' }).locator('textarea')).toHaveValue(/从 Canvas 轻编辑输入源节点/);
 
     await page.locator('.workflow-detail-panel button').filter({ hasText: '发布为可运行' }).click();
-    await expect(page.locator('.workflow-detail-panel .workflow-meta-grid')).toContainText('published', { timeout: 20_000 });
+    await expect(page.locator('.workflow-detail-panel .workflow-meta-grid')).toContainText('已发布', { timeout: 20_000 });
 
     await page.locator('.workflow-view-tabs button').filter({ hasText: '执行表单' }).click();
     const runner = page.locator('.workflow-runner-panel');
@@ -2276,7 +2276,7 @@ test('IP 长文 SOP 运行详情可以打开 Agent Prompt 并进入文章生成'
       const scenarioLibrary = page.locator('.ip-scenario-library-panel');
       await expect(scenarioLibrary).toContainText('IP 运营场景库');
       await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('已确认');
-      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('IP 版本');
+      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('已关联同一 IP 知识库版本');
       const extensionPanel = page.locator('.ip-extension-draft-panel');
       await expect(extensionPanel).toContainText('已生成的 IP 场景提示词');
       await expect(extensionPanel).toContainText('口播');

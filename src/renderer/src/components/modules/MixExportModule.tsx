@@ -21,6 +21,7 @@ import {
   fileNameFromPath,
   formatDuration,
   generationServiceLabel,
+  inputSourceKindLabel,
   isImageFilePath,
   isVideoFilePath,
   kindLabel,
@@ -190,7 +191,7 @@ function collectImportedCandidates(
         promptText: activeDraftContent(relatedDraft) || source.summary,
         relatedSceneCardIds: source.relatedSceneCardIds,
         workflowRunId: source.workflowRunId ?? relatedDraft?.workflowRunId,
-        tags: Array.from(new Set(['手动导入', source.kind, ...source.tags].filter(Boolean))),
+        tags: Array.from(new Set(['手动导入', inputSourceKindLabel(source.kind), ...source.tags].filter(Boolean))),
         createdAt: source.createdAt,
         subtitle: `手动导入 · ${relatedDraft?.title ?? '未关联 Prompt'}`,
       }];

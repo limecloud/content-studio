@@ -63,11 +63,6 @@ const KNOWLEDGE_TABS: Array<{ key: KnowledgeTab; label: string }> = [
   { key: 'scene', label: '场景卡' },
 ];
 
-function shortId(value?: string): string {
-  if (!value) return '';
-  return value.length > 12 ? value.slice(0, 8) : value;
-}
-
 export function KnowledgeModule({
   busy,
   workspaceReady,
@@ -152,7 +147,7 @@ export function KnowledgeModule({
       <ModuleCommandCenter
         eyebrow="知识库 / 主流程"
         title="成型知识库"
-        description="导入 DOCX / Markdown / JSON，检索并引用知识章节，继续生成提示词包、场景卡和下游内容。"
+        description="导入 DOCX / Markdown 等知识库文档，检索并引用知识章节，继续生成提示词包、场景卡和下游内容。"
         density="managed"
         actions={(
           <div className="workflow-summary-stack">
@@ -190,7 +185,7 @@ export function KnowledgeModule({
                   <h3>列表</h3>
                 </div>
                 <div className="knowledge-panel-actions">
-                  <button className="ghost small" onClick={onImportKnowledgeBase} disabled={!workspaceReady}>导入 DOCX / MD / JSON</button>
+                  <button className="ghost small" onClick={onImportKnowledgeBase} disabled={!workspaceReady}>导入知识库文档</button>
                   <span className="status-pill">{knowledgeBases.length} 个</span>
                 </div>
               </div>
@@ -315,8 +310,8 @@ export function KnowledgeModule({
                     <strong>{activePromptPack.name}</strong>
                     <small>
                       引用 {activePromptPack.citations.length} 条
-                      {activePromptPack.inputSourceIds?.length ? ` · 输入源 ${activePromptPack.inputSourceIds.length} 个` : ''}
-                      {activePromptPack.workflowRunId ? ` · SOP ${shortId(activePromptPack.workflowRunId)}` : ''}
+                      {activePromptPack.inputSourceIds?.length ? ` · 资料 ${activePromptPack.inputSourceIds.length} 份` : ''}
+                      {activePromptPack.workflowRunId ? ' · 已关联 SOP' : ''}
                     </small>
                     <label><span>品牌口吻</span><textarea value={promptPackDraft.brandVoice} onChange={(event) => setPromptPackDraft((current) => ({ ...current, brandVoice: event.target.value }))} /></label>
                     <label><span>视觉风格</span><textarea value={promptPackDraft.visualStyle} onChange={(event) => setPromptPackDraft((current) => ({ ...current, visualStyle: event.target.value }))} /></label>
@@ -347,10 +342,10 @@ export function KnowledgeModule({
               <div className="prompt-pack edit-stack">
                 <strong>{activeEditableScene.title}</strong>
                 <small>
-                  提示词包 {activeEditableScene.promptPackId}
-                  {activeEditableScene.inputSourceIds?.length ? ` · 输入源 ${activeEditableScene.inputSourceIds.length} 个` : ''}
+                  已关联提示词包
+                  {activeEditableScene.inputSourceIds?.length ? ` · 资料 ${activeEditableScene.inputSourceIds.length} 份` : ''}
                   {activeEditableScene.citations.length ? ` · 引用 ${activeEditableScene.citations.length} 条` : ''}
-                  {activeEditableScene.workflowRunId ? ` · SOP ${shortId(activeEditableScene.workflowRunId)}` : ''}
+                  {activeEditableScene.workflowRunId ? ' · 已关联 SOP' : ''}
                 </small>
                 <label><span>场景标题</span><input value={sceneCardDraft.title} onChange={(event) => setSceneCardDraft((current) => ({ ...current, title: event.target.value }))} /></label>
                 <label><span>图片素材建议</span><textarea value={sceneCardDraft.imageMaterialSuggestion} onChange={(event) => setSceneCardDraft((current) => ({ ...current, imageMaterialSuggestion: event.target.value }))} /></label>

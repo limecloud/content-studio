@@ -4,7 +4,7 @@ import type {
   KnowledgeCitation,
 } from '../../../../shared/types';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
-import { clip, knowledgeBaseKey, sectionLabel } from '../../app/formatters';
+import { baseLabel, clip, sectionLabel } from '../../app/formatters';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 import { UserJourneyGuide } from '../UserJourneyGuide';
 import { SelectableRecordCard, StatusPill } from '../WorkbenchPrimitives';
@@ -39,7 +39,7 @@ export function BrandKnowledgeModule({
   onOpenInputSources,
 }: BrandKnowledgeModuleProps) {
   const feature = V2_FEATURES['knowledge-brand'];
-  const activeSourceLabel = activeKnowledgeBase ? `${activeKnowledgeBase.title} · ${knowledgeBaseKey(activeKnowledgeBase)}` : '当前未选知识库';
+  const activeSourceLabel = activeKnowledgeBase ? `${activeKnowledgeBase.title} · ${baseLabel(activeKnowledgeBase.baseType)}` : '当前未选知识库';
   const hasSource = citationCount > 0;
   const hasBrandKnowledge = Boolean(activeBrandKnowledgeBase);
 
@@ -128,7 +128,7 @@ export function BrandKnowledgeModule({
               <p className="eyebrow">品牌知识库</p>
               <h3>{activeBrandKnowledgeBase?.title ?? '尚未生成品牌知识库'}</h3>
             </div>
-            {activeBrandKnowledgeBase ? <StatusPill tone="ready">{activeBrandKnowledgeBase.status}</StatusPill> : null}
+            {activeBrandKnowledgeBase ? <StatusPill tone="ready">已抽取</StatusPill> : null}
           </div>
           {activeBrandKnowledgeBase ? (
             <div className="brand-kb-detail">
@@ -158,7 +158,7 @@ export function BrandKnowledgeModule({
                 key={record.id}
                 className="prompt-draft-card"
                 active={record.id === activeBrandKnowledgeBaseId}
-                status={record.status}
+                status={record.status === 'ready' ? '已抽取' : '待确认'}
                 statusTone={record.status === 'ready' ? 'ready' : 'idle'}
                 title={record.title}
                 meta={record.brandVoice}

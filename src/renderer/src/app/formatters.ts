@@ -1,6 +1,7 @@
 import type {
   GenerationLogEntry,
   ImageGenerationRequest,
+  InputSourcePurpose,
   InputSourceRecord,
   KnowledgeBaseView,
   KnowledgeCitation,
@@ -22,6 +23,34 @@ export function sourceLabel(source: LoadedSkill['source']): string {
 
 export function baseLabel(base: KnowledgeBaseView['baseType']): string {
   return base === 'personal-ip-kb' ? '个人 IP 型' : '产品型';
+}
+
+export function inputSourcePurposeLabel(purpose: InputSourcePurpose): string {
+  const labels: Record<InputSourcePurpose, string> = {
+    'brand-kb': '品牌 / 产品知识库',
+    'ip-kb': 'IP 知识库',
+    'ip-scenario-kb': 'IP 场景延伸库',
+    reference: '参考素材',
+    'product-brief': '产品资料',
+    'user-feedback': '评论 / 客服问题',
+    'sop-input': '任务输入',
+    'successful-asset': '成功素材',
+  };
+  return labels[purpose] ?? purpose;
+}
+
+export function inputSourceKindLabel(kind: InputSourceRecord['kind']): string {
+  const labels: Record<InputSourceRecord['kind'], string> = {
+    docx: '文档',
+    markdown: '文档',
+    text: '文本',
+    image: '图片',
+    video: '视频',
+    'sku-table': 'SKU 表',
+    url: '网页',
+    'manual-note': '手动记录',
+  };
+  return labels[kind] ?? kind;
 }
 
 export function sectionLabel(type: KnowledgeCitation['sectionType']): string {
@@ -73,6 +102,8 @@ export function statusLabel(status: GenerationLogEntry['status']): string {
 export function generationServiceLabel(model?: string): string {
   const value = model?.trim();
   if (!value || value.toLowerCase().startsWith('local')) return '本地生成服务';
+  if (value.startsWith('blocked:')) return '生成服务待配置';
+  if (value.startsWith('fallback:')) return '本地规则草稿';
   return `生成服务：${value}`;
 }
 
@@ -148,7 +179,7 @@ export function citationFromInputSource(source: InputSourceRecord): KnowledgeCit
   return {
     knowledgeBaseId: `input-source:${source.id}`,
     sectionId: source.markdownPath ? 'markdown' : 'summary',
-    title: `${source.title} / ${source.purpose}`,
+    title: `${source.title} / ${inputSourcePurposeLabel(source.purpose)}`,
     sectionType,
     excerpt: clip(source.extractedText || source.summary || source.blockedReason || source.title, 220),
   };

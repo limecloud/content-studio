@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { AssetReviewRecord, GenerationLogEntry, InputSourcePurpose, InputSourceRecord, InputSourceStatus, PlatformDraftRecord, WorkflowDefinition, WorkflowInputField, WorkflowRunRecord, WorkflowRunStatus } from '../../../../shared/types';
 import { inputSourceMatchesWorkflowDefinitionKey, selectWorkflowInputSourceIdsForDefinition, workflowInputPurposesForDefinitionKey } from '../../../../shared/inputSourcePolicy';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
+import { sectionLabel } from '../../app/formatters';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 import { PlatformDraftTraceList } from '../PlatformDraftTraceList';
 import { ActionGroup, SelectableRecordCard, StatusPill, type StatusPillTone } from '../WorkbenchPrimitives';
@@ -165,6 +166,31 @@ function inputSourceKindLabel(kind: InputSourceRecord['kind']): string {
 
 function assetKindLabel(kind: AssetReviewRecord['kind']): string {
   return ASSET_KIND_LABELS[kind] ?? kind;
+}
+
+function workflowStepKindLabel(kind: WorkflowDefinition['steps'][number]['kind']): string {
+  const labels: Record<WorkflowDefinition['steps'][number]['kind'], string> = {
+    input: '登记资料',
+    'agent-read': 'Agent 读取',
+    'build-brand-knowledge-base': '品牌知识抽取',
+    'build-ip-knowledge-base': 'IP 知识构建',
+    'generate-prompt-pack': '生成提示词包',
+    'generate-scene-library': '生成场景库',
+    'generate-prompt-group': '生成提示词组',
+    'reference-reverse': '对标反推',
+    'structure-product-brief': '结构化产品资料',
+    'cluster-user-feedback': '聚类用户反馈',
+    'prompt-generate': '生成提示词',
+    'image-generate': '图片生成',
+    'video-prompt': '视频提示词',
+    'manual-video-prompt-copy': '记录外部复制',
+    'manual-video-import': '导入成品视频',
+    'overlay-generate': '生成绿幕图',
+    review: '人工审核',
+    'asset-store': '素材入库',
+    export: '导出交付包',
+  };
+  return labels[kind] ?? '自定义步骤';
 }
 
 function inputSourceSummary(source: InputSourceRecord): string {
@@ -449,7 +475,7 @@ function nextVideoMaterialAction(run: WorkflowRunRecord): WorkflowRunNextAction 
     return {
       action: 'open-mix-export',
       title: '导出混剪包',
-      description: '导出素材文件夹和 manifest，交给剪映或第三方混剪软件。',
+      description: '导出素材文件夹和混剪清单，交给剪映或第三方混剪软件。',
       primary: true,
     };
   }
@@ -457,7 +483,7 @@ function nextVideoMaterialAction(run: WorkflowRunRecord): WorkflowRunNextAction 
   return {
     action: 'open-mix-export',
     title: '查看混剪包',
-    description: 'SOP 已完成，可查看已导出的素材包、manifest 和素材追溯。',
+    description: 'SOP 已完成，可查看已导出的素材包、混剪清单和素材追溯。',
   };
 }
 
@@ -862,7 +888,7 @@ function workflowRunArtifactActions(run: WorkflowRunRecord): Array<{
       actions,
       'open-platform-draft',
       '打开平台草稿包',
-      '打开本地草稿包文件夹，继续复制正文、发布前检查和 manifest。',
+      '打开本地草稿包文件夹，继续复制正文、发布前检查和交付清单。',
     );
   }
   const hasReviewableAssets = assetReviewIds.length > 0 || generatedAssetRefs.length > 0;
@@ -880,7 +906,7 @@ function workflowRunArtifactActions(run: WorkflowRunRecord): Array<{
       'open-mix-export',
       mixPackageId || mixPackageRefIds.length > 0 || hasMixExportPath ? '打开混剪包' : '打开混剪素材',
       mixPackageId || mixPackageRefIds.length > 0 || hasMixExportPath
-        ? '查看已导出的素材文件夹、manifest 和第三方混剪交接信息。'
+        ? '查看已导出的素材文件夹、混剪清单和第三方混剪交接信息。'
         : '进入混剪包工作台审核视频、绿幕图和图片素材。',
     );
   }
@@ -1014,7 +1040,7 @@ function DefinitionDetail({
     value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
   const parseJsonArray = <T,>(label: string, value: string): T[] => {
     const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) throw new Error(`${label} 必须是 JSON 数组。`);
+    if (!Array.isArray(parsed)) throw new Error(`${label} 必须是列表格式。`);
     return parsed as T[];
   };
   const saveDefinition = () => {
@@ -1101,11 +1127,11 @@ function DefinitionDetail({
         </div>
         <div className="workflow-two-column">
           <label>
-            <span>输入字段 JSON</span>
+            <span>输入字段（高级配置）</span>
             <textarea value={inputSchemaDraft} disabled={!editable || busy} onChange={(event) => setInputSchemaDraft(event.target.value)} />
           </label>
           <label>
-            <span>执行步骤 JSON</span>
+            <span>执行步骤（高级配置）</span>
             <textarea value={stepsDraft} disabled={!editable || busy} onChange={(event) => setStepsDraft(event.target.value)} />
           </label>
         </div>
@@ -1118,7 +1144,7 @@ function DefinitionDetail({
         </ActionGroup>
       </div>
       <div className="workflow-meta-grid">
-        <span><strong>状态</strong><em>{definition.status}</em></span>
+        <span><strong>状态</strong><em>{DEFINITION_STATUS_LABELS[definition.status]}</em></span>
         <span><strong>版本</strong><em>{definition.version}</em></span>
         <span><strong>优先级</strong><em>{definition.priority}</em></span>
         <span><strong>更新时间</strong><em>{formatTime(definition.updatedAt)}</em></span>
@@ -1149,7 +1175,7 @@ function DefinitionDetail({
             <div>
               <strong>{step.title}</strong>
               <p>{step.description}</p>
-              <small>{step.kind} · 输出：{step.outputKeys.join(' / ')}</small>
+              <small>{workflowStepKindLabel(step.kind)} · 输出 {step.outputKeys.length} 项</small>
             </div>
           </article>
         ))}
@@ -1246,7 +1272,7 @@ function CanvasDefinitionView({
     <section className="panel workflow-canvas-panel">
       <div className="panel-title">
         <div>
-          <p className="eyebrow">Workflow Canvas</p>
+          <p className="eyebrow">SOP Canvas</p>
           <h3>{definition.title}</h3>
         </div>
         <ActionGroup>
@@ -1278,9 +1304,9 @@ function CanvasDefinitionView({
               <span>{String(index + 1).padStart(2, '0')}</span>
               <div>
                 <strong>{step.title}</strong>
-                <small>{step.kind} · 输出 {step.outputKeys.join(' / ')}</small>
+                <small>{workflowStepKindLabel(step.kind)} · 输出 {step.outputKeys.length} 项</small>
                 <p>{step.description}</p>
-                {step.dependsOn.length ? <em>依赖：{step.dependsOn.join(' / ')}</em> : <em>入口节点</em>}
+                {step.dependsOn.length ? <em>依赖 {step.dependsOn.length} 个上游步骤</em> : <em>入口步骤</em>}
                 {step.blockedReason ? <b>{step.blockedReason}</b> : null}
               </div>
             </article>
@@ -1289,7 +1315,7 @@ function CanvasDefinitionView({
         <aside className="workflow-canvas-editor">
           <div>
             <p className="eyebrow">节点轻编辑</p>
-            <h4>{activeStep?.id ?? '未选择节点'}</h4>
+            <h4>{activeStep?.title ?? '未选择节点'}</h4>
             <span>只编辑同一份 SOP 定义，不保存画布坐标。</span>
           </div>
           {activeStep ? (
@@ -1304,11 +1330,11 @@ function CanvasDefinitionView({
               </label>
               <div className="workflow-two-column">
                 <label>
-                  <span>依赖节点 ID</span>
+                  <span>依赖上游步骤</span>
                   <textarea value={dependsOnDraft} disabled={!editable || busy} onChange={(event) => setDependsOnDraft(event.target.value)} />
                 </label>
                 <label>
-                  <span>输出键</span>
+                  <span>输出字段</span>
                   <textarea value={outputKeysDraft} disabled={!editable || busy} onChange={(event) => setOutputKeysDraft(event.target.value)} />
                 </label>
               </div>
@@ -1789,7 +1815,7 @@ function RunDetail({
             {run.citations.map((citation, index) => (
               <article key={`${citation.knowledgeBaseId}:${citation.sectionId}:${index}`} className="workflow-citation-card">
                 <strong>{citation.title}</strong>
-                <small>{citation.sectionType}</small>
+                <small>{sectionLabel(citation.sectionType)}</small>
                 <p>{citation.excerpt}</p>
               </article>
             ))}

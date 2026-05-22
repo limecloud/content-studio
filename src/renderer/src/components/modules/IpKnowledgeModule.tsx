@@ -6,7 +6,7 @@ import type {
   PromptDraft,
 } from '../../../../shared/types';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
-import { clip, knowledgeBaseKey, sectionLabel } from '../../app/formatters';
+import { baseLabel, clip, sectionLabel } from '../../app/formatters';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 import { UserJourneyGuide } from '../UserJourneyGuide';
 import { SelectableRecordCard, StatusPill } from '../WorkbenchPrimitives';
@@ -39,11 +39,6 @@ const IP_LAYER_LABELS: Record<string, string> = {
   engine: '内容创作引擎层',
 };
 
-function shortId(value?: string): string {
-  if (!value) return '';
-  return value.length > 12 ? value.slice(0, 8) : value;
-}
-
 function sceneUsageLabel(scene: string): string {
   if (/口播|视频|抖音|视频号/.test(scene)) return '口播脚本';
   if (/朋友圈|私域|社群|回复/.test(scene)) return '私域内容';
@@ -65,6 +60,18 @@ function draftStatusTone(draft?: PromptDraft): 'ready' | 'idle' | 'blocked' {
   if (draft.status === 'confirmed' || draft.status === 'materialized') return 'ready';
   if (draft.status === 'archived') return 'blocked';
   return 'idle';
+}
+
+function promptPurposeLabel(purpose: PromptDraft['purpose']): string {
+  const labels: Record<PromptDraft['purpose'], string> = {
+    image: '图片提示词',
+    video: '视频提示词',
+    article: '文案提示词',
+    'green-screen': '绿幕文案图提示词',
+    skill: '技能提示词',
+    sop: 'SOP 提示词',
+  };
+  return labels[purpose] ?? '提示词';
 }
 
 function sourceMatchesScene(source: InputSourceRecord, record: IpKnowledgeBaseRecord, scene: string): boolean {
@@ -103,7 +110,7 @@ export function IpKnowledgeModule({
   onOpenPromptWorkbench,
 }: IpKnowledgeModuleProps) {
   const feature = V2_FEATURES['knowledge-ip'];
-  const activeSourceLabel = activeKnowledgeBase ? `${activeKnowledgeBase.title} · ${knowledgeBaseKey(activeKnowledgeBase)}` : '当前未选知识库';
+  const activeSourceLabel = activeKnowledgeBase ? `${activeKnowledgeBase.title} · ${baseLabel(activeKnowledgeBase.baseType)}` : '当前未选知识库';
   const hasSource = citationCount > 0;
   const hasIpKnowledge = Boolean(activeIpKnowledgeBase);
   const hasMissingLayers = Boolean(activeIpKnowledgeBase?.missingLayers.length);
@@ -210,7 +217,7 @@ export function IpKnowledgeModule({
               <h3>{activeIpKnowledgeBase?.title ?? '尚未生成 IP 知识库'}</h3>
             </div>
             {activeIpKnowledgeBase ? (
-              <StatusPill tone="ready">{activeIpKnowledgeBase.status} · {activeIpKnowledgeBase.completeness}%</StatusPill>
+              <StatusPill tone="ready">已构建 · {activeIpKnowledgeBase.completeness}%</StatusPill>
             ) : null}
           </div>
           {activeIpKnowledgeBase ? (
@@ -257,7 +264,7 @@ export function IpKnowledgeModule({
                       </div>
                       <p>{source?.summary ?? `基于「${activeIpKnowledgeBase.title}」六层知识库延伸，不允许改写成人设漂移。`}</p>
                       <div className="ip-scenario-lineage">
-                        <span>IP 版本 {shortId(activeIpKnowledgeBase.id)}</span>
+                        <span>已关联同一 IP 知识库版本</span>
                         <span>{source ? '延伸知识库已生成' : '待生成延伸知识库'}</span>
                         <span>{draft ? `提示词 ${draft.versions.length} 个版本` : '待生成提示词'}</span>
                       </div>
@@ -303,8 +310,8 @@ export function IpKnowledgeModule({
                       </StatusPill>
                       <strong>{draft.title}</strong>
                       <small>
-                        {draft.purpose} · {draft.versions.length} 个版本
-                        {draft.workflowRunId ? ` · 关联任务 ${shortId(draft.workflowRunId)}` : ''}
+                        {promptPurposeLabel(draft.purpose)} · {draft.versions.length} 个版本
+                        {draft.workflowRunId ? ' · 已关联 SOP' : ''}
                       </small>
                     </button>
                   ))}
@@ -332,7 +339,7 @@ export function IpKnowledgeModule({
                 key={record.id}
                 className="prompt-draft-card"
                 active={record.id === activeIpKnowledgeBaseId}
-                status={record.status}
+                status={record.status === 'ready' ? '已构建' : '待确认'}
                 statusTone={record.status === 'ready' ? 'ready' : 'idle'}
                 title={record.title}
                 meta={`完整度 ${record.completeness}%`}
