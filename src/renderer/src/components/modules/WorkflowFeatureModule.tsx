@@ -77,6 +77,12 @@ const STATUS_LABELS: Record<WorkflowRunStatus, string> = {
   cancelled: '取消',
 };
 
+const DEFINITION_STATUS_LABELS: Record<WorkflowDefinition['status'], string> = {
+  draft: '草稿',
+  published: '已发布',
+  archived: '已归档',
+};
+
 const INPUT_SOURCE_PURPOSE_LABELS: Record<InputSourcePurpose, string> = {
   'brand-kb': '品牌 / 产品知识库',
   'ip-kb': 'IP 知识库',
@@ -184,7 +190,48 @@ function formatWorkflowValue(value: unknown): string {
 function workflowPayloadEntries(value: unknown): Array<[string, string]> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [['内容', formatWorkflowValue(value)]];
   const entries = Object.entries(value as Record<string, unknown>);
-  return entries.length ? entries.map(([key, item]) => [workflowRunInputLabel(key), formatWorkflowValue(item)]) : [['内容', '未记录']];
+  return entries.length ? entries.map(([key, item]) => [workflowRunInputLabel(key), workflowPayloadValue(key, item)]) : [['内容', '未记录']];
+}
+
+function workflowPayloadValue(key: string, value: unknown): string {
+  if (value === undefined || value === null || value === '') return '未记录';
+  if (key === 'status' && typeof value === 'string') {
+    return STATUS_LABELS[value as WorkflowRunStatus] ?? value;
+  }
+  if (key === 'promptDraftId' || key === 'expectedPromptDraftId' || key === 'relatedPromptDraftId') return '已关联提示词草稿';
+  if (key === 'brandKnowledgeBaseId') return '已关联品牌知识库';
+  if (key === 'ipKnowledgeBaseId') return '已关联 IP 知识库';
+  if (key === 'promptPackId') return '已关联提示词包';
+  if (key === 'mixPackageId') return '已关联混剪包';
+  if (key === 'assetReviewId') return '已关联审核记录';
+  if (key === 'sourceLogId' || key === 'generationLogId') return '已关联生成记录';
+  if (key === 'sceneCardIds') return countLinkedItems(value, '张场景卡');
+  if (key === 'inputSourceIds') return countLinkedItems(value, '份输入资料');
+  if (key === 'assetReviewIds') return countLinkedItems(value, '条审核记录');
+  if (key === 'overlayCardIds') return countLinkedItems(value, '张绿幕文案图');
+  if (key === 'assetRefs') return countLinkedItems(value, '个素材文件');
+  if (key === 'markdownPath') return '已导出正文稿';
+  if (key === 'platformCopyPath') return '已生成发布文案';
+  if (key === 'manifestPath') return '已生成清单文件';
+  if (key === 'packageDir') return '已导出交付包';
+  if (key === 'externalImportEvidencePath') return '已登记导入证据';
+  if (typeof value === 'string' && isPathLike(value)) return fileNameFromPath(value);
+  return formatWorkflowValue(value);
+}
+
+function countLinkedItems(value: unknown, unit: string): string {
+  if (Array.isArray(value)) return value.length ? `已关联 ${value.length} ${unit}` : '未记录';
+  if (typeof value === 'string' && value.trim()) return `已关联 1 ${unit}`;
+  return '未记录';
+}
+
+function isPathLike(value: string): boolean {
+  return value.includes('/') || value.includes('\\') || /^[A-Za-z]:[\\/]/.test(value);
+}
+
+function fileNameFromPath(value: string): string {
+  const parts = value.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts[parts.length - 1] ?? '本地文件';
 }
 
 function inputSourceTimestamp(source: InputSourceRecord): string {
@@ -203,7 +250,29 @@ function workflowRunInputLabel(key: string): string {
   if (key === 'reviewOwner') return '审核人';
   if (key === 'platform') return '平台';
   if (key === 'duration') return '时长';
+  if (key === 'promptDraftId' || key === 'expectedPromptDraftId' || key === 'relatedPromptDraftId') return '提示词草稿';
+  if (key === 'sceneCardIds') return '场景卡';
+  if (key === 'inputSourceIds') return '输入资料';
+  if (key === 'assetRefs') return '素材文件';
+  if (key === 'assetReviewIds' || key === 'assetReviewId') return '审核记录';
+  if (key === 'overlayCardIds') return '绿幕文案图';
+  if (key === 'mixPackageId') return '混剪包';
+  if (key === 'manifestPath') return '清单文件';
+  if (key === 'packageDir') return '交付包目录';
+  if (key === 'markdownPath') return '正文稿';
+  if (key === 'platformCopyPath') return '发布文案';
+  if (key === 'brandKnowledgeBaseId') return '品牌知识库';
+  if (key === 'ipKnowledgeBaseId') return 'IP 知识库';
+  if (key === 'promptPackId') return '提示词包';
+  if (key === 'sourceLogId' || key === 'generationLogId') return '生成记录';
+  if (key === 'externalImportEvidencePath') return '导入证据';
+  if (key === 'status') return '状态';
+  if (key === 'summary') return '摘要';
   return key;
+}
+
+function workflowRunVersionLabel(run: Pick<WorkflowRunRecord, 'workflowVersion'>): string {
+  return `SOP v${run.workflowVersion}`;
 }
 
 function isRequiredWorkflowInput(field: WorkflowInputField): boolean {
@@ -406,7 +475,7 @@ function nextImageSopAction(run: WorkflowRunRecord): WorkflowRunNextAction | nul
       title: promptDraftId ? '打开图片工作台' : '打开 Prompt 草稿',
       description: promptDraftId
         ? '把本次 SOP 的图片 Prompt 带入图片生成工作台，继续执行真实图片生成服务。'
-        : '先确认图片 Prompt，再进入图片生成。',
+        : '先确认图片提示词草稿，再进入图片生成。',
       primary: true,
     };
   }
@@ -457,10 +526,10 @@ function nextProductCommercialAction(run: WorkflowRunRecord): WorkflowRunNextAct
   if (!hasStepSucceeded(run, 'prompt_generate') && isStepPending(run, 'prompt_generate')) {
     return {
       action: 'open-prompt-draft',
-      title: promptDraftId ? '打开商业图片 Prompt' : '进入 Prompt 工作台',
+      title: promptDraftId ? '打开商业图片提示词' : '进入 Prompt 工作台',
       description: promptDraftId
-        ? '检查主图、卖点图和详情页模块 Prompt，确认 SKU 与产品资料追溯后再生成图片。'
-        : '先生成或确认商业图片 Prompt，再进入图片生成。',
+        ? '检查主图、卖点图和详情页模块提示词，确认 SKU 与产品资料追溯后再生成图片。'
+        : '先生成或确认商业图片提示词，再进入图片生成。',
       primary: true,
     };
   }
@@ -524,10 +593,10 @@ function nextFeedbackTopicAction(run: WorkflowRunRecord): WorkflowRunNextAction 
   if (!hasStepSucceeded(run, 'prompt_generate') && isStepPending(run, 'prompt_generate')) {
     return {
       action: 'open-prompt-draft',
-      title: promptDraftId ? '打开选题 Prompt' : '进入 Prompt 工作台',
+      title: promptDraftId ? '打开选题提示词' : '进入 Prompt 工作台',
       description: promptDraftId
-        ? '查看痛点矩阵派生的标题、脚本或文章 Prompt，确认后再进入文案生产。'
-        : '先把痛点矩阵转成可编辑文案 Prompt。',
+        ? '查看痛点矩阵派生的标题、脚本或文章提示词，确认后再进入文案生产。'
+        : '先把痛点矩阵转成可编辑文案提示词。',
       primary: true,
     };
   }
@@ -545,15 +614,15 @@ function nextFeedbackTopicAction(run: WorkflowRunRecord): WorkflowRunNextAction 
     return {
       action: 'archive-workflow-assets',
       title: '保存痛点矩阵',
-      description: '把痛点矩阵、选题 Prompt、标签和输入源追溯写入运行历史。',
+      description: '把痛点矩阵、选题提示词、标签和资料追溯写入运行历史。',
       primary: true,
     };
   }
 
   return {
     action: 'open-prompt-draft',
-    title: '查看选题 Prompt',
-    description: 'SOP 已完成，可继续从 Prompt 工作台生成文章、脚本或标题。',
+    title: '查看选题提示词',
+    description: 'SOP 已完成，可继续生成文章、脚本或标题。',
   };
 }
 
@@ -573,10 +642,10 @@ function nextGreenScreenCardAction(run: WorkflowRunRecord): WorkflowRunNextActio
   if (!hasStepSucceeded(run, 'prompt_generate') && isStepPending(run, 'prompt_generate')) {
     return {
       action: 'open-prompt-draft',
-      title: promptDraftId ? '打开绿幕 Prompt' : '进入 Prompt 工作台',
+      title: promptDraftId ? '打开绿幕提示词' : '进入 Prompt 工作台',
       description: promptDraftId
         ? '先检查绿幕卡拆分口径，确认文案长度和卡片类型后再生成。'
-        : '先把脚本 / 卖点整理为绿幕文案图 Prompt。',
+        : '先把脚本 / 卖点整理为绿幕文案图提示词。',
       primary: true,
     };
   }
@@ -622,7 +691,7 @@ function nextBrandSopAction(run: WorkflowRunRecord): WorkflowRunNextAction | nul
     return {
       action: 'approve-workflow-review',
       title: '确认审核通过',
-      description: '确认品牌知识库、场景卡和 Prompt 草稿可作为本次 SOP 产物进入历史。',
+      description: '确认品牌知识库、场景卡和提示词草稿可作为本次 SOP 产物进入历史。',
       primary: true,
     };
   }
@@ -631,7 +700,7 @@ function nextBrandSopAction(run: WorkflowRunRecord): WorkflowRunNextAction | nul
     return {
       action: 'archive-workflow-assets',
       title: '入历史留痕',
-      description: '把本次 SOP 生成的品牌知识库、场景库和 Prompt 草稿写入运行历史。',
+      description: '把本次 SOP 生成的品牌知识库、场景库和提示词草稿写入运行历史。',
       primary: true,
     };
   }
@@ -669,7 +738,7 @@ function nextIpLongformAction(run: WorkflowRunRecord): WorkflowRunNextAction | n
     return {
       action: 'open-prompt-draft',
       title: '打开文章 Prompt',
-      description: '确认文章 Prompt 草稿后进入正文生成。',
+      description: '确认文章提示词草稿后进入正文生成。',
       primary: true,
     };
   }
@@ -687,7 +756,7 @@ function nextIpLongformAction(run: WorkflowRunRecord): WorkflowRunNextAction | n
     return {
       action: 'open-article-workbench',
       title: '查看文章草稿',
-      description: '继续导出 Markdown，或回到 Prompt 草稿调整。',
+      description: '继续导出正文稿，或回到提示词草稿调整。',
       primary: true,
     };
   }
@@ -865,11 +934,6 @@ function platformDraftsForRun(run: WorkflowRunRecord, drafts: PlatformDraftRecor
   });
 }
 
-function shortRef(value?: string): string {
-  if (!value) return '未记录';
-  return value.length > 36 ? `${value.slice(0, 32)}...` : value;
-}
-
 function DefinitionCard({
   definition,
   active,
@@ -883,10 +947,10 @@ function DefinitionCard({
     <SelectableRecordCard
       className="workflow-definition-card"
       active={active}
-      status={definition.status}
+      status={DEFINITION_STATUS_LABELS[definition.status]}
       statusTone={statusClass(definition.status)}
       title={definition.title}
-      meta={`${definition.priority} · ${definition.version} · ${definition.tags.join(' / ')}`}
+      meta={`${definition.priority} · SOP v${definition.version} · ${definition.tags.join(' / ')}`}
       description={definition.description}
       onClick={onSelect}
     />
@@ -1613,7 +1677,7 @@ function RunDetail({
           <div>
             <p className="eyebrow">产物快捷入口</p>
             <strong>打开本次 SOP 已生成的业务产物</strong>
-            <span>这些入口来自步骤输出和真实产物引用，不新增一级导航。</span>
+            <span>这些入口来自步骤输出和可追溯产物线索，不新增一级导航。</span>
           </div>
           <div className="workflow-run-artifact-actions">
             {artifactActions.map((item) => (

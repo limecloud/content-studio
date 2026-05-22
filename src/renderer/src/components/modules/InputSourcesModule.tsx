@@ -167,7 +167,7 @@ function ProductBriefStructurePanel({
                 <article key={item.type}>
                   <strong>{item.label}</strong>
                   <p>{item.prompt}</p>
-                  <small>追溯：{item.sourceIds.join('、') || '待补充'} · {item.skuTrace}</small>
+                  <small>资料来源：{brief.sourceTitles.join('、') || '待补充'} · {item.skuTrace}</small>
                 </article>
               ))}
             </div>
@@ -416,7 +416,7 @@ export function InputSourcesModule({
               <textarea
                 value={text}
                 onChange={(event) => setText(event.target.value)}
-                placeholder="输入用户意图、产品资料摘要、知识库补充说明；保存后会生成可追溯 Markdown。"
+                placeholder="输入用户意图、产品资料摘要、知识库补充说明；保存后会生成可追溯转换稿。"
               />
             </label>
           </div>
