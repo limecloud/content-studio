@@ -451,7 +451,7 @@ export function VideoPromptModule({
           ) : null}
           <div className="video-prompt-boundary">
             <strong>软件边界</strong>
-            <p>第三方平台生成过程脱离软件：这里不创建外部任务、不保存外部任务 ID、不轮询状态。回到软件的唯一产物是用户手动导入的视频文件。</p>
+            <p>第三方平台生成过程脱离软件：这里不创建外部任务、不要求填写第三方任务编号、不轮询状态。回到软件的唯一产物是用户手动导入的视频文件。</p>
           </div>
           <div className="video-prompt-draft-list">
             {videoDrafts.map((draft) => {

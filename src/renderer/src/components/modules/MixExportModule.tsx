@@ -287,7 +287,7 @@ export function MixExportModule({
   const feature = V2_FEATURES['video-mix-export'];
   const [title, setTitle] = useState('短视频混剪素材包');
   const [platform, setPlatform] = useState(PLATFORM_OPTIONS[0].value);
-  const [notes, setNotes] = useState('仅导出素材文件夹和 manifest；剪辑、成片渲染和批量混剪由第三方软件完成。');
+  const [notes, setNotes] = useState('仅导出素材文件夹和清单文件；剪辑、成片渲染和批量混剪由第三方软件完成。');
   const [kindFilter, setKindFilter] = useState<MixPackageAssetKind | 'all'>('all');
   const [focusedCandidateId, setFocusedCandidateId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -301,7 +301,7 @@ export function MixExportModule({
   const [evidenceManifestImported, setEvidenceManifestImported] = useState(true);
   const [evidenceTimelineCreated, setEvidenceTimelineCreated] = useState(true);
   const [evidenceResult, setEvidenceResult] = useState<MixPackageImportEvidenceResult>('verified');
-  const [evidenceNotes, setEvidenceNotes] = useState('已按导入说明导入主体素材、绿幕文案图和 manifest，并完成素材用途核对。');
+  const [evidenceNotes, setEvidenceNotes] = useState('已按导入说明导入主体素材、绿幕文案图和清单文件，并完成素材用途核对。');
   const [evidenceFilesText, setEvidenceFilesText] = useState('');
   const reviewMap = useMemo(
     () => new Map(assetReviews.map((review) => [review.assetKey, review])),
@@ -327,29 +327,6 @@ export function MixExportModule({
   const approvedCandidates = useMemo(
     () => candidates.filter((candidate) => reviewMap.get(candidate.id)?.status === 'approved'),
     [candidates, reviewMap],
-  );
-  const manifestPreview = useMemo(
-    () => ({
-      schema: 'buguai.mix-package.v1',
-      title,
-      platform,
-      assets: selectedCandidates.map((candidate) => ({
-        kind: candidate.kind,
-        title: candidate.title,
-        path: candidate.path,
-        sourceType: sourceTypeForCandidate(candidate),
-        sourceId: candidate.sourceId,
-        promptDraftId: candidate.promptDraftId,
-        promptText: candidate.promptText,
-        relatedSceneCardIds: candidate.relatedSceneCardIds,
-        workflowRunId: candidate.workflowRunId,
-        durationSeconds: candidate.durationSeconds,
-        reviewStatus: reviewMap.get(candidate.id)?.status ?? 'pending',
-        tags: candidate.tags,
-      })),
-      notes,
-    }),
-    [notes, platform, reviewMap, selectedCandidates, title],
   );
   const canExport = workspaceReady && !busy && title.trim().length > 0 && selectedCandidates.length > 0;
 
@@ -471,7 +448,7 @@ export function MixExportModule({
     setEvidenceManifestImported(evidence?.manifestImported ?? true);
     setEvidenceTimelineCreated(evidence?.timelineCreated ?? true);
     setEvidenceResult(evidence?.result ?? 'verified');
-    setEvidenceNotes(evidence?.notes ?? '已按导入说明导入主体素材、绿幕文案图和 manifest，并完成素材用途核对。');
+    setEvidenceNotes(evidence?.notes ?? '已按导入说明导入主体素材、绿幕文案图和清单文件，并完成素材用途核对。');
     setEvidenceFilesText((evidence?.evidenceFiles ?? [])
       .filter((filePath) => filePath !== 'import-check.md')
       .join('\n'));
@@ -523,7 +500,7 @@ export function MixExportModule({
         <div className="module-command-flow">
           <div>
             <p className="eyebrow">交接边界</p>
-            <h3>图片 / 15 秒视频素材 / 绿幕图 → 文件夹 + manifest → 第三方混剪软件</h3>
+            <h3>图片 / 15 秒视频素材 / 绿幕图 → 文件夹 + 混剪清单 → 第三方混剪软件</h3>
           </div>
           <div className="workflow-actions">
             <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('image-green-screen')}>
@@ -654,7 +631,7 @@ export function MixExportModule({
           <div className="panel-title">
             <div>
               <p className="eyebrow">导出配置</p>
-              <h3>manifest 信息</h3>
+              <h3>交接信息</h3>
             </div>
           </div>
           <label>
@@ -687,8 +664,23 @@ export function MixExportModule({
             </div>
           ) : null}
           <div className="mix-manifest-preview">
-            <strong>manifest 预览</strong>
-            <pre>{JSON.stringify(manifestPreview, null, 2)}</pre>
+            <strong>交接清单预览</strong>
+            <div className="workflow-run-steps">
+              <span>{platformLabelForMix(platform)}</span>
+              <span>图片 {selectedCandidates.filter((item) => item.kind === 'image').length}</span>
+              <span>视频 {selectedCandidates.filter((item) => item.kind === 'video').length}</span>
+              <span>绿幕 {selectedCandidates.filter((item) => item.kind === 'overlay').length}</span>
+            </div>
+            {selectedCandidates.length ? (
+              <ul>
+                {selectedCandidates.slice(0, 6).map((candidate) => (
+                  <li key={candidate.id}>{kindLabelForMix(candidate.kind)} · {candidate.title}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>选择已通过审核的素材后，会在这里预览交给剪辑人员的清单。</p>
+            )}
+            <p>导出后会生成清单文件、CSV 和导入说明，供第三方混剪软件核对。</p>
           </div>
         </aside>
 
@@ -718,12 +710,12 @@ export function MixExportModule({
                   <div className="mix-import-evidence-summary">
                     <strong>{pack.externalImportEvidence.toolName}</strong>
                     <span>{pack.externalImportEvidence.importedAssetKinds.map(kindLabelForMix).join(' / ')} · {pack.externalImportEvidence.importedFileCount} 个文件 · {pack.externalImportEvidence.result === 'verified' ? '验收通过' : '需处理'}</span>
-                    <small>{pack.externalImportEvidence.evidencePath ?? pack.externalImportEvidencePath}</small>
+                    <small>导入证据已记录，可打开查看。</small>
                   </div>
                 ) : null}
                 <div className="log-actions">
                   <button className="ghost small" onClick={() => onRevealPath(pack.packageDir)}>打开文件夹</button>
-                  <button className="ghost small" onClick={() => onRevealPath(pack.manifestPath)}>打开 manifest</button>
+                  <button className="ghost small" onClick={() => onRevealPath(pack.manifestPath)}>打开清单</button>
                   {pack.manifestCsvPath ? (
                     <button className="ghost small" onClick={() => onRevealPath(pack.manifestCsvPath as string)}>打开 CSV</button>
                   ) : null}
@@ -770,7 +762,7 @@ export function MixExportModule({
                     <div className="mix-import-evidence-checks">
                       <label>
                         <input type="checkbox" checked={evidenceManifestImported} onChange={(event) => setEvidenceManifestImported(event.target.checked)} />
-                        <span>manifest 已导入或已核对</span>
+                        <span>清单文件已导入或已核对</span>
                       </label>
                       <label>
                         <input type="checkbox" checked={evidenceTimelineCreated} onChange={(event) => setEvidenceTimelineCreated(event.target.checked)} />
@@ -808,7 +800,7 @@ export function MixExportModule({
               </article>
             ))}
             {mixPackages.length === 0 ? (
-              <div className="empty-state">导出后会生成本地文件夹、复制素材并写入 manifest.json / manifest.csv / import-guide.md。</div>
+              <div className="empty-state">导出后会生成本地文件夹、复制素材并写入清单文件和导入说明。</div>
             ) : null}
           </div>
         </aside>

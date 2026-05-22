@@ -262,7 +262,7 @@ export function VideoImportModule({
           <pre>{selectedDraftContent || '选择视频提示词后，这里显示将被关联的原始提示词。'}</pre>
           <div className="video-prompt-boundary">
             <strong>不记录第三方任务状态</strong>
-            <p>导入只保存本地文件、关联提示词、来源场景和标签。外部平台的生成队列、费用、任务 ID 和失败状态不进入本软件。</p>
+            <p>导入只保存本地文件、关联提示词、来源场景和标签。外部平台的生成队列、费用、第三方任务编号和失败状态不进入本软件。</p>
           </div>
         </aside>
       </div>

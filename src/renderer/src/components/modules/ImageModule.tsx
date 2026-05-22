@@ -1574,8 +1574,8 @@ export function ImageModule({
               <span>
                 数量：{selectedImageLogInput?.params?.count ?? "未记录"}
               </span>
-              <span>产物：{selectedImageLog.artifactRefs?.length ?? 0} 个</span>
-              <span>日志：{selectedImageLog.id}</span>
+              <span>生成文件：{selectedImageLog.artifactRefs?.length ?? 0} 个</span>
+              <span>生成记录：已保存</span>
             </div>
             {selectedImageLog.error ? (
               <div className="error-banner">{selectedImageLog.error}</div>
@@ -1671,7 +1671,7 @@ export function ImageModule({
               <span>
                 数量：{currentImageInput?.params?.count ?? mediaResult?.assetRefs.length ?? 1}
               </span>
-              <span>日志：{mediaResult?.logId ?? currentImageLog?.id ?? "未记录"}</span>
+              <span>生成记录：{mediaResult || currentImageLog ? "已保存" : "未记录"}</span>
             </div>
             <div className="modal-actions">
               <button
