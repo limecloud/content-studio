@@ -65,7 +65,7 @@ export function statusLabel(status: GenerationLogEntry['status']): string {
     running: '生成中',
     succeeded: '成功',
     failed: '失败',
-    blocked: '已阻塞',
+    blocked: '待配置',
     cancelled: '已取消',
   }[status];
 }
@@ -105,10 +105,6 @@ export function isVideoFilePath(path: string): boolean {
   return /\.(mp4|mov|webm|m4v)(?:[?#].*)?$/i.test(path);
 }
 
-export function isPromptDistilledSource(source: Pick<InputSourceRecord, 'tags'>): boolean {
-  return source.tags.includes('prompt-distilled');
-}
-
 export function clip(value: string, length = 180): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
   return normalized.length > length ? `${normalized.slice(0, length)}...` : normalized;
@@ -138,6 +134,8 @@ export function citationFromInputSource(source: InputSourceRecord): KnowledgeCit
   const sectionType: KnowledgeCitation['sectionType'] =
     source.purpose === 'ip-kb'
       ? 'profile'
+      : source.purpose === 'user-feedback'
+        ? 'objection-handling'
       : source.purpose === 'brand-kb' || source.purpose === 'product-brief'
         ? 'product'
         : 'scenario-script';

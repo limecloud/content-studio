@@ -26,10 +26,9 @@ function baseInputSchema(): WorkflowInputField[] {
   return [
     {
       key: 'source',
-      label: '输入源',
+      label: '补充资料说明',
       type: 'textarea',
-      required: true,
-      help: 'DOCX / Markdown / 参考图 / 参考视频 / SKU / 用户意图均可登记为输入源。',
+      help: '资料来源优先在执行页勾选；这里只补充本次口径、平台、限制或未登记的临时说明。',
     },
     {
       key: 'intent',
@@ -45,6 +44,25 @@ function baseInputSchema(): WorkflowInputField[] {
       help: '记录人工审核责任人，客户端本地执行时可为空。',
     },
   ];
+}
+
+function isRequiredWorkflowInput(field: WorkflowInputField): boolean {
+  return field.required === true || field.key === 'intent';
+}
+
+function missingRequiredInputs(
+  definition: WorkflowDefinition,
+  inputs: Record<string, string>,
+  inputSourceIds: string[],
+): string[] {
+  const missing = definition.inputSchema
+    .filter((field) => field.key !== 'source' && isRequiredWorkflowInput(field) && !inputs[field.key]?.trim())
+    .map((field) => field.label);
+  const sourceText = inputs.source?.trim() ?? '';
+  if (!sourceText && inputSourceIds.length === 0 && definition.inputSchema.some((field) => field.key === 'source')) {
+    return ['资料来源', ...missing];
+  }
+  return missing;
 }
 
 function citationDigest(citations: KnowledgeCitation[]): Array<Record<string, string>> {
@@ -102,7 +120,7 @@ function seedDefinitions(workspacePath: string, now: string): WorkflowDefinition
       id: 'workflow-xiaohongshu-seeding-image',
       workspacePath,
       key: 'xiaohongshu-seeding-image',
-      version: 'v0.1',
+      version: 'v0.2',
       title: '小红书种草图 SOP',
       description: '产品图、参考图和产品资料进入对标反推，再生成结构化 Prompt、图片候选、审核结果和素材库记录。',
       status: 'published',
@@ -113,15 +131,97 @@ function seedDefinitions(workspacePath: string, now: string): WorkflowDefinition
       ],
       steps: [
         step('input_register', '登记输入源', 'input', '记录产品图、参考图、产品资料和用户意图。', [], ['InputSource']),
-        step('reference_reverse', '对标图反推', 'reference-reverse', '反推构图、光线、留白区和可复用风格，不复制竞品元素。', ['input_register'], ['ReferenceAnalysis'], '视觉反推 Agent 尚未接入。'),
+        step('reference_reverse', '对标图反推', 'reference-reverse', '反推构图、光线、留白区和可复用风格，不复制竞品元素。', ['input_register'], ['ReferenceAnalysis']),
         step('prompt_generate', '生成图片 Prompt', 'prompt-generate', '结合品牌事实、场景库和反推结果生成可编辑 Prompt。', ['reference_reverse'], ['PromptVersion']),
-        step('image_generate', '图片生成', 'image-generate', '调用真实图片 provider 生成候选图；未配置时必须 blocked。', ['prompt_generate'], ['ImageArtifact'], '图片执行必须走真实 provider。'),
+        step('image_generate', '图片生成', 'image-generate', '调用真实图片 provider 生成候选图；未配置时必须 blocked。', ['prompt_generate'], ['ImageArtifact']),
         step('human_review', '人工审核', 'review', '检查事实、合规、文字可读性和 AI 味。', ['image_generate'], ['ReviewResult']),
         step('asset_store', '入素材库', 'asset-store', '通过审核后写入素材库和来源追溯。', ['human_review'], ['AssetRecord']),
       ],
       reviewRules: ['不复制竞品 Logo / 包装可识别元素。', '不得编造产品功效和背书。', '图片文字必须可读，无法确认时进入人工审核。'],
       outputSpec: ['图片候选', 'PromptVersion', 'ReviewResult', 'AssetRecord'],
       tags: ['图片', '小红书', '对标反推'],
+      createdAt: now,
+      updatedAt: now,
+      publishedAt: now,
+    },
+    {
+      id: 'workflow-product-commercial-assets',
+      workspacePath,
+      key: 'product-commercial-assets',
+      version: 'v0.1',
+      title: '产品商业素材 SOP',
+      description: '把产品 brief、SKU 表和参考详情页整理成主图、卖点图和详情页模块 Prompt，再进入真实图片生成、审核和素材库。',
+      status: 'published',
+      priority: 'P1',
+      inputSchema: [
+        ...baseInputSchema(),
+        { key: 'platform', label: '电商平台', type: 'select', options: ['天猫 / 淘宝', '抖音小店', '小红书店铺', '京东', '通用电商'], required: true },
+      ],
+      steps: [
+        step('input_register', '登记产品资料', 'input', '记录产品 brief、SKU 表、参考详情页和本次素材目标。', [], ['InputSource']),
+        step('product_brief_structure', '结构化产品资料', 'structure-product-brief', '从产品资料和 SKU 表整理产品名、卖点、规格、场景和禁用表达，字段缺失时阻塞补齐。', ['input_register'], ['ProductBrief', 'PromptPlan']),
+        step('prompt_generate', '生成商业图片 Prompt', 'prompt-generate', '输出主图、卖点图和详情页模块三类可编辑 Prompt，并保留 SKU / 输入源追溯。', ['product_brief_structure'], ['PromptVersion']),
+        step('image_generate', '图片生成', 'image-generate', '调用真实图片 provider 生成候选图；未配置时必须 blocked。', ['prompt_generate'], ['ImageArtifact']),
+        step('human_review', '人工审核', 'review', '审核卖点事实、SKU 追溯、画面可用性和合规边界。', ['image_generate'], ['ReviewResult']),
+        step('asset_store', '入素材库', 'asset-store', '通过审核后写入素材库，并保留产品资料、SKU 行和 Prompt 版本来源。', ['human_review'], ['AssetRecord']),
+      ],
+      reviewRules: ['不得编造产品卖点、功效、背书或 SKU 信息。', '每个图片 Prompt 必须能追溯到产品资料、SKU 行或参考详情页。', '不得使用治疗承诺、绝对化表达和无法证实的对比。'],
+      outputSpec: ['ProductBrief', 'ProductBriefPromptPlan', 'PromptDraft', 'ImageArtifact', 'ReviewResult', 'AssetRecord'],
+      tags: ['产品资料', '电商', '商业素材'],
+      createdAt: now,
+      updatedAt: now,
+      publishedAt: now,
+    },
+    {
+      id: 'workflow-feedback-topic-matrix',
+      workspacePath,
+      key: 'feedback-topic-matrix',
+      version: 'v0.1',
+      title: '评论痛点选题 SOP',
+      description: '从评论、差评、客服问题和私信原声聚类痛点，生成选题方向、客服异议话术和后续文案 Prompt。',
+      status: 'published',
+      priority: 'P2',
+      inputSchema: [
+        ...baseInputSchema(),
+        { key: 'platform', label: '内容平台', type: 'select', options: ['小红书', '抖音', '视频号', '公众号', '私域', '通用'], required: true },
+      ],
+      steps: [
+        step('input_register', '登记评论原声', 'input', '记录评论、差评、客服问题、私信和本次选题目标。', [], ['InputSource']),
+        step('feedback_cluster', '聚类用户痛点', 'cluster-user-feedback', '把真实用户语言整理为痛点矩阵、选题方向、推荐标签和客服异议话术。', ['input_register'], ['FeedbackPainPointInsight']),
+        step('prompt_generate', '生成选题文案 Prompt', 'prompt-generate', '把痛点矩阵转成可编辑的标题、脚本或文章 Prompt 草稿。', ['feedback_cluster'], ['PromptVersion']),
+        step('human_review', '人工审核', 'review', '确认选题方向、用户原声、客服边界和合规表达。', ['prompt_generate'], ['ReviewResult']),
+        step('asset_store', '入历史', 'asset-store', '保存痛点矩阵、Prompt 草稿、标签和输入源追溯。', ['human_review'], ['RunArchive']),
+      ],
+      reviewRules: ['痛点和标题方向必须来自真实评论、差评、客服问题或私信原声。', '客服话术必须保留人工复核边界，不替代专业建议。', '不得制造未出现的痛点、竞品结论或功效承诺。'],
+      outputSpec: ['FeedbackPainPointInsight', 'TitleDirection[]', 'ObjectionResponse[]', 'PromptDraft', 'RunArchive'],
+      tags: ['评论', '痛点', '选题'],
+      createdAt: now,
+      updatedAt: now,
+      publishedAt: now,
+    },
+    {
+      id: 'workflow-green-screen-card-package',
+      workspacePath,
+      key: 'green-screen-card-package',
+      version: 'v0.1',
+      title: '绿幕文案图 SOP',
+      description: '把口播脚本、卖点列表或 CTA 文案拆成标题卡、卖点卡和行动卡，生成本地 9:16 绿幕 SVG 并进入人工审核。',
+      status: 'published',
+      priority: 'P1',
+      inputSchema: [
+        ...baseInputSchema(),
+        { key: 'duration', label: '默认时长', type: 'number', required: true, help: '每张绿幕卡建议 3-5 秒。' },
+      ],
+      steps: [
+        step('input_register', '登记脚本 / 卖点', 'input', '记录口播脚本、卖点列表、CTA 和本次混剪用途。', [], ['InputSource']),
+        step('prompt_generate', '生成绿幕文案 Prompt', 'prompt-generate', '把脚本或卖点整理为可拆卡的绿幕文案 Prompt 草稿。', ['input_register'], ['PromptVersion']),
+        step('overlay_cards', '生成绿幕文案图', 'overlay-generate', '从脚本 / 卖点拆出标题卡、卖点卡和 CTA 卡，本地生成 9:16 绿幕 SVG。', ['prompt_generate'], ['OverlayCards']),
+        step('human_review', '人工审核', 'review', '审核绿幕文案图是否可读、时长是否合理、是否可进入混剪包。', ['overlay_cards'], ['ReviewResult']),
+        step('asset_store', '入素材库', 'asset-store', '通过审核后写入素材库，作为混剪包 overlay 候选素材。', ['human_review'], ['AssetRecord']),
+      ],
+      reviewRules: ['绿幕卡文案必须来自脚本、卖点或用户意图，不凭空制造承诺。', '文案过长必须拆分，不能强行塞进单张卡。', '进入混剪包前必须人工确认可读性、时长和 Prompt 来源。'],
+      outputSpec: ['PromptDraft', 'OverlayCards', 'ReviewResult', 'AssetRecord'],
+      tags: ['绿幕文案图', '视频', '混剪'],
       createdAt: now,
       updatedAt: now,
       publishedAt: now,
@@ -367,6 +467,22 @@ function buildStepOutputSnapshot(
   if (step.kind === 'build-ip-knowledge-base') {
     return {
       summary: '已从 IP 知识引用抽取六层知识库，保留场景延伸和缺口。',
+      sourceDigest: previewText(inputs.source, 240),
+      outputKeys: step.outputKeys,
+    };
+  }
+
+  if (step.kind === 'structure-product-brief') {
+    return {
+      summary: '已进入产品资料结构化步骤，等待整理产品变量、SKU 和 Prompt 计划。',
+      sourceDigest: previewText(inputs.source, 240),
+      outputKeys: step.outputKeys,
+    };
+  }
+
+  if (step.kind === 'cluster-user-feedback') {
+    return {
+      summary: '已进入评论痛点聚类步骤，等待整理用户问题矩阵、选题方向和客服异议话术。',
       sourceDigest: previewText(inputs.source, 240),
       outputKeys: step.outputKeys,
     };
@@ -763,6 +879,8 @@ function applyManualEvent(
   } else if (input.event === 'mix-package-exported') {
     if (input.mixPackageId) refs.push(`mix-package:${input.mixPackageId}`);
     if (input.manifestPath) refs.push(input.manifestPath);
+    if (input.manifestCsvPath) refs.push(input.manifestCsvPath);
+    if (input.importGuidePath) refs.push(input.importGuidePath);
     if (input.packageDir) refs.push(input.packageDir);
     next = updateStep(next, 'export_manifest', {
       status: 'succeeded',
@@ -770,8 +888,24 @@ function applyManualEvent(
       output: {
         mixPackageId: input.mixPackageId,
         manifestPath: input.manifestPath,
+        manifestCsvPath: input.manifestCsvPath,
+        importGuidePath: input.importGuidePath,
         packageDir: input.packageDir,
         exportedAt: now,
+      },
+    }, now);
+  } else if (input.event === 'mix-package-import-verified') {
+    if (input.mixPackageId) refs.push(`mix-package:${input.mixPackageId}`);
+    if (input.externalImportEvidencePath) refs.push(input.externalImportEvidencePath);
+    if (input.packageDir) refs.push(input.packageDir);
+    next = updateStep(next, 'export_manifest', {
+      status: 'succeeded',
+      summary: summary || '已登记第三方混剪工具导入证据。',
+      output: {
+        mixPackageId: input.mixPackageId,
+        externalImportEvidencePath: input.externalImportEvidencePath,
+        packageDir: input.packageDir,
+        verifiedAt: now,
       },
     }, now);
   }
@@ -862,6 +996,34 @@ function applyIpLongformManualEvent(
         promptDraftId: input.promptDraftId,
         generationLogId: input.generationLogId,
         exportPath: input.exportPath,
+        archivedAt: now,
+      },
+    }, now);
+  } else if (input.event === 'article-platform-draft-exported') {
+    if (input.exportPath) refs.push(input.exportPath);
+    if (input.manifestPath) refs.push(input.manifestPath);
+    if (input.packageDir) refs.push(input.packageDir);
+    next = updateStep(next, 'human_review', {
+      status: 'succeeded',
+      summary: summary || '已人工确认文章草稿并导出平台草稿包。',
+      output: {
+        promptDraftId: input.promptDraftId,
+        generationLogId: input.generationLogId,
+        exportPath: input.exportPath,
+        manifestPath: input.manifestPath,
+        packageDir: input.packageDir,
+        reviewedAt: now,
+      },
+    }, now);
+    next = updateStep(next, 'asset_store', {
+      status: 'succeeded',
+      summary: '已保存平台草稿包、正文 Markdown、发布前检查和来源追溯。',
+      output: {
+        promptDraftId: input.promptDraftId,
+        generationLogId: input.generationLogId,
+        exportPath: input.exportPath,
+        manifestPath: input.manifestPath,
+        packageDir: input.packageDir,
         archivedAt: now,
       },
     }, now);
@@ -1013,7 +1175,7 @@ function applyContentManualEvent(
   } else if (input.event === 'asset-reviewed') {
     next = updateStep(next, 'human_review', {
       status: 'succeeded',
-      summary: summary || '已人工审核通过图片候选，可进入素材库。',
+      summary: summary || '已人工审核通过图片候选，并写入素材库。',
       output: {
         action: 'asset-reviewed',
         assetReviewId: input.assetReviewId,
@@ -1023,7 +1185,7 @@ function applyContentManualEvent(
     }, now);
     next = updateStep(next, 'asset_store', {
       status: 'succeeded',
-      summary: '已把通过审核的图片素材写入素材库并保留 run 来源。',
+      summary: '已把通过审核的图片素材写入素材库并保留运行来源。',
       output: {
         action: 'asset-store',
         assetReviewId: input.assetReviewId,
@@ -1171,13 +1333,11 @@ export class WorkflowStore {
 
     const inputs = defaultInputs(definition, input.inputs);
     const citations = input.citations ?? [];
-    const missingRequired = definition.inputSchema
-      .filter((field) => field.required && !inputs[field.key]?.trim())
-      .map((field) => field.label);
+    const inputSourceIds = input.inputSourceIds ?? [];
+    const missingRequired = missingRequiredInputs(definition, inputs, inputSourceIds);
     const now = new Date().toISOString();
     const runId = randomUUID();
     const firstBlocked = definition.steps.find((item) => item.blockedReason);
-    const inputSourceIds = input.inputSourceIds ?? [];
     const stepBundle = runSteps(definition, inputs, citations, inputSourceIds, missingRequired, now, runId);
     const run: WorkflowRunRecord = {
       id: runId,

@@ -31,7 +31,7 @@ interface StoredBuguSession {
 }
 
 const OEM_RUNTIME_CONFIG = getOemRuntimeConfig();
-const DEFAULT_API_BASE_URL = OEM_RUNTIME_CONFIG.apiBaseUrl || 'https://api.bugu.run/api';
+const DEFAULT_API_BASE_URL = OEM_RUNTIME_CONFIG.apiBaseUrl || 'https://bugu.run/api';
 const DEFAULT_TENANT_ID = OEM_RUNTIME_CONFIG.tenantId || 'tenant-2230';
 const DEFAULT_BRANDING = buildRuntimeBranding(OEM_RUNTIME_CONFIG);
 

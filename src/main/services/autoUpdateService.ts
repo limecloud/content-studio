@@ -32,18 +32,20 @@ interface RemoteDownloadPayload {
   assets?: RemoteDownloadAsset[];
 }
 
-interface R2ManifestFile {
+interface ReleaseManifestFile {
   name?: string;
   size?: number;
   sha256?: string;
+  url?: string;
+  key?: string;
   r2Key?: string;
 }
 
-interface R2ManifestPayload {
+interface ReleaseManifestPayload {
   tag?: string;
   version?: string;
   platform?: string;
-  files?: R2ManifestFile[];
+  files?: ReleaseManifestFile[];
 }
 
 interface DownloadSource {
@@ -61,11 +63,11 @@ function getRuntimeBrandId(): string {
 }
 
 function getRuntimeApiBaseUrl(): string {
-  return normalizeText(getOemRuntimeConfig().apiBaseUrl).replace(/\/+$/, '') || 'https://api.bugu.run/api';
+  return normalizeText(getOemRuntimeConfig().apiBaseUrl).replace(/\/+$/, '') || 'https://bugu.run/api';
 }
 
 function getRuntimeDownloadBaseUrl(): string {
-  return normalizeText(getOemRuntimeConfig().downloadBaseUrl).replace(/\/+$/, '') || 'https://downloads.bugu.run';
+  return normalizeText(getOemRuntimeConfig().downloadBaseUrl).replace(/\/+$/, '') || 'https://bugu.run';
 }
 
 function getLatestApiUrl(): string {
@@ -156,13 +158,16 @@ function isInstallerFile(fileName: string): boolean {
   return ['.exe', '.dmg', '.zip', '.appimage'].some((extension) => lower.endsWith(extension));
 }
 
-function urlFromR2Key(r2Key: string): string {
-  return `${getRuntimeDownloadBaseUrl()}/${r2Key.replace(/^\/+/, '')}`;
+function urlFromManifestFile(file: ReleaseManifestFile): string {
+  const url = safeHttpUrl(file.url);
+  if (url) return url;
+  const key = normalizeText(file.key) || normalizeText(file.r2Key);
+  return key ? `${getRuntimeDownloadBaseUrl()}/${key.replace(/^\/+/, '')}` : '';
 }
 
-function sourceFromR2Manifest(value: R2ManifestPayload, manifestUrl: string, sourceLabel: string): DownloadSource {
+function sourceFromReleaseManifest(value: ReleaseManifestPayload, manifestUrl: string, sourceLabel: string): DownloadSource {
   const assets = (value.files ?? [])
-    .filter((file) => isInstallerFile(normalizeText(file.name)) && normalizeText(file.r2Key))
+    .filter((file) => isInstallerFile(normalizeText(file.name)) && urlFromManifestFile(file))
     .map<RemoteDownloadAsset>((file) => {
       const fileName = normalizeText(file.name);
       const platform = platformFromManifest(fileName, value.platform);
@@ -172,7 +177,7 @@ function sourceFromR2Manifest(value: R2ManifestPayload, manifestUrl: string, sou
         kind,
         label: fileName,
         fileName,
-        url: urlFromR2Key(normalizeText(file.r2Key)),
+        url: urlFromManifestFile(file),
         sha256: normalizeText(file.sha256),
         size: file.size,
         primary: platform === currentPlatformKey() && kind === kindPreference()[0],
@@ -237,9 +242,9 @@ function sourceFromJson(value: unknown, manifestUrl: string, sourceLabel: string
   const payload = envelope.data && typeof envelope.data === 'object'
     ? envelope.data as RemoteDownloadPayload
     : value as RemoteDownloadPayload;
-  const maybeR2Manifest = payload as R2ManifestPayload;
-  if (Array.isArray(maybeR2Manifest.files)) {
-    return sourceFromR2Manifest(maybeR2Manifest, manifestUrl, sourceLabel);
+  const maybeReleaseManifest = payload as ReleaseManifestPayload;
+  if (Array.isArray(maybeReleaseManifest.files)) {
+    return sourceFromReleaseManifest(maybeReleaseManifest, manifestUrl, sourceLabel);
   }
   return { payload, manifestUrl, sourceLabel };
 }
@@ -267,7 +272,7 @@ async function loadLatestSource(): Promise<DownloadSource> {
     return sourceFromJson(json, latestApiUrl, getUpdateSourceLabel());
   } catch (error) {
     const json = await fetchJson(latestManifestUrl);
-    const source = sourceFromJson(json, latestManifestUrl, 'R2 兜底清单');
+    const source = sourceFromJson(json, latestManifestUrl, '发布清单');
     if (!source.payload.releaseNotesUrl && !source.payload.releasePageUrl) {
       source.payload.releasePageUrl = GITHUB_RELEASES_URL;
     }

@@ -8,14 +8,13 @@ import type {
   PromptDraft,
   ReviewAssetInput,
 } from '../../../../shared/types';
+import { isPromptDistilledSource } from '../../../../shared/inputSourcePolicy';
 import {
   extractGeneratedAssetRefsFromLog,
-  extractLocalRefsFromLog,
   extractPromptFromLog,
   fileNameFromPath,
   formatDuration,
   isImageFilePath,
-  isPromptDistilledSource,
   isVideoFilePath,
   kindLabel,
   localAssetUrl,
@@ -89,11 +88,178 @@ interface AssetItem {
   relatedPromptDraft?: PromptDraft;
 }
 
+type ReviewTone = 'ready' | 'warning' | 'blocked' | 'idle';
+
+interface ReviewCheckItem {
+  text: string;
+  tone: ReviewTone;
+}
+
+interface AssetQualityItem {
+  text: string;
+  tone: ReviewTone;
+  source: string;
+}
+
+interface AssetReviewDecision {
+  source: string;
+  status: string;
+  statusClass: string;
+  checks: ReviewCheckItem[];
+  qualityItems: AssetQualityItem[];
+  nextAction: string;
+  lineage: string[];
+}
+
+const REJECTION_REASONS = [
+  '产品不一致',
+  '字体模糊',
+  '文案不合规',
+  '风格不匹配',
+  '画面构图不可用',
+];
+
 function activeDraftContent(draft?: PromptDraft): string {
   if (!draft) return '';
   return draft.versions.find((version) => version.id === draft.activeVersionId)?.content
     ?? draft.versions[draft.versions.length - 1]?.content
     ?? '';
+}
+
+function recordValue(value: unknown, key: string): unknown {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined;
+}
+
+function normalizeQualityText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  const message = recordValue(value, 'message');
+  return typeof message === 'string' ? message.trim() : '';
+}
+
+function stringItems(value: unknown): string[] {
+  if (typeof value === 'string' && value.trim()) return [value.trim()];
+  if (!Array.isArray(value)) return [];
+  return value.map(normalizeQualityText).filter(Boolean);
+}
+
+function qualityToneFromLevel(level: unknown): ReviewTone {
+  if (level === 'risk') return 'blocked';
+  if (level === 'warning') return 'warning';
+  return 'ready';
+}
+
+function addQualityItem(items: AssetQualityItem[], item: AssetQualityItem): void {
+  if (!item.text.trim()) return;
+  if (items.some((existing) => existing.text === item.text && existing.source === item.source)) return;
+  items.push(item);
+}
+
+function addStringItems(
+  items: AssetQualityItem[],
+  values: string[],
+  source: string,
+  tone: ReviewTone,
+): void {
+  values.forEach((text) => addQualityItem(items, { text, source, tone }));
+}
+
+function addPublishChecks(items: AssetQualityItem[], value: unknown): void {
+  if (!Array.isArray(value)) return;
+  value.forEach((entry) => {
+    const text = normalizeQualityText(entry);
+    if (!text) return;
+    addQualityItem(items, {
+      text,
+      source: '发布检查',
+      tone: qualityToneFromLevel(recordValue(entry, 'level')),
+    });
+  });
+}
+
+function promptSectionKey(line: string): string {
+  return line.trim().replace(/[：:]$/, '');
+}
+
+function normalizePromptListLine(line: string): string {
+  return line
+    .replace(/^[-*]\s*/, '')
+    .replace(/^\d+[.)、]\s*/, '')
+    .trim();
+}
+
+function isPromptSectionHeading(line: string): boolean {
+  const clean = line.trim();
+  if (!clean) return false;
+  if (/^[-*]\s+/.test(clean) || /^\d+[.)、]\s+/.test(clean)) return false;
+  return /[：:]$/.test(clean);
+}
+
+function promptSectionItems(content: string, sectionNames: string[]): string[] {
+  const sectionKeys = new Set(sectionNames.map((name) => promptSectionKey(name)));
+  const items: string[] = [];
+  let collecting = false;
+
+  content.split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return;
+    if (sectionKeys.has(promptSectionKey(line))) {
+      collecting = true;
+      return;
+    }
+    if (!collecting) return;
+    if (isPromptSectionHeading(line)) {
+      collecting = false;
+      return;
+    }
+    const item = normalizePromptListLine(line);
+    if (item) items.push(item);
+  });
+
+  return items;
+}
+
+function qualityItemsFromOutput(output: unknown): AssetQualityItem[] {
+  const items: AssetQualityItem[] = [];
+  const analysis = recordValue(output, 'analysis');
+
+  addStringItems(items, stringItems(recordValue(output, 'qualityChecklist')), '质检通过项', 'ready');
+  addStringItems(items, stringItems(recordValue(analysis, 'qualityChecklist')), '质检通过项', 'ready');
+  addStringItems(items, stringItems(recordValue(output, 'sourceWarnings')), '来源提醒', 'warning');
+  addStringItems(items, stringItems(recordValue(analysis, 'sourceWarnings')), '来源提醒', 'warning');
+  addStringItems(items, stringItems(recordValue(output, 'risks')), '风险项', 'blocked');
+  addStringItems(items, stringItems(recordValue(analysis, 'risks')), '风险项', 'blocked');
+  addPublishChecks(items, recordValue(output, 'publishCheck'));
+  addPublishChecks(items, recordValue(analysis, 'publishCheck'));
+
+  return items;
+}
+
+function qualityItemsFromDraft(draft?: PromptDraft): AssetQualityItem[] {
+  const content = activeDraftContent(draft);
+  if (!content.trim()) return [];
+  const items: AssetQualityItem[] = [];
+
+  addStringItems(items, promptSectionItems(content, ['质量检查', '下游检查清单']), '质检通过项', 'ready');
+  addStringItems(items, promptSectionItems(content, ['风险与边界']), '风险项', 'blocked');
+  addStringItems(items, promptSectionItems(content, ['来源与合规提醒']), '来源提醒', 'warning');
+
+  return items;
+}
+
+function assetQualityItems(asset: AssetItem): AssetQualityItem[] {
+  const items = [
+    ...qualityItemsFromOutput(asset.log?.output),
+    ...qualityItemsFromDraft(asset.relatedPromptDraft),
+  ];
+  const uniqueItems: AssetQualityItem[] = [];
+  items.forEach((item) => addQualityItem(uniqueItems, item));
+
+  if (uniqueItems.length > 0) return uniqueItems;
+  return [{
+    text: '未接入自动质检，按人工审核清单确认',
+    tone: 'warning',
+    source: '人工确认',
+  }];
 }
 
 function importedAssetRefs(source: InputSourceRecord): string[] {
@@ -157,7 +323,7 @@ function collectImportedAssets(
         source: 'imported' as const,
         path,
         title: source.title || fileNameFromPath(path),
-        subtitle: `${source.kind} · 手动导入 · ${relatedDraft?.title ?? '未关联 Prompt'}`,
+        subtitle: `${isVideoFilePath(path) ? '视频' : '图片'} · 手动导入 · ${relatedDraft?.title ?? '未关联提示词'}`,
         prompt: activeDraftContent(relatedDraft) || source.summary || '',
         createdAt: source.createdAt,
         tags: Array.from(new Set(['手动导入', source.kind, ...source.tags].filter(Boolean))),
@@ -172,7 +338,7 @@ function collectImportedAssets(
 }
 
 function reviewLabel(status?: AssetReviewStatus): string {
-  if (status === 'approved') return '已通过';
+  if (status === 'approved') return '已通过并入库';
   if (status === 'rejected') return '已驳回';
   return '待审核';
 }
@@ -181,6 +347,109 @@ function reviewClass(status?: AssetReviewStatus): string {
   if (status === 'approved') return 'ready';
   if (status === 'rejected') return 'blocked';
   return 'idle';
+}
+
+function sourceLabel(asset: AssetItem): string {
+  if (asset.source === 'generation') return asset.kind === 'video' ? '生成服务视频' : '生成服务图片';
+  if (asset.kind === 'video') return '第三方成品视频';
+  return '手动导入素材';
+}
+
+function lineageSummary(asset: AssetItem): string[] {
+  return [
+    asset.workflowRunId ? '任务可追溯' : '无任务来源',
+    asset.promptDraftId ? '提示词可追溯' : '未关联提示词',
+    asset.sceneCardIds?.length ? `场景 ${asset.sceneCardIds.length} 张` : '未关联场景',
+    asset.reworkSource ? '回炉生成' : '首次候选',
+  ];
+}
+
+function promptTraceLabel(asset: AssetItem): string {
+  if (asset.relatedPromptDraft?.title) return asset.relatedPromptDraft.title;
+  if (asset.promptDraftId) return '已关联提示词，可打开查看';
+  return '未关联';
+}
+
+function workflowTraceLabel(asset: AssetItem): string {
+  return asset.workflowRunId ? '已关联运行记录，可打开查看' : '未关联';
+}
+
+function reworkSourceLabel(asset: AssetItem): string {
+  if (!asset.reworkSource) return '非回炉生成';
+  return asset.reworkSource.title || '原素材记录';
+}
+
+function assetReviewDecision(asset: AssetItem, review?: AssetReviewRecord): AssetReviewDecision {
+  const hasSource = Boolean(asset.log || asset.inputSource || asset.workflowRunId);
+  const hasPrompt = Boolean(asset.promptDraftId || asset.prompt.trim());
+  const hasScene = Boolean(asset.sceneCardIds?.length);
+  const hasModel = Boolean(asset.model);
+  const qualityItems = assetQualityItems(asset);
+  const hasQualityEvidence = qualityItems.some((item) => item.source !== '人工确认');
+  const hasBlockedQuality = qualityItems.some((item) => item.tone === 'blocked');
+  const hasWarningQuality = qualityItems.some((item) => item.tone === 'warning');
+  const status = reviewLabel(review?.status);
+  const checks: ReviewCheckItem[] = [
+    {
+      text: hasSource ? '来源可追溯' : '缺少来源记录',
+      tone: hasSource ? 'ready' : 'blocked',
+    },
+    {
+      text: hasPrompt ? '提示词可追溯' : '缺少提示词，建议先补充',
+      tone: hasPrompt ? 'ready' : 'warning',
+    },
+    {
+      text: hasScene ? '已关联业务场景' : '未关联场景，适合单次审核',
+      tone: hasScene ? 'ready' : 'idle',
+    },
+    {
+      text: asset.source === 'generation'
+        ? (hasModel ? '模型参数已记录' : '模型参数未记录')
+        : '第三方成品需人工确认画质、版权和内容一致性',
+      tone: asset.source === 'generation' && !hasModel ? 'warning' : 'idle',
+    },
+    {
+      text: hasQualityEvidence
+        ? (hasBlockedQuality ? '质检发现风险，需先处理' : '质检结果已记录')
+        : '未接入自动质检，需人工确认',
+      tone: hasBlockedQuality ? 'blocked' : hasWarningQuality ? 'warning' : hasQualityEvidence ? 'ready' : 'warning',
+    },
+  ];
+
+  if (review?.status === 'approved') {
+    checks.push({
+      text: '已通过审核并入库，可进入混剪包或沉淀提示词',
+      tone: 'ready',
+    });
+  } else if (review?.status === 'rejected') {
+    checks.push({
+      text: review.note ? `已驳回：${review.note}` : '已驳回，等待回炉重做',
+      tone: 'blocked',
+    });
+  } else {
+    checks.push({
+      text: '待人工确认文字、主体、合规表达和平台适配',
+      tone: 'warning',
+    });
+  }
+
+  const nextAction = review?.status === 'approved'
+    ? '已入库。下一步可进入混剪包，或把成功结果沉淀为下一次可复用的提示词。'
+    : review?.status === 'rejected'
+      ? '回炉重做，复用原提示词和来源生成新的候选素材。'
+      : hasBlockedQuality
+        ? '先处理质检风险；如果风险影响发布，填写驳回原因并回炉重做。'
+        : '先核对预览、来源、提示词、参数和质检结果，再选择通过或驳回。';
+
+  return {
+    source: sourceLabel(asset),
+    status,
+    statusClass: reviewClass(review?.status),
+    checks,
+    qualityItems,
+    nextAction,
+    lineage: lineageSummary(asset),
+  };
 }
 
 export function AssetsModule({
@@ -207,6 +476,9 @@ export function AssetsModule({
   const [reviewFilter, setReviewFilter] = useState<AssetReviewStatus | 'all'>('all');
   const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null);
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
+  const [rejectingAsset, setRejectingAsset] = useState<AssetItem | null>(null);
+  const [rejectReason, setRejectReason] = useState(REJECTION_REASONS[0]);
+  const [rejectDetail, setRejectDetail] = useState('');
   const reviewMap = useMemo(
     () => new Map(assetReviews.map((review) => [review.assetKey, review])),
     [assetReviews],
@@ -232,6 +504,8 @@ export function AssetsModule({
   const importedCount = assets.filter((asset) => asset.source === 'imported').length;
   const approvedCount = assets.filter((asset) => reviewMap.get(asset.id)?.status === 'approved').length;
   const rejectedCount = assets.filter((asset) => reviewMap.get(asset.id)?.status === 'rejected').length;
+  const selectedReview = selectedAsset ? reviewMap.get(selectedAsset.id) : undefined;
+  const selectedDecision = selectedAsset ? assetReviewDecision(selectedAsset, selectedReview) : null;
   const header = {
     library: {
       eyebrow: '素材沉淀',
@@ -273,7 +547,7 @@ export function AssetsModule({
     else onRevealPath(asset.path);
   }
 
-  function reviewAsset(asset: AssetItem, status: AssetReviewStatus): void {
+  function reviewAsset(asset: AssetItem, status: AssetReviewStatus, note?: string): void {
     onReviewAsset({
       assetKey: asset.id,
       workflowRunId: asset.workflowRunId,
@@ -283,9 +557,26 @@ export function AssetsModule({
       path: asset.path,
       title: asset.title,
       status,
-      note: status === 'approved' ? '人工审核通过，可进入混剪包。' : '人工审核驳回，暂不进入混剪包。',
+      note: note ?? (
+        status === 'approved' ? '人工审核通过并入库，可进入混剪包。' : '人工审核驳回，需要回炉重做后再进入混剪包。'
+      ),
       tags: asset.tags,
     });
+  }
+
+  function openRejectDialog(asset: AssetItem): void {
+    setRejectingAsset(asset);
+    setRejectReason(REJECTION_REASONS[0]);
+    setRejectDetail('');
+  }
+
+  function confirmRejectAsset(): void {
+    if (!rejectingAsset) return;
+    const detail = rejectDetail.trim();
+    const note = detail ? `${rejectReason}：${detail}` : rejectReason;
+    reviewAsset(rejectingAsset, 'rejected', note);
+    setRejectingAsset(null);
+    setRejectDetail('');
   }
 
   function reworkAsset(asset: AssetItem): void {
@@ -328,7 +619,7 @@ export function AssetsModule({
         actions={(
           <div className="workflow-actions">
             <span className="status-pill">{assets.length} 个素材</span>
-            <span className="status-pill ready">{approvedCount} 个已通过</span>
+            <span className="status-pill ready">{approvedCount} 个已入库</span>
             <button className="ghost small" disabled={approvedCount === 0} onClick={onOpenMixExport}>
               去混剪包
             </button>
@@ -353,7 +644,7 @@ export function AssetsModule({
           {[
             { value: 'all' as const, label: `审核全部 ${assets.length}` },
             { value: 'pending' as const, label: `待审核 ${assets.length - approvedCount - rejectedCount}` },
-            { value: 'approved' as const, label: `已通过 ${approvedCount}` },
+            { value: 'approved' as const, label: `已入库 ${approvedCount}` },
             { value: 'rejected' as const, label: `已驳回 ${rejectedCount}` },
           ].map((filter) => (
             <button
@@ -371,6 +662,7 @@ export function AssetsModule({
       <div className="asset-gallery">
         {visibleAssets.map((asset) => {
           const review = reviewMap.get(asset.id);
+          const decision = assetReviewDecision(asset, review);
           return (
           <article key={asset.id} className={`asset-tile ${review?.status ?? 'pending'}`}>
             <button className="asset-preview-button" onClick={() => setSelectedAsset(asset)}>
@@ -381,22 +673,17 @@ export function AssetsModule({
             <div className="asset-tile-meta">
               <strong>{asset.title}</strong>
               <small>{asset.subtitle}</small>
-              <small>
-                {asset.workflowRunId ? 'SOP 已关联' : 'SOP 未关联'}
-                {asset.promptDraftId ? ' · Prompt 已关联' : ''}
-                {asset.sceneCardIds?.length ? ` · 场景 ${asset.sceneCardIds.length}` : ''}
-                {asset.reworkSource ? ' · 回炉生成' : ''}
-              </small>
-              <span className={`status-pill ${reviewClass(review?.status)}`}>{reviewLabel(review?.status)}</span>
+              <small>{decision.lineage.join(' · ')}</small>
+              <span className={`status-pill ${decision.statusClass}`}>{decision.status}</span>
             </div>
             <div className="log-actions">
               <button className="ghost small" onClick={() => setSelectedAsset(asset)}>详情</button>
-              <button className="ghost small" onClick={() => reviewAsset(asset, 'rejected')}>驳回</button>
-              <button className="primary small" onClick={() => reviewAsset(asset, 'approved')}>通过</button>
+              <button className="ghost small" onClick={() => openRejectDialog(asset)}>驳回素材</button>
+              <button className="primary small" onClick={() => reviewAsset(asset, 'approved')}>通过并入库</button>
               {review?.status === 'approved' ? (
-                <button className="primary small" onClick={() => distillAssetPrompt(asset)}>沉淀 Prompt</button>
+                <button className="primary small" onClick={() => distillAssetPrompt(asset)}>沉淀提示词</button>
               ) : null}
-              <button className="ghost small" onClick={() => reworkAsset(asset)}>回炉</button>
+              <button className="ghost small" onClick={() => reworkAsset(asset)}>回炉重做</button>
               <button className="ghost small" onClick={() => revealAsset(asset)}>打开位置</button>
               {asset.log?.kind === 'image' ? (
                 <button className="primary small" onClick={() => asset.log && onReuseImageLogInput(asset.log)}>复用参数</button>
@@ -406,7 +693,7 @@ export function AssetsModule({
         );})}
         {visibleAssets.length === 0 ? (
           <div className="empty-state">
-            还没有可展示的成功图片或视频素材。失败、阻塞和纯日志不会进入素材库。
+            还没有可展示的成功图片或视频素材。失败、待配置和纯日志不会进入素材库。
             手动导入的第三方成品视频会在关联 Prompt 后展示在这里。
             {logsCount > 0 ? ` 当前已有 ${logsCount} 条生成记录。` : ''}
           </div>
@@ -439,6 +726,63 @@ export function AssetsModule({
                   ? <img src={localAssetUrl(selectedAsset.path)} alt={fileNameFromPath(selectedAsset.path)} />
                   : <video src={localAssetUrl(selectedAsset.path)} controls />}
               </div>
+              {selectedDecision ? (
+                <section className="asset-review-summary" aria-label="审核决策">
+                  <div className="asset-review-summary-head">
+                    <div>
+                      <p className="eyebrow">审核决策</p>
+                      <h4>{selectedDecision.source}</h4>
+                    </div>
+                    <span className={`status-pill ${selectedDecision.statusClass}`}>{selectedDecision.status}</span>
+                  </div>
+                  <div className="asset-review-checklist">
+                    {selectedDecision.checks.map((item) => (
+                      <span key={item.text} className={item.tone}>
+                        {item.text}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="asset-quality-section" aria-label="质检结果">
+                    <strong>质检结果</strong>
+                    <div className="asset-quality-list">
+                      {selectedDecision.qualityItems.map((item) => (
+                        <span key={`${item.source}:${item.text}`} className={`asset-quality-item ${item.tone}`}>
+                          <em>{item.source}</em>
+                          {item.text}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="asset-review-next">
+                    <strong>建议下一步</strong>
+                    <p>{selectedDecision.nextAction}</p>
+                  </div>
+                  <div className="asset-review-actions">
+                    <button className="ghost" onClick={() => openRejectDialog(selectedAsset)}>
+                      驳回素材
+                    </button>
+                    <button className="primary" onClick={() => reviewAsset(selectedAsset, 'approved')}>
+                      通过并入库
+                    </button>
+                    <button className="ghost" onClick={() => reworkAsset(selectedAsset)}>
+                      回炉重做
+                    </button>
+                    {selectedReview?.status === 'approved' ? (
+                      <button className="primary" onClick={onOpenMixExport}>
+                        去混剪包
+                      </button>
+                    ) : null}
+                  </div>
+                </section>
+              ) : null}
+              <div className="asset-lineage-summary">
+                <strong>追溯信息</strong>
+                <div>
+                  {selectedDecision?.lineage.map((item) => (
+                    <span key={item}>{item}</span>
+                  ))}
+                </div>
+              </div>
               <div className="asset-log-detail-grid">
                 <span>
                   <strong>来源</strong>
@@ -449,12 +793,12 @@ export function AssetsModule({
                   <em>{selectedAsset.model ?? (selectedAsset.source === 'imported' ? '第三方平台 / 手动导入' : '未记录')}</em>
                 </span>
                 <span>
-                  <strong>关联 Prompt</strong>
-                  <em>{selectedAsset.relatedPromptDraft?.title ?? selectedAsset.promptDraftId ?? '未关联'}</em>
+                  <strong>关联提示词</strong>
+                  <em>{promptTraceLabel(selectedAsset)}</em>
                 </span>
                 <span>
-                  <strong>SOP 运行</strong>
-                  <em>{selectedAsset.workflowRunId ?? '未关联'}</em>
+                  <strong>关联运行记录</strong>
+                  <em>{workflowTraceLabel(selectedAsset)}</em>
                 </span>
                 <span>
                   <strong>场景卡</strong>
@@ -462,7 +806,7 @@ export function AssetsModule({
                 </span>
                 <span>
                   <strong>回炉来源</strong>
-                  <em>{selectedAsset.reworkSource?.title ?? selectedAsset.reworkSource?.assetKey ?? '非回炉生成'}</em>
+                  <em>{reworkSourceLabel(selectedAsset)}</em>
                 </span>
                 <span>
                   <strong>入库时间</strong>
@@ -479,7 +823,7 @@ export function AssetsModule({
               </div>
               <label className="image-result-prompt">
                 <span>提示词</span>
-                <textarea readOnly value={selectedAsset.prompt || '未记录关联 Prompt。'} />
+                <textarea readOnly value={selectedAsset.prompt || '未记录关联提示词。'} />
               </label>
               <div className="modal-actions">
                 <button className="ghost" onClick={() => void copyAssetPrompt(selectedAsset)}>
@@ -490,7 +834,7 @@ export function AssetsModule({
                 </button>
                 {selectedAsset.promptDraftId ? (
                   <button className="ghost" onClick={() => onOpenPromptDraft(selectedAsset.promptDraftId as string)}>
-                    打开 Prompt
+                    打开提示词
                   </button>
                 ) : null}
                 {selectedAsset.sceneCardIds?.length ? (
@@ -500,18 +844,18 @@ export function AssetsModule({
                 ) : null}
                 {selectedAsset.workflowRunId ? (
                   <button className="ghost" onClick={() => onOpenWorkflowRun(selectedAsset.workflowRunId as string)}>
-                    打开 SOP
+                    打开运行记录
                   </button>
                 ) : null}
-                <button className="ghost" onClick={() => reviewAsset(selectedAsset, 'rejected')}>
+                <button className="ghost" onClick={() => openRejectDialog(selectedAsset)}>
                   驳回素材
                 </button>
                 <button className="primary" onClick={() => reviewAsset(selectedAsset, 'approved')}>
-                  通过审核
+                  通过并入库
                 </button>
                 {reviewMap.get(selectedAsset.id)?.status === 'approved' ? (
                   <button className="primary" onClick={() => distillAssetPrompt(selectedAsset)}>
-                    沉淀 Prompt
+                    沉淀提示词
                   </button>
                 ) : null}
                 <button className="ghost" onClick={() => reworkAsset(selectedAsset)}>
@@ -533,6 +877,54 @@ export function AssetsModule({
                     复用图片参数
                   </button>
                 ) : null}
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
+      {rejectingAsset ? (
+        <div
+          className="detail-dialog-backdrop"
+          role="presentation"
+          onClick={() => setRejectingAsset(null)}
+        >
+          <article
+            className="detail-dialog-card asset-reject-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="填写驳回原因"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="detail-dialog-header">
+              <div>
+                <p className="eyebrow">填写驳回原因</p>
+                <h3>{rejectingAsset.title}</h3>
+              </div>
+              <button className="ghost small" onClick={() => setRejectingAsset(null)}>取消</button>
+            </div>
+            <div className="asset-reject-body">
+              <div className="asset-reject-reasons">
+                {REJECTION_REASONS.map((reason) => (
+                  <button
+                    key={reason}
+                    className={`chip-button ${rejectReason === reason ? 'active' : ''}`}
+                    onClick={() => setRejectReason(reason)}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+              <label className="image-result-prompt">
+                <span>补充说明</span>
+                <textarea
+                  value={rejectDetail}
+                  placeholder="说明需要回炉重做的具体问题，回炉时会自动带入提示词。"
+                  onChange={(event) => setRejectDetail(event.target.value)}
+                />
+              </label>
+              <div className="modal-actions">
+                <button className="ghost" onClick={() => setRejectingAsset(null)}>取消</button>
+                <button className="primary" onClick={confirmRejectAsset}>确认驳回</button>
               </div>
             </div>
           </article>

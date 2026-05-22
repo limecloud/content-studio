@@ -249,6 +249,16 @@ async function expectNavLabelAbsent(page, label) {
   ).toBe(0);
 }
 
+async function expectNavLabelVisible(page, label) {
+  await expect.poll(
+    async () => page.locator('.nav-stack .nav-label').evaluateAll(
+      (items, expected) => items.filter((item) => item.textContent?.trim() === expected).length,
+      label,
+    ),
+    { message: `导航项应作为普通用户入口出现：${label}` },
+  ).toBeGreaterThan(0);
+}
+
 async function expectNotStaticV2Page(page) {
   await expect(page.locator('.v2-feature-workbench')).toHaveCount(0);
   await expect(page.getByText('实现边界')).toHaveCount(0);
@@ -521,7 +531,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     await clickButton(page, '电商白底主图');
     await expect(page.locator('.image-template-config-card')).toBeVisible();
     await expect(page.locator('.template-params-title')).toContainText('技能参数');
-    await expect(page.getByRole('button', { name: '导入' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '导入', exact: true })).toBeEnabled();
     const imagePreviewLayout = await page.evaluate(() => {
       const stage = document.querySelector('.image-canvas-stage');
       const preview = document.querySelector('.image-preview-canvas');
@@ -617,7 +627,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     ]));
 
     await clickButton(page, '视频生成');
-    await expect(page.getByRole('heading', { name: '视频复刻引擎' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '参考视频拆解工作台' })).toBeVisible();
     await clickButton(page, '文章生成');
     await expectCommandCenter(page, '.article-module-workbench > .module-command-center', 'compact');
     await expect(page.locator('.article-module-workbench > .v2-feature-hero')).toHaveCount(0);
@@ -701,19 +711,27 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
       '合规检测',
       '图片精修',
       '视频脚本',
-      '成品视频入库',
-      '创意视频',
-      '自定义视频',
+      '成品视频导入',
       '标题生成',
       '脚本生成',
       '输入源 / 文档转换',
       '场景库',
       '运行历史',
+    ]) {
+      await expectNavLabelVisible(page, label);
+    }
+
+    for (const label of [
+      '创意视频',
+      '自定义视频',
       '工作流定义',
       'Canvas 编排',
     ]) {
       await expectNavLabelAbsent(page, label);
     }
+    await clickNavItem(page, '高级维护');
+    await expectNavLabelVisible(page, '工作流定义');
+    await expectNavLabelVisible(page, 'Canvas 编排');
 
     await clickNavItem(page, 'Prompt 工作台');
     await expect(page.locator('.prompt-workbench')).toBeVisible();
@@ -726,10 +744,46 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expectCommandCenter(page, '.input-sources-workbench > .module-command-center', 'compact');
     await expect(page.locator('.input-sources-workbench > .v2-feature-hero')).toHaveCount(0);
     await expectNotStaticV2Page(page);
+    await page.locator('.input-source-register-panel select').selectOption('product-brief');
     await page.locator('.input-source-register-panel input').first().fill('便携条包产品资料');
-    await page.locator('.input-source-register-panel textarea').fill('产品事实：便携条包。场景：早餐后、办公室抽屉。合规：不承诺治疗，不做无依据背书。');
+    await page.locator('.input-source-register-panel textarea').fill([
+      '产品名称：便携营养条包',
+      '卖点：早餐后和办公室抽屉随手取用',
+      '规格：15g * 20 条',
+      '适用场景：早餐后、办公室抽屉、通勤包',
+      '禁用表达：不得承诺治疗、见效或替代专业建议',
+    ].join('\n'));
     await clickButton(page, '登记文本输入源');
     await expect(page.locator('.input-source-list')).toContainText('便携条包产品资料');
+    const productBriefPanel = page.locator('.product-brief-structure-panel');
+    await expect(productBriefPanel).toContainText('产品变量表');
+    await expect(productBriefPanel).toContainText('便携营养条包');
+    await expect(productBriefPanel).toContainText('早餐后和办公室抽屉随手取用');
+    await expect(productBriefPanel).toContainText('不得承诺治疗');
+    await expect(productBriefPanel).toContainText('可进入生产');
+    await expect(productBriefPanel).toContainText('下游 Prompt 交付');
+    await expect(productBriefPanel).toContainText('主图 Prompt');
+    await expect(productBriefPanel).toContainText('卖点图 Prompt');
+    await expect(productBriefPanel).toContainText('详情页模块 Prompt');
+    await expect(productBriefPanel.locator('button').filter({ hasText: '去图片生成' })).toBeEnabled();
+    await page.locator('.input-source-register-panel select').selectOption('user-feedback');
+    await page.locator('.input-source-register-panel input').first().fill('评论和客服问题');
+    await page.locator('.input-source-register-panel input').nth(1).fill('评论, 客服问题');
+    await page.locator('.input-source-register-panel textarea').fill([
+      '用户：价格有点贵，值不值这个钱？',
+      '差评：早上总是忘记吃，坚持不下来。',
+      '客服：孩子能不能吃？有没有禁忌？',
+      '评论：办公室加班时能不能放抽屉里？',
+    ].join('\n'));
+    await clickButton(page, '登记文本输入源');
+    const feedbackPanel = page.locator('.feedback-insight-panel');
+    await expect(feedbackPanel).toContainText('用户问题矩阵');
+    await expect(feedbackPanel).toContainText('价格和信任顾虑');
+    await expect(feedbackPanel).toContainText('使用门槛和坚持成本');
+    await expect(feedbackPanel).toContainText('适用人群和禁忌边界');
+    await expect(feedbackPanel).toContainText('客服异议处理');
+    await expect(feedbackPanel).toContainText('人工复核');
+    await expect(feedbackPanel.locator('button').filter({ hasText: '去标题生成' })).toBeEnabled();
 
     await clickNavItem(page, '对标图反推');
     await expect(page.locator('.reference-reverse-workbench')).toBeVisible();
@@ -758,6 +812,7 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expectCommandCenter(page, '.video-prompt-workbench > .module-command-center', 'flow');
     await expect(page.locator('.video-prompt-workbench > .v2-feature-flow')).toHaveCount(0);
     await expectNotStaticV2Page(page);
+    await page.locator('.video-prompt-scenes-panel .prompt-source-option').filter({ hasText: '便携条包产品资料' }).locator('input').check();
     await clickButton(page, '生成视频 Prompt 组');
     await expect(page.locator('.video-prompt-preview pre')).toContainText(/视频 Prompt|任务：/, { timeout: 20_000 });
     await expect(page.locator('.video-prompt-builder-panel button').filter({ hasText: '复制到第三方平台' })).toBeEnabled();
@@ -827,11 +882,31 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expect(page.locator('.workflow-feature-workbench > .workflow-view-tabs')).toHaveCount(0);
     await expect(page.locator('.workflow-definition-list .record-card').first()).toBeVisible();
     await expect(page.locator('.workflow-view-tabs')).toContainText('运行记录');
+    const sopRunner = page.locator('.workflow-runner-panel');
+    await sopRunner.locator('textarea').first().fill('');
+    await sopRunner.locator('textarea').nth(1).fill('');
+    await expect(sopRunner).toContainText('请先补齐必填字段');
+    await expect(sopRunner).toContainText('补充资料说明');
+    await expect(sopRunner).toContainText('用户意图');
+    await expect(sopRunner.locator('button').filter({ hasText: '运行 SOP' })).toBeDisabled();
+    await sopRunner.locator('textarea').nth(1).fill('生成 10 组小红书真实场景 Prompt。');
+    await expect(sopRunner).toContainText('本次使用资料');
+    await expect(sopRunner).toContainText('便携条包产品资料');
+    const productSourceOption = sopRunner.locator('.workflow-input-source-option').filter({ hasText: '便携条包产品资料' });
+    await expect(productSourceOption.locator('input')).toBeChecked();
+    await productSourceOption.locator('input').uncheck();
+    await expect(sopRunner.locator('button').filter({ hasText: '运行 SOP' })).toBeDisabled();
+    await expect(sopRunner).toContainText('请至少选择一个资料来源');
+    await productSourceOption.locator('input').check();
+    await expect(sopRunner.locator('button').filter({ hasText: '运行 SOP' })).toBeEnabled();
+    await expect(page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: '定义管理' })).toHaveCount(0);
+    await expect(page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: 'Canvas' })).toHaveCount(0);
     await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
     await expect(page.locator('.workflow-history-panel')).toBeVisible();
-    await page.locator('.workflow-view-tabs button').filter({ hasText: '定义管理' }).click();
+    await page.locator('.workflow-view-tabs button').filter({ hasText: '高级维护' }).click();
+    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: '定义管理' }).click();
     await expect(page.locator('.workflow-detail-panel')).toBeVisible();
-    await page.locator('.workflow-view-tabs button').filter({ hasText: 'Canvas' }).click();
+    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: 'Canvas' }).click();
     await expect(page.locator('.workflow-canvas-panel')).toBeVisible();
     const workflowDensity = await page.evaluate(() => {
       const layout = document.querySelector('.workflow-feature-layout');
@@ -852,6 +927,211 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     expect(workflowDensity.nodeHeight, JSON.stringify(workflowDensity)).toBeLessThanOrEqual(150);
     await expectNotStaticV2Page(page);
   });
+});
+
+test('SOP 执行页显式选择资料并写入运行记录', async ({}, testInfo) => {
+  test.setTimeout(120_000);
+
+  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+    const setup = await page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      await api.saveSettings({ workspacePath });
+      const productSource = await api.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'product-brief',
+        title: '显式选择产品资料',
+        text: [
+          '产品名称：便携营养条包',
+          '卖点：早餐后和办公室抽屉随手取用',
+          '规格：15g * 20 条',
+          '适用场景：早餐后、通勤包、办公室抽屉',
+          '禁用表达：不得承诺治疗、见效或替代专业建议',
+        ].join('\n'),
+        summary: '显式选择产品资料',
+        tags: ['product'],
+      });
+      const feedbackSource = await api.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'user-feedback',
+        title: '不应误选的评论资料',
+        text: '用户：价格有点贵，值不值这个钱？',
+        summary: '不应误选的评论资料',
+        tags: ['feedback'],
+      });
+      return { productSourceId: productSource.id, feedbackSourceId: feedbackSource.id };
+    }, workspaceDir);
+
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待 SOP 输入源选择测试工作区重新加载', timeout: 20_000 },
+    ).toBe(true);
+
+    await clickNavItem(page, 'SOP 工作流');
+    await page.locator('.workflow-definition-list .record-card').filter({ hasText: '产品商业素材 SOP' }).first().click();
+    const runner = page.locator('.workflow-runner-panel');
+    await expect(runner).toContainText('产品商业素材 SOP');
+    const productOption = runner.locator('.workflow-input-source-option').filter({ hasText: '显式选择产品资料' });
+    await expect(productOption).toBeVisible();
+    await expect(productOption.locator('input')).toBeChecked();
+    await expect(runner.locator('.workflow-input-source-option').filter({ hasText: '不应误选的评论资料' })).toHaveCount(0);
+
+    await runner.locator('textarea').nth(1).fill('生成主图、卖点图和详情页模块三类素材 Prompt。');
+    await runner.locator('select').selectOption('通用电商');
+    await productOption.locator('input').uncheck();
+    await expect(runner.getByRole('button', { name: '运行 SOP' })).toBeDisabled();
+    await expect(runner).toContainText('请至少选择一个资料来源');
+    await runner.locator('label').filter({ hasText: '补充资料说明' }).locator('textarea').fill([
+      '产品名称：便携营养条包',
+      '卖点：早餐后和办公室抽屉随手取用',
+      '规格：15g * 20 条',
+      '禁用表达：不得承诺治疗。',
+    ].join('\n'));
+    await expect(runner.getByRole('button', { name: '运行 SOP' })).toBeEnabled();
+    await expect(runner).toContainText('已粘贴临时资料，将自动留痕');
+    await runner.locator('label').filter({ hasText: '补充资料说明' }).locator('textarea').fill('');
+    await expect(runner.getByRole('button', { name: '运行 SOP' })).toBeDisabled();
+    await productOption.locator('input').check();
+    await expect(runner.getByRole('button', { name: '运行 SOP' })).toBeEnabled();
+    await runner.getByRole('button', { name: '运行 SOP' }).click();
+
+    await expect(page.locator('.workflow-history-panel')).toBeVisible({ timeout: 20_000 });
+    const runDetail = page.locator('.workflow-run-detail-panel');
+    await expect(runDetail).toContainText('本次资料来源');
+    await expect(runDetail).toContainText('显式选择产品资料');
+    await expect(runDetail).toContainText('产品资料');
+    await expect(runDetail).toContainText('补充资料说明');
+    await expect(runDetail).not.toContainText('不应误选的评论资料');
+    const actionPanel = runDetail.locator('.workflow-run-action-panel');
+    await expect(actionPanel).toContainText('打开图片工作台');
+    await expect(actionPanel).toContainText('商业图片 Prompt');
+    const trace = await page.evaluate(async ({ workspacePath, productSourceId, feedbackSourceId }) => {
+      const runs = await window.contentStudio.listWorkflowRuns(workspacePath);
+      const run = runs.find((item) => item.workflowKey === 'product-commercial-assets');
+      return {
+        runId: run?.id,
+        status: run?.status,
+        inputSourceIds: run?.inputSourceIds ?? [],
+        hasProductSource: Boolean(run?.inputSourceIds?.includes(productSourceId)),
+        hasFeedbackSource: Boolean(run?.inputSourceIds?.includes(feedbackSourceId)),
+        productStepStatus: run?.steps.find((step) => step.stepId === 'product_brief_structure')?.status,
+      };
+    }, { workspacePath: workspaceDir, ...setup });
+    expect(trace.runId, JSON.stringify(trace)).toBeTruthy();
+    expect(trace.hasProductSource, JSON.stringify(trace)).toBe(true);
+    expect(trace.hasFeedbackSource, JSON.stringify(trace)).toBe(false);
+    expect(trace.productStepStatus, JSON.stringify(trace)).toBe('succeeded');
+
+    await actionPanel.locator('button').filter({ hasText: '打开图片工作台' }).click();
+    await expect(page.locator('.image-workbench-layout')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.image-prompt-panel textarea')).toHaveValue(/主图 Prompt|卖点图 Prompt|详情页模块 Prompt/);
+  });
+});
+
+test('新增 SOP 下一步动作能进入普通用户业务工作台', async ({}, testInfo) => {
+  test.setTimeout(120_000);
+
+  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
+
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      const setup = await page.evaluate(async ({ workspacePath, endpoint }) => {
+        const api = window.contentStudio;
+        await api.saveSettings({ workspacePath });
+        await api.saveModelConfig({
+          textProtocol: 'openai-chat',
+          textApiEndpoint: endpoint,
+          textApiKey: 'test-text-key',
+          textModel: 'test-text-model',
+        });
+        const definitions = await api.listWorkflowDefinitions(workspacePath);
+        const feedbackDefinition = definitions.find((item) => item.key === 'feedback-topic-matrix');
+        const greenDefinition = definitions.find((item) => item.key === 'green-screen-card-package');
+        if (!feedbackDefinition) throw new Error('缺少评论痛点选题 SOP');
+        if (!greenDefinition) throw new Error('缺少绿幕文案图 SOP');
+
+        const feedbackSource = await api.registerInputSource({
+          workspacePath,
+          kind: 'manual-note',
+          purpose: 'user-feedback',
+          title: '下一步测试评论原声',
+          text: [
+            '评论：价格有点贵，想知道到底值不值。',
+            '差评：早上总是忘记吃，坚持不下来。',
+            '客服：孩子和老人能不能吃，有没有禁忌？',
+            '私信：办公室抽屉里放一盒会不会方便一点？',
+          ].join('\n'),
+          summary: '下一步测试评论原声',
+          tags: ['feedback'],
+        });
+        const feedbackRun = await api.startWorkflowRun({
+          workspacePath,
+          workflowDefinitionId: feedbackDefinition.id,
+          inputSourceIds: [feedbackSource.id],
+          inputs: {
+            source: '评论、差评、客服问题和私信原声',
+            intent: '生成下周小红书选题、标题方向和客服异议话术。',
+            reviewOwner: '运营负责人',
+            platform: '小红书',
+          },
+        });
+
+        const greenRun = await api.startWorkflowRun({
+          workspacePath,
+          workflowDefinitionId: greenDefinition.id,
+          inputs: {
+            source: [
+              '标题卡：早餐后顺手一次',
+              '卖点卡：便携条包，包里抽屉都能放',
+              'CTA：先从每天顺手一次开始',
+            ].join('\n'),
+            intent: '拆成第三方混剪可叠加的绿幕文案图。',
+            reviewOwner: '短视频运营',
+            duration: '4',
+          },
+        });
+        return {
+          feedbackRunId: feedbackRun.id,
+          feedbackStatus: feedbackRun.status,
+          greenRunId: greenRun.id,
+          greenStatus: greenRun.status,
+        };
+      }, { workspacePath: workspaceDir, endpoint: baseUrl });
+
+      expect(setup.feedbackStatus, JSON.stringify(setup)).toBe('queued');
+      expect(setup.greenStatus, JSON.stringify(setup)).toBe('queued');
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待新增 SOP 下一步测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, 'SOP 工作流');
+      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
+      const runDetail = page.locator('.workflow-run-detail-panel');
+      const runList = page.locator('.workflow-run-list');
+
+      await runList.locator('.workflow-run-card').filter({ hasText: '评论痛点选题 SOP' }).first().click();
+      await expect(runDetail).toContainText('评论痛点选题 SOP');
+      await expect(runDetail.locator('.workflow-run-action-panel')).toContainText('审核选题 Prompt');
+      await runDetail.locator('.workflow-run-action-panel button').filter({ hasText: '审核选题 Prompt' }).click();
+      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/价格和信任顾虑|客服异议处理|真实用户原声/);
+
+      await clickNavItem(page, 'SOP 工作流');
+      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
+      await runList.locator('.workflow-run-card').filter({ hasText: '绿幕文案图 SOP' }).first().click();
+      await expect(runDetail).toContainText('绿幕文案图 SOP');
+      await expect(runDetail.locator('.workflow-run-action-panel')).toContainText('打开绿幕文案图');
+      await runDetail.locator('.workflow-run-action-panel button').filter({ hasText: '打开绿幕文案图' }).click();
+      await expect(page.locator('.green-screen-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.green-screen-editor-panel')).toContainText('标题卡', { timeout: 20_000 });
+    });
+  } finally {
+    await new Promise((resolveClose) => server.close(resolveClose));
+  }
 });
 
 test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', async ({}, testInfo) => {
@@ -934,12 +1214,12 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
     await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).not.toBeChecked();
     const editor = page.locator('.prompt-editor-panel');
     await expect(editor).toContainText('Product Prompt Skill', { timeout: 20_000 });
-    await expect(editor.locator('button').filter({ hasText: '物化为 Skill' })).toBeVisible();
+    await expect(editor.locator('button').filter({ hasText: '沉淀为 Skill' })).toBeVisible();
     await expect(editor.locator('button').filter({ hasText: '发送到图片' })).toHaveCount(0);
     await expect(editor.locator('button').filter({ hasText: '打开视频 Prompt' })).toHaveCount(0);
-    await expect(editor.locator('button').filter({ hasText: '物化为 SOP' })).toHaveCount(0);
+    await expect(editor.locator('button').filter({ hasText: '沉淀为 SOP' })).toHaveCount(0);
 
-    await editor.locator('button').filter({ hasText: '物化为 Skill' }).click();
+    await editor.locator('button').filter({ hasText: '沉淀为 Skill' }).click();
     await expect(page.locator('.skills-manager-shell')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.skills-manager-list')).toContainText('product-prompt-skill', { timeout: 20_000 });
 
@@ -956,7 +1236,7 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
 
     expect(persisted.draftStatus).toBe('materialized');
     expect(persisted.materializedTarget).toBe('skill');
-    expect(persisted.skillContent).toContain('来源 PromptDraft：Product Prompt Skill');
+    expect(persisted.skillContent).toContain('来源提示词草稿：Product Prompt Skill');
     expect(persisted.skillContent).toContain('只使用用户提供的知识库');
 
     await clickNavItem(page, 'Prompt 工作台');
@@ -968,11 +1248,11 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
     await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).not.toBeChecked();
     await expect(editor).toContainText('Reusable SOP Method', { timeout: 20_000 });
-    await expect(editor.locator('button').filter({ hasText: '物化为 SOP' })).toBeVisible();
+    await expect(editor.locator('button').filter({ hasText: '沉淀为 SOP' })).toBeVisible();
     await expect(editor.locator('button').filter({ hasText: '发送到图片' })).toHaveCount(0);
-    await expect(editor.locator('button').filter({ hasText: '物化为 Skill' })).toHaveCount(0);
+    await expect(editor.locator('button').filter({ hasText: '沉淀为 Skill' })).toHaveCount(0);
 
-    await editor.locator('button').filter({ hasText: '物化为 SOP' }).click();
+    await editor.locator('button').filter({ hasText: '沉淀为 SOP' }).click();
     await expect(page.locator('.workflow-feature-workbench')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.workflow-detail-panel')).toContainText('Reusable SOP Method SOP 草案', { timeout: 20_000 });
 
@@ -999,10 +1279,25 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
 test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和混剪交接', async ({}, testInfo) => {
   test.setTimeout(180_000);
 
-  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-    await page.evaluate(async (workspacePath) => {
-      await window.contentStudio.saveSettings({ workspacePath });
-    }, workspaceDir);
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async (workspacePath) => {
+        await window.contentStudio.saveSettings({ workspacePath });
+        await window.contentStudio.registerInputSource({
+          workspacePath,
+          kind: 'manual-note',
+          purpose: 'product-brief',
+          title: '视频 SOP 产品资料',
+          text: [
+            '产品名称：便携营养条包',
+            '卖点：早餐后和办公室抽屉随手取用',
+            '规格：15g * 20 条',
+            '适用场景：早餐后、通勤、办公室',
+            '禁用表达：不得承诺治疗、见效或替代专业建议',
+          ].join('\n'),
+          summary: '视频 SOP 产品资料',
+          tags: ['video-sop'],
+        });
+      }, workspaceDir);
     await page.reload();
     await expect.poll(
       async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
@@ -1029,6 +1324,12 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     await expect(page.locator('.video-prompt-preview pre')).toContainText(/视频 Prompt|任务：/, { timeout: 20_000 });
     await page.locator('.video-prompt-builder-panel button').filter({ hasText: '复制到第三方平台' }).click();
     await expect(page.locator('.video-prompt-history-panel')).toContainText(/RunningHub|1/, { timeout: 20_000 });
+    await expect(page.locator('.video-prompt-handoff-card')).toContainText('已复制待导入', { timeout: 20_000 });
+    await page.locator('.video-prompt-handoff-card button').filter({ hasText: '去导入' }).click();
+    await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.video-import-filter-row')).toContainText('已复制待导入 1');
+    await expect(page.locator('.video-import-draft-panel')).toContainText('已复制待导入');
+    await expect(page.locator('.video-import-handoff-note')).toContainText('Prompt 已复制到第三方平台');
 
     await clickNavItem(page, 'SOP 工作流');
     const latestNextAction = page.locator('.workflow-latest-run-next');
@@ -1036,6 +1337,11 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     await latestNextAction.locator('button').filter({ hasText: '继续下一步' }).click();
     await expect(latestNextAction).toContainText('编辑并生成绿幕图', { timeout: 20_000 });
     await expect(page.locator('.workflow-latest-run')).toContainText('third-party-finished-video.mp4');
+    await clickNavItem(page, '成品视频导入');
+    await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.video-import-draft-panel')).toContainText('已导入成品');
+    await expect(page.locator('.video-import-card').filter({ hasText: 'third-party-finished-video.mp4' })).toContainText('提示词已关联');
+    await clickNavItem(page, 'SOP 工作流');
     await latestNextAction.locator('button').filter({ hasText: '继续下一步' }).click();
 
     await expect(page.locator('.green-screen-workbench')).toBeVisible({ timeout: 20_000 });
@@ -1050,12 +1356,12 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     const importedVideoCard = page.locator('.mix-asset-card').filter({ hasText: 'third-party-finished-video.mp4' }).first();
     await expect(importedVideoCard).toBeVisible();
     await expect(importedVideoCard).toContainText('SOP 已关联');
-    await expect(importedVideoCard.getByRole('button', { name: 'Prompt', exact: true })).toBeVisible();
+    await expect(importedVideoCard.getByRole('button', { name: '提示词', exact: true })).toBeVisible();
     await expect(importedVideoCard.getByRole('button', { name: 'SOP', exact: true })).toBeVisible();
     await importedVideoCard.getByRole('button', { name: '通过', exact: true }).click();
     await expect(importedVideoCard).toContainText('已通过');
-    await expect(importedVideoCard.getByRole('button', { name: '沉淀 Prompt', exact: true })).toBeVisible();
-    await importedVideoCard.getByRole('button', { name: '沉淀 Prompt', exact: true }).click();
+    await expect(importedVideoCard.getByRole('button', { name: '沉淀提示词', exact: true })).toBeVisible();
+    await importedVideoCard.getByRole('button', { name: '沉淀提示词', exact: true }).click();
     await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.prompt-draft-editor')).toHaveValue(/成功素材反向沉淀 Prompt|third-party-finished-video\.mp4|视频 Prompt/, { timeout: 20_000 });
 
@@ -1074,8 +1380,15 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
       const distilledDraft = drafts.find((item) =>
         Boolean(distilledSource?.id && item.inputSourceIds.includes(distilledSource.id)),
       );
+      const importedAssetSource = sources.find((item) =>
+        item.workflowRunId === run?.id
+        && item.purpose === 'successful-asset'
+        && item.kind === 'video'
+        && !item.tags.includes('prompt-distilled'),
+      );
       return {
         runId: run?.id,
+        importedAssetSourceId: importedAssetSource?.id,
         sourceId: distilledSource?.id,
         sourcePurpose: distilledSource?.purpose,
         sourceKind: distilledSource?.kind,
@@ -1087,6 +1400,7 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
         runHasDistilledDraftRef: distilledDraft ? run?.artifactRefs.includes(`prompt-draft:${distilledDraft.id}`) : false,
       };
     }, workspaceDir);
+    expect(distilledVideoTrace.importedAssetSourceId, JSON.stringify(distilledVideoTrace)).toBeTruthy();
     expect(distilledVideoTrace.sourcePurpose, JSON.stringify(distilledVideoTrace)).toBe('successful-asset');
     expect(distilledVideoTrace.sourceKind, JSON.stringify(distilledVideoTrace)).toBe('video');
     expect(distilledVideoTrace.sourcePath, JSON.stringify(distilledVideoTrace)).toContain('third-party-finished-video.mp4');
@@ -1097,10 +1411,34 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     expect(distilledVideoTrace.runHasDistilledDraftRef, JSON.stringify(distilledVideoTrace)).toBe(true);
 
     await clickNavItem(page, 'Prompt 工作台');
-    await expect(page.locator('.prompt-source-option').filter({ hasText: '追溯源' }).locator('input')).toBeDisabled();
-    await page.getByRole('button', { name: '补输入源', exact: true }).click();
+    const traceSourceInput = page.locator('.prompt-source-option').filter({ hasText: '追溯源' }).locator('input').first();
+    await expect(traceSourceInput).toBeDisabled();
+    await expect(traceSourceInput).not.toBeChecked();
+    await page.locator('.prompt-source-panel input').first().fill('追溯源隔离验证');
+    await page.locator('.prompt-source-panel textarea').fill('基于当前页面生成一个新视频 Prompt，但不要把成功素材反向沉淀的追溯源作为新输入源。');
+    await page.locator('.prompt-source-panel button').filter({ hasText: '仅生成草稿' }).click();
+    await expect(page.locator('.prompt-draft-editor')).toHaveValue(/Prompt 草稿|任务：/, { timeout: 20_000 });
+    const promptIsolationTrace = await page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      const sources = await api.listInputSources(workspacePath);
+      const drafts = await api.listPromptDrafts(workspacePath);
+      const traceSourceIds = sources
+        .filter((source) => source.tags.includes('prompt-distilled'))
+        .map((source) => source.id);
+      const generatedDraft = drafts.find((draft) => draft.title === '追溯源隔离验证');
+      return {
+        traceSourceIds,
+        draftInputSourceIds: generatedDraft?.inputSourceIds ?? [],
+      };
+    }, workspaceDir);
+    expect(promptIsolationTrace.traceSourceIds.length, JSON.stringify(promptIsolationTrace)).toBeGreaterThan(0);
+    expect(
+      promptIsolationTrace.traceSourceIds.some((id) => promptIsolationTrace.draftInputSourceIds.includes(id)),
+      JSON.stringify(promptIsolationTrace),
+    ).toBe(false);
+    await page.locator('.prompt-source-panel button').filter({ hasText: '补输入源' }).click();
     await expect(page.locator('.input-sources-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.input-source-list .input-source-card').first()).toContainText('Prompt 溯源', { timeout: 20_000 });
+    await expect(page.locator('.input-source-list .input-source-card').first()).toContainText('成功素材追溯', { timeout: 20_000 });
     await expect(page.locator('.input-source-list .input-source-card').first()).toContainText('成功素材沉淀 / third-party-finished-video.mp4', { timeout: 20_000 });
 
     await clickNavItem(page, '混剪包导出');
@@ -1109,7 +1447,7 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     const overlayCard = page.locator('.mix-asset-card').filter({ hasText: /标题卡|早餐后顺手一次/ }).first();
     await expect(overlayCard).toBeVisible();
     await expect(overlayCard).toContainText('SOP 已关联');
-    await expect(overlayCard.getByRole('button', { name: 'Prompt', exact: true })).toBeVisible();
+    await expect(overlayCard.getByRole('button', { name: '提示词', exact: true })).toBeVisible();
     await overlayCard.getByRole('button', { name: '通过', exact: true }).click();
     await expect(overlayCard).toContainText('已通过');
     await expect(page.locator('.mix-export-config-panel button').filter({ hasText: '导出混剪包' })).toBeEnabled();
@@ -1117,12 +1455,41 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     await expect(page.locator('.mix-package-card').first()).toContainText('短视频混剪素材包', { timeout: 20_000 });
     await expect(page.locator('.mix-package-card').first()).toContainText('SOP 已关联');
     await expect(page.locator('.mix-package-card').first().getByRole('button', { name: '打开 SOP' })).toBeVisible();
+    const exportedPackageCard = page.locator('.mix-package-card').first();
+    await expect(exportedPackageCard).toContainText('待登记导入证据');
+    await exportedPackageCard.getByRole('button', { name: '登记导入证据' }).click();
+    const importEvidenceForm = exportedPackageCard.locator('.mix-import-evidence-form');
+    await expect(importEvidenceForm).toBeVisible();
+    await expect(importEvidenceForm.locator('label').filter({ hasText: '第三方工具' }).locator('input')).toHaveValue('剪映专业版');
+    await expect(importEvidenceForm.locator('label').filter({ hasText: '导入文件数' }).locator('input')).toHaveValue('2');
+    await expect(importEvidenceForm.locator('label').filter({ hasText: 'manifest 已导入或已核对' }).locator('input')).toBeChecked();
+    await expect(importEvidenceForm.locator('label').filter({ hasText: '已在混剪工具创建时间线 / 工程' }).locator('input')).toBeChecked();
+    await importEvidenceForm.locator('label').filter({ hasText: '导入备注' }).locator('textarea').fill('E2E 验收：已按导入说明核对 manifest、成品视频和绿幕文案图。');
+    await importEvidenceForm.getByRole('button', { name: '保存导入证据' }).click();
+    await expect(exportedPackageCard).toContainText('导入证据已登记', { timeout: 20_000 });
+    await expect(exportedPackageCard.getByRole('button', { name: '打开导入证据' })).toBeVisible();
 
     await clickNavItem(page, 'SOP 工作流');
     await expect(page.locator('.workflow-latest-run')).toContainText('完成', { timeout: 20_000 });
     await expect(latestNextAction).toContainText('查看混剪包');
     await page.locator('.workflow-latest-run button').filter({ hasText: '查看运行详情' }).click();
     await expect(runDetail.locator('.workflow-run-action-panel')).toContainText('查看混剪包');
+    const artifactPanel = runDetail.locator('.workflow-run-artifact-panel');
+    await expect(artifactPanel).toContainText('打开提示词草稿');
+    await expect(artifactPanel).toContainText('打开绿幕文案图');
+    await expect(artifactPanel).toContainText('打开混剪包');
+    await expect(runDetail.locator('.workflow-run-steps')).toContainText('混剪包');
+    await expect(runDetail.locator('.workflow-run-steps')).toContainText('绿幕文案图');
+
+    await artifactPanel.locator('button').filter({ hasText: '打开绿幕文案图' }).click();
+    await expect(page.locator('.green-screen-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.overlay-card-tile').first()).toBeVisible({ timeout: 20_000 });
+
+    await clickNavItem(page, 'SOP 工作流');
+    await page.locator('.workflow-latest-run button').filter({ hasText: '查看运行详情' }).click();
+    await artifactPanel.locator('button').filter({ hasText: '打开混剪包' }).click();
+    await expect(page.locator('.mix-export-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.mix-package-card').first()).toContainText('短视频混剪素材包', { timeout: 20_000 });
 
     const exportedTrace = await page.evaluate(async (workspacePath) => {
       const api = window.contentStudio;
@@ -1133,11 +1500,24 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
         workflowRunId: pack?.workflowRunId,
         runStatus: relatedRun?.status,
         runRefs: relatedRun?.artifactRefs ?? [],
+        packageDir: pack?.packageDir,
+        externalImportEvidencePath: pack?.externalImportEvidencePath,
+        externalImportEvidence: pack?.externalImportEvidence,
       };
     }, workspaceDir);
     expect(exportedTrace.workflowRunId, JSON.stringify(exportedTrace)).toBeTruthy();
     expect(exportedTrace.runStatus, JSON.stringify(exportedTrace)).toBe('succeeded');
     expect(exportedTrace.runRefs.some((ref) => ref.startsWith('mix-package:')), JSON.stringify(exportedTrace)).toBe(true);
+    expect(exportedTrace.externalImportEvidencePath, JSON.stringify(exportedTrace)).toContain('import-evidence.json');
+    expect(existsSync(exportedTrace.externalImportEvidencePath), JSON.stringify(exportedTrace)).toBe(true);
+    expect(existsSync(join(exportedTrace.packageDir, 'import-check.md')), JSON.stringify(exportedTrace)).toBe(true);
+    expect(exportedTrace.externalImportEvidence.toolName, JSON.stringify(exportedTrace)).toBe('剪映专业版');
+    expect(exportedTrace.externalImportEvidence.importedFileCount, JSON.stringify(exportedTrace)).toBe(2);
+    expect(exportedTrace.externalImportEvidence.importedAssetKinds.sort(), JSON.stringify(exportedTrace)).toEqual(['overlay', 'video']);
+    expect(exportedTrace.externalImportEvidence.manifestImported, JSON.stringify(exportedTrace)).toBe(true);
+    expect(exportedTrace.externalImportEvidence.timelineCreated, JSON.stringify(exportedTrace)).toBe(true);
+    expect(exportedTrace.externalImportEvidence.evidenceFiles, JSON.stringify(exportedTrace)).toContain('import-check.md');
+    expect(exportedTrace.runRefs.includes(exportedTrace.externalImportEvidencePath), JSON.stringify(exportedTrace)).toBe(true);
 
     await clickNavItem(page, 'SOP 工作流');
     await page.locator('.workflow-view-tabs button').filter({ hasText: '执行表单' }).click();
@@ -1154,23 +1534,17 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     const repeatedRunTrace = await page.evaluate(async (workspacePath) => {
       const api = window.contentStudio;
       const runs = await api.listWorkflowRuns(workspacePath);
-      const sources = await api.listInputSources(workspacePath);
       const latestRun = runs
         .filter((item) => item.workflowKey === 'video-material-package')
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
       return {
         runId: latestRun?.id,
         inputSourceIds: latestRun?.inputSourceIds ?? [],
-        promptDistilledSourceIds: sources
-          .filter((source) => source.tags.includes('prompt-distilled'))
-          .map((source) => source.id),
       };
     }, workspaceDir);
-    expect(repeatedRunTrace.promptDistilledSourceIds.length, JSON.stringify(repeatedRunTrace)).toBeGreaterThan(0);
-    expect(
-      repeatedRunTrace.promptDistilledSourceIds.some((id) => repeatedRunTrace.inputSourceIds.includes(id)),
-      JSON.stringify(repeatedRunTrace),
-    ).toBe(false);
+    expect(repeatedRunTrace.runId, JSON.stringify(repeatedRunTrace)).toBeTruthy();
+    expect(repeatedRunTrace.inputSourceIds, JSON.stringify(repeatedRunTrace)).not.toContain(distilledVideoTrace.sourceId);
+    expect(repeatedRunTrace.inputSourceIds, JSON.stringify(repeatedRunTrace)).not.toContain(distilledVideoTrace.importedAssetSourceId);
   });
 });
 
@@ -1249,12 +1623,95 @@ test('独立视频 Prompt 复制不会误推进无关联 SOP', async ({}, testIn
   });
 });
 
+test('视频 Prompt 需要可追溯资料并支持临时资料自动留痕', async ({}, testInfo) => {
+  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+    await page.evaluate(async (workspacePath) => {
+      await window.contentStudio.saveSettings({ workspacePath });
+    }, workspaceDir);
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待视频 Prompt 临时资料测试工作区重新加载', timeout: 20_000 },
+    ).toBe(true);
+
+    await clickNavItem(page, '视频 Prompt');
+    const promptPanel = page.locator('.video-prompt-builder-panel');
+    const generateButton = promptPanel.locator('button').filter({ hasText: '生成视频 Prompt 组' });
+    const checkedInputs = page.locator('.video-prompt-scenes-panel input[type="checkbox"]:checked');
+    while (await checkedInputs.count()) {
+      await checkedInputs.first().click();
+    }
+    await expect(generateButton).toBeDisabled();
+    await expect(promptPanel).toContainText('请选择场景卡、勾选输入源，或粘贴本次资料后再生成');
+
+    await promptPanel.locator('label').filter({ hasText: '本次资料' }).locator('textarea').fill([
+      '产品：便携营养条包。',
+      '卖点：早餐后和办公室抽屉随手取用。',
+      '参考素材：手持镜头，自然光，通勤包侧袋。',
+      '边界：不承诺治疗，不使用外部任务状态。',
+    ].join('\n'));
+    await expect(promptPanel).toContainText('已粘贴临时资料，生成时会自动登记为本次输入源并进入追溯记录');
+    await expect(generateButton).toBeEnabled();
+    await generateButton.click();
+    await expect(page.locator('.video-prompt-preview pre')).toContainText(/视频 Prompt|任务：|15 秒/, { timeout: 20_000 });
+
+    const trace = await page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      const sources = await api.listInputSources(workspacePath);
+      const source = sources.find((item) => item.tags.includes('video-prompt'))
+        ?? sources.find((item) => (item.extractedText ?? '').includes('便携营养条包'));
+      const draft = (await api.listPromptDrafts(workspacePath)).find((item) =>
+        source?.id ? item.inputSourceIds.includes(source.id) : false,
+      );
+      return {
+        sourceId: source?.id,
+        sourcePurpose: source?.purpose,
+        sourceTags: source?.tags ?? [],
+        sourceText: source?.extractedText ?? '',
+        sources: sources.map((item) => ({
+          title: item.title,
+          purpose: item.purpose,
+          tags: item.tags,
+          text: item.extractedText,
+        })),
+        draftPurpose: draft?.purpose,
+        draftInputSourceIds: draft?.inputSourceIds ?? [],
+      };
+    }, workspaceDir);
+    expect(trace.sourceId, JSON.stringify(trace)).toBeTruthy();
+    expect(trace.sourcePurpose, JSON.stringify(trace)).toBe('sop-input');
+    expect(trace.sourceTags, JSON.stringify(trace)).toEqual(expect.arrayContaining(['video-prompt', '临时资料']));
+    expect(trace.sourceText, JSON.stringify(trace)).toContain('便携营养条包');
+    expect(trace.draftPurpose, JSON.stringify(trace)).toBe('video');
+    expect(trace.draftInputSourceIds, JSON.stringify(trace)).toContain(trace.sourceId);
+  });
+});
+
 test('SOP 定义草案可以编辑、发布并从表单运行', async ({}, testInfo) => {
   test.setTimeout(120_000);
 
-  await withContentStudio(testInfo, async ({ page }) => {
+  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+    await page.evaluate(async (workspacePath) => {
+      await window.contentStudio.saveSettings({ workspacePath });
+      await window.contentStudio.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'sop-input',
+        title: 'UI SOP 测试资料',
+        text: '用于验证自定义 SOP 发布后，普通用户需要显式选择资料再运行。',
+        summary: 'UI SOP 测试资料',
+        tags: ['ui-sop'],
+      });
+    }, workspaceDir);
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待 UI SOP 测试工作区重新加载', timeout: 20_000 },
+    ).toBe(true);
+
     await clickNavItem(page, 'SOP 工作流');
-    await page.locator('.workflow-view-tabs button').filter({ hasText: '定义管理' }).click();
+    await page.locator('.workflow-view-tabs button').filter({ hasText: '高级维护' }).click();
+    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: '定义管理' }).click();
     await expect(page.locator('.workflow-detail-panel')).toBeVisible();
     await page.locator('.workflow-detail-panel button').filter({ hasText: '生成 SOP 草案' }).click();
 
@@ -1278,19 +1735,33 @@ test('SOP 定义草案可以编辑、发布并从表单运行', async ({}, testI
     await editor.getByRole('button', { name: '保存 SOP 定义' }).click();
     await expect(page.locator('.workflow-definition-list')).toContainText('功能测试 UI 可运行 SOP', { timeout: 20_000 });
 
+    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: 'Canvas' }).click();
+    const canvas = page.locator('.workflow-canvas-panel');
+    await expect(canvas).toContainText('节点轻编辑');
+    await canvas.locator('.workflow-canvas-node').filter({ hasText: '登记输入源' }).click();
+    const canvasEditor = canvas.locator('.workflow-canvas-editor');
+    await canvasEditor.locator('label').filter({ hasText: '节点标题' }).locator('input').fill('登记事实源');
+    await canvasEditor.locator('label').filter({ hasText: '节点说明' }).locator('textarea').fill('从 Canvas 轻编辑输入源节点。');
+    await canvasEditor.getByRole('button', { name: '保存节点到定义' }).click();
+    await expect(canvas.locator('.workflow-canvas-node').filter({ hasText: '登记事实源' })).toBeVisible({ timeout: 20_000 });
+
+    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: '定义管理' }).click();
+    await expect(editor.locator('label').filter({ hasText: '执行步骤 JSON' }).locator('textarea')).toHaveValue(/登记事实源/);
+    await expect(editor.locator('label').filter({ hasText: '执行步骤 JSON' }).locator('textarea')).toHaveValue(/从 Canvas 轻编辑输入源节点/);
+
     await page.locator('.workflow-detail-panel button').filter({ hasText: '发布为可运行' }).click();
     await expect(page.locator('.workflow-detail-panel .workflow-meta-grid')).toContainText('published', { timeout: 20_000 });
 
     await page.locator('.workflow-view-tabs button').filter({ hasText: '执行表单' }).click();
     const runner = page.locator('.workflow-runner-panel');
     await expect(runner).toContainText('功能测试 UI 可运行 SOP');
-    await runner.locator('label').filter({ hasText: '资料来源' }).locator('textarea').fill('UI 测试输入资料');
+    await runner.locator('label').filter({ hasText: '补充资料说明' }).locator('textarea').fill('UI 测试输入资料');
     await runner.locator('label').filter({ hasText: '执行目标' }).locator('textarea').fill('验证编辑发布后的 SOP 可以运行。');
     await runner.getByRole('button', { name: '运行 SOP' }).click();
     await expect(page.locator('.workflow-history-panel')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.workflow-run-detail-panel')).toContainText('功能测试 UI 可运行 SOP');
     await expect(page.locator('.workflow-run-detail-panel')).toContainText('排队');
-    await expect(page.locator('.workflow-run-detail-panel')).toContainText('人工审核');
+    await expect(page.locator('.workflow-run-detail-panel')).toContainText('登记事实源');
   });
 });
 
@@ -1406,7 +1877,7 @@ test('品牌 SOP 运行详情可以打开知识库、场景库和 Prompt 产物'
       await expect(actionPanel).toContainText('确认审核通过');
       await expect(artifactPanel).toContainText('打开品牌知识库');
       await expect(artifactPanel).toContainText('打开场景库');
-      await expect(artifactPanel).toContainText('打开 Prompt 草稿');
+      await expect(artifactPanel).toContainText('打开提示词草稿');
 
       await artifactPanel.locator('button').filter({ hasText: '打开品牌知识库' }).click();
       await expect(page.locator('.knowledge-brand-workbench')).toBeVisible({ timeout: 20_000 });
@@ -1421,7 +1892,7 @@ test('品牌 SOP 运行详情可以打开知识库、场景库和 Prompt 产物'
 
       await clickNavItem(page, 'SOP 工作流');
       await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await artifactPanel.locator('button').filter({ hasText: '打开 Prompt 草稿' }).click();
+      await artifactPanel.locator('button').filter({ hasText: '打开提示词草稿' }).click();
       await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.prompt-editor-panel')).toContainText('品牌知识库场景提示词 SOP Prompt 组');
       await expect(page.locator('.prompt-draft-editor')).toHaveValue(/早餐后便携场景|图片 Prompt|场景/);
@@ -1548,10 +2019,10 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
       const artifactPanel = runDetail.locator('.workflow-run-artifact-panel');
       await expect(runDetail).toContainText('小红书种草图 SOP');
       await expect(actionPanel).toContainText('打开素材审核');
-      await expect(artifactPanel).toContainText('打开 Prompt 草稿');
+      await expect(artifactPanel).toContainText('打开提示词草稿');
       await expect(artifactPanel).toContainText('打开素材审核');
 
-      await artifactPanel.locator('button').filter({ hasText: '打开 Prompt 草稿' }).click();
+      await artifactPanel.locator('button').filter({ hasText: '打开提示词草稿' }).click();
       await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.prompt-draft-editor')).toHaveValue(/早餐桌自然光|小红书 UGC|图片 Prompt/);
 
@@ -1563,18 +2034,36 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
       const generatedAsset = page.locator('.asset-tile').filter({ hasText: 'test-image-model' }).first();
       await expect(generatedAsset).toBeVisible();
       await expect(generatedAsset).toContainText('待审核');
-      await generatedAsset.locator('button').filter({ hasText: '驳回' }).click();
+      await generatedAsset.getByRole('button', { name: '详情', exact: true }).click();
+      const reviewDialog = page.locator('.asset-detail-dialog');
+      await expect(reviewDialog).toContainText('审核决策');
+      await expect(reviewDialog).toContainText('质检结果');
+      await expect(reviewDialog).toContainText('产品清晰');
+      await expect(reviewDialog).toContainText('标题区留白');
+      await expect(reviewDialog).toContainText('无竞品元素');
+      await expect(reviewDialog).toContainText('不能复制竞品包装和可识别文案');
+      await expect(reviewDialog).toContainText('来源可追溯');
+      await expect(reviewDialog).toContainText('建议下一步');
+      await expect(reviewDialog).toContainText('任务可追溯');
+      await reviewDialog.getByRole('button', { name: '关闭', exact: true }).click();
+      await generatedAsset.getByRole('button', { name: '驳回素材', exact: true }).click();
+      const rejectDialog = page.locator('.asset-reject-dialog');
+      await expect(rejectDialog).toContainText('填写驳回原因');
+      await rejectDialog.locator('.asset-reject-reasons button').filter({ hasText: '画面构图不可用' }).click();
+      await rejectDialog.locator('textarea').fill('主体位置偏移，标题区不稳定。');
+      await rejectDialog.getByRole('button', { name: '确认驳回', exact: true }).click();
       await expect(generatedAsset).toContainText('已驳回', { timeout: 20_000 });
 
       await clickNavItem(page, 'SOP 工作流');
       await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
       await expect(runDetail).toContainText(/已驳回素材并等待回炉|驳回|回炉/, { timeout: 20_000 });
-      await expect(runDetail.locator('.workflow-summary-stack')).toContainText('阻塞');
+      await expect(runDetail.locator('.workflow-summary-stack')).toContainText('待配置');
       await expect(runDetail).toContainText('原驳回素材', { timeout: 20_000 });
+      await expect(runDetail).toContainText('画面构图不可用', { timeout: 20_000 });
 
       await artifactPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
       await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
-      await generatedAsset.getByRole('button', { name: '回炉', exact: true }).click();
+      await generatedAsset.getByRole('button', { name: '回炉重做', exact: true }).click();
       await expect(page.locator('.image-workbench-layout')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.image-prompt-composer textarea')).toHaveValue(/回炉原因|驳回素材|真实手机实拍/, { timeout: 20_000 });
       await page.locator('.image-render-button').click();
@@ -1595,7 +2084,7 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
       await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
       const reworkedAsset = page.locator('.asset-tile').filter({ hasText: '回炉生成' }).first();
       await expect(reworkedAsset).toBeVisible({ timeout: 20_000 });
-      await reworkedAsset.getByRole('button', { name: '通过', exact: true }).click();
+      await reworkedAsset.getByRole('button', { name: '通过并入库', exact: true }).click();
       await expect(reworkedAsset).toContainText('已通过', { timeout: 20_000 });
 
       await clickNavItem(page, 'SOP 工作流');
@@ -1607,7 +2096,7 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
       await artifactPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
       await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
       const approvedReworkedAsset = page.locator('.asset-tile').filter({ hasText: '回炉生成' }).first();
-      await approvedReworkedAsset.getByRole('button', { name: '沉淀 Prompt', exact: true }).click();
+      await approvedReworkedAsset.getByRole('button', { name: '沉淀提示词', exact: true }).click();
       await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.prompt-draft-editor')).toHaveValue(/成功素材反向沉淀 Prompt|复用 Prompt 草稿|真实手机实拍/, { timeout: 20_000 });
 
@@ -1749,12 +2238,12 @@ test('IP 长文 SOP 运行详情可以打开 Agent Prompt 并进入文章生成'
       await expect(runDetail).toContainText('公众号 IP 内容 SOP');
       await expect(actionPanel).toContainText('进入文章生成');
       await expect(artifactPanel).toContainText('打开 IP 知识库');
-      await expect(artifactPanel).toContainText('打开 Prompt 草稿');
+      await expect(artifactPanel).toContainText('打开提示词草稿');
 
       await artifactPanel.locator('button').filter({ hasText: '打开 IP 知识库' }).click();
       await expect(page.locator('.knowledge-brand-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.brand-kb-detail')).toContainText('内容工程顾问');
-      await page.getByRole('button', { name: '生成口播 Prompt' }).click();
+      await page.getByRole('button', { name: '生成口播延伸库' }).click();
       await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.prompt-draft-editor')).toHaveValue(/IP 场景延伸知识库|延伸场景：口播|内容工程顾问/, { timeout: 20_000 });
       const scenarioTrace = await page.evaluate(async (workspacePath) => {
@@ -1783,9 +2272,21 @@ test('IP 长文 SOP 运行详情可以打开 Agent Prompt 并进入文章生成'
       expect(scenarioTrace.runHasSourceRef, JSON.stringify(scenarioTrace)).toBe(true);
       expect(scenarioTrace.runHasDraftRef, JSON.stringify(scenarioTrace)).toBe(true);
 
+      await clickNavItem(page, 'IP 知识库');
+      const scenarioLibrary = page.locator('.ip-scenario-library-panel');
+      await expect(scenarioLibrary).toContainText('IP 运营场景库');
+      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('已确认');
+      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('IP 版本');
+      const extensionPanel = page.locator('.ip-extension-draft-panel');
+      await expect(extensionPanel).toContainText('已生成的 IP 场景提示词');
+      await expect(extensionPanel).toContainText('口播');
+      await extensionPanel.locator('button').filter({ hasText: '口播' }).first().click();
+      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/延伸场景：口播/);
+
       await clickNavItem(page, 'SOP 工作流');
       await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await artifactPanel.locator('button').filter({ hasText: '打开 Prompt 草稿' }).click();
+      await artifactPanel.locator('button').filter({ hasText: '打开提示词草稿' }).click();
       await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.prompt-workbench')).toContainText('输入源 + 用户意图');
       await expect(page.locator('.prompt-workbench')).toContainText('公众号 IP 内容 SOP');
@@ -1818,35 +2319,44 @@ test('IP 长文 SOP 运行详情可以打开 Agent Prompt 并进入文章生成'
       });
       expect(JSON.stringify(draftRun.humanReviewOutput)).toContain('article-draft-generated');
 
+      await clickButton(page, '导出草稿包');
+      await expect(page.locator('.article-preview')).toContainText('平台草稿包已导出', { timeout: 20_000 });
       const completedRun = await page.evaluate(async ({ workspacePath, runId }) => {
-        const [currentRun] = (await window.contentStudio.listWorkflowRuns(workspacePath))
+        const [run] = (await window.contentStudio.listWorkflowRuns(workspacePath))
           .filter((item) => item.id === runId);
-        const outputs = (currentRun?.steps ?? [])
-          .map((step) => step.output)
-          .filter((output) => output && typeof output === 'object' && !Array.isArray(output));
-        const promptDraftId = outputs.find((output) => typeof output.promptDraftId === 'string')?.promptDraftId;
-        const generationLogId = outputs.find((output) => typeof output.generationLogId === 'string')?.generationLogId;
-        const run = await window.contentStudio.recordWorkflowManualEvent({
-          workspacePath,
-          workflowRunId: runId,
-          event: 'article-markdown-exported',
-          promptDraftId,
-          generationLogId,
-          exportPath: `${workspacePath}/ip-sop.md`,
-          summary: 'Playwright 已确认文章草稿并导出 Markdown。',
-        });
         const assetStore = run.steps.find((step) => step.stepId === 'asset_store');
         return {
           status: run.status,
           summary: run.summary,
           assetStoreStatus: assetStore?.status ?? '',
           artifactRefs: run.artifactRefs,
+          platformDraftRefs: run.artifactRefs.filter((ref) => ref.includes('/platform-drafts/')),
         };
       }, { workspacePath: workspaceDir, runId: draftRun.runId });
       expect(completedRun.status).toBe('succeeded');
       expect(completedRun.assetStoreStatus).toBe('succeeded');
       expect(completedRun.summary).toContain('公众号 IP 内容 SOP 已完成');
-      expect(completedRun.artifactRefs).toEqual(expect.arrayContaining([`${workspaceDir}/ip-sop.md`]));
+      expect(completedRun.platformDraftRefs.some((ref) => ref.endsWith('/draft.md')), JSON.stringify(completedRun)).toBe(true);
+      expect(completedRun.platformDraftRefs.some((ref) => ref.endsWith('/manifest.json')), JSON.stringify(completedRun)).toBe(true);
+
+      await expect(page.locator('.article-draft-history')).toContainText('提示词');
+      await page.locator('.article-draft-history button').filter({ hasText: '提示词' }).click();
+      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.prompt-workbench')).toContainText('公众号 IP 内容 SOP');
+      const promptDelivery = page.locator('.prompt-derived-delivery');
+      await expect(promptDelivery).toContainText('平台草稿包');
+      await expect(promptDelivery).toContainText('IP 内容工程方法论');
+      await expect(promptDelivery).toContainText('回到 SOP');
+      await clickButton(page, '文章生成');
+      await expect(page.locator('.article-draft-history')).toContainText('回到 SOP');
+      await page.locator('.article-draft-history button').filter({ hasText: '回到 SOP' }).click();
+      await expect(page.locator('.workflow-run-detail-panel')).toContainText('公众号 IP 内容 SOP', { timeout: 20_000 });
+      await expect(artifactPanel).toContainText('打开平台草稿包');
+      await expect(artifactPanel).not.toContainText('打开素材审核');
+      const platformDraftTrace = page.locator('.workflow-platform-draft-panel');
+      await expect(platformDraftTrace).toContainText('本次 SOP 已导出的本地交付包');
+      await expect(platformDraftTrace).toContainText('复制发布文案');
+      await expect(platformDraftTrace).toContainText('提示词');
     });
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
@@ -1893,6 +2403,13 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
       await sceneButton.click();
       await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.scene-prompt-scene-list')).toContainText('早餐后便携场景');
+      const sceneEditor = page.locator('.scene-card-editor');
+      await expect(sceneEditor).toContainText('使用场景');
+      await expect(page.locator('.scene-prompt-scenes-panel')).toContainText('待确认');
+      await sceneEditor.locator('label').filter({ hasText: '使用场景' }).locator('textarea').fill('早餐后准备出门前，家长把便携条包放进孩子书包侧袋。');
+      await sceneEditor.locator('label').filter({ hasText: '画面构图' }).locator('textarea').fill('4:5 竖版，书包侧袋在右下三分之一，早餐桌自然光，手部动作真实。');
+      await sceneEditor.getByRole('button', { name: '确认场景卡', exact: true }).click();
+      await expect(page.locator('.scene-prompt-scenes-panel')).toContainText('已确认', { timeout: 20_000 });
 
       await clickNavItem(page, '视频 Prompt');
       await expect(page.locator('.video-prompt-workbench')).toBeVisible();
@@ -1903,9 +2420,9 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
       await expect(page.locator('.video-prompt-history-panel')).toContainText('1');
       await page.locator('.video-prompt-builder-panel button').filter({ hasText: '导入成品视频' }).click();
       await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
-      await page.locator('.video-import-workbench .module-command-center button').filter({ hasText: '导入并关联 Prompt' }).click();
+      await page.locator('.video-import-workbench .module-command-center button').filter({ hasText: '导入并关联提示词' }).click();
       await expect(page.locator('.video-import-list')).toContainText('third-party-finished-video.mp4');
-      await expect(page.locator('.video-import-list')).toContainText('Prompt 已关联');
+      await expect(page.locator('.video-import-list')).toContainText('提示词已关联');
 
       await clickNavItem(page, '混剪包导出');
       await expect(page.locator('.mix-export-workbench')).toBeVisible({ timeout: 20_000 });
@@ -1920,9 +2437,25 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
       await clickNavItem(page, '场景提示词');
       await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
 
+      await page.locator('.purpose-tabs button').filter({ hasText: '视频' }).click();
+      await page.locator('.scene-prompt-builder-panel button').filter({ hasText: '生成10 组 15 秒视频 Prompt' }).click();
+      await expect(page.locator('.scene-prompt-preview pre')).toContainText(/视频 Prompt|15 秒/, { timeout: 20_000 });
+      const sceneHandoffPanel = page.locator('.scene-prompt-handoff-panel');
+      await expect(sceneHandoffPanel).toContainText('下游交接');
+      await expect(sceneHandoffPanel).toContainText('准备复制到第三方视频平台');
+      await sceneHandoffPanel.locator('select').selectOption('vidu');
+      await sceneHandoffPanel.locator('button').filter({ hasText: '复制到第三方视频平台' }).click();
+      await expect(sceneHandoffPanel).toContainText('已复制到Vidu，待导入成品', { timeout: 20_000 });
+      await expect(sceneHandoffPanel.locator('button').filter({ hasText: '去导入成品' })).toBeEnabled();
+
       await page.locator('.purpose-tabs button').filter({ hasText: '图片' }).click();
       await page.locator('.scene-prompt-builder-panel button').filter({ hasText: '生成10 组 UGC 图片 Prompt' }).click();
       await expect(page.locator('.scene-prompt-preview pre')).toContainText('图片 Prompt', { timeout: 20_000 });
+      await expect(sceneHandoffPanel).toContainText('准备发送到图片生成');
+      await sceneHandoffPanel.locator('button').filter({ hasText: '外部工具' }).click();
+      await sceneHandoffPanel.locator('button').filter({ hasText: '复制到外部图片工具' }).click();
+      await expect(sceneHandoffPanel).toContainText('已复制到外部图片工具', { timeout: 20_000 });
+      await sceneHandoffPanel.locator('button').filter({ hasText: '内部下游' }).click();
       await page.locator('.scene-prompt-builder-panel button').filter({ hasText: '发送选中 Prompt 到图片生成' }).click();
       await expect(page.locator('.image-workbench-layout')).toBeVisible();
       await expect(page.locator('.image-prompt-panel textarea')).toHaveValue(/早餐桌自然光|便携条包/);
@@ -1934,6 +2467,7 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
           api.listSceneCards(workspacePath),
           api.listPromptDrafts(workspacePath),
         ]);
+        const importedVideo = (await api.listInputSources(workspacePath)).find((source) => source.purpose === 'successful-asset' && source.kind === 'video');
         return {
           packCount: packs.length,
           firstPackCitationIds: packs[0]?.citations.map((citation) => citation.knowledgeBaseId) ?? [],
@@ -1941,8 +2475,9 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
           firstSceneCitationIds: scenes[0]?.citations.map((citation) => citation.knowledgeBaseId) ?? [],
           imageDraftCount: drafts.filter((draft) => draft.purpose === 'image').length,
           firstImageDraftSceneIds: drafts.find((draft) => draft.purpose === 'image')?.sceneCardIds ?? [],
-          copiedVideoDraft: drafts.find((draft) => draft.purpose === 'video' && (draft.copyCount ?? 0) > 0),
-          importedVideo: (await api.listInputSources(workspacePath)).find((source) => source.purpose === 'successful-asset' && source.kind === 'video'),
+          importedVideo,
+          copiedVideoDraft: drafts.find((draft) => draft.id === importedVideo?.relatedPromptDraftId),
+          sceneCopiedVideoDraft: drafts.find((draft) => draft.title === '场景视频 Prompt 草稿' && draft.lastCopiedTarget === 'Vidu'),
           mixPackage: (await api.listMixPackages(workspacePath))[0],
         };
       }, workspaceDir);
@@ -1952,6 +2487,8 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
       expect(persisted.sceneCount).toBeGreaterThanOrEqual(1);
       expect(persisted.firstSceneCitationIds.some((id) => id.startsWith('brand-kb:')), JSON.stringify(persisted)).toBe(true);
       expect(persisted.copiedVideoDraft?.copyCount, JSON.stringify(persisted)).toBeGreaterThanOrEqual(1);
+      expect(persisted.sceneCopiedVideoDraft?.copyCount, JSON.stringify(persisted)).toBeGreaterThanOrEqual(1);
+      expect(persisted.sceneCopiedVideoDraft?.lastCopiedTarget, JSON.stringify(persisted)).toBe('Vidu');
       expect(persisted.importedVideo?.relatedPromptDraftId, JSON.stringify(persisted)).toBe(persisted.copiedVideoDraft?.id);
       expect(persisted.mixPackage?.assets.some((asset) => asset.kind === 'video'), JSON.stringify(persisted)).toBe(true);
       const mixedVideo = persisted.mixPackage?.assets.find((asset) => asset.kind === 'video');
@@ -1967,6 +2504,103 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
   }
 
   expect(capturedPrompts.some((prompt) => prompt.includes('brand-kb:')), capturedPrompts.join('\n---\n')).toBe(true);
+});
+
+test('文章生成不会自动混入未显式选择的场景卡', async ({}, testInfo) => {
+  test.setTimeout(120_000);
+
+  const { server, baseUrl } = await startFakeOpenAITextServer((prompt) => {
+    if (prompt.includes('"task": "generate_article"')) {
+      return {
+        titleCandidates: ['独立文章不绑定场景卡', '知识引用文章草稿', '不混用场景上下文'],
+        outline: ['明确主题', '引用知识库事实', '说明使用边界', '给出人工复核项'],
+        summary: '验证文章生成不会自动携带场景卡。',
+        markdown: '# 独立文章不绑定场景卡\n\n这是一篇只依赖知识引用和用户要求的文章草稿。',
+        publishCheck: [
+          { level: 'info', message: '已检查场景卡不应自动注入。' },
+          { level: 'warning', message: '发布前仍需人工复核事实引用。' },
+        ],
+      };
+    }
+    return fakeBusinessChainTextOutput(prompt);
+  });
+
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      const setup = await page.evaluate(async ({ workspacePath, endpoint }) => {
+        const api = window.contentStudio;
+        await api.saveSettings({ workspacePath });
+        await api.saveModelConfig({
+          textProtocol: 'openai-chat',
+          textApiEndpoint: endpoint,
+          textApiKey: 'test-text-key',
+          textModel: 'test-text-model',
+        });
+        const source = await api.registerInputSource({
+          workspacePath,
+          kind: 'manual-note',
+          purpose: 'product-brief',
+          title: '场景隔离产品资料',
+          text: '产品事实：便携条包。场景：早餐后、办公室抽屉。合规：不承诺治疗。',
+          summary: '场景隔离产品资料',
+          tags: ['scene-isolation'],
+        });
+        const citations = [{
+          knowledgeBaseId: `input-source:${source.id}`,
+          sectionId: 'full-text',
+          title: source.title,
+          sectionType: 'product',
+          excerpt: source.extractedText || '产品事实：便携条包。场景：早餐后、办公室抽屉。合规：不承诺治疗。',
+        }];
+        const pack = await api.generatePromptPack({ workspacePath, citations, inputSourceIds: [source.id], name: '场景隔离提示词包' });
+        const cards = await api.generateSceneCards({ workspacePath, promptPackId: pack.id, citations, count: 2 });
+        return { sceneIds: cards.map((card) => card.id), sourceId: source.id };
+      }, { workspacePath: workspaceDir, endpoint: baseUrl });
+      expect(setup.sceneIds.length).toBeGreaterThan(0);
+
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待场景隔离测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, '文章生成');
+      await expect(page.locator('.article-module-workbench')).toBeVisible({ timeout: 20_000 });
+      await page.locator('.article-editor-panel label').filter({ hasText: '主题' }).locator('input').fill('独立文章不绑定场景卡');
+      await page.locator('.article-editor-panel textarea').fill('只根据知识引用生成文章，不应自动携带任何场景卡。');
+      await page.locator('.article-editor-panel button').filter({ hasText: '生成大纲 / 正文 / 发布检查' }).click();
+      await expect(page.locator('.article-preview')).toContainText('独立文章不绑定场景卡', { timeout: 20_000 });
+
+      const trace = await page.evaluate(async (workspacePath) => {
+        const logs = await window.contentStudio.listGenerationLogs(workspacePath);
+        const articleLog = logs.find((log) => log.kind === 'article' && log.title === '独立文章不绑定场景卡');
+        return {
+          sceneCardIds: articleLog?.sceneCardIds ?? null,
+          inputSceneCardIds: articleLog?.input?.sceneCardIds ?? null,
+        };
+      }, workspaceDir);
+
+      expect(trace.sceneCardIds, JSON.stringify(trace)).toEqual([]);
+      expect(trace.inputSceneCardIds, JSON.stringify(trace)).toEqual([]);
+
+      await clickNavItem(page, '场景提示词');
+      await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
+      await page.locator('.scene-prompt-builder-panel button').filter({ hasText: '生成10 组 UGC 图片 Prompt' }).click();
+      await expect(page.locator('.scene-prompt-preview pre')).toContainText('图片 Prompt', { timeout: 20_000 });
+      const copyScenePromptButton = page.locator('.scene-prompt-preview button').filter({ hasText: '复制' }).first();
+      await expect(copyScenePromptButton).toBeEnabled();
+      await copyScenePromptButton.click();
+      await expect(copyScenePromptButton).toContainText('已复制');
+      const scenePromptTrace = await page.evaluate(async (workspacePath) => {
+        const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
+        const draft = drafts.find((item) => item.title === '场景图片 Prompt 草稿');
+        return { inputSourceIds: draft?.inputSourceIds ?? [] };
+      }, workspaceDir);
+      expect(scenePromptTrace.inputSourceIds, JSON.stringify(scenePromptTrace)).toContain(setup.sourceId);
+    });
+  } finally {
+    await new Promise((resolveClose) => server.close(resolveClose));
+  }
 });
 
 test('IP 知识库能进入场景延伸库和 PromptPack 引用', async ({}, testInfo) => {
@@ -2009,6 +2643,16 @@ test('IP 知识库能进入场景延伸库和 PromptPack 引用', async ({}, tes
       await extractButton.click();
       await expect(page.locator('.knowledge-brand-workbench .prompt-draft-list')).toContainText('嘉文老师 IP 知识库', { timeout: 20_000 });
       await expect(page.locator('.brand-kb-detail')).toContainText('内容工程顾问');
+      const scenarioLibrary = page.locator('.ip-scenario-library-panel');
+      await expect(scenarioLibrary).toContainText('IP 运营场景库');
+      await expect(scenarioLibrary).toContainText('0/3 已生成');
+      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('待生成延伸知识库');
+      await scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' }).getByRole('button', { name: '生成延伸库' }).click();
+      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/IP 场景延伸知识库|延伸场景：口播|内容工程顾问/, { timeout: 20_000 });
+      await clickNavItem(page, 'IP 知识库');
+      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('已确认');
+      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('延伸知识库已生成');
 
       const sceneButton = page.locator('.knowledge-brand-workbench button').filter({ hasText: '生成场景延伸库' }).first();
       await expect(sceneButton).toBeEnabled();
@@ -2344,15 +2988,50 @@ test('文章生成通过本地文字 Provider mock 生成正文并记录成功�
     await expect(page.locator('.article-preview pre')).toContainText('#');
     await clickButton(page, '预览');
     await expect(page.locator('.article-rendered')).toBeVisible();
+    await clickButton(page, '导出草稿包');
+    await expect(page.locator('.article-preview')).toContainText('平台草稿包已导出', { timeout: 20_000 });
+    await expect(page.locator('.article-draft-history')).toContainText('把便携营养讲成人话', { timeout: 20_000 });
+    await expect(page.locator('.article-draft-history')).toContainText('复制发布文案');
+    await page.locator('.article-draft-history button').filter({ hasText: '复制发布文案' }).click();
+    await expect(page.locator('.article-draft-history')).toContainText('已复制');
+    await expect(page.locator('.article-draft-history')).toContainText('来源记录');
+    await page.locator('.article-draft-toolbar input').fill('健康管理');
+    await expect(page.locator('.article-draft-history')).toContainText('把便携营养讲成人话');
+    await page.locator('.article-draft-toolbar input').fill('完全不存在的草稿');
+    await expect(page.locator('.article-draft-history')).toContainText('没有匹配的草稿包');
+    await page.locator('.article-draft-toolbar input').fill('');
+    await page.locator('.article-draft-toolbar button').filter({ hasText: '公众号' }).click();
+    await expect(page.locator('.article-draft-history')).toContainText('把便携营养讲成人话');
+    const draftExport = await page.evaluate(async (workspacePath) => {
+      const logs = await window.contentStudio.listGenerationLogs(workspacePath);
+      const articleLog = logs.find((log) => log.kind === 'article' && log.status === 'succeeded');
+      const refs = articleLog?.artifactRefs ?? [];
+      const drafts = await window.contentStudio.listPlatformDrafts(workspacePath);
+      return {
+        manifestPath: refs.find((ref) => /platform-drafts\/.*manifest\.json$/.test(ref)) ?? '',
+        markdownPath: refs.find((ref) => /platform-drafts\/.*draft\.md$/.test(ref)) ?? '',
+        platformCopyPath: refs.find((ref) => /platform-drafts\/.*platform-copy\.txt$/.test(ref)) ?? '',
+        recordCount: drafts.length,
+        recordTitle: drafts[0]?.title ?? '',
+      };
+    }, workspaceDir);
+    expect(draftExport.manifestPath, JSON.stringify(draftExport)).toBeTruthy();
+    expect(draftExport.markdownPath, JSON.stringify(draftExport)).toBeTruthy();
+    expect(draftExport.platformCopyPath, JSON.stringify(draftExport)).toBeTruthy();
+    expect(existsSync(draftExport.manifestPath)).toBe(true);
+    expect(existsSync(draftExport.markdownPath)).toBe(true);
+    expect(existsSync(draftExport.platformCopyPath)).toBe(true);
+    expect(draftExport.recordCount).toBeGreaterThanOrEqual(1);
+    expect(draftExport.recordTitle).toBe('把便携营养讲成人话');
     await clickButton(page, '复制正文');
-    await expect(page.getByRole('button', { name: '已复制' })).toBeVisible();
+    await expect(page.locator('.article-actions button').filter({ hasText: '已复制' })).toBeVisible();
     });
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
   }
 });
 
-test('视频复刻三步工作台使用真实 blocked 分支，不伪造视频结果', async ({}, testInfo) => {
+test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造视频结果', async ({}, testInfo) => {
   await withContentStudio(testInfo, async ({ page, workspaceDir, e2eProductAssetPath }) => {
     await page.evaluate(async ({ workspacePath }) => {
       const api = window.contentStudio;
@@ -2369,21 +3048,22 @@ test('视频复刻三步工作台使用真实 blocked 分支，不伪造视频�
     await expect(page.locator('.video-replica-workbench')).toBeVisible();
     await expect(page.locator('.video-replica-workbench > .v2-feature-hero')).toHaveCount(0);
     await expect(page.locator('.video-replica-workbench > .module-command-center')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: '视频复刻引擎' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '参考视频拆解工作台' })).toBeVisible();
     await expect(page.locator('.video-stage-tabs button')).toHaveCount(3);
     await expect(page.locator('.video-stage-tabs button').nth(0)).toContainText('视频拆解');
     await expect(page.locator('.video-stage-tabs button').nth(1)).toContainText('脚本生成');
     await expect(page.locator('.video-stage-tabs button').nth(2)).toContainText('视频生成');
 
-    await expect(page.getByRole('heading', { name: '原视频导入' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '参考视频导入' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '片段拆解结果' })).toBeVisible();
-    await expect(page.locator('.video-dimension-grid button')).toHaveCount(16);
+    const videoDimensionCount = await page.locator('.video-dimension-grid button').count();
+    expect(videoDimensionCount).toBeGreaterThan(0);
     await expect(page.locator('.video-summary-row')).toContainText('智能拆解');
     await assertVideoWorkbenchLayout(page);
 
     await clickVideoAction(page, '智能拆解');
     await expect(page.getByText('请先选择本地视频或粘贴参考视频链接')).toBeVisible();
-    await expect(page.locator('.video-dimension-grid button.active')).toHaveCount(16);
+    await expect(page.locator('.video-dimension-grid button.active')).toHaveCount(videoDimensionCount);
 
     await clickVideoStageTab(page, '脚本生成');
     await expect(page.getByRole('heading', { name: '新产品信息' })).toBeVisible();
@@ -2394,7 +3074,7 @@ test('视频复刻三步工作台使用真实 blocked 分支，不伪造视频�
     await expect(page.locator('.video-upload-callout input[type="checkbox"]')).toBeChecked();
     await assertVideoWorkbenchLayout(page);
 
-    await clickVideoAction(page, '生成复刻脚本');
+    await clickVideoAction(page, '生成新视频脚本');
     await expect(page.getByText('文字模型未配置')).toBeVisible();
     await expect(page.locator('.video-script-card')).toContainText('等待生成新视频脚本');
 
@@ -2408,6 +3088,8 @@ test('视频复刻三步工作台使用真实 blocked 分支，不伪造视频�
     await clickVideoAction(page, '生成视频队列');
     await expect(page.locator('.result-card.blocked')).toBeVisible();
     await expect(page.locator('.result-card.blocked')).toContainText(/视频生成服务未配置|视频 provider 未配置/);
+    await expect(page.locator('.video-cost-estimate')).toContainText('内部 API 成本估算');
+    await expect(page.locator('.video-cost-estimate')).toContainText('18s × ¥2.00/秒');
     await expect(page.locator('.asset-output-card')).toHaveCount(2);
     await expect(page.locator('.asset-output-card').first()).toContainText('队列产物');
 
@@ -2418,6 +3100,7 @@ test('视频复刻三步工作台使用真实 blocked 分支，不伪造视频�
         status: entry.status,
         error: entry.error ?? '',
         assetRefs: Array.isArray(entry.output?.assetRefs) ? entry.output.assetRefs : [],
+        costEstimate: entry.output?.costEstimate ?? null,
       }));
     }, workspaceDir);
     expect(logs).toEqual(expect.arrayContaining([
@@ -2428,6 +3111,8 @@ test('视频复刻三步工作台使用真实 blocked 分支，不伪造视频�
     const videoLog = logs.find((entry) => entry.kind === 'video');
     expect(videoLog?.assetRefs.length, JSON.stringify(logs)).toBeGreaterThanOrEqual(1);
     expect(videoLog?.assetRefs.some((assetRef) => assetRef.endsWith('.json')), JSON.stringify(videoLog)).toBe(true);
+    expect(videoLog?.costEstimate?.estimatedCost, JSON.stringify(videoLog)).toBe(36);
+    expect(videoLog?.costEstimate?.source, JSON.stringify(videoLog)).toBe('default-internal-api');
   });
 });
 

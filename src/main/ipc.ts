@@ -12,6 +12,7 @@ import type {
   ExportAssetInput,
   ExportMixPackageInput,
   ExportMarkdownInput,
+  ExportPlatformDraftInput,
   GenerateOverlayCardsInput,
   StartAgentPromptSessionInput,
   GeneratePromptPackInput,
@@ -24,6 +25,8 @@ import type {
   ReferenceReverseRequest,
   RecordWorkflowManualEventInput,
   RecordPromptDraftCopyInput,
+  RecordMixPackageImportEvidenceInput,
+  ReadPlatformDraftCopyTextInput,
   RunTaskInput,
   SaveModelConfigInput,
   SaveSettingsInput,
@@ -72,6 +75,7 @@ import { getOemRuntimeConfig } from './services/oemRuntimeConfig';
 import { OverlayCardStore } from './services/overlayCardStore';
 import { PromptDraftStore } from './services/promptDraftStore';
 import { PromptPackService } from './services/promptPackService';
+import { PlatformDraftStore } from './services/platformDraftStore';
 import { ReferenceReverseService } from './services/referenceReverseService';
 import { IpKnowledgeBaseStore } from './services/ipKnowledgeBaseStore';
 import { SceneLibraryStore } from './services/sceneLibraryStore';
@@ -122,6 +126,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const overlayCards = new OverlayCardStore();
   const assetReviews = new AssetReviewStore();
   const mixPackages = new MixPackageStore(assetReviews);
+  const platformDrafts = new PlatformDraftStore(logs);
   const promptPacks = new PromptPackService(logs, textGeneration);
   const sceneCards = new SceneLibraryStore(logs, promptPacks, textGeneration);
   const referenceReverse = new ReferenceReverseService(logs, inputSources, promptDrafts, modelConfig);
@@ -318,6 +323,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('assetReviews:review', (_event, input: ReviewAssetInput) => assetReviews.review(input));
   ipcMain.handle('mixPackages:list', (_event, workspacePath: string) => mixPackages.list(workspacePath));
   ipcMain.handle('mixPackages:export', (_event, input: ExportMixPackageInput) => mixPackages.exportPackage(input));
+  ipcMain.handle('mixPackages:recordImportEvidence', (_event, input: RecordMixPackageImportEvidenceInput) => mixPackages.recordImportEvidence(input));
   ipcMain.handle('workflow:listDefinitions', (_event, workspacePath: string) => workflows.listDefinitions(workspacePath));
   ipcMain.handle('workflow:createDraft', (_event, input: CreateWorkflowDraftInput) => workflows.createDraft(input));
   ipcMain.handle('workflow:updateDefinition', (_event, input: WorkflowDefinition) => workflows.updateDefinition(input));
@@ -368,6 +374,9 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     }
     return result.filePath;
   });
+  ipcMain.handle('article:exportPlatformDraft', (_event, input: ExportPlatformDraftInput) => platformDrafts.exportDraft(input));
+  ipcMain.handle('article:listPlatformDrafts', (_event, workspacePath: string) => platformDrafts.list(workspacePath));
+  ipcMain.handle('article:readPlatformDraftCopyText', (_event, input: ReadPlatformDraftCopyTextInput) => platformDrafts.readCopyText(input));
   ipcMain.handle('article:generate', (_event, input: ArticleGenerationRequest) => articles.generate(input));
   ipcMain.handle('referenceReverse:generate', (_event, input: ReferenceReverseRequest) => referenceReverse.generate(input));
   ipcMain.handle('video:analyze', (_event, input: VideoBreakdownRequest) => videoWorkflow.analyze(input));

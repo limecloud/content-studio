@@ -1,5 +1,5 @@
 import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import type { ArticleGenerationRequest, ArticleGenerationResult } from '../../../../shared/types';
+import type { ArticleGenerationRequest, ArticleGenerationResult, PlatformDraftRecord } from '../../../../shared/types';
 import { ARTICLE_LENGTH_OPTIONS, ARTICLE_TYPE_OPTIONS } from '../../app/constants';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 
@@ -22,8 +22,16 @@ interface ArticleModuleProps {
   setArticleRequirement: Dispatch<SetStateAction<string>>;
   articleResult: ArticleGenerationResult | null;
   articleExportPath: string | null;
+  platformDrafts: PlatformDraftRecord[];
+  copiedPlatformDraftId: string | null;
   onGenerateArticle: () => void;
   onExportMarkdown: () => void;
+  onExportPlatformDraft: () => void;
+  onCopyPlatformDraft: (draftId: string) => void;
+  onRevealExportPath: (path: string) => void;
+  onOpenWorkflowRun: (workflowRunId: string) => void;
+  onOpenPromptDraft: (promptDraftId: string) => void;
+  onOpenSourceLog: (sourceLogId: string) => void;
 }
 
 type ArticlePreviewMode = 'rendered' | 'markdown';
@@ -95,15 +103,42 @@ export function ArticleModule({
   setArticleRequirement,
   articleResult,
   articleExportPath,
+  platformDrafts,
+  copiedPlatformDraftId,
   onGenerateArticle,
   onExportMarkdown,
+  onExportPlatformDraft,
+  onCopyPlatformDraft,
+  onRevealExportPath,
+  onOpenWorkflowRun,
+  onOpenPromptDraft,
+  onOpenSourceLog,
 }: ArticleModuleProps) {
   const [previewMode, setPreviewMode] = useState<ArticlePreviewMode>('rendered');
   const [copied, setCopied] = useState(false);
+  const [draftQuery, setDraftQuery] = useState('');
+  const [draftPlatformFilter, setDraftPlatformFilter] = useState('all');
+  const isPlatformDraftExport = Boolean(articleExportPath?.replace(/\\/g, '/').includes('/platform-drafts/'));
   const renderedArticle = useMemo(
     () => (articleResult ? renderMarkdown(articleResult.markdown) : []),
     [articleResult],
   );
+  const platformDraftOptions = useMemo(
+    () => Array.from(new Set(platformDrafts.map((draft) => draft.platform).filter(Boolean))).slice(0, 8),
+    [platformDrafts],
+  );
+  const filteredPlatformDrafts = useMemo(() => {
+    const query = draftQuery.trim().toLowerCase();
+    return platformDrafts
+      .filter((draft) => draftPlatformFilter === 'all' || draft.platform === draftPlatformFilter)
+      .filter((draft) => {
+        if (!query) return true;
+        return [draft.title, draft.platform, draft.topic, draft.audience, draft.tone]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(query));
+      })
+      .slice(0, 12);
+  }, [draftPlatformFilter, draftQuery, platformDrafts]);
 
   async function copyArticleMarkdown(): Promise<void> {
     if (!articleResult) return;
@@ -117,7 +152,7 @@ export function ArticleModule({
       <ModuleCommandCenter
         eyebrow="文案 / 主流程"
         title="文章生成"
-        description="基于知识引用、平台、读者和口吻生成标题、大纲、正文和发布检查，导出为可复用 Markdown。"
+        description="基于知识引用、平台、读者和口吻生成标题、大纲、正文和发布检查，交付 Markdown 或平台草稿包。"
         density="compact"
         actions={(
           <div className="workflow-summary-stack">
@@ -132,7 +167,7 @@ export function ArticleModule({
         <article className="panel article-editor-panel">
           <div className="panel-title">
             <div>
-              <p className="eyebrow">Article</p>
+              <p className="eyebrow">文案输入</p>
               <h3>文章生成</h3>
             </div>
             <span className="status-pill">公众号 / 小红书</span>
@@ -165,7 +200,7 @@ export function ArticleModule({
         </article>
         <article className="panel article-preview">
           <div className="panel-title">
-            <div><p className="eyebrow">Draft</p><h3>正文 / 发布检查</h3></div>
+            <div><p className="eyebrow">正文草稿</p><h3>正文 / 发布检查</h3></div>
             <div className="article-actions">
               <div className="segmented-control" aria-label="正文预览模式">
                 <button className={previewMode === 'rendered' ? 'active' : ''} disabled={!articleResult} onClick={() => setPreviewMode('rendered')}>预览</button>
@@ -173,6 +208,7 @@ export function ArticleModule({
               </div>
               <button className="ghost small" disabled={!articleResult || busy} onClick={copyArticleMarkdown}>{copied ? '已复制' : '复制正文'}</button>
               <button className="ghost small" disabled={!articleResult || busy} onClick={onExportMarkdown}>导出 Markdown</button>
+              <button className="ghost small" disabled={!articleResult || busy} onClick={onExportPlatformDraft}>导出草稿包</button>
             </div>
           </div>
           {articleResult ? (
@@ -181,11 +217,58 @@ export function ArticleModule({
                 ? <pre>{articleResult.markdown}</pre>
                 : <div className="article-rendered">{renderedArticle}</div>}
               <div className="check-list compact">{articleResult.publishCheck.map((item) => <p key={item.message} className={item.level}>{item.message}</p>)}</div>
-              {articleExportPath ? <div className="result-card succeeded"><strong>已导出</strong><p>{articleExportPath}</p></div> : null}
+              {articleExportPath ? (
+                <div className="result-card succeeded">
+                  <strong>{isPlatformDraftExport ? '平台草稿包已导出' : 'Markdown 已导出'}</strong>
+                  <p>{isPlatformDraftExport ? '已生成正文稿、发布文案、格式指南、发布检查和追溯清单；软件不会自动发布到平台。' : '已保存本地 Markdown 文件，发布前仍需人工复核事实、配图和平台格式。'}</p>
+                  <button className="ghost small" disabled={busy} onClick={() => onRevealExportPath(articleExportPath)}>{isPlatformDraftExport ? '打开草稿包' : '打开 Markdown'}</button>
+                </div>
+              ) : null}
             </>
           ) : <div className="empty-state">点击生成后会出现标题候选、正文草稿和发布检查。</div>}
         </article>
       </div>
+      <article className="panel article-draft-history">
+        <div className="panel-title">
+          <div><p className="eyebrow">本地交付</p><h3>平台草稿包</h3></div>
+          <span className="status-pill">{filteredPlatformDrafts.length} / {platformDrafts.length} 个</span>
+        </div>
+        <div className="article-draft-toolbar">
+          <label>
+            <span>检索草稿包</span>
+            <input value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} placeholder="标题 / 平台 / 主题 / 人群" />
+          </label>
+          <div className="chip-row tight">
+            <button className={`chip-button ${draftPlatformFilter === 'all' ? 'active' : ''}`} onClick={() => setDraftPlatformFilter('all')}>全部平台</button>
+            {platformDraftOptions.map((platform) => (
+              <button key={platform} className={`chip-button ${draftPlatformFilter === platform ? 'active' : ''}`} onClick={() => setDraftPlatformFilter(platform)}>
+                {platform}
+              </button>
+            ))}
+          </div>
+        </div>
+        {filteredPlatformDrafts.length ? (
+          <div className="article-draft-list">
+            {filteredPlatformDrafts.map((draft) => (
+              <div key={draft.id} className="result-card article-draft-card">
+                <div>
+                  <strong>{draft.title}</strong>
+                  <p>{draft.platform}{draft.topic ? ` / ${draft.topic}` : ''}</p>
+                  <small>{new Date(draft.createdAt).toLocaleString()} · {draft.publishCheck.length} 条发布检查</small>
+                  <em>本地交付，不自动发布。</em>
+                </div>
+                <div className="article-draft-actions">
+                  <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onRevealExportPath(draft.packageDir)}>打开草稿包</button>
+                  <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onCopyPlatformDraft(draft.id)}>{copiedPlatformDraftId === draft.id ? '已复制' : '复制发布文案'}</button>
+                  {draft.promptDraftId ? <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenPromptDraft(draft.promptDraftId as string)}>提示词</button> : null}
+                  {draft.workflowRunId ? <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenWorkflowRun(draft.workflowRunId as string)}>回到 SOP</button> : null}
+                  {draft.sourceLogId ? <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenSourceLog(draft.sourceLogId as string)}>来源记录</button> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : <div className="empty-state">没有匹配的草稿包。导出后可按平台、标题、主题或目标人群检索。</div>}
+      </article>
     </section>
   );
 }

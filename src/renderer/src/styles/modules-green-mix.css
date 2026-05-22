@@ -137,6 +137,85 @@
   line-height: 1.55;
 }
 
+.mix-import-evidence-summary {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--success) 32%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--success) 8%, var(--panel));
+}
+
+.mix-import-evidence-summary span,
+.mix-import-evidence-summary small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mix-import-evidence-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.mix-import-evidence-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.mix-import-evidence-form label span,
+.mix-import-evidence-kinds > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mix-import-evidence-form input,
+.mix-import-evidence-form select,
+.mix-import-evidence-form textarea {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.mix-import-evidence-form input,
+.mix-import-evidence-form select {
+  min-height: 34px;
+  padding: 0 9px;
+}
+
+.mix-import-evidence-form textarea {
+  min-height: 72px;
+  padding: 9px;
+  resize: vertical;
+}
+
+.mix-import-evidence-form > label:nth-of-type(n + 5),
+.mix-import-evidence-checks,
+.mix-import-evidence-kinds,
+.mix-import-evidence-form .workflow-actions {
+  grid-column: 1 / -1;
+}
+
+.mix-import-evidence-checks,
+.mix-import-evidence-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.mix-import-evidence-checks label,
+.mix-import-evidence-kinds label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .mix-export-layout {
   display: grid;
   grid-template-columns: minmax(520px, 1.4fr) minmax(300px, 0.8fr) minmax(300px, 0.8fr);

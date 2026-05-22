@@ -36,9 +36,11 @@ import type {
   IpKnowledgeBaseRecord,
   OverlayCardDraft,
   OverlayCardRecord,
+  PlatformDraftRecord,
   PromptDraft,
   PromptDraftPurpose,
   PromptPack,
+  RecordMixPackageImportEvidenceInput,
   RecordWorkflowManualEventInput,
   ReviewAssetInput,
   SceneCard,
@@ -52,6 +54,7 @@ import type {
   WorkflowDefinition,
   WorkflowRunRecord,
 } from "../../../shared/types";
+import { selectWorkflowInputSourceIdsForDefinition } from "../../../shared/inputSourcePolicy";
 import { DEFAULT_PARAMS, VIDEO_DIMENSIONS } from "./constants";
 import {
   citationFromResult,
@@ -63,7 +66,6 @@ import {
   fileNameFromPath,
   imageRequestFromLog,
   isSameCitation,
-  isPromptDistilledSource,
   knowledgeBaseKey,
   skillKey,
 } from "./formatters";
@@ -101,6 +103,8 @@ type PromptDraftCreateRequest = {
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+  temporarySourceText?: string;
+  temporarySourceTitle?: string;
 };
 
 type ReworkAssetRequest = {
@@ -155,7 +159,7 @@ function buildSkillInstructionsFromPromptDraft(draft: PromptDraft, content: stri
     '请在当前内容工厂中作为可复用能力使用，优先服务当前客户端的知识库、Prompt、图片素材、视频素材和混剪包流程。',
     '',
     '### 来源',
-    `- 来源 PromptDraft：${draft.title}`,
+    `- 来源提示词草稿：${draft.title}`,
     `- 下游用途：${draft.purpose}`,
     `- 用户意图：${draft.userIntent}`,
     draft.inputSourceIds.length ? `- 输入源 ID：${draft.inputSourceIds.join(', ')}` : '- 输入源 ID：未绑定',
@@ -387,6 +391,7 @@ export function useContentStudioApp() {
   const [overlayCards, setOverlayCards] = useState<OverlayCardRecord[]>([]);
   const [assetReviews, setAssetReviews] = useState<AssetReviewRecord[]>([]);
   const [mixPackages, setMixPackages] = useState<MixPackageRecord[]>([]);
+  const [platformDrafts, setPlatformDrafts] = useState<PlatformDraftRecord[]>([]);
   const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunRecord[]>([]);
   const [activeWorkflowDefinitionId, setActiveWorkflowDefinitionId] = useState("");
@@ -450,6 +455,7 @@ export function useContentStudioApp() {
     GenerationLogEntry["kind"] | "all"
   >("all");
   const [copiedLogId, setCopiedLogId] = useState<string | null>(null);
+  const [copiedPlatformDraftId, setCopiedPlatformDraftId] = useState<string | null>(null);
   const [activeSkillKey, setActiveSkillKey] = useState("");
   const [copiedSkillKey, setCopiedSkillKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -559,9 +565,7 @@ export function useContentStudioApp() {
     preferredKnowledgeSource,
   ]);
   const activeEditableScene = activeScenes[0] ?? sceneCards[0];
-  const selectedSceneIdsForRequest = activeScenes.length
-    ? activeScenes.map((scene) => scene.id)
-    : sceneCards.slice(0, 1).map((scene) => scene.id);
+  const selectedSceneIdsForRequest = activeScenes.map((scene) => scene.id);
   const defaultKnowledgeCitations = useMemo(() => {
     if (!activeKnowledgeBase) return [];
     const preferredTypes: KnowledgeSectionType[] =
@@ -584,7 +588,7 @@ export function useContentStudioApp() {
         .filter(
           (source) =>
             source.status === "converted" &&
-            ["brand-kb", "ip-kb", "product-brief", "sop-input"].includes(source.purpose),
+            ["brand-kb", "ip-kb", "product-brief", "user-feedback", "sop-input"].includes(source.purpose),
         )
         .slice(0, 6)
         .map(citationFromInputSource),
@@ -596,7 +600,7 @@ export function useContentStudioApp() {
         .filter(
           (source) =>
             source.status === "converted" &&
-            ["brand-kb", "product-brief", "sop-input"].includes(source.purpose),
+            ["brand-kb", "product-brief", "user-feedback", "sop-input"].includes(source.purpose),
         )
         .slice(0, 8)
         .map(citationFromInputSource),
@@ -700,6 +704,7 @@ export function useContentStudioApp() {
       setOverlayCards([]);
       setAssetReviews([]);
       setMixPackages([]);
+      setPlatformDrafts([]);
       setActivePromptDraftId("");
       setActiveAgentPromptSessionId("");
       setActiveBrandKnowledgeBaseId("");
@@ -725,6 +730,7 @@ export function useContentStudioApp() {
       nextOverlayCards,
       nextAssetReviews,
       nextMixPackages,
+      nextPlatformDrafts,
       nextWorkflowDefinitions,
       nextWorkflowRuns,
     ] =
@@ -741,6 +747,7 @@ export function useContentStudioApp() {
         window.contentStudio.listOverlayCards(workspace),
         window.contentStudio.listAssetReviews(workspace),
         window.contentStudio.listMixPackages(workspace),
+        window.contentStudio.listPlatformDrafts(workspace),
         window.contentStudio.listWorkflowDefinitions(workspace),
         window.contentStudio.listWorkflowRuns(workspace),
       ]);
@@ -756,6 +763,7 @@ export function useContentStudioApp() {
     setOverlayCards(nextOverlayCards);
     setAssetReviews(nextAssetReviews);
     setMixPackages(nextMixPackages);
+    setPlatformDrafts(nextPlatformDrafts);
     setActivePromptDraftId((current) => current || nextPromptDrafts[0]?.id || "");
     setActiveAgentPromptSessionId((current) => current || nextAgentPromptSessions[0]?.id || "");
     setActiveBrandKnowledgeBaseId((current) => current || nextBrandKnowledgeBases[0]?.id || "");
@@ -774,11 +782,10 @@ export function useContentStudioApp() {
       return { logId: lastImage.id, status: "succeeded", message: "", assetRefs: output.assetRefs };
     });
     setActivePromptPackId((current) => current || nextPromptPacks[0]?.id || "");
-    setSelectedSceneIds((current) =>
-      current.length
-        ? current
-        : nextSceneCards.slice(0, 2).map((scene) => scene.id),
-    );
+    setSelectedSceneIds((current) => {
+      const availableSceneIds = new Set(nextSceneCards.map((scene) => scene.id));
+      return current.filter((sceneId) => availableSceneIds.has(sceneId));
+    });
   }
 
   useEffect(() => {
@@ -1213,12 +1220,27 @@ export function useContentStudioApp() {
     workspace: string,
     input: PromptDraftCreateRequest,
   ): Promise<PromptDraft> {
+    let inputSourceIds = input.inputSourceIds;
+    const temporarySourceText = input.temporarySourceText?.trim();
+    if (temporarySourceText) {
+      const temporarySource = await window.contentStudio.registerInputSource({
+        workspacePath: workspace,
+        kind: "manual-note",
+        purpose: "sop-input",
+        title: input.temporarySourceTitle?.trim() || "视频 Prompt 临时资料",
+        text: temporarySourceText,
+        summary: temporarySourceText.slice(0, 160),
+        tags: ["video-prompt", "临时资料", "workflow-run"],
+      });
+      inputSourceIds = Array.from(new Set([...inputSourceIds, temporarySource.id]));
+      setInputSources((current) => [temporarySource, ...current.filter((item) => item.id !== temporarySource.id)]);
+    }
     const draft = await window.contentStudio.generatePromptDraft({
       workspacePath: workspace,
       title: input.title,
       purpose: input.purpose,
       userIntent: input.userIntent,
-      inputSourceIds: input.inputSourceIds,
+      inputSourceIds,
       sceneCardIds: input.sceneCardIds,
     });
     setPromptDrafts((current) => [draft, ...current]);
@@ -1425,6 +1447,9 @@ export function useContentStudioApp() {
       input.purpose === "green-screen" ? "场景绿幕文案图 Prompt 草稿" :
       input.purpose === "article" ? "场景文案 Prompt 草稿" :
       "场景图片 Prompt 草稿";
+    const inputSourceIds = Array.from(
+      new Set(selectedScenes.flatMap((scene) => scene.inputSourceIds ?? [])),
+    ).slice(0, 12);
     const draft = await createPromptDraftRecord(workspace, {
       title: draftTitle,
       purpose: input.purpose,
@@ -1445,7 +1470,7 @@ export function useContentStudioApp() {
         ].join("\n")),
         "要求：保持知识库事实可追溯，输出可以直接进入图片生成或外部视频平台复制使用。",
       ].join("\n"),
-      inputSourceIds: [],
+      inputSourceIds,
       sceneCardIds: input.sceneCardIds,
     });
     const content = buildScenePromptGroupContent(
@@ -1470,7 +1495,7 @@ export function useContentStudioApp() {
   }
 
   function useScenePromptInImage(prompt: string, sceneCardIds?: string[]): void {
-    if (sceneCardIds?.length) setSelectedSceneIds(sceneCardIds);
+    setSelectedSceneIds(sceneCardIds ?? []);
     setImageWorkflowRunId("");
     setImagePromptDraft(prompt);
     setImagePromptMode("free");
@@ -1479,13 +1504,14 @@ export function useContentStudioApp() {
 
   function usePromptDraftInVideo(draftId: string): void {
     const draft = promptDrafts.find((item) => item.id === draftId);
-    if (draft?.sceneCardIds?.length) setSelectedSceneIds(draft.sceneCardIds);
+    setSelectedSceneIds(draft?.sceneCardIds ?? []);
     setActivePromptDraftId(draftId);
     setActiveModule("video-prompt");
   }
 
   function usePromptDraftInArticle(draftId: string, prompt: string): void {
     const draft = promptDrafts.find((item) => item.id === draftId);
+    setSelectedSceneIds(draft?.sceneCardIds ?? []);
     setActivePromptDraftId(draftId);
     if (draft?.title) setArticleTopic(draft.title);
     setArticleRequirement(prompt);
@@ -1494,7 +1520,7 @@ export function useContentStudioApp() {
 
   function usePromptDraftInGreenScreen(draftId: string): void {
     const draft = promptDrafts.find((item) => item.id === draftId);
-    if (draft?.sceneCardIds?.length) setSelectedSceneIds(draft.sceneCardIds);
+    setSelectedSceneIds(draft?.sceneCardIds ?? []);
     setActivePromptDraftId(draftId);
     setActiveModule("image-green-screen");
   }
@@ -1589,8 +1615,31 @@ export function useContentStudioApp() {
       event: "mix-package-exported",
       mixPackageId: mixPackage.id,
       manifestPath: mixPackage.manifestPath,
+      manifestCsvPath: mixPackage.manifestCsvPath,
+      importGuidePath: mixPackage.importGuidePath,
       packageDir: mixPackage.packageDir,
       summary: `已导出混剪包：${mixPackage.title}`,
+    });
+    setActiveModule("video-mix-export");
+    await refresh(workspace);
+  }
+
+  async function recordMixPackageImportEvidence(
+    input: Omit<RecordMixPackageImportEvidenceInput, "workspacePath">,
+  ): Promise<void> {
+    const workspace = requireWorkspace();
+    const mixPackage = await window.contentStudio.recordMixPackageImportEvidence({
+      workspacePath: workspace,
+      ...input,
+    });
+    setMixPackages((current) => current.map((item) => (item.id === mixPackage.id ? mixPackage : item)));
+    await recordWorkflowManualEvent({
+      workflowRunId: mixPackage.workflowRunId,
+      event: "mix-package-import-verified",
+      mixPackageId: mixPackage.id,
+      externalImportEvidencePath: mixPackage.externalImportEvidencePath,
+      packageDir: mixPackage.packageDir,
+      summary: `已登记 ${mixPackage.externalImportEvidence?.toolName ?? "第三方混剪工具"} 导入证据。`,
     });
     setActiveModule("video-mix-export");
     await refresh(workspace);
@@ -1822,7 +1871,7 @@ export function useContentStudioApp() {
       `- 类型：${input.source.kind}`,
       `- 来源：${input.source.sourceType}${input.source.sourceId ? ` / ${input.source.sourceId}` : ""}`,
       input.source.workflowRunId ? `- SOP Run：${input.source.workflowRunId}` : "- SOP Run：未关联",
-      input.relatedDraft ? `- 原 PromptDraft：${input.relatedDraft.title}` : "- 原 PromptDraft：未关联",
+      input.relatedDraft ? `- 原提示词草稿：${input.relatedDraft.title}` : "- 原提示词草稿：未关联",
       input.sceneCardIds.length ? `- 关联场景卡：${input.sceneCardIds.join(", ")}` : "- 关联场景卡：未关联",
       "",
       "审核结论：",
@@ -2012,6 +2061,18 @@ export function useContentStudioApp() {
     await refresh(workspace);
   }
 
+  async function updateSceneCard(input: SceneCard): Promise<void> {
+    const workspace = requireWorkspace();
+    const updated = await window.contentStudio.updateSceneCard(input);
+    setSceneCards((current) =>
+      current.map((card) => (card.id === updated.id ? updated : card)),
+    );
+    setSelectedSceneIds((current) =>
+      current.includes(updated.id) ? current : [updated.id, ...current].slice(0, 6),
+    );
+    await refresh(workspace);
+  }
+
   async function createWorkflowDraft(): Promise<void> {
     const workspace = requireWorkspace();
     const draft = await window.contentStudio.createWorkflowDraft({
@@ -2046,7 +2107,7 @@ export function useContentStudioApp() {
       templateKey,
       title: `${promptDraft.title} SOP 草案`,
       description: [
-        `由 PromptDraft「${promptDraft.title}」物化。`,
+        `由提示词草稿「${promptDraft.title}」物化。`,
         "后续需要确认输入字段、执行步骤、审核规则和导出规则。",
         "",
         input.content.slice(0, 1200),
@@ -2085,7 +2146,7 @@ export function useContentStudioApp() {
       workspacePath: workspace,
       slug,
       name: promptDraft.title,
-      description: `由 PromptDraft「${promptDraft.title}」物化的布谷本地 skill。`,
+      description: `由提示词草稿「${promptDraft.title}」物化的布谷本地 skill。`,
       instructions: buildSkillInstructionsFromPromptDraft(promptDraft, input.content),
     });
     const updatedDraft = await window.contentStudio.updatePromptDraft({
@@ -2172,10 +2233,6 @@ export function useContentStudioApp() {
     return Array.from(new Set(values));
   }
 
-  function promptDraftIdFromWorkflowRun(run?: WorkflowRunRecord): string | undefined {
-    return workflowStepOutputValue(run, ["promptDraftId", "expectedPromptDraftId", "relatedPromptDraftId"]);
-  }
-
   function promptDraftContent(draftId?: string): string {
     const draft = draftId ? promptDrafts.find((item) => item.id === draftId) : undefined;
     return promptDraftActiveContent(draft);
@@ -2199,6 +2256,24 @@ export function useContentStudioApp() {
     }
     if (!value || typeof value !== "object") return;
     Object.values(value as Record<string, unknown>).forEach((item) => collectWorkflowOutputRefs(item, refs));
+  }
+
+  function workflowArtifactRefIds(run: WorkflowRunRecord | undefined, prefix: string): string[] {
+    if (!run) return [];
+    const marker = `${prefix}:`;
+    return Array.from(new Set(run.artifactRefs
+      .filter((ref) => ref.startsWith(marker))
+      .map((ref) => ref.slice(marker.length).trim())
+      .filter(Boolean)));
+  }
+
+  function firstWorkflowArtifactRefId(run: WorkflowRunRecord | undefined, prefix: string): string | undefined {
+    return workflowArtifactRefIds(run, prefix)[0];
+  }
+
+  function promptDraftIdFromWorkflowRun(run?: WorkflowRunRecord): string | undefined {
+    return workflowStepOutputValue(run, ["promptDraftId", "expectedPromptDraftId", "relatedPromptDraftId"])
+      ?? firstWorkflowArtifactRefId(run, "prompt-draft");
   }
 
   function workflowRunReferences(run: WorkflowRunRecord, refs: string[]): boolean {
@@ -2230,10 +2305,16 @@ export function useContentStudioApp() {
   function selectWorkflowRunContext(run: WorkflowRunRecord): string | undefined {
     setActiveWorkflowRunId(run.id);
     setActiveWorkflowDefinitionId(run.workflowDefinitionId);
-    const brandKnowledgeBaseId = workflowStepOutputValue(run, ["brandKnowledgeBaseId"]);
-    const ipKnowledgeBaseId = workflowStepOutputValue(run, ["ipKnowledgeBaseId"]);
-    const promptPackId = workflowStepOutputValue(run, ["promptPackId"]);
-    const sceneCardIds = workflowStepOutputValues(run, ["sceneCardIds"]);
+    const brandKnowledgeBaseId = workflowStepOutputValue(run, ["brandKnowledgeBaseId"])
+      ?? firstWorkflowArtifactRefId(run, "brand-knowledge-base");
+    const ipKnowledgeBaseId = workflowStepOutputValue(run, ["ipKnowledgeBaseId"])
+      ?? firstWorkflowArtifactRefId(run, "ip-knowledge-base");
+    const promptPackId = workflowStepOutputValue(run, ["promptPackId"])
+      ?? firstWorkflowArtifactRefId(run, "prompt-pack");
+    const sceneCardIds = Array.from(new Set([
+      ...workflowStepOutputValues(run, ["sceneCardIds"]),
+      ...workflowArtifactRefIds(run, "scene-card"),
+    ]));
     const agentSessionId = workflowStepOutputValue(run, ["agentSessionId"]);
     const promptDraftId = promptDraftIdFromWorkflowRun(run);
     if (brandKnowledgeBaseId) selectBrandKnowledgeBase(brandKnowledgeBaseId);
@@ -2277,8 +2358,9 @@ export function useContentStudioApp() {
 
   function openWorkflowRunPromptDraft(runId: string): void {
     const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    setActiveModule("assets-prompt-workbench");
+    const promptDraftId = selectWorkflowRunContext(run);
+    const draft = promptDrafts.find((item) => item.id === promptDraftId);
+    setActiveModule(draft ? promptWorkbenchModuleForPurpose(draft.purpose) : "assets-prompt-workbench");
   }
 
   function openWorkflowRunAssetReview(runId: string): void {
@@ -2323,7 +2405,7 @@ export function useContentStudioApp() {
       "来自 IP 长文 SOP，请基于已选 IP 知识库、Agent 会话和文章 Prompt 生成正文。",
       run.inputs.source ? `输入源：${run.inputs.source}` : "",
       run.inputs.reviewOwner ? `审核人：${run.inputs.reviewOwner}` : "",
-      content ? "" : "当前 run 未找到 PromptDraft 正文，请先回 Prompt 工作台确认草稿。",
+      content ? "" : "当前运行记录未找到提示词草稿正文，请先回 Prompt 工作台确认草稿。",
       content,
     ].filter(Boolean).join("\n\n"));
     setArticleWorkflowRunId(run.id);
@@ -2348,22 +2430,46 @@ export function useContentStudioApp() {
     setActiveModule("video-mix-export");
   }
 
+  async function openWorkflowRunPlatformDraft(runId: string): Promise<void> {
+    const run = workflowRunById(runId);
+    selectWorkflowRunContext(run);
+    const platformDraftPath = run.artifactRefs.find((ref) =>
+      ref.replace(/\\/g, "/").includes("/platform-drafts/") &&
+      !ref.replace(/\\/g, "/").endsWith("/draft.md"),
+    ) ?? run.artifactRefs.find((ref) =>
+      ref.replace(/\\/g, "/").includes("/platform-drafts/"),
+    );
+    if (!platformDraftPath) throw new Error("这条 SOP 运行记录没有平台草稿包路径。");
+    await revealPath(platformDraftPath);
+  }
+
   function openTraceWorkflowRun(runId: string): void {
     const run = workflowRunById(runId);
     selectWorkflowRunContext(run);
-    setActiveModule("workflow-definition");
+    setActiveModule("assets-history");
+  }
+
+  function openTraceGenerationLog(logId: string): void {
+    const log = logs.find((item) => item.id === logId);
+    if (!log) throw new Error("生成记录不存在，请刷新后重试。");
+    if (log.workflowRunId) {
+      const run = workflowRuns.find((item) => item.id === log.workflowRunId);
+      if (run) selectWorkflowRunContext(run);
+    }
+    setHistoryFilter(log.kind);
+    setActiveModule("assets-history");
   }
 
   function openTracePromptDraft(draftId: string): void {
     const draft = promptDrafts.find((item) => item.id === draftId);
-    if (!draft) throw new Error("PromptDraft 不存在，请刷新后重试。");
+    if (!draft) throw new Error("提示词草稿不存在，请刷新后重试。");
     setActivePromptDraftId(draft.id);
-    if (draft.sceneCardIds?.length) setSelectedSceneIds(draft.sceneCardIds);
+    setSelectedSceneIds(draft.sceneCardIds ?? []);
     if (draft.workflowRunId) {
       const run = workflowRuns.find((item) => item.id === draft.workflowRunId);
       if (run) selectWorkflowRunContext(run);
     }
-    setActiveModule("assets-prompt-workbench");
+    setActiveModule(promptWorkbenchModuleForPurpose(draft.purpose));
   }
 
   function openTraceSceneCards(sceneCardIds: string[]): void {
@@ -2479,31 +2585,7 @@ export function useContentStudioApp() {
   }
 
   function inputSourceIdsForWorkflow(definition: WorkflowDefinition): string[] {
-    const purposes = new Set<InputSourcePurpose>(["sop-input"]);
-    if (definition.key.includes("brand")) {
-      purposes.add("brand-kb");
-      purposes.add("product-brief");
-    }
-    if (definition.key.includes("ip") || definition.key.includes("longform")) {
-      purposes.add("ip-kb");
-      purposes.add("ip-scenario-kb");
-    }
-    if (definition.key.includes("image") || definition.key.includes("seeding")) {
-      purposes.add("reference");
-      purposes.add("product-brief");
-      purposes.add("brand-kb");
-    }
-    if (definition.key.includes("video")) {
-      purposes.add("successful-asset");
-      purposes.add("product-brief");
-      purposes.add("brand-kb");
-      purposes.add("ip-kb");
-    }
-
-    return inputSources
-      .filter((source) => purposes.has(source.purpose) && !(source.purpose === "successful-asset" && isPromptDistilledSource(source)))
-      .slice(0, 12)
-      .map((source) => source.id);
+    return selectWorkflowInputSourceIdsForDefinition(definition, inputSources);
   }
 
   function citationsForWorkflowDefinition(definition: WorkflowDefinition): KnowledgeCitation[] {
@@ -2515,6 +2597,7 @@ export function useContentStudioApp() {
   async function startWorkflowRun(
     definitionId?: string,
     inputs?: Record<string, string>,
+    inputSourceIds?: string[],
   ): Promise<void> {
     const workspace = requireWorkspace();
     const definition =
@@ -2525,7 +2608,7 @@ export function useContentStudioApp() {
       workspacePath: workspace,
       workflowDefinitionId: definition.id,
       inputs,
-      inputSourceIds: inputSourceIdsForWorkflow(definition),
+      inputSourceIds: inputSourceIds ?? inputSourceIdsForWorkflow(definition),
       citations: citationsForWorkflowDefinition(definition),
     });
     setWorkflowRuns((current) => [run, ...current]);
@@ -2600,6 +2683,60 @@ export function useContentStudioApp() {
       }
     }
     await refresh(workspace);
+  }
+
+  async function exportArticlePlatformDraft(): Promise<void> {
+    const workspace = requireWorkspace();
+    if (!articleResult) throw new Error("请先生成文章草稿，再导出平台草稿包。");
+    const articlePromptDraftId = articleWorkflowRunId
+      ? promptDraftIdFromWorkflowRun(workflowRunById(articleWorkflowRunId))
+      : activePromptDraft?.purpose === "article"
+        ? activePromptDraft.id
+        : undefined;
+    const exported = await window.contentStudio.exportPlatformDraft({
+      workspacePath: workspace,
+      workflowRunId: articleWorkflowRunId || undefined,
+      promptDraftId: articlePromptDraftId,
+      sourceLogId: articleResult.logId,
+      platform: articlePlatform,
+      title: articleResult.titleCandidates[0] || articleTopic || "文章草稿",
+      markdown: articleResult.markdown,
+      publishCheck: articleResult.publishCheck,
+      topic: articleTopic,
+      audience: articleAudience,
+      tone: articleTone,
+    });
+    setArticleExportPath(exported.packageDir);
+    if (articleWorkflowRunId) {
+      const run = workflowRunById(articleWorkflowRunId);
+      if (isIpLongformWorkflow(run)) {
+        await recordWorkflowManualEvent({
+          workflowRunId: run.id,
+          event: "article-platform-draft-exported",
+          promptDraftId: articlePromptDraftId,
+          generationLogId: articleResult.logId,
+          exportPath: exported.markdownPath,
+          manifestPath: exported.manifestPath,
+          packageDir: exported.packageDir,
+          summary: "已确认文章草稿并导出平台草稿包，公众号 IP 内容 SOP 进入完成态。",
+        });
+      }
+    }
+    await refresh(workspace);
+  }
+
+  async function copyPlatformDraftText(draftId: string): Promise<void> {
+    const workspace = requireWorkspace();
+    const text = await window.contentStudio.readPlatformDraftCopyText({
+      workspacePath: workspace,
+      draftId,
+    });
+    await navigator.clipboard.writeText(text);
+    setCopiedPlatformDraftId(draftId);
+    window.setTimeout(
+      () => setCopiedPlatformDraftId((current) => (current === draftId ? null : current)),
+      1400,
+    );
   }
 
   async function copyLogPrompt(log: GenerationLogEntry): Promise<void> {
@@ -3129,10 +3266,12 @@ export function useContentStudioApp() {
     setArticleRequirement,
     articleResult,
     articleExportPath,
+    platformDrafts,
     mediaResult,
     historyFilter,
     setHistoryFilter,
     copiedLogId,
+    copiedPlatformDraftId,
     activeSkillKey,
     setActiveSkillKey,
     copiedSkillKey,
@@ -3191,6 +3330,7 @@ export function useContentStudioApp() {
     recordPromptDraftCopy,
     generateOverlayCards,
     exportMixPackage,
+    recordMixPackageImportEvidence,
     reviewAsset,
     approveWorkflowRunReview,
     archiveWorkflowRunAssets,
@@ -3204,6 +3344,7 @@ export function useContentStudioApp() {
     generateSceneCards,
     savePromptPackDraft,
     saveSceneCardDraft,
+    updateSceneCard,
     createWorkflowDraft,
     materializePromptDraftToWorkflow,
     materializePromptDraftToSkill,
@@ -3222,11 +3363,15 @@ export function useContentStudioApp() {
     importWorkflowRunFinishedVideo,
     openWorkflowRunOverlay,
     openWorkflowRunMixExport,
+    openWorkflowRunPlatformDraft,
     openTraceWorkflowRun,
+    openTraceGenerationLog,
     openTracePromptDraft,
     openTraceSceneCards,
     generateArticle,
     exportArticleMarkdown,
+    exportArticlePlatformDraft,
+    copyPlatformDraftText,
     copyLogPrompt,
     revealLogPath,
     reuseImageLogInput,

@@ -10,6 +10,7 @@ import type {
   RecordPromptDraftCopyInput,
   UpdatePromptDraftInput,
 } from '../../shared/types';
+import { isReusablePromptInputSource } from '../../shared/inputSourcePolicy';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { InputSourceStore } from './inputSourceStore';
@@ -158,7 +159,8 @@ export class PromptDraftStore {
   async generate(input: GeneratePromptDraftInput): Promise<PromptDraft> {
     if (!input.userIntent.trim()) throw new Error('生成 Prompt 草稿需要先填写用户意图。');
     const allSources = await this.inputSources.list(input.workspacePath);
-    const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id));
+    const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id) && isReusablePromptInputSource(source));
+    const inputSourceIds = selectedSources.map((source) => source.id);
     const now = new Date().toISOString();
     const generated = await this.generateDraftContent(input, selectedSources);
     const firstVersion: PromptDraftVersion = {
@@ -176,7 +178,7 @@ export class PromptDraftStore {
       purpose: input.purpose,
       status: 'draft',
       userIntent: input.userIntent.trim(),
-      inputSourceIds: input.inputSourceIds,
+      inputSourceIds,
       sceneCardIds: input.sceneCardIds ?? [],
       copyCount: 0,
       model: generated.model,

@@ -1,0 +1,2556 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>布谷AI内容工厂 v2 客户端原型</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --panel-strong: #ebeef2;
+      --line: rgba(17, 24, 39, 0.07);
+      --line-strong: rgba(57, 87, 69, 0.18);
+      --text: #1a202c;
+      --text-secondary: #4a5568;
+      --muted: #8a99ad;
+      --faint: #8a99ad;
+      --green: #395745;
+      --green-2: #395745;
+      --green-soft: rgba(57, 87, 69, 0.05);
+      --pink: #be185d;
+      --pink-soft: rgba(190, 24, 93, 0.08);
+      --amber: #b7791f;
+      --amber-soft: #fff7e8;
+      --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.01), 0 2px 6px rgba(17, 24, 39, 0.03);
+      --shadow: 0 4px 12px rgba(17, 24, 39, 0.02), 0 16px 36px rgba(17, 24, 39, 0.05), 0 0 0 1px rgba(17, 24, 39, 0.01);
+      --radius-sm: 8px;
+      --radius: 14px;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 1480px;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      letter-spacing: 0;
+    }
+
+    button, input, textarea { font: inherit; }
+
+    .window {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 1fr;
+    }
+
+    .titlebar {
+      position: relative;
+      display: none;
+      place-items: center;
+      height: 28px;
+      border-bottom: 1px solid #d7e1dc;
+      background: rgba(250, 252, 251, 0.9);
+      color: #42504a;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .traffic {
+      position: absolute;
+      left: 10px;
+      top: 8px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .traffic span {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: block;
+    }
+    .traffic span:nth-child(1) { background: #ff605c; }
+    .traffic span:nth-child(2) { background: #ffbd44; }
+    .traffic span:nth-child(3) { background: #00ca4e; }
+
+    .client-shell {
+      display: grid;
+      grid-template-columns: 245px 320px minmax(620px, 1fr) 285px;
+      gap: 20px;
+      padding: 20px;
+      overflow: visible;
+      align-items: start;
+    }
+
+    body[data-proto-layout="wide"] .client-shell {
+      grid-template-columns: 245px minmax(0, 1fr) 285px;
+    }
+
+    body[data-proto-layout="wide"] .input-rail {
+      display: none;
+    }
+
+    body[data-proto-layout="wide"] .stage {
+      grid-column: 2;
+    }
+
+    body[data-proto-layout="wide"] .right-panel {
+      grid-column: 3;
+    }
+
+    body[data-proto-layout="image"] .client-shell {
+      grid-template-columns: 245px 320px minmax(620px, 1fr) 285px;
+    }
+
+    body[data-proto-layout="image"] .input-rail {
+      display: grid;
+      grid-column: 2;
+    }
+
+    body[data-proto-layout="image"] .stage {
+      grid-column: 3;
+    }
+
+    body[data-proto-layout="image"] .right-panel {
+      grid-column: 4;
+    }
+
+    .left-nav,
+    .input-rail,
+    .stage,
+    .right-panel {
+      min-height: 0;
+    }
+
+    .left-nav {
+      position: sticky;
+      top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .input-rail,
+    .right-panel {
+      position: sticky;
+      top: 20px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .brand-card,
+    .workspace-card,
+    .account-card,
+    .input-card,
+    .stage-card,
+    .right-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .brand-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 58px;
+      padding: 12px 16px;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--green);
+      font-size: 15px;
+      font-weight: 900;
+    }
+
+    .brand-card small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      margin-bottom: 2px;
+    }
+
+    .brand-card strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+
+    .collapse-dot {
+      margin-left: auto;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      color: var(--text-secondary);
+      font-weight: 900;
+    }
+
+    .workspace-card {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+
+    .label {
+      color: #96a49e;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .workspace-path {
+      font-size: 13px;
+      font-weight: 800;
+      word-break: break-word;
+    }
+
+    .solid-btn,
+    .ghost-btn,
+    .icon-btn,
+    .mode-btn,
+    .seg-btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      height: 34px;
+      padding: 0 12px;
+      font-size: 13px;
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    .solid-btn {
+      color: #fff;
+      background: var(--green);
+      border-color: var(--green);
+    }
+
+    .ghost-btn {
+      color: var(--text-secondary);
+      background: #fbfdfc;
+    }
+
+    .solid-btn.small,
+    .ghost-btn.small {
+      height: 30px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+
+    .nav-stack {
+      display: grid;
+      gap: 12px;
+      padding: 0 2px;
+      overflow-y: auto;
+    }
+
+    .nav-group {
+      display: grid;
+      gap: 2px;
+    }
+
+    .nav-title {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 8px 8px 4px;
+    }
+
+    .nav-item {
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 39px;
+      padding: 0 12px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-secondary);
+      text-align: left;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .nav-item.active {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: rgba(57, 87, 69, 0.18);
+      box-shadow: var(--shadow-sm);
+      font-weight: 600;
+    }
+
+    .nav-item.disabled {
+      color: #bbc5c0;
+      cursor: default;
+    }
+
+    .nav-icon {
+      width: 21px;
+      height: 21px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      background: transparent;
+      font-size: 14px;
+    }
+
+    .badge {
+      color: var(--green);
+      background: var(--green-soft);
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.pink {
+      color: #be3f75;
+      background: var(--pink-soft);
+    }
+
+    .account-card {
+      margin-top: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      background: var(--panel);
+      box-shadow: none;
+    }
+
+    .avatar {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--panel-strong);
+      color: var(--green);
+      font-weight: 900;
+    }
+
+    .account-card strong {
+      display: block;
+      font-size: 12px;
+    }
+
+    .account-card span {
+      display: block;
+      margin-top: 2px;
+      color: #708078;
+      font-size: 11px;
+    }
+
+    .input-rail {
+      display: grid;
+      grid-template-rows: auto auto minmax(280px, 1fr) auto;
+      gap: 10px;
+    }
+
+    .segmented {
+      justify-self: center;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      width: 142px;
+      padding: 3px;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 10px 28px rgba(57, 87, 69, 0.08);
+    }
+
+    .seg-btn {
+      min-width: 64px;
+      height: 32px;
+      border: 0;
+      background: transparent;
+    }
+
+    .seg-btn.active {
+      background: var(--green-soft);
+      color: var(--green);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .input-card-stack {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .input-card {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 48%, rgba(57, 87, 69, 0.05), transparent 42%),
+        var(--panel);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .input-card.reference {
+      min-height: 240px;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 42px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .card-head .count {
+      color: var(--pink);
+      background: rgba(190, 24, 93, 0.1);
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+    }
+
+    .drop-zone {
+      display: grid;
+      place-items: center;
+      min-height: 300px;
+      background: transparent;
+    }
+
+    .drop-inner {
+      display: grid;
+      gap: 10px;
+      place-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .upload-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      border: 1px solid currentColor;
+      color: var(--pink);
+      background: var(--pink-soft);
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .upload-icon.green {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .prompt-card {
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
+      min-height: 210px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background:
+        linear-gradient(180deg, rgba(57, 87, 69, 0.03), #f8fafc),
+        var(--panel);
+      overflow: hidden;
+      padding: 12px 12px 10px;
+      box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+    }
+
+    .prompt-tab {
+      width: fit-content;
+      margin: -22px 0 0 -2px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: #fff;
+      padding: 3px 10px;
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .prompt-card textarea {
+      width: 100%;
+      min-height: 130px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      padding: 13px 14px;
+      color: var(--text);
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.7;
+      box-shadow: none;
+    }
+
+    .prompt-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 11px;
+    }
+
+    .prompt-tools button {
+      height: 26px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      color: #53635c;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .run-btn {
+      height: 52px;
+      border: 0;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      background: var(--green);
+      font-size: 17px;
+      font-weight: 900;
+    }
+
+    .source-brief {
+      display: grid;
+      gap: 9px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--panel);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .source-brief h3,
+    .source-brief p {
+      margin: 0;
+    }
+
+    .source-brief h3 {
+      font-size: 13px;
+    }
+
+    .source-brief p {
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .source-chip-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .source-chip {
+      min-height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .source-chip.active {
+      color: var(--green);
+      border-color: var(--line-strong);
+      background: var(--green-soft);
+    }
+
+    .stage {
+      display: grid;
+      grid-template-rows: 1fr;
+      min-width: 0;
+    }
+
+    .stage-card {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+      min-height: calc(100vh - 60px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .stage-head {
+      padding: 18px 18px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stage-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .stage-caption {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 24px;
+      background: var(--line);
+    }
+
+    .preview-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--panel);
+    }
+
+    .preview-tabs button {
+      min-width: 84px;
+      height: 32px;
+      border: 0;
+      color: var(--text-secondary);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .preview-tabs button.active {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .mode-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .mode-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 40px;
+      background: #fff;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .mode-btn.active {
+      border-color: var(--green);
+      color: var(--green);
+      background: var(--green-soft);
+      box-shadow: 0 0 0 1px rgba(57, 87, 69, 0.12);
+    }
+
+    .mode-btn.subtle {
+      color: var(--text-secondary);
+    }
+
+    .mode-btn span {
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .icon-btn {
+      width: 42px;
+      padding: 0;
+      color: var(--muted);
+    }
+
+    .stage-help {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .canvas {
+      margin: 16px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      background:
+        radial-gradient(circle at 50% 0%, rgba(57, 87, 69, 0.1), transparent 42%),
+        linear-gradient(180deg, rgba(57, 87, 69, 0.03), #ffffff);
+      overflow: auto;
+      padding: 20px;
+    }
+
+    .v2-flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(100px, 1fr));
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .flow-step {
+      min-height: 70px;
+      display: grid;
+      align-content: start;
+      gap: 5px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.8);
+    }
+
+    .flow-step b {
+      color: var(--green);
+      font-size: 12px;
+    }
+
+    .flow-step span {
+      color: var(--text-secondary);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .preview-strip {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .preview-card {
+      position: relative;
+      width: 150px;
+      aspect-ratio: 4 / 5;
+      flex: 0 0 auto;
+      overflow: hidden;
+      border: 1px solid #d8e3de;
+      border-radius: 7px;
+      background: #eef5f1;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .preview-card.wide {
+      width: 150px;
+      aspect-ratio: 1 / 1.35;
+    }
+
+    .preview-card .num {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 2;
+      min-width: 28px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.55);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .mock-img {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 19px;
+      font-weight: 900;
+      line-height: 1.25;
+    }
+
+    .mock-img.orange {
+      background:
+        linear-gradient(180deg, rgba(54, 117, 73, 0.45), rgba(255, 255, 255, 0.05)),
+        radial-gradient(circle at 25% 82%, #ffb14a 0 15%, transparent 16%),
+        radial-gradient(circle at 36% 82%, #f2802f 0 12%, transparent 13%),
+        linear-gradient(145deg, #7ab79a, #f8e8c9 54%, #d8b47d);
+    }
+
+    .mock-img.desk {
+      background:
+        linear-gradient(150deg, #f7faf6, #d9eee4 42%, #d9b781),
+        radial-gradient(circle at 24% 40%, #d1494c 0 10%, transparent 11%);
+      color: #315f44;
+      font-size: 16px;
+    }
+
+    .mock-img.window {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.4), transparent),
+        radial-gradient(circle at 72% 24%, #ffe38c 0 6%, transparent 7%),
+        linear-gradient(150deg, #e4f3ec, #fff5da 58%, #d8b67e);
+      color: #315f44;
+      font-size: 15px;
+    }
+
+    .mock-img.product {
+      background:
+        radial-gradient(ellipse at 55% 52%, #ffffff 0 20%, transparent 21%),
+        radial-gradient(circle at 65% 68%, #c2d79b 0 8%, transparent 9%),
+        linear-gradient(145deg, #eff7f0, #f3e2c1);
+      color: #315f44;
+      font-size: 13px;
+    }
+
+    .mock-img.grid {
+      background:
+        linear-gradient(90deg, transparent 49%, rgba(255,255,255,0.75) 50%, transparent 51%),
+        linear-gradient(180deg, transparent 49%, rgba(255,255,255,0.75) 50%, transparent 51%),
+        linear-gradient(145deg, #efe0c8, #f9f6e9);
+      color: #315f44;
+      font-size: 14px;
+    }
+
+    .right-panel {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 14px;
+    }
+
+    .right-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 32px;
+      gap: 6px;
+      padding: 4px;
+      border-radius: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .right-tabs button {
+      height: 30px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .right-tabs button.active {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .right-stack {
+      display: grid;
+      gap: 14px;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .right-card {
+      padding: 16px;
+      box-shadow: none;
+    }
+
+    .right-card h3 {
+      margin: 0 0 14px;
+      font-size: 14px;
+    }
+
+    .param-list {
+      display: grid;
+      gap: 13px;
+    }
+
+    .param-field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .param-field label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .fake-input {
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdfc;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .slider-line {
+      height: 5px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--green) 0 8%, #d0dbd6 9% 100%);
+    }
+
+    .choice-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .choice {
+      min-width: 42px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .choice.active {
+      color: #fff;
+      border-color: var(--green);
+      background: var(--green);
+    }
+
+    .ref-card {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #fff;
+      margin-top: 10px;
+    }
+
+    .ref-card strong {
+      color: var(--green);
+      font-size: 13px;
+    }
+
+    .ref-card p {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .skills-bar {
+      min-height: 38px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+
+    .enhancement-note {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-top: 20px;
+      max-width: 820px;
+    }
+
+    .prd-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(260px, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+      max-width: 1040px;
+    }
+
+    .prd-card {
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      min-height: 188px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.86);
+    }
+
+    .prd-card.wide {
+      grid-column: 1 / -1;
+    }
+
+    .prd-card header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .prd-card h3,
+    .prd-card p {
+      margin: 0;
+    }
+
+    .prd-card h3 {
+      font-size: 14px;
+    }
+
+    .prd-card p {
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .prd-tag {
+      flex: 0 0 auto;
+      border-radius: 999px;
+      padding: 3px 8px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .scene-card-grid,
+    .six-layer-grid,
+    .sop-step-grid {
+      display: grid;
+      gap: 7px;
+    }
+
+    .scene-card-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .scene-pill,
+    .layer-pill,
+    .sop-step {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      padding: 8px;
+      color: var(--text-secondary);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .scene-pill strong,
+    .layer-pill strong,
+    .sop-step strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .six-layer-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .prompt-preview {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #fbfdfc;
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .prompt-preview strong {
+      color: var(--green);
+      font-size: 12px;
+    }
+
+    .sop-step-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .review-row {
+      display: grid;
+      grid-template-columns: 1.1fr 0.8fr 0.8fr 1fr;
+      gap: 8px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      padding: 8px 10px;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .review-row strong {
+      color: var(--text);
+    }
+
+    .proto-shell {
+      display: grid;
+      gap: 16px;
+      min-height: 100%;
+    }
+
+    .proto-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: start;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .proto-hero h2,
+    .proto-hero p {
+      margin: 0;
+    }
+
+    .proto-hero h2 {
+      margin-top: 6px;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .proto-hero p {
+      max-width: 760px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .proto-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+      min-width: 220px;
+    }
+
+    .proto-action {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      color: var(--text-secondary);
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .proto-action.primary {
+      color: #fff;
+      border-color: var(--green);
+      background: var(--green);
+    }
+
+    .proto-action.warn {
+      color: var(--amber);
+      border-color: rgba(180, 83, 9, 0.24);
+      background: var(--amber-soft);
+    }
+
+    .proto-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .proto-kpi,
+    .proto-panel,
+    .proto-table,
+    .proto-preview {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .proto-kpi {
+      display: grid;
+      gap: 5px;
+      min-height: 78px;
+      padding: 12px;
+    }
+
+    .proto-kpi strong {
+      color: var(--green);
+      font-size: 19px;
+    }
+
+    .proto-kpi span {
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .proto-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .proto-grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .proto-grid.single {
+      grid-template-columns: 1fr;
+    }
+
+    .proto-panel {
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .proto-panel.wide {
+      grid-column: 1 / -1;
+    }
+
+    .proto-panel h3,
+    .proto-panel p {
+      margin: 0;
+    }
+
+    .proto-panel h3 {
+      font-size: 15px;
+    }
+
+    .proto-panel p {
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .proto-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .proto-list li {
+      display: grid;
+      gap: 3px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      padding: 9px 10px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .proto-list strong {
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .proto-flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+      gap: 8px;
+    }
+
+    .proto-flow span {
+      display: grid;
+      align-content: center;
+      min-height: 50px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--green-soft);
+      color: var(--green);
+      padding: 8px;
+      font-size: 11px;
+      font-weight: 850;
+      text-align: center;
+      line-height: 1.35;
+    }
+
+    .proto-table {
+      display: grid;
+      overflow: hidden;
+    }
+
+    .proto-row {
+      display: grid;
+      grid-template-columns: 1fr 0.76fr 0.76fr 0.9fr;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .proto-row:last-child {
+      border-bottom: 0;
+    }
+
+    .proto-row.header {
+      color: var(--muted);
+      background: #fbfdfc;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .proto-row strong {
+      color: var(--text);
+    }
+
+    .proto-preview {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      min-height: 150px;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(57, 87, 69, 0.08), transparent 34%),
+        #fff;
+    }
+
+    .proto-preview pre {
+      margin: 0;
+      white-space: pre-wrap;
+      color: var(--text-secondary);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .proto-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .proto-tab {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--text-secondary);
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .proto-tab.active {
+      color: var(--green);
+      border-color: var(--line-strong);
+      background: var(--green-soft);
+    }
+
+    .proto-toast {
+      position: fixed;
+      right: 24px;
+      bottom: 22px;
+      z-index: 50;
+      display: none;
+      max-width: 360px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      box-shadow: var(--shadow);
+      color: var(--text-secondary);
+      padding: 12px 14px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .proto-toast.show {
+      display: block;
+    }
+
+    .note-card {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(255,255,255,0.72);
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .note-card strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--green);
+      font-size: 12px;
+    }
+
+    @media (max-width: 1560px) {
+      .client-shell {
+        grid-template-columns: 230px 300px minmax(560px, 1fr) 265px;
+        gap: 14px;
+        padding: 14px;
+      }
+      body[data-proto-layout="wide"] .client-shell {
+        grid-template-columns: 230px minmax(0, 1fr) 265px;
+      }
+      body[data-proto-layout="image"] .client-shell {
+        grid-template-columns: 230px 300px minmax(560px, 1fr) 265px;
+      }
+      .preview-card { width: 132px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      布谷 AI
+    </div>
+
+    <main class="client-shell">
+      <aside class="left-nav" aria-label="主导航">
+        <section class="brand-card">
+          <div class="brand-mark" aria-hidden="true">布</div>
+          <div>
+            <small>布谷AI</small>
+            <strong>内容工厂</strong>
+          </div>
+          <button class="collapse-dot" aria-label="收起侧栏">‹</button>
+        </section>
+
+        <section class="workspace-card">
+          <div class="label">工作区</div>
+          <div class="workspace-path">content-studio/workspace</div>
+          <button class="solid-btn">选择工作区</button>
+          <button class="ghost-btn">刷新本地事实源</button>
+        </section>
+
+        <nav class="nav-stack">
+          <div class="nav-group">
+            <div class="nav-title">图片</div>
+            <button class="nav-item active">
+              <span class="nav-icon">🖼️</span><span>图片生成</span><span class="badge">主流程</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">🔎</span><span>对标图反推</span><span class="badge">v2</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">🎯</span><span>场景提示词</span><span class="badge">v2</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">字</span><span>绿幕文案图</span><span class="badge">v2</span>
+            </button>
+            <button class="nav-item disabled">
+              <span class="nav-icon">🛡️</span><span>合规检测</span><span class="badge">后续接入</span>
+            </button>
+            <button class="nav-item disabled">
+              <span class="nav-icon">✨</span><span>图片精修</span><span class="badge">后续接入</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-title">视频</div>
+            <button class="nav-item">
+              <span class="nav-icon">🎬</span><span>视频生成</span><span class="badge">爆款拆解</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">拆</span><span>视频脚本</span><span class="badge">v2</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">▶</span><span>视频 Prompt</span><span class="badge">复制</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">入</span><span>成品视频导入</span><span class="badge">可选</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">包</span><span>混剪包导出</span><span class="badge">manifest</span>
+            </button>
+            <button class="nav-item disabled">
+              <span class="nav-icon">🎞️</span><span>创意视频</span><span class="badge">后续接入</span>
+            </button>
+            <button class="nav-item disabled">
+              <span class="nav-icon">🎥</span><span>自定义视频</span><span class="badge">后续接入</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-title">文案</div>
+            <button class="nav-item">
+              <span class="nav-icon">✍️</span><span>文章生成</span><span class="badge">文字模型</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">题</span><span>标题生成</span><span class="badge">v2</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">稿</span><span>脚本生成</span><span class="badge">v2</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-title">知识库</div>
+            <button class="nav-item">
+              <span class="nav-icon">📚</span><span>成型知识库</span><span></span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">品</span><span>品牌 / 产品知识库</span><span class="badge">场景库</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">景</span><span>场景库</span><span class="badge">Prompt 前</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">IP</span><span>IP 知识库</span><span class="badge">六层</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">源</span><span>输入源 / 文档转换</span><span class="badge">DOCX</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-title">资产</div>
+            <button class="nav-item">
+              <span class="nav-icon">🗂️</span><span>素材库</span><span></span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">P</span><span>Prompt 工作台</span><span class="badge">增强</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">S</span><span>SOP 工作流</span><span class="badge">表单</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">史</span><span>运行历史</span><span class="badge">追溯</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-title">管理</div>
+            <button class="nav-item">
+              <span class="nav-icon">🧩</span><span>skills 管理</span><span></span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">模</span><span>Provider 设置</span><span class="badge">真实服务</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">流</span><span>工作流定义</span><span class="badge">版本</span>
+            </button>
+            <button class="nav-item">
+              <span class="nav-icon">画</span><span>Canvas 编排</span><span class="badge">高级</span>
+            </button>
+          </div>
+        </nav>
+
+        <section class="account-card">
+          <div class="avatar">本</div>
+          <div>
+            <strong>未登录布谷账号</strong>
+            <span>本地模式</span>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="input-rail" aria-label="素材和提示词输入">
+        <div class="segmented" aria-label="输入模式">
+          <button class="seg-btn">打标</button>
+          <button class="seg-btn active">固定</button>
+        </div>
+
+        <section class="source-brief" aria-label="v2 统一输入源">
+          <h3>统一输入源</h3>
+          <p>v2 不强制从知识库开始。DOCX、参考图、参考视频、产品资料、SKU 表和历史成功素材都可以进入同一条 Agent / SOP 链路。</p>
+          <div class="source-chip-grid">
+            <span class="source-chip active">品牌 DOCX</span>
+            <span class="source-chip active">IP 知识库</span>
+            <span class="source-chip active">参考图</span>
+            <span class="source-chip">参考视频</span>
+            <span class="source-chip">SKU 表</span>
+            <span class="source-chip">成功素材</span>
+          </div>
+        </section>
+
+        <div class="input-card-stack">
+          <section class="input-card">
+            <header class="card-head">
+              <span>产品图</span>
+              <span class="count">0/10</span>
+            </header>
+            <div class="drop-zone">
+              <div class="drop-inner">
+                <div class="upload-icon">⇧</div>
+                <span>点击或拖拽上传</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="input-card reference">
+            <header class="card-head">
+              <span>参考图</span>
+              <span class="count" style="color:#52665c;background:#f0f5f2;">0/6</span>
+            </header>
+            <div class="drop-zone">
+              <div class="drop-inner">
+                <div class="upload-icon green">⇧</div>
+                <span>点击或拖拽上传</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="prompt-card">
+          <div class="prompt-tab">>> 用户意图（Agent 多轮调整）</div>
+          <textarea placeholder="例如：基于唯他瑞葡聚糖知识库，生成夏季儿童早餐场景的 10 组 UGC 手机实拍图片 Prompt；同时避免医疗化承诺。"></textarea>
+          <div class="prompt-tools">
+            <button>@ 引用图片 7 张</button>
+            <span>输入 @ 可点名知识库、场景卡、图片或视频素材</span>
+          </div>
+          <button class="run-btn">启动渲染引擎</button>
+        </section>
+      </aside>
+
+      <section class="stage" aria-label="图片生成工作区">
+        <section class="stage-card">
+          <header class="stage-head">
+            <div class="stage-toolbar">
+              <p class="stage-caption">选择生成模式</p>
+              <div class="header-actions" aria-label="图片工作台工具栏">
+                <button class="ghost-btn small">AI 创建</button>
+                <button class="ghost-btn small">导入</button>
+                <button class="ghost-btn small">导出 / 编辑</button>
+                <span class="toolbar-divider" aria-hidden="true"></span>
+                <div class="preview-tabs" role="tablist" aria-label="图片生成结果面板">
+                  <button class="active">预览图</button>
+                  <button>生成日志</button>
+                </div>
+              </div>
+            </div>
+            <div class="mode-row">
+              <button class="mode-btn active"><span>✍</span>自由模式</button>
+              <button class="mode-btn"><span>📋</span>选择预设提示词</button>
+              <button class="icon-btn" aria-label="设置">⚙</button>
+              <button class="mode-btn subtle"><span>▣</span>电商白底主图</button>
+              <button class="mode-btn subtle"><span>报</span>海报图</button>
+              <button class="mode-btn subtle"><span>景</span>场景图</button>
+              <button class="mode-btn subtle"><span>页</span>详情页分区图</button>
+              <button class="mode-btn subtle"><span>秀</span>买家秀图</button>
+              <button class="mode-btn subtle"><span>3D</span>3D 立体图</button>
+              <button class="mode-btn subtle"><span>拆</span>爆款拆解生成</button>
+              <button class="mode-btn subtle"><span>影</span>影视级画面</button>
+              <button class="mode-btn subtle"><span>食</span>美食摄影</button>
+            </div>
+            <p class="stage-help">自由模式：直接输入提示词生成，不使用预设技能。v2 增强能力作为当前图片生成链路的辅助层，不替换主入口。</p>
+          </header>
+
+          <div class="canvas">
+            <div class="v2-flow" aria-label="v2 PRD 主链路">
+              <div class="flow-step"><b>1 输入源</b><span>DOCX / 参考图 / 视频 / SKU / 历史素材</span></div>
+              <div class="flow-step"><b>2 Agent 理解</b><span>Claude SDK 读文档，多轮追问和纠偏</span></div>
+              <div class="flow-step"><b>3 中间结构</b><span>场景库、IP 六层、视频拆解、变量表</span></div>
+              <div class="flow-step"><b>4 Prompt 组</b><span>图片 / 图生视频 / 文案 / 绿幕图提示词</span></div>
+              <div class="flow-step"><b>5 生产素材</b><span>图片、文案、视频 Prompt、可选导入视频</span></div>
+              <div class="flow-step"><b>6 审核入库</b><span>来源追溯、质检、素材库、混剪包</span></div>
+            </div>
+
+            <div class="preview-strip" aria-label="图片预览大盘区">
+              <article class="preview-card">
+                <span class="num">01</span>
+                <div class="mock-img orange">轻盈随行<br />夏日必备</div>
+              </article>
+              <article class="preview-card">
+                <span class="num">02</span>
+                <div class="mock-img desk">产品桌面场景</div>
+              </article>
+              <article class="preview-card">
+                <span class="num">03</span>
+                <div class="mock-img window">窗边自然光</div>
+              </article>
+              <article class="preview-card">
+                <span class="num">04</span>
+                <div class="mock-img product">产品白底图</div>
+              </article>
+              <article class="preview-card wide">
+                <span class="num">05</span>
+                <div class="mock-img grid">详情页组图</div>
+              </article>
+            </div>
+
+            <div class="prd-grid" aria-label="v2 PRD 核心能力原型">
+              <article class="prd-card">
+                <header>
+                  <h3>品牌 / 产品知识库 -> 场景库</h3>
+                  <span class="prd-tag">US-13 / UC-15</span>
+                </header>
+                <p>知识库不是直接跳 Prompt。Agent 先读取 DOCX，抽取人群、问题、空间、动作、情绪、镜头和合规边界。</p>
+                <div class="scene-card-grid">
+                  <div class="scene-pill"><strong>早餐后</strong>妈妈把条包放进书包侧袋，自然光，餐桌边。</div>
+                  <div class="scene-pill"><strong>办公室</strong>抽屉备货，低门槛坚持感，避免功效承诺。</div>
+                  <div class="scene-pill"><strong>换季</strong>家庭健康管理台面，强调日常习惯。</div>
+                  <div class="scene-pill"><strong>外出</strong>便携条包，镜头近景，真实手部动作。</div>
+                </div>
+              </article>
+
+              <article class="prd-card">
+                <header>
+                  <h3>IP 知识库六层体系</h3>
+                  <span class="prd-tag">US-15 / UC-17</span>
+                </header>
+                <p>IP 知识库是独立运营底座，不混入品牌知识库字段。后续延伸口播、文案、私域、产品化和咨询回复。</p>
+                <div class="six-layer-grid">
+                  <div class="layer-pill"><strong>身份</strong>定位和经历</div>
+                  <div class="layer-pill"><strong>价值观</strong>立场和边界</div>
+                  <div class="layer-pill"><strong>语言</strong>口吻和节奏</div>
+                  <div class="layer-pill"><strong>判断</strong>决策逻辑</div>
+                  <div class="layer-pill"><strong>素材</strong>案例和故事</div>
+                  <div class="layer-pill"><strong>引擎</strong>栏目和选题</div>
+                </div>
+              </article>
+
+              <article class="prd-card">
+                <header>
+                  <h3>无知识库对标图反推</h3>
+                  <span class="prd-tag">US-01 / UC-03</span>
+                </header>
+                <p>上传小红书对标图和产品资料即可反推构图、光线、文字区域、风格，不要求用户先建知识库。</p>
+                <div class="prompt-preview">
+                  <strong>反推结果</strong>
+                  构图：竖版 4:5，产品在右下三分之一；光线：窗边自然光；文字区：左上留白；风格：生活化、手机实拍、无 AI 感。
+                </div>
+              </article>
+
+              <article class="prd-card">
+                <header>
+                  <h3>视频 Prompt 与第三方边界</h3>
+                  <span class="prd-tag">US-05 / UC-08</span>
+                </header>
+                <p>软件生成 15 秒视频 Prompt，用户复制到第三方平台；第三方生成过程脱离软件，成品视频只能手动导入并关联原 Prompt。</p>
+                <div class="prompt-preview">
+                  <strong>主按钮：复制视频 Prompt</strong>
+                  镜头：早餐桌近景，手拿条包入镜；动作：倒入水杯并放回书包；时长：15 秒；画幅：9:16；约束：不出现治疗承诺。
+                </div>
+              </article>
+
+              <article class="prd-card wide">
+                <header>
+                  <h3>SOP 表单执行、审核入库与混剪包</h3>
+                  <span class="prd-tag">US-07 / US-08 / US-09</span>
+                </header>
+                <p>普通用户不进 canvas。SOP 用阶段导轨执行，运行记录保存输入源、Agent 会话、Prompt 版本、模型、产物和错误；审核通过后进入素材库并可导出 manifest。</p>
+                <div class="sop-step-grid">
+                  <div class="sop-step"><strong>输入源</strong>知识库 / 图 / 视频</div>
+                  <div class="sop-step"><strong>Prompt</strong>多轮调整版本</div>
+                  <div class="sop-step"><strong>生成</strong>图片 / 文案 / 绿幕图</div>
+                  <div class="sop-step"><strong>质检</strong>事实 / 合规 / AI 味</div>
+                  <div class="sop-step"><strong>审核</strong>通过 / 驳回 / 重生成</div>
+                  <div class="sop-step"><strong>导出</strong>素材包 + manifest</div>
+                </div>
+                <div class="review-row">
+                  <strong>小红书种草图 SOP</strong>
+                  <span>待审核 4 张</span>
+                  <span>来源可追溯</span>
+                  <span>可导出混剪包</span>
+                </div>
+              </article>
+            </div>
+
+            <div class="enhancement-note" aria-label="v2 增强层">
+              <div class="note-card">
+                <strong>品牌知识库 -> 场景库</strong>
+                从产品知识库抽取真实场景，再生成图片 Prompt。
+              </div>
+              <div class="note-card">
+                <strong>参考图反推</strong>
+                继续留在图片生成链路内，不单独变成新后台入口。
+              </div>
+              <div class="note-card">
+                <strong>视频 Prompt</strong>
+                基于通过审核的图片生成 15 秒图生视频 Prompt，可复制到第三方。
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <aside class="right-panel" aria-label="参数和日志">
+        <div class="right-tabs">
+          <button class="active">参数</button>
+          <button>日志 24</button>
+          <button>›</button>
+        </div>
+
+        <div class="right-stack">
+          <section class="right-card">
+            <h3>生成参数</h3>
+            <div class="param-list">
+              <div class="param-field">
+                <label>全局参数</label>
+                <div class="fake-input">设置</div>
+              </div>
+              <div class="param-field">
+                <label>文字模型</label>
+                <div class="fake-input">gemini-3-pro-preview</div>
+              </div>
+              <div class="param-field">
+                <label>图片模型</label>
+                <div class="fake-input">gemini-3-pro-image-preview</div>
+              </div>
+              <div class="param-field">
+                <label>视频模型</label>
+                <div class="fake-input">veo-3.1</div>
+              </div>
+              <div class="param-field">
+                <label>生成数量</label>
+                <div class="slider-line"></div>
+                <strong>1</strong>
+              </div>
+              <div class="choice-row">
+                <span class="choice">1:1</span>
+                <span class="choice active">4:5</span>
+                <span class="choice">3:4</span>
+                <span class="choice">9:16</span>
+                <span class="choice">16:9</span>
+              </div>
+              <div class="choice-row">
+                <span class="choice">1K</span>
+                <span class="choice active">2K</span>
+                <span class="choice">4K</span>
+              </div>
+              <div class="choice-row">
+                <span class="choice">low</span>
+                <span class="choice active">medium</span>
+                <span class="choice">high</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="right-card">
+            <h3>PRD 映射</h3>
+            <div class="ref-card">
+              <strong>P0 用户故事</strong>
+              <p>US-01 无知识库反推、US-02 Agent 读 DOCX、US-13 品牌场景库、US-14 场景提示词、US-15 IP 六层知识库。</p>
+            </div>
+            <div class="ref-card">
+              <strong>核心用例</strong>
+              <p>UC-03 对标图反推、UC-08 复制视频 Prompt、UC-11 审核入库、UC-12 混剪包导出、UC-17 IP 知识库构建。</p>
+            </div>
+            <div class="ref-card">
+              <strong>管理能力</strong>
+              <p>Provider 只显示真实可调用状态；skills 管理沉淀 Prompt / SOP；Canvas 只编辑工作流定义，不作为普通用户主路径。</p>
+            </div>
+          </section>
+
+          <section class="right-card">
+            <h3>已选知识引用</h3>
+            <div class="ref-card">
+              <strong>产品</strong>
+              <p>示例产品主打清晰成分、便携条包、适合早餐后或办公场景使用。内容表达优先讲使用场景和坚持门槛，再讲成分与规格。</p>
+            </div>
+            <div class="ref-card">
+              <strong>产品</strong>
+              <p>避免把单一成分包装成万能方案，不出现治疗、见效、最强等承诺表达。</p>
+            </div>
+            <div class="ref-card">
+              <strong>场景脚本</strong>
+              <p>图片素材可覆盖白底主图、成分信息卡、早餐搭配、办公桌抽屉、家庭健康管理台面。</p>
+            </div>
+          </section>
+        </div>
+
+        <div class="skills-bar">当前启用 SKILLS</div>
+      </aside>
+    </main>
+  </div>
+  <div class="proto-toast" id="protoToast" role="status"></div>
+  <script>
+    const protoViews = {
+      "图片生成": {
+        layout: "image",
+        eyebrow: "图片 / 主流程",
+        title: "图片生成工作台",
+        desc: "保留现有产品图、参考图、提示词输入和预览大盘，同时接入 v2 的场景库、对标图反推、质检和审核入库。",
+        prd: "US-06 / UC-06 / 图片候选 -> 质检 -> 审核入库",
+        status: "可运行",
+        primary: "启动渲染引擎",
+        secondary: "发送到审核",
+        kpis: [["4", "候选图片"], ["2", "已引用输入源"], ["1", "Prompt 版本"], ["待审", "当前状态"]],
+        flow: ["输入源", "Prompt 草稿", "图片生成", "质检评分", "人工审核", "素材库"],
+        panels: [
+          ["生成队列", "用当前产品图、参考图、场景卡和用户意图生成 4 张候选图。未配置真实图片 provider 时必须显示 blocked。", ["产品图 0/10", "参考图 0/6", "画幅 4:5 / 2K / medium"]],
+          ["v2 增强", "图片生成不再只是自由提示词输入，而是接收场景库、对标图反推和品牌合规边界。", ["可从场景卡生成 Prompt", "可从参考图反推构图", "可进入审核和回炉"]]
+        ],
+        preview: "图片 Prompt：UGC 手机实拍，自然光，早餐桌场景，产品条包在右下三分之一，左上留白可放短标题，真实手部动作，无 AI 感。\n负面约束：不出现治疗、见效、最强等承诺表达。",
+        table: [["候选 01", "待审核", "4:5 / 2K", "可入库"], ["候选 02", "质检通过", "4:5 / 2K", "可生成视频 Prompt"], ["候选 03", "需重生成", "文字过密", "驳回原因保留"]]
+      },
+      "对标图反推": {
+        layout: "image",
+        eyebrow: "图片 / 无知识库玩法",
+        title: "对标图反推",
+        desc: "不要求用户先建知识库。上传小红书对标图、产品图和产品资料，模型反推构图、光线、文字区域和风格，再生成同风格图片 Prompt。",
+        prd: "US-01 / UC-03 / 无知识库小红书扒图",
+        status: "可运行",
+        primary: "反推图片 Prompt",
+        secondary: "发送到图片生成",
+        kpis: [["3", "参考图"], ["1", "产品 brief"], ["4", "反推维度"], ["P0", "优先级"]],
+        flow: ["上传参考图", "分析构图", "提取风格", "生成 Prompt", "人工调整", "生成图片"],
+        panels: [
+          ["视觉分析", "对构图、主体位置、光线、背景、文字区域和画幅做结构化拆解。", ["构图：右下主体 + 左上留白", "光线：窗边自然光", "风格：生活化手机实拍"]],
+          ["合规边界", "只复用风格结构，不复制竞品可识别元素，不编造产品卖点。", ["去除竞品 Logo", "保留来源引用", "Prompt 版本可追溯"]]
+        ],
+        preview: "反推 Prompt 草稿：竖版 4:5，产品位于右下三分之一，早餐桌自然光，浅色背景，左上保留标题空间，画面像普通用户手机拍摄，细节真实。",
+        table: [["参考图 A", "已分析", "构图 / 光线", "可复用"], ["参考图 B", "已分析", "文字区 / 色调", "可复用"], ["产品资料", "待补字段", "规格", "需人工补齐"]]
+      },
+      "场景提示词": {
+        layout: "image",
+        eyebrow: "图片 / 场景库",
+        title: "场景提示词",
+        desc: "品牌 / 产品知识库先生成场景库，再由场景卡生成 10 组 UGC 手机实拍图片 / 图生视频提示词。",
+        prd: "US-13 / US-14 / UC-15 / UC-16",
+        status: "待确认场景",
+        primary: "生成提示词组",
+        secondary: "复制选中 Prompt",
+        kpis: [["12", "场景卡"], ["10", "Prompt 组"], ["6", "场景字段"], ["可追溯", "知识来源"]],
+        flow: ["读取知识库", "抽取场景", "确认场景卡", "生成 Prompt", "复制 / 入队", "审核"],
+        panels: [
+          ["场景卡字段", "场景库不是 Prompt 文本列表，而是 Prompt 前的中间结构。", ["人群 / 问题 / 季节", "空间 / 动作 / 情绪", "镜头 / 合规 / 输出用途"]],
+          ["提示词组", "每条提示词包含人物、动作、场景、光线、镜头、真实感要求和负面约束。", ["图片 Prompt", "图生视频 Prompt", "绿幕文案图 Prompt"]]
+        ],
+        preview: "场景卡：夏季早餐后，妈妈把便携条包放进孩子书包侧袋。\n图片 Prompt：手机实拍、自然光、餐桌边、轻微手部虚化、真实生活细节、无广告棚拍感。",
+        table: [["早餐后", "儿童家庭", "图片 + 视频 Prompt", "可生成"], ["办公抽屉", "上班族", "图片 Prompt", "可复制"], ["换季台面", "家庭管理", "详情页素材", "待审核"]]
+      },
+      "绿幕文案图": {
+        layout: "image",
+        eyebrow: "图片 / 视频素材",
+        title: "绿幕文案图",
+        desc: "从口播脚本或卖点列表拆成标题卡、卖点卡、金句卡和 CTA 卡，导出 PNG / WebP 并写入混剪 manifest。",
+        prd: "US-06 / UC-10 / 混剪素材包",
+        status: "可导出",
+        primary: "生成绿幕图",
+        secondary: "写入 manifest",
+        kpis: [["8", "文案卡"], ["3", "版式"], ["PNG", "导出格式"], ["9:16", "默认画幅"]],
+        flow: ["导入脚本", "拆文案卡", "选择版式", "生成图片", "审核可读性", "导出"],
+        panels: [
+          ["文案拆分", "文案过长时提示拆分，不强行压缩到不可读。", ["标题卡", "卖点卡", "金句卡", "CTA 卡"]],
+          ["混剪字段", "每张绿幕图都带用途、出现时长、画幅、透明 / 绿幕背景和关联脚本段落。", ["duration", "overlayType", "scriptRef"]]
+        ],
+        preview: "标题卡：每天早餐后 10 秒钟的小习惯\n卖点卡：便携条包，放进书包或抽屉都不占地方\nCTA 卡：先从更容易坚持的场景开始",
+        table: [["标题卡 01", "通过", "9:16 PNG", "已入 manifest"], ["卖点卡 03", "需拆分", "文案过长", "待处理"], ["CTA 卡", "通过", "透明背景", "可导出"]]
+      },
+      "合规检测": {
+        layout: "image",
+        eyebrow: "图片 / 审核",
+        title: "合规检测",
+        desc: "检查图片、文案和 Prompt 是否触发医疗化承诺、绝对化表达、竞品元素复制和事实不一致。",
+        prd: "US-07 / UC-11 / 人工审核",
+        status: "待审核",
+        primary: "执行合规检测",
+        secondary: "提交人工审核",
+        kpis: [["3", "风险项"], ["2", "待人工确认"], ["1", "驳回原因"], ["可追溯", "来源"]],
+        flow: ["读取产物", "检查事实", "检查合规", "标记风险", "人工确认", "入库"],
+        panels: [
+          ["检测维度", "事实、合规、品牌口吻、图片文字可读性和 AI 味统一进入审核清单。", ["事实一致性", "禁用表达", "视觉可读性"]],
+          ["恢复路径", "检测未通过不删除产物，保留原因并允许回到 Prompt 版本重生成。", ["驳回原因", "重生成入口", "保留原产物"]]
+        ],
+        preview: "风险：出现“见效更快”表达，建议替换为“更容易坚持的日常补充场景”。\n状态：待品牌负责人确认。",
+        table: [["图片 02", "通过", "无高风险表达", "可入库"], ["文案卡 03", "风险", "绝对化表达", "需改写"], ["Prompt v4", "注意", "医疗化词汇", "需人工确认"]]
+      },
+      "图片精修": {
+        layout: "image",
+        eyebrow: "图片 / 后处理",
+        title: "图片精修",
+        desc: "针对通过初筛的图片做局部修复、裁切、扩图、文字区域清理和版本对比，仍保留原图和 Prompt 来源。",
+        prd: "US-10 / UC-14 / 成功素材回炉",
+        status: "可编辑",
+        primary: "创建精修版本",
+        secondary: "回炉为模板",
+        kpis: [["2", "精修版本"], ["1", "原图引用"], ["4:5", "目标画幅"], ["保留", "原始 Prompt"]],
+        flow: ["选择图片", "标记区域", "精修 / 扩图", "版本对比", "审核", "回炉"],
+        panels: [
+          ["精修动作", "只处理当前选中图片，不改写原始素材和生成记录。", ["局部修复", "扩图", "文字区域清理"]],
+          ["回炉沉淀", "通过审核的好图可以反推质量原因、标签和模板草稿。", ["Prompt 模板", "场景标签", "Skill 草稿"]]
+        ],
+        preview: "精修说明：清理左上角多余文字阴影，保留产品位置和自然光质感；生成 v2-clean 版本。",
+        table: [["原图 02", "已通过", "可精修", "保留"], ["v2-clean", "生成中", "文字区清理", "待审"], ["模板草稿", "未创建", "回炉入口", "可操作"]]
+      },
+      "视频生成": {
+        eyebrow: "视频 / 爆款拆解",
+        title: "视频生成与拆解",
+        desc: "视频模块保留，但主路径调整为拆解、脚本、视频 Prompt、成品导入和混剪包；内部视频 API 是可选高成本能力。",
+        prd: "US-05 / UC-04 / UC-08",
+        status: "拆解优先",
+        primary: "拆解参考视频",
+        secondary: "生成视频 Prompt",
+        kpis: [["15s", "片段目标"], ["1.5-2元/秒", "成本边界"], ["可选", "内部 API"], ["手动", "第三方导入"]],
+        flow: ["导入视频", "拆钩子", "拆镜头", "生成脚本", "生成 Prompt", "可选导入"],
+        panels: [
+          ["拆解报告", "输出钩子、镜头、字幕节奏和分镜结构。", ["开头 3 秒钩子", "镜头节奏", "字幕结构"]],
+          ["成本策略", "默认推荐复制 Prompt 到第三方；不跟踪第三方任务状态。", ["软件只管理 Prompt", "成品视频手动导入", "内部 API 可选"]]
+        ],
+        preview: "拆解摘要：0-3s 痛点钩子，3-9s 产品使用场景，9-13s 卖点解释，13-15s CTA。\n输出：视频 Prompt 草稿 + 分镜图需求。",
+        table: [["参考视频", "已导入", "待拆解", "本地文件"], ["拆解任务", "可运行", "视频理解服务", "真实 provider"], ["视频队列", "可选", "内部 API", "成本高"]]
+      },
+      "视频脚本": {
+        eyebrow: "视频 / 脚本",
+        title: "视频脚本",
+        desc: "基于参考视频拆解、图片素材、品牌 / IP 知识库和卖点生成 15 秒脚本、分镜和字幕结构。",
+        prd: "US-05 / UC-04",
+        status: "可生成",
+        primary: "生成脚本",
+        secondary: "拆成绿幕卡",
+        kpis: [["5", "分镜"], ["15s", "默认时长"], ["3", "字幕段"], ["1", "CTA"]],
+        flow: ["选择卖点", "选择风格", "生成脚本", "确认分镜", "生成 Prompt", "导出"],
+        panels: [
+          ["脚本结构", "用短视频运营能直接理解的钩子、场景、卖点、证明和 CTA 组织。", ["钩子", "场景", "CTA"]],
+          ["知识引用", "IP 类脚本保持人设口吻；产品类脚本保持事实和合规边界。", ["IP 口吻", "产品事实", "禁用表达"]]
+        ],
+        preview: "0-3s：你有没有发现，坚持一件小事最难的是开始。\n3-9s：早餐后顺手放一包进包里。\n9-15s：把复杂的补充动作变成更容易坚持的日常习惯。",
+        table: [["脚本 v1", "草稿", "15 秒", "待确认"], ["字幕卡", "可生成", "3 张", "绿幕图"], ["分镜 Prompt", "待生成", "5 段", "视频 Prompt"]]
+      },
+      "视频 Prompt": {
+        eyebrow: "视频 / 外部生成",
+        title: "视频 Prompt",
+        desc: "生成可复制到第三方平台的 15 秒视频 Prompt。软件只记录 Prompt 和复制动作，第三方生成过程脱离软件。",
+        prd: "US-05 / UC-08",
+        status: "可复制",
+        primary: "复制视频 Prompt",
+        secondary: "导入成品视频",
+        kpis: [["15s", "时长"], ["9:16", "画幅"], ["已复制", "状态"], ["手动", "导入结果"]],
+        flow: ["选择图片", "生成 Prompt", "复制外部", "第三方生成", "手动导入", "入库"],
+        panels: [
+          ["外部边界", "不创建外部任务、不轮询状态、不绑定外部任务 ID。", ["只记录复制动作", "只追溯原 Prompt", "成品手动导入"]],
+          ["内部可选", "当成本可接受时可走内部视频 API，但不是默认主路径。", ["Vidu / Runway 抽象", "真实 provider", "blocked 状态"]]
+        ],
+        preview: "视频 Prompt：15 秒，9:16，早餐桌自然光，手拿条包入镜，倒入水杯后放回书包侧袋，镜头轻微手持，真实生活感，不出现医疗化承诺。",
+        table: [["Prompt v3", "已复制外部", "RunningHub / 第三方", "等待用户手动导入"], ["成品视频", "未导入", "本地文件", "可选"], ["内部 API", "未启用", "成本高", "blocked"]]
+      },
+      "成品视频导入": {
+        eyebrow: "视频 / 入库",
+        title: "成品视频导入",
+        desc: "第三方生成后只能由用户手动导入视频文件，并选择关联原 Prompt、图片素材和 SOP 运行记录。",
+        prd: "US-05 / UC-09",
+        status: "等待导入",
+        primary: "导入成品视频",
+        secondary: "关联原 Prompt",
+        kpis: [["0", "待入库视频"], ["1", "原 Prompt"], ["手动", "导入方式"], ["可追溯", "本软件来源"]],
+        flow: ["选择文件", "关联 Prompt", "补充标签", "生成缩略图", "审核", "入素材库"],
+        panels: [
+          ["导入字段", "不要求外部任务 ID，只记录本地文件和本软件内的 Prompt 来源。", ["文件路径", "PromptRef", "输入素材"]],
+          ["审核", "导入后仍需要人工确认用途、画幅、时长和合规状态。", ["通过", "驳回", "入库标签"]]
+        ],
+        preview: "导入说明：选择第三方平台下载的 mp4，关联“视频 Prompt v3”和图片候选 02，打上早餐场景、9:16、15s 标签。",
+        table: [["video-clip-001", "待导入", "mp4", "选择文件"], ["Prompt v3", "已关联", "视频 Prompt", "可追溯"], ["素材库", "待审核", "视频素材", "入库后可混剪"]]
+      },
+      "混剪包导出": {
+        eyebrow: "视频 / 导出",
+        title: "混剪包导出",
+        desc: "导出第三方混剪软件可读取的素材文件夹和 manifest，包含图片、绿幕图、可选视频、文案字段、标签和用途。",
+        prd: "US-08 / UC-12",
+        status: "可导出",
+        primary: "导出混剪包",
+        secondary: "预览 manifest",
+        kpis: [["24", "素材"], ["8", "绿幕图"], ["3", "视频片段"], ["JSON/CSV", "manifest"]],
+        flow: ["选择通过素材", "补齐标签", "生成 manifest", "导出文件夹", "交给混剪软件"],
+        panels: [
+          ["包结构", "v2 不做时间线剪辑和成片渲染，只准备可混剪素材包。", ["images/", "overlays/", "videos/", "manifest.json"]],
+          ["manifest 字段", "包含素材用途、画幅、时长、文案、平台、PromptRef 和来源运行。", ["assetId", "duration", "promptRef"]]
+        ],
+        preview: "{\n  \"platform\": \"douyin\",\n  \"assets\": [\"image_001.png\", \"overlay_title_001.png\", \"clip_001.mp4\"],\n  \"promptRef\": \"video-prompt-v3\"\n}",
+        table: [["图片素材", "18 张", "通过审核", "导出"], ["绿幕图", "8 张", "通过审核", "导出"], ["视频片段", "3 条", "可选", "导出"]]
+      },
+      "创意视频": {
+        eyebrow: "视频 / 创意",
+        title: "创意视频",
+        desc: "围绕品牌 / IP 资产生成氛围视频、产品场景动效和短片段创意方向，最终仍沉淀为视频 Prompt 或素材包。",
+        prd: "US-05 / US-10",
+        status: "创意草稿",
+        primary: "生成创意方向",
+        secondary: "转为视频 Prompt",
+        kpis: [["6", "创意方向"], ["3", "风格"], ["15s", "片段"], ["Prompt", "最终产物"]],
+        flow: ["选择资产", "生成方向", "确认风格", "生成 Prompt", "复制外部", "导入素材"],
+        panels: [
+          ["创意来源", "可来自成功图片、IP 语气、品牌场景库或爆款视频拆解。", ["成功素材", "场景库", "拆解报告"]],
+          ["产物边界", "不直接承诺成片，只输出可执行的视频 Prompt 和素材建议。", ["氛围动效", "产品场景", "镜头语言"]]
+        ],
+        preview: "创意方向：从早餐桌静物图过渡到书包侧袋近景，强调“顺手放进去”的低门槛动作。",
+        table: [["方向 01", "生活化", "15s", "可转 Prompt"], ["方向 02", "产品近景", "8s", "可转 Prompt"], ["方向 03", "IP 口播", "20s", "需脚本"]]
+      },
+      "自定义视频": {
+        eyebrow: "视频 / 自定义",
+        title: "自定义视频",
+        desc: "高级用户可配置时长、画幅、镜头段落、参考图、参考视频和 provider，普通用户仍走表单化 Prompt。",
+        prd: "US-09 / US-12",
+        status: "高级配置",
+        primary: "保存视频配置",
+        secondary: "生成 Prompt",
+        kpis: [["5", "镜头段"], ["3", "参考图"], ["1", "参考视频"], ["可选", "内部 API"]],
+        flow: ["填写字段", "配置镜头", "选择 provider", "生成 Prompt", "执行 / 复制", "记录"],
+        panels: [
+          ["字段配置", "不把节点图暴露给普通用户，用表单控制镜头、动作、时长和输出。", ["时长", "画幅", "镜头段落"]],
+          ["Provider 状态", "未配置真实服务时只保留 blocked 请求，不伪造成果。", ["internal-api", "manual prompt", "blocked"]]
+        ],
+        preview: "镜头 1：产品特写 3s；镜头 2：手部动作 6s；镜头 3：场景收束 6s。输出为视频 Prompt 或内部 API 请求。",
+        table: [["镜头段", "5 段", "完整", "可运行"], ["Provider", "未配置", "内部 API", "blocked"], ["外部复制", "可用", "手动", "推荐"]]
+      },
+      "文章生成": {
+        eyebrow: "文案 / 长文",
+        title: "文章生成",
+        desc: "基于 IP 知识库 DOCX / Markdown、用户意图和平台要求，Agent 多轮生成大纲、正文和发布检查。",
+        prd: "US-02 / UC-02 / UC-07",
+        status: "可生成",
+        primary: "生成文章草稿",
+        secondary: "导出 Markdown",
+        kpis: [["1", "IP 知识库"], ["3", "追问"], ["1", "正文草稿"], ["Markdown", "导出"]],
+        flow: ["选择知识库", "输入意图", "Agent 追问", "生成大纲", "生成正文", "发布检查"],
+        panels: [
+          ["Agent 读文档", "Claude SDK Agent 带着用户意图读取知识库，而不是一次性摘要。", ["来源章节", "多轮追问", "口吻规则"]],
+          ["发布检查", "检查事实、标题、结构、平台表达和高风险承诺。", ["公众号", "小红书", "知乎 / B 站"]]
+        ],
+        preview: "用户意图：基于嘉文老师 IP 知识库，写一篇视频号口播转公众号长文。\nAgent 追问：目标人群、立场强度、案例是否可公开、是否需要产品转化。",
+        table: [["大纲 v1", "已生成", "7 节", "待确认"], ["正文", "草稿", "约 1800 字", "待审核"], ["来源引用", "12 条", "DOCX 章节", "可追溯"]]
+      },
+      "标题生成": {
+        eyebrow: "文案 / 标题",
+        title: "标题生成",
+        desc: "围绕平台、场景卡、痛点和 IP / 品牌口吻生成标题矩阵，并保留来源和禁用表达。",
+        prd: "US-11 / UC-07",
+        status: "可生成",
+        primary: "生成标题矩阵",
+        secondary: "发送到文章",
+        kpis: [["30", "标题候选"], ["5", "角度"], ["3", "平台"], ["可追溯", "痛点来源"]],
+        flow: ["选择平台", "选择痛点", "生成标题", "评分筛选", "发送正文", "入库"],
+        panels: [
+          ["标题角度", "从评论、差评和客服问题中聚类痛点，输出真实用户语言。", ["问题型", "场景型", "反常识型"]],
+          ["平台差异", "同一素材可生成小红书、公众号、视频号不同标题。", ["小红书", "公众号", "视频号"]]
+        ],
+        preview: "小红书标题候选：\n1. 早餐后这 10 秒，才是最容易坚持的小习惯\n2. 别把健康管理想复杂，先从能放进包里的动作开始",
+        table: [["标题组 A", "小红书", "种草", "待选"], ["标题组 B", "公众号", "深度", "待选"], ["标题组 C", "视频号", "口播", "可发送"]]
+      },
+      "脚本生成": {
+        eyebrow: "文案 / 脚本",
+        title: "脚本生成",
+        desc: "生成抖音 / 视频号口播脚本、分镜脚本和绿幕文案图内容，可接入视频 Prompt 和混剪包。",
+        prd: "US-06 / UC-10",
+        status: "可生成",
+        primary: "生成脚本",
+        secondary: "拆成绿幕图",
+        kpis: [["15s", "短脚本"], ["60s", "口播"], ["8", "文案卡"], ["可导出", "绿幕图"]],
+        flow: ["选择知识", "生成口播", "拆分字幕", "生成绿幕图", "视频 Prompt", "导出"],
+        panels: [
+          ["脚本类型", "支持短视频口播、产品讲解、IP 观点和私域回复。", ["口播", "分镜", "字幕卡"]],
+          ["下游联动", "脚本可以进入视频 Prompt、绿幕文案图和混剪包。", ["视频 Prompt", "绿幕图", "manifest"]]
+        ],
+        preview: "口播脚本：很多人不是不想坚持，而是动作太复杂。把它变成早餐后顺手做的一件事，门槛就低很多。",
+        table: [["口播 v1", "草稿", "60s", "待审"], ["短视频 v1", "可用", "15s", "可转 Prompt"], ["字幕卡", "8 张", "待生成", "绿幕图"]]
+      },
+      "成型知识库": {
+        eyebrow: "知识库 / 现有入口",
+        title: "成型知识库",
+        desc: "保留现有知识库入口，升级为品牌 / 产品知识库、IP 知识库、场景库和输入源转换的集合视图。",
+        prd: "US-02 / UC-01 / UC-02",
+        status: "已保留",
+        primary: "导入知识库",
+        secondary: "进入 Agent 读取",
+        kpis: [["3", "DOCX"], ["2", "类型"], ["1", "转换队列"], ["可追溯", "原文路径"]],
+        flow: ["导入文件", "转换 Markdown", "识别类型", "Agent 读取", "抽取结构", "生成下游"],
+        panels: [
+          ["文件事实源", "知识库真实形态是 DOCX / Markdown 文件，本地工作区是第一事实源。", ["原文件路径", "转换稿路径", "章节位置"]],
+          ["类型分流", "品牌 / 产品知识库与 IP 知识库走不同中间层和下游产物。", ["品牌场景库", "IP 六层", "Prompt Pack"]]
+        ],
+        preview: "已登记：唯他瑞葡聚糖知识库.docx、嘉文老师_IP知识库_v1.0.docx、谢晶_个人IP知识库v1.0_深澜智能.docx。",
+        table: [["唯他瑞", "品牌 / 产品", "可生成场景库", "已转换"], ["嘉文老师", "IP", "六层待补齐", "已导入"], ["谢晶", "IP", "待转换", "排队"]]
+      },
+      "品牌 / 产品知识库": {
+        eyebrow: "知识库 / 品牌链路",
+        title: "品牌 / 产品知识库",
+        desc: "抽取品牌调性、产品事实、卖点、目标人群和合规边界。主按钮不是生成 Prompt，而是生成场景库。",
+        prd: "US-13 / UC-15",
+        status: "可生成场景库",
+        primary: "生成场景库",
+        secondary: "查看来源章节",
+        kpis: [["26", "产品事实"], ["12", "卖点卡"], ["8", "合规边界"], ["可生成", "场景库"]],
+        flow: ["导入 DOCX", "抽取事实", "确认卖点", "标注合规", "生成场景库", "生成提示词组"],
+        panels: [
+          ["抽取结果", "把 DOCX 中的事实、卖点、人群和禁用表达结构化，但不替代原文。", ["产品事实", "目标人群", "合规边界"]],
+          ["下游边界", "品牌知识库不能直接跳 Prompt，中间必须有场景卡或内容任务结构。", ["场景库", "卖点卡", "Prompt 组"]]
+        ],
+        preview: "合规边界：避免“治疗、见效、最强、根治”等承诺；优先表达使用场景、坚持门槛和便携性。",
+        table: [["品牌调性", "已抽取", "温和可信", "可确认"], ["卖点卡", "12 条", "待审核", "可编辑"], ["场景库", "未生成", "下一步", "主按钮"]]
+      },
+      "场景库": {
+        eyebrow: "知识库 / 中间层",
+        title: "场景库",
+        desc: "场景库是 Prompt 前的中间层，承接品牌 / 产品知识库和 IP 运营场景，向图片、文案和视频 Prompt 下游输出。",
+        prd: "US-13 / US-14 / UC-15 / UC-16",
+        status: "12 张场景卡",
+        primary: "生成提示词组",
+        secondary: "发送到图片生成",
+        kpis: [["12", "场景卡"], ["6", "必填字段"], ["10", "Prompt 组"], ["3", "输出用途"]],
+        flow: ["场景卡", "用户确认", "Prompt 组", "图片生成", "视频 Prompt", "文案生成"],
+        panels: [
+          ["场景字段", "人群、问题、季节、空间、动作、情绪、镜头、合规边界和输出用途。", ["早餐后", "办公室", "换季"]],
+          ["输出用途", "同一场景可生成图片 Prompt、图生视频 Prompt、文案 Prompt 和绿幕文案图 Prompt。", ["图片", "视频", "文案"]]
+        ],
+        preview: "场景卡：办公室抽屉备货，午后自然光，同事递水杯，重点表达“随手就能坚持”。",
+        table: [["早餐后", "已确认", "图片 / 视频", "可生成"], ["办公抽屉", "待确认", "图片", "可编辑"], ["换季家庭", "已确认", "详情页", "可生成"]]
+      },
+      "IP 知识库": {
+        eyebrow: "知识库 / IP 体系",
+        title: "IP 知识库",
+        desc: "个人 IP 全面运营底座，包含身份、价值观、语言、判断、素材和创作引擎六层，不是品牌知识库的字段。",
+        prd: "US-15 / US-16 / UC-17 / UC-18",
+        status: "六层待补齐",
+        primary: "构建 IP 知识库",
+        secondary: "生成场景延伸库",
+        kpis: [["6", "层级"], ["4", "延伸场景"], ["DOCX", "可导出"], ["版本化", "人设不漂移"]],
+        flow: ["导入素材", "Agent 读取", "生成六层", "补齐缺口", "导出知识库", "延伸场景"],
+        panels: [
+          ["六层结构", "身份锚定、价值观立场、声音语言、判断方法、内容素材、创作引擎。", ["身份", "语言", "创作引擎"]],
+          ["场景延伸", "口播、朋友圈、私域、产品化和咨询回复都引用同一 IP 知识库版本。", ["口播", "私域", "产品化"]]
+        ],
+        preview: "待补齐：判断方法层缺少具体案例；内容素材层缺少可公开故事；创作引擎层需要栏目模板。",
+        table: [["身份锚定", "完整", "已确认", "可导出"], ["判断方法", "缺口", "待补案例", "需追问"], ["创作引擎", "草稿", "栏目模板", "待确认"]]
+      },
+      "输入源 / 文档转换": {
+        eyebrow: "知识库 / 输入源",
+        title: "输入源 / 文档转换",
+        desc: "登记 DOCX、Markdown、参考图、参考视频、产品资料、SKU 表、竞品内容、评论和历史成功素材。",
+        prd: "UC-01 / 统一输入源模型",
+        status: "转换队列",
+        primary: "登记输入源",
+        secondary: "转换为 Markdown",
+        kpis: [["8", "输入类型"], ["3", "待转换"], ["2", "blocked"], ["本地", "事实源"]],
+        flow: ["选择文件", "解析类型", "转换文本", "补充标签", "入输入源", "分流 SOP"],
+        panels: [
+          ["输入类型", "不只有知识库，参考图、参考视频、SKU 表和历史素材都能驱动 SOP。", ["DOCX", "参考图", "SKU 表"]],
+          ["失败状态", "文件无法解析时保留原文件并标记 blocked 原因，不伪造成功。", ["保留原文件", "错误原因", "重试入口"]]
+        ],
+        preview: "转换队列：嘉文老师_IP知识库_v1.0.docx -> markdown；参考视频 01 -> analyze；SKU 表 -> ProductBrief。",
+        table: [["DOCX", "已转换 2", "待转换 1", "可重试"], ["参考视频", "待分析", "视频理解", "blocked"], ["SKU 表", "可解析", "变量表", "可运行"]]
+      },
+      "素材库": {
+        eyebrow: "资产 / 素材",
+        title: "素材库",
+        desc: "统一管理文案、图片、视频、绿幕图、manifest 和视频 Prompt 记录，支持标签、来源、状态和回炉。",
+        prd: "US-07 / US-08 / US-10 / UC-11 / UC-12 / UC-14",
+        status: "可筛选",
+        primary: "筛选可用素材",
+        secondary: "回炉为模板",
+        kpis: [["42", "素材"], ["18", "图片"], ["8", "绿幕图"], ["3", "视频"]],
+        flow: ["审核通过", "入库", "打标签", "复用", "回炉", "导出"],
+        panels: [
+          ["素材字段", "每个素材记录类型、平台、主题、状态、来源、SOP、输入源和 Prompt 版本。", ["平台", "状态", "PromptRef"]],
+          ["回炉", "成功素材可反推 Prompt、标签和质量原因，生成模板或 Skill 草稿。", ["反推 Prompt", "标签", "Skill 草稿"]]
+        ],
+        preview: "筛选：平台=小红书，类型=图片，状态=通过，来源=小红书种草图 SOP，场景=早餐后。",
+        table: [["image_001", "图片", "通过", "可复用"], ["overlay_003", "绿幕图", "通过", "可导出"], ["prompt_v3", "视频 Prompt", "已复制外部", "可追溯"]]
+      },
+      "Prompt 工作台": {
+        eyebrow: "资产 / 玩法跑通",
+        title: "Prompt 工作台",
+        desc: "服务还没有固定 SOP 的探索阶段：多源输入、用户意图、Agent 多轮调整、Prompt 草稿版本和物化入口。",
+        prd: "US-02 / US-03 / UC-02 / UC-13",
+        status: "草稿",
+        primary: "生成 Prompt",
+        secondary: "物化为 SOP",
+        kpis: [["4", "输入源"], ["3", "多轮追问"], ["5", "Prompt 版本"], ["1", "SOP 草案"]],
+        flow: ["选择输入源", "输入意图", "Agent 追问", "确认 Prompt", "版本对比", "物化"],
+        panels: [
+          ["适用场景", "当玩法还没固化时先在 Prompt 工作台跑通，而不是先做复杂工作流。", ["读文档", "看图反推", "视频拆解"]],
+          ["物化入口", "确认过的 Prompt 草稿可沉淀为 Prompt Pack、SOP 或 Skill。", ["Prompt Pack", "SOP", "Skill"]]
+        ],
+        preview: "Prompt v5：根据唯他瑞知识库和早餐场景库，生成 10 组 UGC 手机实拍提示词；保留合规边界；输出图片 Prompt 和图生视频 Prompt。",
+        table: [["Prompt v3", "已淘汰", "太广告感", "保留历史"], ["Prompt v5", "待确认", "更自然", "可物化"], ["SOP 草案", "未上线", "需人工确认", "待保存"]]
+      },
+      "SOP 工作流": {
+        eyebrow: "资产 / 表单执行",
+        title: "SOP 工作流",
+        desc: "普通用户默认走表单化 SOP 执行页，不进入 canvas。每个 SOP 定义输入源、字段、步骤、审核规则和导出规则。",
+        prd: "US-09 / UC-13",
+        status: "可执行",
+        primary: "运行 SOP",
+        secondary: "生成 SOP 草案",
+        kpis: [["3", "P0 SOP"], ["6", "步骤"], ["2", "人工节点"], ["版本化", "定义"]],
+        flow: ["输入源", "字段表单", "步骤执行", "人工审核", "入库", "导出"],
+        panels: [
+          ["SOP 示例", "小红书种草图、公众号 IP 内容、详情页素材、视频素材包。", ["小红书", "公众号", "详情页"]],
+          ["运行记录", "保存输入源、Agent 会话、Prompt 版本、模型、产物、错误和来源引用。", ["RunId", "PromptVersion", "Artifact"]]
+        ],
+        preview: "小红书种草图 SOP：产品图 + 参考图 + 产品资料 -> 反推风格 -> 结构化卖点 -> Prompt -> 4 张图 -> 质检 -> 人审 -> 入库。",
+        table: [["小红书种草图", "P0", "可运行", "表单"], ["公众号 IP 内容", "P0", "可运行", "Agent 读文档"], ["视频素材包", "P1", "草案", "待确认"]]
+      },
+      "运行历史": {
+        eyebrow: "资产 / 审计",
+        title: "运行历史",
+        desc: "用于复盘、重试和审计。查看每次运行的输入、输出、步骤耗时、模型、失败原因和产物列表。",
+        prd: "US-07 / US-09 / 工作流运行记录",
+        status: "可追溯",
+        primary: "查看运行详情",
+        secondary: "复用输入",
+        kpis: [["128", "运行记录"], ["9", "blocked"], ["42", "成功产物"], ["可复用", "输入参数"]],
+        flow: ["运行列表", "步骤详情", "输入输出", "日志", "重试", "复用"],
+        panels: [
+          ["详情结构", "左侧步骤列表，中间步骤输入输出，右侧产物和来源引用。", ["步骤", "日志", "产物"]],
+          ["失败处理", "失败不跳过、不伪造；保留 provider、错误和恢复路径。", ["blocked", "重试", "配置 provider"]]
+        ],
+        preview: "运行 run_20260520_001：图片 provider 未配置，图片生成步骤 blocked；已保存 Prompt 和输入源，可在配置后重试。",
+        table: [["run_001", "blocked", "图片 provider 未配置", "可重试"], ["run_002", "完成", "4 张图片", "可复用"], ["run_003", "待审核", "视频 Prompt", "查看详情"]]
+      },
+      "skills 管理": {
+        eyebrow: "管理 / skills",
+        title: "skills 管理",
+        desc: "管理参与内容生成链路的内置、项目和用户级 skills，把跑通的方法论沉淀为可复用能力。",
+        prd: "US-03 / UC-13 / SkillDefinition",
+        status: "可管理",
+        primary: "创建 Skill 草稿",
+        secondary: "健康检查",
+        kpis: [["12", "已启用"], ["3", "项目 skill"], ["2", "无效"], ["可沉淀", "Prompt / SOP"]],
+        flow: ["扫描 skills", "启用", "运行检查", "从 Prompt 生成草稿", "人工确认", "版本化"],
+        panels: [
+          ["来源", "内置 skill、项目 skill、用户 skill 分来源管理，避免混乱覆盖。", ["内置", "项目", "用户"]],
+          ["沉淀路径", "Prompt / SOP / 成功素材可以变成 Skill 草稿，但必须人工确认。", ["Prompt", "SOP", "成功素材"]]
+        ],
+        preview: "Skill 草稿：小红书 UGC 图片 Prompt 生成。输入：产品知识库、场景卡、参考图。输出：10 组图片 Prompt。",
+        table: [["ugc-image-prompt", "启用", "项目", "健康"], ["ip-article-agent", "启用", "项目", "健康"], ["old-video-template", "无效", "用户", "需修复"]]
+      },
+      "Provider 设置": {
+        eyebrow: "管理 / Provider",
+        title: "Provider 设置",
+        desc: "配置真实可调用的文字、图片、视频和视频理解服务。未配置时返回 blocked，不生成占位或伪成功。",
+        prd: "验收标准 / 真实生成服务",
+        status: "图片未配置",
+        primary: "配置 Provider",
+        secondary: "健康检查",
+        kpis: [["Claude", "文字"], ["未配置", "图片"], ["可选", "视频"], ["blocked", "失败策略"]],
+        flow: ["填写 Key", "保存主进程", "健康检查", "路由调用", "记录状态", "失败恢复"],
+        panels: [
+          ["协议边界", "Claude SDK 走 Claude 官方链路，其他协议必须走显式 provider，不硬塞进 Claude runtime。", ["Claude SDK", "OpenAI 兼容", "Gemini 原生"]],
+          ["媒体边界", "图片必须真实生成；视频可内部 API 或外部 Prompt；未配置时只保存 blocked 队列。", ["Image Provider", "Video Provider", "blocked"]]
+        ],
+        preview: "健康检查：文字模型可用；图片模型未配置 Key；视频模型为可选外部 Prompt 模式。",
+        table: [["文字模型", "ready", "Claude SDK / Gemini", "可用"], ["图片模型", "missing", "真实生成服务", "blocked"], ["视频模型", "optional", "Prompt 外部复制", "可用"]]
+      },
+      "工作流定义": {
+        eyebrow: "管理 / WorkflowDefinition",
+        title: "工作流定义",
+        desc: "维护 SOP 的输入源、字段、步骤、依赖、输出、审核规则和导出格式。定义可版本化、可 diff、可执行。",
+        prd: "US-09 / UC-13",
+        status: "版本草案",
+        primary: "保存定义版本",
+        secondary: "发布为可运行",
+        kpis: [["3", "定义"], ["2", "草案"], ["1", "待发布"], ["可 diff", "版本"]],
+        flow: ["编辑字段", "编辑步骤", "配置依赖", "配置审核", "保存版本", "发布"],
+        panels: [
+          ["定义结构", "工作流事实源是可执行定义，不是画布坐标。", ["inputSchema", "steps", "outputs"]],
+          ["上线规则", "草案不能直接上线，必须人工确认步骤、provider、审核和导出规则。", ["草案", "审核", "发布"]]
+        ],
+        preview: "WorkflowDefinition：xiaohongshu-seeding-image@v0.2\nsteps: reference_reverse -> product_structuring -> prompt_generate -> image_generate -> review -> asset_store",
+        table: [["小红书种草图", "v0.2", "草案", "待发布"], ["公众号 IP 内容", "v0.1", "可运行", "已发布"], ["视频素材包", "v0.1", "草案", "需审核"]]
+      },
+      "Canvas 编排": {
+        eyebrow: "管理 / 高级视图",
+        title: "Canvas 编排",
+        desc: "Canvas 只作为高级用户查看和编辑复杂依赖的视图，读写同一份工作流定义，不成为普通用户主入口或运行事实源。",
+        prd: "US-12 / Canvas 边界",
+        status: "高级视图",
+        primary: "打开 Canvas",
+        secondary: "同步定义",
+        kpis: [["1", "定义源"], ["6", "节点"], ["0", "运行状态"], ["高级", "入口"]],
+        flow: ["读取定义", "显示节点", "调整依赖", "保存定义", "表单运行"],
+        panels: [
+          ["边界", "普通用户不用 canvas 也能完成 SOP；Canvas 不能取代表单执行页。", ["非主入口", "非事实源", "高级编辑"]],
+          ["节点类型", "节点对应工作流步骤：输入源、Agent 读取、参考图反推、视频拆解、生成、审核和导出。", ["输入源", "Agent", "审核"]]
+        ],
+        preview: "Canvas 视图：品牌知识库 -> 场景库 -> Prompt 组 -> 图片生成 -> 审核 -> 素材库。保存后同步 WorkflowDefinition。",
+        table: [["节点图", "可查看", "高级用户", "非主入口"], ["定义同步", "可保存", "WorkflowDefinition", "事实源"], ["运行", "表单执行", "普通用户", "推荐"]]
+      }
+    };
+
+    function fallbackView(label) {
+      return {
+        eyebrow: "布谷AI / v2",
+        title: label,
+        desc: "该功能已接入可点击原型壳层。后续实现时必须保留输入源、Prompt、状态、审核和来源追溯。",
+        prd: "v2 PRD 映射待细化",
+        status: "草稿",
+        primary: "执行主流程",
+        secondary: "查看来源",
+        kpis: [["0", "待配置"], ["草稿", "状态"], ["可追溯", "原则"], ["本地", "工作区"]],
+        flow: ["输入", "理解", "生成", "审核", "入库", "导出"],
+        panels: [["功能边界", "占位功能也必须显示真实状态和恢复路径，不伪造成功。", ["输入源", "状态", "日志"]]],
+        preview: "等待补充具体业务字段。",
+        table: [["当前页面", "草稿", "待细化", "可点击"]]
+      };
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function renderView(label) {
+      const view = protoViews[label] || fallbackView(label);
+      const stageCard = document.querySelector(".stage-card");
+      const rightStack = document.querySelector(".right-stack");
+      const skillsBar = document.querySelector(".skills-bar");
+      if (!stageCard || !rightStack) return;
+      document.body.dataset.protoLayout = view.layout || "wide";
+
+      stageCard.innerHTML = `
+        <div class="canvas">
+          <div class="proto-shell">
+            <section class="proto-hero">
+              <div>
+                <p class="stage-caption">${escapeHtml(view.eyebrow)}</p>
+                <h2>${escapeHtml(view.title)}</h2>
+                <p>${escapeHtml(view.desc)}</p>
+              </div>
+              <div class="proto-actions">
+                <button class="proto-action primary" data-action="${escapeHtml(view.primary)}">${escapeHtml(view.primary)}</button>
+                <button class="proto-action" data-action="${escapeHtml(view.secondary)}">${escapeHtml(view.secondary)}</button>
+                <button class="proto-action warn" data-action="记录为运行历史">记录为运行历史</button>
+              </div>
+            </section>
+
+            <section class="proto-kpis">
+              ${view.kpis.map(([value, text]) => `<div class="proto-kpi"><strong>${escapeHtml(value)}</strong><span>${escapeHtml(text)}</span></div>`).join("")}
+            </section>
+
+            <section class="proto-panel wide">
+              <h3>流程导轨</h3>
+              <div class="proto-flow">${view.flow.map((step) => `<span>${escapeHtml(step)}</span>`).join("")}</div>
+            </section>
+
+            <section class="proto-grid">
+              ${view.panels.map(([title, text, items]) => `
+                <article class="proto-panel">
+                  <h3>${escapeHtml(title)}</h3>
+                  <p>${escapeHtml(text)}</p>
+                  <ul class="proto-list">
+                    ${items.map((item) => `<li><strong>${escapeHtml(item)}</strong><span>已纳入当前页面状态和后续实现范围。</span></li>`).join("")}
+                  </ul>
+                </article>
+              `).join("")}
+            </section>
+
+            <section class="proto-grid">
+              <article class="proto-preview">
+                <h3>当前产物预览</h3>
+                <pre>${escapeHtml(view.preview)}</pre>
+              </article>
+              <article class="proto-panel">
+                <h3>页面状态</h3>
+                <div class="proto-tabs">
+                  <button class="proto-tab active">${escapeHtml(view.status)}</button>
+                  <button class="proto-tab">草稿</button>
+                  <button class="proto-tab">待审核</button>
+                  <button class="proto-tab">已完成</button>
+                </div>
+                <p>所有状态都要进入运行历史；blocked 必须显示恢复路径，不能伪造生成成功。</p>
+              </article>
+            </section>
+
+            <section class="proto-table">
+              <div class="proto-row header"><span>对象</span><span>状态</span><span>字段</span><span>下一步</span></div>
+              ${view.table.map((row) => `<div class="proto-row">${row.map((cell, index) => index === 0 ? `<strong>${escapeHtml(cell)}</strong>` : `<span>${escapeHtml(cell)}</span>`).join("")}</div>`).join("")}
+            </section>
+          </div>
+        </div>
+      `;
+
+      rightStack.innerHTML = `
+        <section class="right-card">
+          <h3>当前页面映射</h3>
+          <div class="ref-card"><strong>${escapeHtml(view.title)}</strong><p>${escapeHtml(view.prd)}</p></div>
+          <div class="ref-card"><strong>状态</strong><p>${escapeHtml(view.status)}。主按钮：${escapeHtml(view.primary)}；次按钮：${escapeHtml(view.secondary)}。</p></div>
+          <div class="ref-card"><strong>客户端边界</strong><p>本地工作区是第一事实源；外部平台流程不纳入软件任务状态；Canvas 只作为高级编辑视图。</p></div>
+        </section>
+        <section class="right-card">
+          <h3>来源 / Prompt / 审核</h3>
+          <div class="ref-card"><strong>输入源</strong><p>DOCX / Markdown、参考图、参考视频、产品资料、SKU 表、历史成功素材按页面需要选择。</p></div>
+          <div class="ref-card"><strong>追溯</strong><p>保存输入源、Agent 会话、Prompt 版本、模型参数、产物和审核状态。</p></div>
+          <div class="ref-card"><strong>恢复路径</strong><p>未配置真实 provider 时显示 blocked，并提供配置、重试或复制 Prompt 的替代路径。</p></div>
+        </section>
+      `;
+
+      if (skillsBar) {
+        skillsBar.textContent = `当前页面：${view.title} / ${view.status}`;
+      }
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById("protoToast");
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.add("show");
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 1800);
+    }
+
+    const navButtons = Array.from(document.querySelectorAll(".nav-item"));
+    navButtons.forEach((button) => {
+      button.classList.remove("disabled");
+      const label = button.querySelectorAll("span")[1]?.textContent?.trim();
+      if (!label) return;
+      button.type = "button";
+      button.addEventListener("click", () => {
+        navButtons.forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        renderView(label);
+        showToast(`已切换到：${label}`);
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      const action = event.target.closest(".proto-action");
+      if (action) {
+        showToast(`原型操作：${action.dataset.action || action.textContent.trim()}。真实实现需写入运行历史和状态。`);
+      }
+
+      const tab = event.target.closest(".proto-tab");
+      if (tab) {
+        tab.parentElement.querySelectorAll(".proto-tab").forEach((item) => item.classList.remove("active"));
+        tab.classList.add("active");
+        showToast(`状态切换：${tab.textContent.trim()}`);
+      }
+    });
+
+    renderView("图片生成");
+  </script>
+</body>
+</html>

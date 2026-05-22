@@ -28,7 +28,7 @@ export type V2ModuleKey =
   | 'workflow-canvas';
 
 export type ModuleKey = CoreModuleKey | V2ModuleKey;
-export type NavItem = { key?: ModuleKey; label: string; disabled?: boolean };
+export type NavItem = { key?: ModuleKey; label: string; disabled?: boolean; advanced?: boolean };
 
 export type ModelDraft = {
   apiEndpoint: string;

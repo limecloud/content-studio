@@ -5,28 +5,12 @@ import type {
   VideoScriptGenerationResult,
   VideoStoryboardShot,
 } from '../../shared/types';
+import { VIDEO_ANALYSIS_DIMENSIONS } from '../../shared/videoDimensions';
 import { GenerationLogStore } from './generationLogStore';
 import { ModelConfigStore } from './modelConfigStore';
 import { TextGenerationService, TextProviderBlockedError } from './textGenerationService';
 
-const DEFAULT_DIMENSIONS = [
-  '开头钩子',
-  '钩子评分',
-  '语气风格',
-  '卖点逻辑',
-  '镜头运镜',
-  '画面构图',
-  '关键词视觉元素',
-  '字幕口播',
-  '情绪曲线',
-  '节奏密度',
-  '视觉风格',
-  '转化设计',
-  '爆点因素',
-  '内容公式',
-  '转场方式',
-  '用户停留点',
-];
+const DEFAULT_DIMENSIONS = [...VIDEO_ANALYSIS_DIMENSIONS];
 
 interface VideoScriptModelOutput {
   title?: string;

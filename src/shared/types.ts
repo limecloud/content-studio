@@ -528,6 +528,7 @@ export type InputSourcePurpose =
   | 'ip-scenario-kb'
   | 'reference'
   | 'product-brief'
+  | 'user-feedback'
   | 'sop-input'
   | 'successful-asset';
 
@@ -814,6 +815,8 @@ export interface MixPackageManifestAsset {
   title: string;
   originalPath: string;
   packagedPath?: string;
+  reviewId?: string;
+  reviewStatus?: AssetReviewStatus;
   sourceType?: AssetReviewSourceType;
   sourceId?: string;
   promptDraftId?: string;
@@ -821,6 +824,23 @@ export interface MixPackageManifestAsset {
   relatedSceneCardIds?: string[];
   durationSeconds?: number;
   tags: string[];
+}
+
+export type MixPackageImportEvidenceResult = 'verified' | 'needs-fix' | 'rejected';
+
+export interface MixPackageExternalImportEvidence {
+  toolName: string;
+  importedAt: string;
+  operator?: string;
+  importedAssetKinds: MixPackageAssetKind[];
+  importedFileCount: number;
+  manifestImported: boolean;
+  timelineCreated: boolean;
+  result: MixPackageImportEvidenceResult;
+  notes?: string;
+  evidenceFiles: string[];
+  evidencePath?: string;
+  updatedAt: string;
 }
 
 export interface MixPackageRecord {
@@ -831,6 +851,10 @@ export interface MixPackageRecord {
   platform: string;
   packageDir: string;
   manifestPath: string;
+  manifestCsvPath?: string;
+  importGuidePath?: string;
+  externalImportEvidencePath?: string;
+  externalImportEvidence?: MixPackageExternalImportEvidence;
   assets: MixPackageManifestAsset[];
   notes?: string;
   createdAt: string;
@@ -846,6 +870,21 @@ export interface ExportMixPackageInput {
   notes?: string;
 }
 
+export interface RecordMixPackageImportEvidenceInput {
+  workspacePath: string;
+  mixPackageId: string;
+  toolName: string;
+  importedAt: string;
+  operator?: string;
+  importedAssetKinds: MixPackageAssetKind[];
+  importedFileCount: number;
+  manifestImported: boolean;
+  timelineCreated: boolean;
+  result: MixPackageImportEvidenceResult;
+  notes?: string;
+  evidenceFiles?: string[];
+}
+
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'archived';
 export type WorkflowRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled';
 export type WorkflowPriority = 'P0' | 'P1' | 'P2';
@@ -856,6 +895,8 @@ export type WorkflowStepKind =
   | 'build-ip-knowledge-base'
   | 'agent-read'
   | 'reference-reverse'
+  | 'structure-product-brief'
+  | 'cluster-user-feedback'
   | 'generate-prompt-pack'
   | 'generate-scene-library'
   | 'generate-prompt-group'
@@ -961,8 +1002,10 @@ export type WorkflowManualEventKind =
   | 'asset-review-rejected'
   | 'asset-prompt-distilled'
   | 'mix-package-exported'
+  | 'mix-package-import-verified'
   | 'article-draft-generated'
   | 'article-markdown-exported'
+  | 'article-platform-draft-exported'
   | 'ip-scenario-extended'
   | 'workflow-review-approved'
   | 'workflow-asset-archived';
@@ -978,6 +1021,9 @@ export interface RecordWorkflowManualEventInput {
   assetKey?: string;
   mixPackageId?: string;
   manifestPath?: string;
+  manifestCsvPath?: string;
+  importGuidePath?: string;
+  externalImportEvidencePath?: string;
   packageDir?: string;
   generationLogId?: string;
   assetRefs?: string[];
@@ -1108,6 +1154,16 @@ export interface MediaGenerationResult {
   status: GenerationStatus;
   message: string;
   assetRefs: string[];
+  billing?: VideoCostEstimate;
+}
+
+export interface VideoCostEstimate {
+  currency: string;
+  durationSeconds: number;
+  unit: 'second';
+  unitPrice: number;
+  estimatedCost: number;
+  source: 'provider-response' | 'env' | 'default-internal-api';
 }
 
 export interface VideoGenerationRequest {
@@ -1130,6 +1186,51 @@ export interface ExportMarkdownInput {
   sourceLogId?: string;
   suggestedName: string;
   markdown: string;
+}
+
+export interface ExportPlatformDraftInput {
+  workspacePath: string;
+  workflowRunId?: string;
+  promptDraftId?: string;
+  sourceLogId?: string;
+  platform: string;
+  title: string;
+  markdown: string;
+  publishCheck: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
+  topic?: string;
+  audience?: string;
+  tone?: string;
+}
+
+export interface ReadPlatformDraftCopyTextInput {
+  workspacePath: string;
+  draftId: string;
+}
+
+export interface PlatformDraftExportResult {
+  packageDir: string;
+  markdownPath: string;
+  platformCopyPath: string;
+  formatGuidePath: string;
+  metadataPath: string;
+  checklistPath: string;
+  manifestPath: string;
+}
+
+export interface PlatformDraftRecord extends PlatformDraftExportResult {
+  id: string;
+  workspacePath: string;
+  workflowRunId?: string;
+  promptDraftId?: string;
+  sourceLogId?: string;
+  title: string;
+  platform: string;
+  topic?: string;
+  audience?: string;
+  tone?: string;
+  publishCheck: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ExportAssetInput {
@@ -1308,6 +1409,7 @@ export interface ContentStudioApi {
   reviewAsset(input: ReviewAssetInput): Promise<AssetReviewRecord>;
   listMixPackages(workspacePath: string): Promise<MixPackageRecord[]>;
   exportMixPackage(input: ExportMixPackageInput): Promise<MixPackageRecord>;
+  recordMixPackageImportEvidence(input: RecordMixPackageImportEvidenceInput): Promise<MixPackageRecord>;
 
   listWorkflowDefinitions(workspacePath: string): Promise<WorkflowDefinition[]>;
   createWorkflowDraft(input: CreateWorkflowDraftInput): Promise<WorkflowDefinition>;
@@ -1320,6 +1422,9 @@ export interface ContentStudioApi {
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>;
   exportAsset(input: ExportAssetInput): Promise<string | null>;
   exportMarkdown(input: ExportMarkdownInput): Promise<string | null>;
+  exportPlatformDraft(input: ExportPlatformDraftInput): Promise<PlatformDraftExportResult>;
+  listPlatformDrafts(workspacePath: string): Promise<PlatformDraftRecord[]>;
+  readPlatformDraftCopyText(input: ReadPlatformDraftCopyTextInput): Promise<string>;
   generateArticle(input: ArticleGenerationRequest): Promise<ArticleGenerationResult>;
   reverseReferencePrompt(input: ReferenceReverseRequest): Promise<ReferenceReverseResult>;
   analyzeVideo(input: VideoBreakdownRequest): Promise<VideoBreakdownResult>;

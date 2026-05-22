@@ -11,6 +11,7 @@ import type {
   PromptDraftVersion,
   StartAgentPromptSessionInput,
 } from '../../shared/types';
+import { isReusablePromptInputSource } from '../../shared/inputSourcePolicy';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { InputSourceStore } from './inputSourceStore';
@@ -122,14 +123,15 @@ export class AgentPromptSessionStore {
   async start(input: StartAgentPromptSessionInput): Promise<AgentPromptSessionResult> {
     if (!input.userIntent.trim()) throw new Error('启动 Agent 会话需要先填写用户意图。');
     const allSources = await this.inputSources.list(input.workspacePath);
-    const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id));
+    const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id) && isReusablePromptInputSource(source));
+    const inputSourceIds = selectedSources.map((source) => source.id);
     const draft = await this.promptDrafts.generate({
       workspacePath: input.workspacePath,
       workflowRunId: input.workflowRunId,
       title: input.title,
       purpose: input.purpose,
       userIntent: input.userIntent,
-      inputSourceIds: input.inputSourceIds,
+      inputSourceIds,
       sceneCardIds: input.sceneCardIds,
     });
     const now = new Date().toISOString();
@@ -167,7 +169,7 @@ export class AgentPromptSessionStore {
       purpose: input.purpose,
       status: draft.model?.startsWith('blocked:') ? 'blocked' : 'draft-created',
       userIntent: input.userIntent.trim(),
-      inputSourceIds: input.inputSourceIds,
+      inputSourceIds,
       sceneCardIds: input.sceneCardIds ?? [],
       promptDraftIds: [draft.id],
       sourceSnapshots,

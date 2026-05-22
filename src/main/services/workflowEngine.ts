@@ -9,6 +9,8 @@ import type {
   KnowledgeCitation,
   KnowledgeSectionType,
   MediaGenerationResult,
+  OverlayCardDraft,
+  OverlayCardRecord,
   PromptPack,
   PromptDraft,
   PromptDraftPurpose,
@@ -20,7 +22,10 @@ import type {
   WorkflowRunStep,
   WorkflowStepDefinition,
 } from '../../shared/types';
+import { isReusableWorkflowInputSource } from '../../shared/inputSourcePolicy';
+import { buildProductBriefPromptPlan, structureProductBriefSources } from '../../shared/productBrief';
 import { buildScenePromptGroupContent } from '../../shared/scenePromptComposer';
+import { clusterUserFeedbackSources } from '../../shared/userFeedbackInsights';
 import { basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import { MediaProvider } from '../providers/mediaProvider';
@@ -29,6 +34,7 @@ import { AgentPromptSessionStore } from './agentPromptSessionStore';
 import { AssetReviewStore } from './assetReviewStore';
 import { InputSourceStore } from './inputSourceStore';
 import { IpKnowledgeBaseStore } from './ipKnowledgeBaseStore';
+import { OverlayCardStore } from './overlayCardStore';
 import { PromptPackService } from './promptPackService';
 import { PromptDraftStore } from './promptDraftStore';
 import { ReferenceReverseService } from './referenceReverseService';
@@ -62,15 +68,24 @@ function compactText(value?: string, fallback = '未填写'): string {
 function sourcePurposeFor(definition: WorkflowDefinition): InputSourcePurpose {
   if (definition.key.includes('brand')) return 'brand-kb';
   if (definition.key.includes('ip')) return 'ip-kb';
-  if (definition.key.includes('image') || definition.key.includes('seeding')) return 'product-brief';
+  if (definition.key.includes('feedback') || definition.key.includes('topic')) return 'user-feedback';
+  if (
+    definition.key.includes('image')
+    || definition.key.includes('seeding')
+    || definition.key.includes('product')
+    || definition.key.includes('commercial')
+  ) return 'product-brief';
   return 'sop-input';
 }
 
 function promptPurposeFor(definition: WorkflowDefinition, step?: WorkflowStepDefinition): PromptDraftPurpose {
   if (step?.kind === 'video-prompt' || definition.key.includes('video')) return 'video';
+  if (step?.kind === 'overlay-generate' || definition.key.includes('green-screen') || definition.key.includes('overlay')) return 'green-screen';
   if (step?.kind === 'generate-prompt-group' && definition.key.includes('article')) return 'article';
   if (step?.kind === 'generate-prompt-group' && definition.key.includes('video')) return 'video';
   if (step?.kind === 'generate-prompt-group') return 'image';
+  if (definition.key.includes('feedback') || definition.key.includes('topic')) return 'article';
+  if (definition.key.includes('product') || definition.key.includes('commercial')) return 'image';
   if (definition.key.includes('ip') || definition.key.includes('article') || definition.key.includes('longform')) return 'article';
   return 'image';
 }
@@ -89,6 +104,145 @@ function isBlockedDraft(draft?: PromptDraft): boolean {
 
 function uniqueRefs(refs: string[]): string[] {
   return Array.from(new Set(refs.filter(Boolean)));
+}
+
+function formatProductBriefPromptPlanContent(plan: ReturnType<typeof buildProductBriefPromptPlan>, variableTable: string): string {
+  return [
+    '任务：产品商业素材图片 Prompt 计划',
+    '',
+    '产品变量表：',
+    variableTable,
+    '',
+    ...plan.flatMap((item, index) => [
+      `## ${index + 1}. ${item.label}`,
+      '',
+      `类型：${item.type}`,
+      `产品：${item.productName}`,
+      `SKU / 规格追溯：${item.skuTrace}`,
+      `输入源：${item.sourceIds.join(', ') || '待补充'}`,
+      '',
+      item.prompt,
+      '',
+    ]),
+    '下游要求：',
+    '- 图片生成前必须人工确认 SKU、卖点和禁用表达，不允许补写资料中没有的功效。',
+    '- 生成素材入库时必须保留产品资料、SKU 行和 Prompt 版本追溯。',
+  ].join('\n').trim();
+}
+
+function formatFeedbackPromptContent(insight: ReturnType<typeof clusterUserFeedbackSources>, userIntent: string): string {
+  const clusterLines = insight.clusters.map((cluster, index) => [
+    `## ${index + 1}. ${cluster.label}`,
+    `数量：${cluster.count}`,
+    `标签：${cluster.tags.join('、') || '待人工补充'}`,
+    `用户原声：${cluster.examples.join(' / ')}`,
+    `人群：${cluster.audienceHints.join(' / ') || '相关目标用户'}`,
+    `场景：${cluster.scenarioHints.join(' / ') || '用户提问场景'}`,
+    `选题方向：${cluster.titleDirections.join(' / ') || '待人工确认'}`,
+  ].join('\n'));
+  const matrixLines = insight.matrix.map((item, index) => [
+    `${index + 1}. 痛点：${item.painPoint}`,
+    `   人群：${item.audience}`,
+    `   场景：${item.scenario}`,
+    `   内容角度：${item.contentAngle}`,
+    `   证据：${item.evidence}`,
+  ].join('\n'));
+  const objectionLines = insight.objectionResponses.map((item, index) => [
+    `${index + 1}. ${item.painPoint}`,
+    `   原问题：${item.objection}`,
+    `   回复方向：${item.response}`,
+    `   边界：${item.boundary}`,
+  ].join('\n'));
+  return [
+    '任务：基于真实用户反馈生成选题和文案 Prompt',
+    '',
+    '用户意图：',
+    compactText(userIntent, '从评论、差评和客服问题中生成选题方向。'),
+    '',
+    '输入源：',
+    insight.sourceTitles.join(' / ') || '待补充评论、差评或客服问题',
+    '',
+    '推荐标签：',
+    insight.recommendedTags.join('、') || '待人工补充',
+    '',
+    '痛点聚类：',
+    clusterLines.join('\n\n') || '待补充真实用户原声。',
+    '',
+    '痛点 x 人群 x 场景 x 内容角度：',
+    matrixLines.join('\n') || '待补充真实用户原声。',
+    '',
+    '选题方向：',
+    ...insight.titleDirections.map((item, index) => `${index + 1}. ${item}`),
+    '',
+    '客服异议处理：',
+    objectionLines.join('\n') || '待补充真实客服问题。',
+    '',
+    '下游写作约束：',
+    '- 标题、脚本和正文必须引用上面的用户原声，不把运营猜测写成用户痛点。',
+    '- 客服回复必须保留人工复核边界，涉及孩子、老人、孕期、敏感人群或专业建议时不得直接承诺。',
+    '- 可以进入标题生成、文章生成、视频脚本和私域话术，但每个产物都要保留输入源和 Prompt 版本追溯。',
+  ].join('\n').trim();
+}
+
+function normalizeOverlayLine(value: string): string {
+  return value
+    .replace(/^[-*#\d.\s]+/, '')
+    .replace(/^(标题卡|标题|开头|钩子|卖点卡|卖点|金句卡|金句|行动卡|CTA|行动|字幕)[:：]\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function splitOverlayPhrase(value: string): string[] {
+  const normalized = normalizeOverlayLine(value);
+  if (!normalized) return [];
+  if (normalized.length <= 24) return [normalized];
+  const chunks = normalized
+    .split(/[，。！？、,.!?；;]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 3 && item.length <= 28);
+  if (chunks.length) return chunks.slice(0, 4);
+  return [normalized.slice(0, 24)];
+}
+
+function selectOverlayText(lines: string[], pattern: RegExp, fallbackIndex: number): string {
+  const matched = lines.find((line) => pattern.test(line));
+  return splitOverlayPhrase(matched ?? lines[fallbackIndex] ?? lines[0] ?? '')[0] ?? '';
+}
+
+function selectTypedOverlayText(source: string | undefined, pattern: RegExp): string {
+  const matched = source
+    ?.split('\n')
+    .find((line) => pattern.test(line.trim()));
+  return splitOverlayPhrase(matched ?? '')[0] ?? '';
+}
+
+function buildOverlayCardDrafts(input: {
+  source?: string;
+  intent?: string;
+  promptContent?: string;
+}): OverlayCardDraft[] {
+  const raw = [input.source, input.intent, input.promptContent].filter(Boolean).join('\n');
+  const lines = Array.from(new Set(
+    raw
+      .split('\n')
+      .flatMap((line) => line.split(/(?<=。|！|？|;|；)/))
+      .map(normalizeOverlayLine)
+      .filter((line) => line.length >= 3 && !/^任务[:：]|^用户意图[:：]|^输出要求[:：]|^Prompt 草稿[:：]/.test(line)),
+  )).slice(0, 12);
+  if (lines.length < 2) return [];
+
+  const title = selectTypedOverlayText(input.source, /^(标题卡|标题|开头|钩子)[:：]/)
+    || selectOverlayText(lines, /标题|开头|钩子|痛点|为什么|别再|先从/, 0);
+  const sellingPoint = selectTypedOverlayText(input.source, /^(卖点卡|卖点|亮点)[:：]/)
+    || selectOverlayText(lines, /卖点|亮点|方便|顺手|降低|解决|适合|可以|不用/, 1);
+  const cta = selectTypedOverlayText(input.source, /^(CTA|行动卡|行动)[:：]/i)
+    || selectOverlayText(lines, /CTA|行动|收藏|关注|咨询|试试|开始|先从|立即|下单/, lines.length - 1);
+  const drafts: OverlayCardDraft[] = [
+    { type: 'title', title: '标题卡', text: title, durationSeconds: 3, tags: ['SOP 生成'] },
+    { type: 'selling-point', title: '卖点卡', text: sellingPoint, durationSeconds: 4, tags: ['SOP 生成'] },
+    { type: 'cta', title: '行动卡', text: cta, durationSeconds: 4, tags: ['SOP 生成'] },
+  ];
+  return drafts.filter((card) => card.text.trim());
 }
 
 function mergeCitations(citations: KnowledgeCitation[]): KnowledgeCitation[] {
@@ -114,6 +268,7 @@ function sourceSectionType(source: InputSourceRecord, definition: WorkflowDefini
   if (source.purpose === 'ip-kb' || definition.key.includes('ip') || definition.key.includes('longform')) return 'profile';
   if (source.purpose === 'brand-kb') return 'brand';
   if (source.purpose === 'product-brief') return 'product';
+  if (source.purpose === 'user-feedback') return 'objection-handling';
   if (source.purpose === 'reference') return 'scenario-script';
   return definition.key.includes('video') ? 'scenario-script' : 'product';
 }
@@ -283,17 +438,23 @@ export class WorkflowEngine {
     private readonly sceneCards?: SceneLibraryStore,
     private readonly referenceReverse?: ReferenceReverseService,
     private readonly ipKnowledgeBases?: IpKnowledgeBaseStore,
+    private readonly overlayCards?: OverlayCardStore,
   ) {}
 
   async startRun(input: StartWorkflowRunInput): Promise<WorkflowRunRecord> {
     const definitions = await this.workflows.listDefinitions(input.workspacePath);
     const definition = definitions.find((item) => item.id === input.workflowDefinitionId);
     if (!definition) throw new Error(`工作流定义不存在: ${input.workflowDefinitionId}`);
+    const inputSourceIds = await this.reusableInputSourceIds(input.workspacePath, input.inputSourceIds);
+    const startInput: StartWorkflowRunInput = {
+      ...input,
+      inputSourceIds,
+    };
 
-    let run = await this.workflows.startRun(input);
+    let run = await this.workflows.startRun(startInput);
     if (run.steps[0]?.error === 'WORKFLOW_REQUIRED_INPUT_MISSING') return run;
 
-    const context: WorkflowExecutionContext = { inputSourceIds: input.inputSourceIds ?? [] };
+    const context: WorkflowExecutionContext = { inputSourceIds };
     for (const step of definition.steps) {
       const result = await this.executeStep(definition, run, step, context);
       run = result.run;
@@ -301,6 +462,15 @@ export class WorkflowEngine {
     }
 
     return this.workflows.updateRun(this.finalizeRun(run));
+  }
+
+  private async reusableInputSourceIds(workspacePath: string, inputSourceIds?: string[]): Promise<string[]> {
+    if (!inputSourceIds?.length) return [];
+    const requested = new Set(inputSourceIds);
+    const sources = await this.inputSources.list(workspacePath);
+    return sources
+      .filter((source) => requested.has(source.id) && isReusableWorkflowInputSource(source))
+      .map((source) => source.id);
   }
 
   private async executeStep(
@@ -334,11 +504,20 @@ export class WorkflowEngine {
       if (step.kind === 'reference-reverse') {
         return this.executeReferenceReverseStep(definition, run, step, context);
       }
+      if (step.kind === 'structure-product-brief') {
+        return this.executeProductBriefStep(definition, run, step, context);
+      }
+      if (step.kind === 'cluster-user-feedback') {
+        return this.executeFeedbackClusterStep(definition, run, step, context);
+      }
       if (step.kind === 'prompt-generate' || step.kind === 'video-prompt') {
         return this.executePromptStep(definition, run, step, context);
       }
       if (step.kind === 'image-generate') {
         return this.executeImageStep(definition, run, step, context);
+      }
+      if (step.kind === 'overlay-generate') {
+        return this.executeOverlayStep(definition, run, step, context);
       }
       if (step.kind === 'manual-video-prompt-copy') {
         return {
@@ -354,15 +533,6 @@ export class WorkflowEngine {
         return {
           run: this.patchStep(run, step, 'queued', '等待导入第三方平台生成后的本地成品视频。', {
             action: 'waiting-finished-video-import',
-            promptDraftId: context.promptDraft?.id,
-          }),
-          stop: true,
-        };
-      }
-      if (step.kind === 'overlay-generate') {
-        return {
-          run: this.patchStep(run, step, 'queued', '等待生成本地绿幕文案图。', {
-            action: 'waiting-overlay-card-generation',
             promptDraftId: context.promptDraft?.id,
           }),
           stop: true,
@@ -824,6 +994,196 @@ export class WorkflowEngine {
     };
   }
 
+  private async executeProductBriefStep(
+    definition: WorkflowDefinition,
+    run: WorkflowRunRecord,
+    step: WorkflowStepDefinition,
+    context: WorkflowExecutionContext,
+  ): Promise<{ run: WorkflowRunRecord; stop: boolean }> {
+    if (context.inputSourceIds.length === 0) {
+      return {
+        run: this.patchStep(run, step, 'blocked', '缺少产品资料或 SKU 输入源，无法结构化商业素材变量。', {
+          action: 'missing-product-brief-source',
+        }, [], 'WORKFLOW_PRODUCT_BRIEF_SOURCE_MISSING'),
+        stop: true,
+      };
+    }
+
+    const sources = (await this.inputSources.list(run.workspacePath)).filter((source) => context.inputSourceIds.includes(source.id));
+    const brief = structureProductBriefSources(sources);
+    const promptPlan = buildProductBriefPromptPlan(brief);
+    const output = {
+      productName: brief.productName,
+      sourceIds: brief.sourceIds,
+      sourceTitles: brief.sourceTitles,
+      sellingPoints: brief.sellingPoints,
+      specs: brief.specs,
+      scenarios: brief.scenarios,
+      restrictions: brief.restrictions,
+      skuRows: brief.skuRows,
+      missingFields: brief.missingFields,
+      variableTable: brief.variableTable,
+      promptTypes: promptPlan.map((item) => item.type),
+      promptPlan: promptPlan.map((item) => ({
+        type: item.type,
+        label: item.label,
+        title: item.title,
+        sourceIds: item.sourceIds,
+        skuTrace: item.skuTrace,
+      })),
+    };
+
+    if (brief.sourceIds.length === 0) {
+      return {
+        run: this.patchStep(run, step, 'blocked', '没有找到可用的产品资料 / SKU 表输入源，请先登记产品 brief 或 SKU 表。', {
+          ...output,
+          action: 'missing-product-brief-source',
+        }, [], 'WORKFLOW_PRODUCT_BRIEF_SOURCE_MISSING'),
+        stop: true,
+      };
+    }
+
+    if (brief.missingFields.length > 0) {
+      return {
+        run: this.patchStep(run, step, 'blocked', `产品资料缺少：${brief.missingFields.join('、')}，请补齐后再生成商业素材。`, {
+          ...output,
+          action: 'missing-product-brief-fields',
+        }, brief.sourceIds.map((id) => `input-source:${id}`), 'WORKFLOW_PRODUCT_BRIEF_FIELDS_MISSING'),
+        stop: true,
+      };
+    }
+
+    const draft = await this.promptDrafts.createFromContent({
+      workspacePath: run.workspacePath,
+      workflowRunId: run.id,
+      title: `${brief.productName || definition.title} 商业图片 Prompt 计划`,
+      purpose: 'image',
+      userIntent: compactText(run.inputs.intent, definition.description),
+      inputSourceIds: brief.sourceIds,
+      content: formatProductBriefPromptPlanContent(promptPlan, brief.variableTable),
+      note: '由产品资料结构化步骤生成，保留 SKU / 输入源追溯',
+      model: 'workflow-product-brief-structurer',
+      status: 'confirmed',
+    });
+    context.promptDraft = draft;
+    context.promptContent = activeDraftContent(draft);
+
+    return {
+      run: this.patchStep(
+        run,
+        step,
+        'succeeded',
+        `已结构化产品资料，生成 ${promptPlan.length} 类商业图片 Prompt 计划。`,
+        {
+          ...output,
+          promptDraftId: draft.id,
+          model: draft.model,
+          versionCount: draft.versions.length,
+        },
+        uniqueRefs([
+          `prompt-draft:${draft.id}`,
+          ...brief.sourceIds.map((id) => `input-source:${id}`),
+        ]),
+      ),
+      stop: false,
+    };
+  }
+
+  private async executeFeedbackClusterStep(
+    definition: WorkflowDefinition,
+    run: WorkflowRunRecord,
+    step: WorkflowStepDefinition,
+    context: WorkflowExecutionContext,
+  ): Promise<{ run: WorkflowRunRecord; stop: boolean }> {
+    if (context.inputSourceIds.length === 0) {
+      return {
+        run: this.patchStep(run, step, 'blocked', '缺少评论、差评、客服问题或私信输入源，无法聚类用户痛点。', {
+          action: 'missing-user-feedback-source',
+        }, [], 'WORKFLOW_USER_FEEDBACK_SOURCE_MISSING'),
+        stop: true,
+      };
+    }
+
+    const sources = (await this.inputSources.list(run.workspacePath)).filter((source) => context.inputSourceIds.includes(source.id));
+    const explicitFeedbackSources = sources.filter((source) => source.purpose === 'user-feedback' && !source.tags.includes('workflow-run'));
+    const insightSources = explicitFeedbackSources.length
+      ? explicitFeedbackSources
+      : sources.map((source) => source.tags.includes('workflow-run')
+        ? {
+            ...source,
+            extractedText: run.inputs.source,
+            summary: undefined,
+          }
+        : source);
+    const insight = clusterUserFeedbackSources(insightSources);
+    const output = {
+      sourceIds: insight.sourceIds,
+      sourceTitles: insight.sourceTitles,
+      totalLines: insight.totalLines,
+      clusterCount: insight.clusters.length,
+      clusters: insight.clusters,
+      matrix: insight.matrix,
+      recommendedTags: insight.recommendedTags,
+      titleDirections: insight.titleDirections,
+      objectionResponses: insight.objectionResponses,
+    };
+
+    if (insight.sourceIds.length === 0 || insight.totalLines === 0) {
+      return {
+        run: this.patchStep(run, step, 'blocked', '没有找到可用的评论 / 客服原声，请先登记每行一条真实反馈。', {
+          ...output,
+          action: 'missing-user-feedback-source',
+        }, [], 'WORKFLOW_USER_FEEDBACK_SOURCE_MISSING'),
+        stop: true,
+      };
+    }
+
+    if (insight.clusters.length === 0 || insight.titleDirections.length === 0 || insight.objectionResponses.length === 0) {
+      return {
+        run: this.patchStep(run, step, 'blocked', '评论原声不足以生成痛点矩阵、选题方向或客服话术，请补充更多真实反馈。', {
+          ...output,
+          action: 'insufficient-user-feedback-evidence',
+        }, insight.sourceIds.map((id) => `input-source:${id}`), 'WORKFLOW_USER_FEEDBACK_EVIDENCE_INSUFFICIENT'),
+        stop: true,
+      };
+    }
+
+    const draft = await this.promptDrafts.createFromContent({
+      workspacePath: run.workspacePath,
+      workflowRunId: run.id,
+      title: `${definition.title} 选题文案 Prompt`,
+      purpose: 'article',
+      userIntent: compactText(run.inputs.intent, definition.description),
+      inputSourceIds: insight.sourceIds,
+      content: formatFeedbackPromptContent(insight, run.inputs.intent),
+      note: '由评论痛点聚类步骤生成，保留用户原声和客服边界',
+      model: 'workflow-feedback-cluster',
+      status: 'confirmed',
+    });
+    context.promptDraft = draft;
+    context.promptContent = activeDraftContent(draft);
+
+    return {
+      run: this.patchStep(
+        run,
+        step,
+        'succeeded',
+        `已从 ${insight.totalLines} 条用户反馈中整理 ${insight.clusters.length} 类痛点、${insight.titleDirections.length} 个选题方向和 ${insight.objectionResponses.length} 条客服异议话术。`,
+        {
+          ...output,
+          promptDraftId: draft.id,
+          model: draft.model,
+          versionCount: draft.versions.length,
+        },
+        uniqueRefs([
+          `prompt-draft:${draft.id}`,
+          ...insight.sourceIds.map((id) => `input-source:${id}`),
+        ]),
+      ),
+      stop: false,
+    };
+  }
+
   private async executeAgentReadStep(
     definition: WorkflowDefinition,
     run: WorkflowRunRecord,
@@ -975,6 +1335,67 @@ export class WorkflowEngine {
     };
   }
 
+  private async executeOverlayStep(
+    definition: WorkflowDefinition,
+    run: WorkflowRunRecord,
+    step: WorkflowStepDefinition,
+    context: WorkflowExecutionContext,
+  ): Promise<{ run: WorkflowRunRecord; stop: boolean }> {
+    if (!this.overlayCards) {
+      return {
+        run: this.patchStep(run, step, 'queued', '等待生成本地绿幕文案图。', {
+          action: 'waiting-overlay-card-generation',
+          promptDraftId: context.promptDraft?.id,
+        }),
+        stop: true,
+      };
+    }
+
+    const cards = buildOverlayCardDrafts({
+      source: run.inputs.source,
+      intent: run.inputs.intent,
+      promptContent: context.promptContent,
+    });
+    if (cards.length < 3) {
+      return {
+        run: this.patchStep(run, step, 'blocked', '脚本或卖点不足，无法拆成标题卡、卖点卡和行动卡。请补充口播脚本、卖点列表或 CTA 文案。', {
+          action: 'insufficient-overlay-card-copy',
+          promptDraftId: context.promptDraft?.id,
+          cardCount: cards.length,
+        }, context.promptDraft ? [`prompt-draft:${context.promptDraft.id}`] : [], 'WORKFLOW_OVERLAY_CARD_COPY_INSUFFICIENT'),
+        stop: true,
+      };
+    }
+
+    const generatedCards = await this.overlayCards.generate({
+      workspacePath: run.workspacePath,
+      promptDraftId: context.promptDraft?.id,
+      cards,
+    });
+    const reviews = await this.createPendingOverlayReviews(definition, run, generatedCards);
+    return {
+      run: this.patchStep(
+        run,
+        step,
+        'succeeded',
+        `已生成 ${generatedCards.length} 张本地 9:16 绿幕文案图，等待人工审核。`,
+        {
+          promptDraftId: context.promptDraft?.id,
+          overlayCardIds: generatedCards.map((card) => card.id),
+          assetPaths: generatedCards.map((card) => card.assetPath),
+          assetReviewIds: reviews.map((review) => review.id),
+          cardTypes: generatedCards.map((card) => card.type),
+        },
+        uniqueRefs([
+          ...generatedCards.map((card) => `overlay-card:${card.id}`),
+          ...generatedCards.map((card) => card.assetPath),
+          ...reviews.map((review) => `asset-review:${review.id}`),
+        ]),
+      ),
+      stop: false,
+    };
+  }
+
   private async createPendingAssetReviews(
     definition: WorkflowDefinition,
     run: WorkflowRunRecord,
@@ -997,6 +1418,32 @@ export class WorkflowEngine {
         status: 'pending',
         note: 'SOP 自动送审，等待人工确认后进入素材库或混剪包。',
         tags: uniqueRefs(['workflow-run', definition.key, step.id, ...definition.tags]),
+      }));
+    }
+    return records;
+  }
+
+  private async createPendingOverlayReviews(
+    definition: WorkflowDefinition,
+    run: WorkflowRunRecord,
+    cards: OverlayCardRecord[],
+  ): Promise<AssetReviewRecord[]> {
+    if (!this.assetReviews || cards.length === 0) return [];
+
+    const records: AssetReviewRecord[] = [];
+    for (const card of cards) {
+      records.push(await this.assetReviews.review({
+        workspacePath: run.workspacePath,
+        workflowRunId: run.id,
+        assetKey: `overlay:${card.id}`,
+        kind: 'overlay',
+        sourceType: 'overlay-card',
+        sourceId: card.id,
+        path: card.assetPath,
+        title: card.title,
+        status: 'pending',
+        note: 'SOP 自动生成绿幕文案图，等待人工确认可读性后进入混剪包。',
+        tags: uniqueRefs(['workflow-run', definition.key, ...definition.tags, ...card.tags]),
       }));
     }
     return records;

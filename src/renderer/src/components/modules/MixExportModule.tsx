@@ -7,11 +7,13 @@ import type {
   InputSourceRecord,
   MixPackageAssetInput,
   MixPackageAssetKind,
+  MixPackageImportEvidenceResult,
   MixPackageRecord,
   OverlayCardRecord,
   PromptDraft,
   ReviewAssetInput,
 } from '../../../../shared/types';
+import { isPromptDistilledSource } from '../../../../shared/inputSourcePolicy';
 import type { ModuleKey } from '../../app/types';
 import {
   extractGeneratedAssetRefsFromLog,
@@ -19,7 +21,6 @@ import {
   fileNameFromPath,
   formatDuration,
   isImageFilePath,
-  isPromptDistilledSource,
   isVideoFilePath,
   kindLabel,
   localAssetUrl,
@@ -41,6 +42,19 @@ interface MixExportModuleProps {
     platform: string;
     assets: MixPackageAssetInput[];
     notes?: string;
+  }) => void;
+  onRecordImportEvidence: (input: {
+    mixPackageId: string;
+    toolName: string;
+    importedAt: string;
+    operator?: string;
+    importedAssetKinds: MixPackageAssetKind[];
+    importedFileCount: number;
+    manifestImported: boolean;
+    timelineCreated: boolean;
+    result: MixPackageImportEvidenceResult;
+    notes?: string;
+    evidenceFiles?: string[];
   }) => void;
   onReviewAsset: (input: Omit<ReviewAssetInput, 'workspacePath'>) => void;
   onReworkAsset: (input: {
@@ -228,6 +242,10 @@ function kindLabelForMix(kind: MixPackageAssetKind): string {
   return '绿幕';
 }
 
+function platformLabelForMix(platform: string): string {
+  return PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform;
+}
+
 function sourceTypeForCandidate(candidate: MixAssetCandidate): ReviewAssetInput['sourceType'] {
   if (candidate.source === 'generated') return 'generation-log';
   if (candidate.source === 'imported') return 'input-source';
@@ -256,6 +274,7 @@ export function MixExportModule({
   assetReviews,
   mixPackages,
   onExportMixPackage,
+  onRecordImportEvidence,
   onReviewAsset,
   onReworkAsset,
   onDistillAssetPrompt,
@@ -273,6 +292,17 @@ export function MixExportModule({
   const [focusedCandidateId, setFocusedCandidateId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [autoSelected, setAutoSelected] = useState(false);
+  const [activeEvidencePackId, setActiveEvidencePackId] = useState('');
+  const [evidenceToolName, setEvidenceToolName] = useState('剪映专业版');
+  const [evidenceImportedAt, setEvidenceImportedAt] = useState(() => new Date().toISOString());
+  const [evidenceOperator, setEvidenceOperator] = useState('剪辑验收');
+  const [evidenceKinds, setEvidenceKinds] = useState<MixPackageAssetKind[]>(['video', 'overlay']);
+  const [evidenceFileCount, setEvidenceFileCount] = useState(0);
+  const [evidenceManifestImported, setEvidenceManifestImported] = useState(true);
+  const [evidenceTimelineCreated, setEvidenceTimelineCreated] = useState(true);
+  const [evidenceResult, setEvidenceResult] = useState<MixPackageImportEvidenceResult>('verified');
+  const [evidenceNotes, setEvidenceNotes] = useState('已按导入说明导入主体素材、绿幕文案图和 manifest，并完成素材用途核对。');
+  const [evidenceFilesText, setEvidenceFilesText] = useState('');
   const reviewMap = useMemo(
     () => new Map(assetReviews.map((review) => [review.assetKey, review])),
     [assetReviews],
@@ -430,6 +460,50 @@ export function MixExportModule({
     });
   }
 
+  function openImportEvidenceForm(pack: MixPackageRecord): void {
+    setActiveEvidencePackId((current) => (current === pack.id ? '' : pack.id));
+    const evidence = pack.externalImportEvidence;
+    setEvidenceToolName(evidence?.toolName ?? '剪映专业版');
+    setEvidenceImportedAt(evidence?.importedAt ?? new Date().toISOString());
+    setEvidenceOperator(evidence?.operator ?? '剪辑验收');
+    setEvidenceKinds(evidence?.importedAssetKinds ?? Array.from(new Set(pack.assets.map((asset) => asset.kind))));
+    setEvidenceFileCount(evidence?.importedFileCount ?? pack.assets.length);
+    setEvidenceManifestImported(evidence?.manifestImported ?? true);
+    setEvidenceTimelineCreated(evidence?.timelineCreated ?? true);
+    setEvidenceResult(evidence?.result ?? 'verified');
+    setEvidenceNotes(evidence?.notes ?? '已按导入说明导入主体素材、绿幕文案图和 manifest，并完成素材用途核对。');
+    setEvidenceFilesText((evidence?.evidenceFiles ?? [])
+      .filter((filePath) => filePath !== 'import-check.md')
+      .join('\n'));
+  }
+
+  function toggleEvidenceKind(kind: MixPackageAssetKind): void {
+    setEvidenceKinds((current) =>
+      current.includes(kind)
+        ? current.filter((item) => item !== kind)
+        : [...current, kind],
+    );
+  }
+
+  function submitImportEvidence(pack: MixPackageRecord): void {
+    onRecordImportEvidence({
+      mixPackageId: pack.id,
+      toolName: evidenceToolName,
+      importedAt: evidenceImportedAt,
+      operator: evidenceOperator,
+      importedAssetKinds: evidenceKinds,
+      importedFileCount: evidenceFileCount,
+      manifestImported: evidenceManifestImported,
+      timelineCreated: evidenceTimelineCreated,
+      result: evidenceResult,
+      notes: evidenceNotes,
+      evidenceFiles: evidenceFilesText
+        .split(/[\n,]/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    });
+  }
+
   return (
     <section className="mix-export-workbench">
       <ModuleCommandCenter
@@ -531,7 +605,7 @@ export function MixExportModule({
                   <small>{kindLabelForMix(candidate.kind)} · {sourceLabel(candidate.source)} · {candidate.subtitle}</small>
                   <small>
                     {candidate.workflowRunId ? 'SOP 已关联' : 'SOP 未关联'}
-                    {candidate.promptDraftId ? ' · Prompt 已关联' : ''}
+                    {candidate.promptDraftId ? ' · 提示词已关联' : ''}
                     {candidate.relatedSceneCardIds?.length ? ` · 场景 ${candidate.relatedSceneCardIds.length}` : ''}
                     {candidate.reworkSource ? ' · 回炉生成' : ''}
                   </small>
@@ -541,7 +615,7 @@ export function MixExportModule({
                 <div className="log-actions">
                   <button className="ghost small" onClick={() => onRevealPath(candidate.path)}>打开位置</button>
                   {candidate.promptDraftId ? (
-                    <button className="ghost small" onClick={() => onOpenPromptDraft(candidate.promptDraftId as string)}>Prompt</button>
+                    <button className="ghost small" onClick={() => onOpenPromptDraft(candidate.promptDraftId as string)}>提示词</button>
                   ) : null}
                   {candidate.relatedSceneCardIds?.length ? (
                     <button className="ghost small" onClick={() => onOpenSceneCards(candidate.relatedSceneCardIds ?? [])}>场景</button>
@@ -552,7 +626,7 @@ export function MixExportModule({
                   <button className="ghost small" onClick={() => reviewCandidate(candidate, 'rejected')}>驳回</button>
                   <button className="primary small" onClick={() => reviewCandidate(candidate, 'approved')}>通过</button>
                   {approved && candidate.kind !== 'overlay' ? (
-                    <button className="primary small" onClick={() => distillCandidatePrompt(candidate)}>沉淀 Prompt</button>
+                    <button className="primary small" onClick={() => distillCandidatePrompt(candidate)}>沉淀提示词</button>
                   ) : null}
                   <button className="ghost small" onClick={() => reworkCandidate(candidate)}>回炉</button>
                   <button
@@ -630,26 +704,111 @@ export function MixExportModule({
               <article key={pack.id} className="mix-package-card">
                 <div>
                   <strong>{pack.title}</strong>
-                  <small>{new Date(pack.createdAt).toLocaleString()} · {pack.platform} · {pack.assets.length} 个素材</small>
+                  <small>{new Date(pack.createdAt).toLocaleString()} · {platformLabelForMix(pack.platform)} · {pack.assets.length} 个素材</small>
                 </div>
                 <p>{pack.notes ?? '无备注'}</p>
                 <div className="workflow-run-steps">
-                  <span>images {pack.assets.filter((asset) => asset.kind === 'image').length}</span>
-                  <span>videos {pack.assets.filter((asset) => asset.kind === 'video').length}</span>
-                  <span>overlays {pack.assets.filter((asset) => asset.kind === 'overlay').length}</span>
+                  <span>图片 {pack.assets.filter((asset) => asset.kind === 'image').length}</span>
+                  <span>视频 {pack.assets.filter((asset) => asset.kind === 'video').length}</span>
+                  <span>绿幕 {pack.assets.filter((asset) => asset.kind === 'overlay').length}</span>
                   {pack.workflowRunId ? <span>SOP 已关联</span> : null}
+                  {pack.externalImportEvidence ? <span className="ready">导入证据已登记</span> : <span>待登记导入证据</span>}
                 </div>
+                {pack.externalImportEvidence ? (
+                  <div className="mix-import-evidence-summary">
+                    <strong>{pack.externalImportEvidence.toolName}</strong>
+                    <span>{pack.externalImportEvidence.importedAssetKinds.map(kindLabelForMix).join(' / ')} · {pack.externalImportEvidence.importedFileCount} 个文件 · {pack.externalImportEvidence.result === 'verified' ? '验收通过' : '需处理'}</span>
+                    <small>{pack.externalImportEvidence.evidencePath ?? pack.externalImportEvidencePath}</small>
+                  </div>
+                ) : null}
                 <div className="log-actions">
                   <button className="ghost small" onClick={() => onRevealPath(pack.packageDir)}>打开文件夹</button>
                   <button className="ghost small" onClick={() => onRevealPath(pack.manifestPath)}>打开 manifest</button>
+                  {pack.manifestCsvPath ? (
+                    <button className="ghost small" onClick={() => onRevealPath(pack.manifestCsvPath as string)}>打开 CSV</button>
+                  ) : null}
+                  {pack.importGuidePath ? (
+                    <button className="ghost small" onClick={() => onRevealPath(pack.importGuidePath as string)}>打开导入说明</button>
+                  ) : null}
+                  {pack.externalImportEvidencePath ? (
+                    <button className="ghost small" onClick={() => onRevealPath(pack.externalImportEvidencePath as string)}>打开导入证据</button>
+                  ) : null}
+                  <button className="primary small" onClick={() => openImportEvidenceForm(pack)}>
+                    {pack.externalImportEvidence ? '更新导入证据' : '登记导入证据'}
+                  </button>
                   {pack.workflowRunId ? (
                     <button className="ghost small" onClick={() => onOpenWorkflowRun(pack.workflowRunId as string)}>打开 SOP</button>
                   ) : null}
                 </div>
+                {activeEvidencePackId === pack.id ? (
+                  <div className="mix-import-evidence-form">
+                    <label>
+                      <span>第三方工具</span>
+                      <input value={evidenceToolName} onChange={(event) => setEvidenceToolName(event.target.value)} />
+                    </label>
+                    <label>
+                      <span>导入时间</span>
+                      <input value={evidenceImportedAt} onChange={(event) => setEvidenceImportedAt(event.target.value)} />
+                    </label>
+                    <label>
+                      <span>验收人</span>
+                      <input value={evidenceOperator} onChange={(event) => setEvidenceOperator(event.target.value)} />
+                    </label>
+                    <label>
+                      <span>导入文件数</span>
+                      <input type="number" min={1} value={evidenceFileCount} onChange={(event) => setEvidenceFileCount(Number(event.target.value))} />
+                    </label>
+                    <div className="mix-import-evidence-kinds">
+                      <span>已导入素材</span>
+                      {(['video', 'overlay', 'image'] as MixPackageAssetKind[]).map((kind) => (
+                        <label key={kind}>
+                          <input type="checkbox" checked={evidenceKinds.includes(kind)} onChange={() => toggleEvidenceKind(kind)} />
+                          <span>{kindLabelForMix(kind)}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mix-import-evidence-checks">
+                      <label>
+                        <input type="checkbox" checked={evidenceManifestImported} onChange={(event) => setEvidenceManifestImported(event.target.checked)} />
+                        <span>manifest 已导入或已核对</span>
+                      </label>
+                      <label>
+                        <input type="checkbox" checked={evidenceTimelineCreated} onChange={(event) => setEvidenceTimelineCreated(event.target.checked)} />
+                        <span>已在混剪工具创建时间线 / 工程</span>
+                      </label>
+                    </div>
+                    <label>
+                      <span>验收结果</span>
+                      <select value={evidenceResult} onChange={(event) => setEvidenceResult(event.target.value as MixPackageImportEvidenceResult)}>
+                        <option value="verified">验收通过</option>
+                        <option value="needs-fix">需要修正</option>
+                        <option value="rejected">不通过</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>证据文件</span>
+                      <textarea value={evidenceFilesText} onChange={(event) => setEvidenceFilesText(event.target.value)} placeholder="可选。每行一个截图、录屏说明或验收记录文件名。保存时会自动生成 import-check.md。" />
+                    </label>
+                    <label>
+                      <span>导入备注</span>
+                      <textarea value={evidenceNotes} onChange={(event) => setEvidenceNotes(event.target.value)} />
+                    </label>
+                    <div className="workflow-actions left">
+                      <button
+                        className="primary small"
+                        disabled={busy || !workspaceReady || !evidenceToolName.trim() || evidenceKinds.length === 0 || evidenceFileCount <= 0}
+                        onClick={() => submitImportEvidence(pack)}
+                      >
+                        保存导入证据
+                      </button>
+                      <button className="ghost small" onClick={() => setActiveEvidencePackId('')}>收起</button>
+                    </div>
+                  </div>
+                ) : null}
               </article>
             ))}
             {mixPackages.length === 0 ? (
-              <div className="empty-state">导出后会生成本地文件夹、复制素材并写入 manifest.json。</div>
+              <div className="empty-state">导出后会生成本地文件夹、复制素材并写入 manifest.json / manifest.csv / import-guide.md。</div>
             ) : null}
           </div>
         </aside>

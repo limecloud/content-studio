@@ -25,6 +25,15 @@ const OVERLAY_TYPE_OPTIONS: Array<{ value: OverlayCardType; label: string }> = [
   { value: 'cta', label: 'CTA 卡' },
 ];
 
+const PROMPT_PURPOSE_LABELS: Record<PromptDraft['purpose'], string> = {
+  image: '图片提示词',
+  video: '视频提示词',
+  article: '文案提示词',
+  'green-screen': '绿幕文案图',
+  sop: 'SOP 草案',
+  skill: 'Skill 草案',
+};
+
 function activeContent(draft?: PromptDraft): string {
   if (!draft) return '';
   return draft.versions.find((version) => version.id === draft.activeVersionId)?.content
@@ -140,7 +149,7 @@ export function GreenScreenModule({
           <div className="workflow-summary-stack">
             <span className="status-pill">{overlayCards.length} 张绿幕卡</span>
             <span className="status-pill ready">本地确定性生成</span>
-            <span className="status-pill">9:16 SVG</span>
+            <span className="status-pill">9:16 本地图片</span>
           </div>
         )}
       >
@@ -173,7 +182,7 @@ export function GreenScreenModule({
           <div className="panel-title">
             <div>
               <p className="eyebrow">来源</p>
-              <h3>选择脚本 / PromptDraft</h3>
+              <h3>选择脚本 / 提示词</h3>
             </div>
           </div>
           <div className="video-prompt-draft-list">
@@ -188,7 +197,7 @@ export function GreenScreenModule({
                 }}
               >
                 <strong>{draft.title}</strong>
-                <small>{draft.purpose} · {draft.versions.length} 个版本</small>
+                <small>{PROMPT_PURPOSE_LABELS[draft.purpose]} · {draft.versions.length} 个版本</small>
               </button>
             ))}
             {sourceDrafts.length === 0 ? (
@@ -197,7 +206,7 @@ export function GreenScreenModule({
           </div>
           <label className="green-screen-source-preview">
             <span>来源内容</span>
-            <textarea readOnly value={selectedDraftContent || '选择 PromptDraft 后可一键拆成文案卡。'} />
+            <textarea readOnly value={selectedDraftContent || '选择提示词后可一键拆成文案卡。'} />
           </label>
           <button className="ghost small" disabled={!selectedDraftContent} onClick={rebuildFromDraft}>
             从来源拆卡

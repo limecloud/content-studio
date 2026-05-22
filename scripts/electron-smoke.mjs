@@ -355,6 +355,18 @@ try {
       button.click();
       await wait(120);
     };
+    const clickAnyActionButton = async (labels) => {
+      let lastLabel = labels[labels.length - 1];
+      for (const label of labels) {
+        try {
+          await clickActionButton(label);
+          return;
+        } catch {
+          lastLabel = label;
+        }
+      }
+      throw new Error('动作按钮不可点击：' + lastLabel);
+    };
     const clickVideoStageTab = async (label) => {
       const findButton = () => Array.from(document.querySelectorAll('.video-stage-tabs button')).find((item) => item.innerText.includes(label) && !item.disabled);
       await waitFor('video stage tab ' + label, () => Boolean(findButton()), 6000);
@@ -395,7 +407,7 @@ try {
     await waitFor('video breakdown blocked', () => bodyText().includes('请先选择本地视频') || bodyText().includes('真实视频理解模型未配置'));
     checks.push({ step: 'video breakdown blocked without provider', ok: true });
     await clickVideoStageTab('脚本生成');
-    await clickActionButton('生成复刻脚本');
+    await clickAnyActionButton(['生成新视频脚本', '生成复刻脚本']);
     await waitFor('video script blocked', () => bodyText().includes('文字模型未配置'));
     checks.push({ step: 'video script blocked without provider', ok: true });
     await clickVideoStageTab('视频生成');

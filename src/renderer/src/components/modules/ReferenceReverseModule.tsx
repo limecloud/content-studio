@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { InputSourcePurpose, InputSourceRecord } from '../../../../shared/types';
+import type { ModuleKey } from '../../app/types';
+import type { InputSourcePurpose, InputSourceRecord, InputSourceStatus } from '../../../../shared/types';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
+import { UserJourneyGuide } from '../UserJourneyGuide';
 
 interface ReferenceReverseModuleProps {
   workspaceReady: boolean;
@@ -20,7 +22,15 @@ interface ReferenceReverseModuleProps {
     userIntent: string;
   }) => void;
   onOpenPromptWorkbench: () => void;
+  onSelectModule: (module: ModuleKey) => void;
 }
+
+const INPUT_SOURCE_STATUS_LABELS: Record<InputSourceStatus, string> = {
+  registered: '已登记',
+  converted: '已解析',
+  blocked: '待解析',
+  failed: '解析失败',
+};
 
 function sourceSummary(source: InputSourceRecord): string {
   return source.summary ?? source.blockedReason ?? source.title;
@@ -56,7 +66,7 @@ function SourcePicker({
             />
             <span>
               <strong>{source.title}</strong>
-              <small>{source.kind} / {source.status} · {sourceSummary(source)}</small>
+              <small>{source.kind} / {INPUT_SOURCE_STATUS_LABELS[source.status]} · {sourceSummary(source)}</small>
             </span>
           </label>
         ))}
@@ -76,6 +86,7 @@ export function ReferenceReverseModule({
   onRegisterManualInputSource,
   onGenerateReversePrompt,
   onOpenPromptWorkbench,
+  onSelectModule,
 }: ReferenceReverseModuleProps) {
   const feature = V2_FEATURES['image-reference-reverse'];
   const [referenceIds, setReferenceIds] = useState<string[]>([]);
@@ -102,6 +113,14 @@ export function ReferenceReverseModule({
   }, [productIds.length, productSources]);
 
   const canGenerate = workspaceReady && !busy && userIntent.trim().length > 0 && referenceIds.length > 0;
+  const hasReference = referenceIds.length > 0;
+  const hasProductContext = productIds.length > 0 || productBrief.trim().length > 0;
+
+  const runReverse = () => onGenerateReversePrompt({
+    referenceSourceIds: referenceIds,
+    productSourceIds: productIds,
+    userIntent,
+  });
 
   return (
     <section className="reference-reverse-workbench">
@@ -116,6 +135,50 @@ export function ReferenceReverseModule({
             <span className="status-pill ready">{productSources.length} 个产品源</span>
           </div>
         )}
+      />
+
+      <UserJourneyGuide
+        title="无知识库小红书扒图"
+        description="这条路径服务新媒体和电商运营：先给参考图和自己的产品资料，再反推可编辑提示词，确认后进入图片生成和人工审核。"
+        steps={[
+          {
+            key: 'reference',
+            title: '放入参考图',
+            description: '只学习构图、光线、镜头和留白，不复制竞品元素。',
+            state: hasReference ? 'done' : 'active',
+          },
+          {
+            key: 'product',
+            title: '补自己的产品资料',
+            description: '卖点、禁用表达和目标人群必须来自用户资料。',
+            state: hasProductContext ? 'done' : hasReference ? 'active' : 'idle',
+          },
+          {
+            key: 'reverse',
+            title: '反推图片提示词',
+            description: '生成后自动进入工作台继续编辑和确认版本。',
+            state: canGenerate ? 'active' : 'next',
+          },
+          {
+            key: 'image',
+            title: '图片生成和审核',
+            description: '确认提示词后发送图片生成，再进入素材审核和入库。',
+            state: 'next',
+            module: 'image',
+          },
+        ]}
+        actions={[
+          { label: '导入参考图 / 视频', onClick: () => onImportInputSource('reference'), disabled: !workspaceReady || busy },
+          { label: '登记产品资料', onClick: () => onRegisterManualInputSource({
+            title: '对标图反推产品资料',
+            purpose: 'product-brief',
+            text: productBrief,
+            tags: ['对标图反推', '产品资料'],
+          }), disabled: !workspaceReady || busy || !productBrief.trim() },
+          { label: '反推图片提示词', primary: true, onClick: runReverse, disabled: !canGenerate },
+          { label: '继续修改提示词', onClick: onOpenPromptWorkbench },
+        ]}
+        onSelectModule={onSelectModule}
       />
 
       <div className="reference-reverse-layout">
@@ -173,7 +236,7 @@ export function ReferenceReverseModule({
           <div className="panel-title">
             <div>
               <p className="eyebrow">输出</p>
-              <h3>生成 PromptDraft</h3>
+              <h3>生成图片提示词草稿</h3>
             </div>
           </div>
           <label className="reference-brief-field">
@@ -182,22 +245,18 @@ export function ReferenceReverseModule({
           </label>
           <div className="reference-boundary-box">
             <strong>边界</strong>
-            <p>这里必须走真实视觉理解服务；未配置时保持 blocked，不用普通文字模板伪造“看过图”。参考图只复用构图、光线、镜头和留白，不复制竞品 Logo、包装、文案或可识别元素。</p>
+            <p>这里必须走真实视觉理解服务；未配置时显示待配置，不用普通文字模板伪造“看过图”。参考图只复用构图、光线、镜头和留白，不复制竞品 Logo、包装、文案或可识别元素。</p>
           </div>
           <div className="workflow-actions left">
             <button
               className="primary small"
               disabled={!canGenerate}
-              onClick={() => onGenerateReversePrompt({
-                referenceSourceIds: referenceIds,
-                productSourceIds: productIds,
-                userIntent,
-              })}
+              onClick={runReverse}
             >
               反推图片 Prompt
             </button>
             <button className="ghost small" onClick={onOpenPromptWorkbench}>
-              打开 Prompt 工作台
+              继续修改提示词
             </button>
           </div>
         </section>

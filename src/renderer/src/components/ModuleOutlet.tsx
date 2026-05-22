@@ -151,8 +151,16 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         setArticleRequirement={app.setArticleRequirement}
         articleResult={app.articleResult}
         articleExportPath={app.articleExportPath}
+        platformDrafts={app.platformDrafts}
+        copiedPlatformDraftId={app.copiedPlatformDraftId}
         onGenerateArticle={() => app.runAction(app.generateArticle)}
         onExportMarkdown={() => app.runAction(app.exportArticleMarkdown)}
+        onExportPlatformDraft={() => app.runAction(app.exportArticlePlatformDraft)}
+        onCopyPlatformDraft={(draftId) => app.runAction(() => app.copyPlatformDraftText(draftId), '正在复制发布文案')}
+        onRevealExportPath={(path) => app.runAction(() => app.revealPath(path))}
+        onOpenWorkflowRun={app.openTraceWorkflowRun}
+        onOpenPromptDraft={app.openTracePromptDraft}
+        onOpenSourceLog={app.openTraceGenerationLog}
       />
     );
   }
@@ -223,7 +231,9 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         activeKnowledgeBase={app.activeKnowledgeBase}
         selectedCitations={app.selectedCitations}
         citationCount={app.effectiveCitationCount}
+        inputSources={app.inputSources}
         ipKnowledgeBases={app.ipKnowledgeBases}
+        promptDrafts={app.promptDrafts}
         activeIpKnowledgeBase={app.activeIpKnowledgeBase}
         activeIpKnowledgeBaseId={app.activeIpKnowledgeBaseId}
         setActiveIpKnowledgeBaseId={app.setActiveIpKnowledgeBaseId}
@@ -231,6 +241,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onCreateScenarioPrompt={(scene) =>
           app.runAction(() => app.createIpScenarioPrompt(scene), '正在生成 IP 场景延伸 Prompt')
         }
+        onOpenPromptDraft={app.openTracePromptDraft}
         onOpenKnowledgeScenes={() => app.runAction(app.generateSceneCards, '正在基于 IP 知识库生成场景延伸库')}
         onOpenPromptWorkbench={() => app.setActiveModule('assets-prompt-workbench')}
       />
@@ -258,6 +269,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
             app.runAction(() => app.generateReferenceReversePrompt(input), '正在反推图片 Prompt')
           }
           onOpenPromptWorkbench={() => app.setActiveModule('assets-prompt-workbench')}
+          onSelectModule={app.setActiveModule}
         />
       );
     }
@@ -314,6 +326,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           busy={app.busy}
           inputSources={app.inputSources}
           promptDrafts={app.promptDrafts}
+          platformDrafts={app.platformDrafts}
+          copiedPlatformDraftId={app.copiedPlatformDraftId}
           agentPromptSessions={app.agentPromptSessions}
           activeDraftId={app.activePromptDraftId}
           activeSessionId={app.activeAgentPromptSessionId}
@@ -341,6 +355,10 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onMaterializeDraftToSkill={(input) =>
             app.runAction(() => app.materializePromptDraftToSkill(input), '正在物化为 Skill')
           }
+          onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
+          onCopyPlatformDraft={(draftId) => app.runAction(() => app.copyPlatformDraftText(draftId), '正在复制发布文案')}
+          onOpenWorkflowRun={app.openTraceWorkflowRun}
+          onOpenSourceLog={app.openTraceGenerationLog}
           onSelectModule={app.setActiveModule}
         />
       );
@@ -423,6 +441,9 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onExportMixPackage={(input) =>
             app.runAction(() => app.exportMixPackage(input), '正在导出混剪包')
           }
+          onRecordImportEvidence={(input) =>
+            app.runAction(() => app.recordMixPackageImportEvidence(input), '正在登记混剪导入证据')
+          }
           onReviewAsset={(input) =>
             app.runAction(() => app.reviewAsset(input), '正在记录素材审核')
           }
@@ -455,7 +476,18 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onGenerateScenePromptDraft={(input) =>
             app.runAction(() => app.generateScenePromptDraft(input), '正在生成场景 Prompt 草稿')
           }
+          onUpdateSceneCard={(scene) =>
+            app.runAction(() => app.updateSceneCard(scene), '正在确认场景卡')
+          }
           onUsePromptInImage={app.useScenePromptInImage}
+          onUsePromptInVideo={app.usePromptDraftInVideo}
+          onUsePromptInArticle={app.usePromptDraftInArticle}
+          onUsePromptInGreenScreen={app.usePromptDraftInGreenScreen}
+          onRecordPromptDraftCopy={(input) =>
+            app.runAction(async () => {
+              await app.recordPromptDraftCopy(input);
+            }, '正在记录复制动作')
+          }
           onSelectModule={app.setActiveModule}
         />
       );
@@ -473,6 +505,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onRegisterManualInputSource={(input) =>
             app.runAction(() => app.registerManualInputSource(input), '正在登记文本输入源')
           }
+          onSelectModule={app.setActiveModule}
         />
       );
     }
@@ -486,7 +519,10 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           definitions={app.workflowDefinitions}
           runs={app.workflowRuns}
           logs={app.logs}
+          inputSources={app.inputSources}
           assetReviews={app.assetReviews}
+          platformDrafts={app.platformDrafts}
+          copiedPlatformDraftId={app.copiedPlatformDraftId}
           activeDefinitionId={app.activeWorkflowDefinitionId}
           activeRunId={app.activeWorkflowRunId}
           onSelectDefinition={app.setActiveWorkflowDefinitionId}
@@ -498,9 +534,10 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onUpdateDefinition={(definition) =>
             app.runAction(() => app.updateWorkflowDefinition(definition), '正在保存 SOP 定义')
           }
-          onStartRun={(definitionId, inputs) =>
-            app.runAction(() => app.startWorkflowRun(definitionId, inputs), '正在创建 SOP 运行记录')
+          onStartRun={(definitionId, inputs, inputSourceIds) =>
+            app.runAction(() => app.startWorkflowRun(definitionId, inputs, inputSourceIds), '正在创建 SOP 运行记录')
           }
+          onOpenInputSources={() => app.setActiveModule('knowledge-inputs')}
           onRunAction={(action, runId) => {
             if (action === 'open-brand-knowledge') {
               app.openWorkflowRunBrandKnowledge(runId);
@@ -554,8 +591,20 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
               app.runAction(() => app.archiveWorkflowRunAssets(runId), '正在归档 SOP 产物');
               return;
             }
+            if (action === 'open-platform-draft') {
+              app.runAction(() => app.openWorkflowRunPlatformDraft(runId), '正在打开平台草稿包');
+              return;
+            }
+            if (action === 'open-input-sources') {
+              app.setActiveModule('knowledge-inputs');
+              return;
+            }
             app.openWorkflowRunMixExport(runId);
           }}
+          onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
+          onCopyPlatformDraft={(draftId) => app.runAction(() => app.copyPlatformDraftText(draftId), '正在复制发布文案')}
+          onOpenPromptDraft={app.openTracePromptDraft}
+          onOpenSourceLog={app.openTraceGenerationLog}
         />
       );
     }

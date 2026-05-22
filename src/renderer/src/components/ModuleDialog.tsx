@@ -7,7 +7,7 @@ type ModuleDialogMeta = { eyebrow: string; title: string; description: string };
 
 const CORE_MODULE_TITLES: Record<CoreModuleKey, ModuleDialogMeta> = {
   image: { eyebrow: '图片素材', title: '图片生成', description: '上传素材、选择场景卡，并调用真实图片生成服务产出可追溯素材。' },
-  video: { eyebrow: '视频素材', title: '视频生成', description: '基于知识库生成脚本；未配置真实视频生成服务时只创建 blocked 队列。' },
+  video: { eyebrow: '视频素材', title: '视频生成', description: '基于知识库生成脚本；未配置真实视频生成服务时保留待配置记录，不伪造成果。' },
   article: { eyebrow: '文案生产', title: '文章生成', description: '基于知识引用、提示词包和场景卡生成正文草稿。' },
   knowledge: { eyebrow: '知识来源', title: '成型知识库', description: '管理产品型 / 个人 IP 知识库、引用片段和提示词包。' },
   assets: { eyebrow: '素材沉淀', title: '素材库', description: '集中查看成功生成的图片和视频产物。' },

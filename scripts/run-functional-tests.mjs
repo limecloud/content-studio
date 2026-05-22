@@ -44,7 +44,7 @@ await esbuild.build({
   logLevel: 'silent',
 });
 
-const child = spawn(process.execPath, ['--test', outFile], {
+const child = spawn(process.execPath, ['--test', ...process.argv.slice(2), outFile], {
   cwd: projectRoot,
   stdio: 'inherit',
   env: { ...process.env, CONTENT_STUDIO_RESOURCES_DIR: join(projectRoot, 'resources') },

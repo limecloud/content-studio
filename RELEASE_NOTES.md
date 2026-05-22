@@ -1,58 +1,52 @@
 # Release Notes
 
-## v0.8.0 - 2026-05-21
+## v0.10.0 - 2026-05-22
 
 ### 版本定位
 
-v0.8.0 将内容工厂推进到可 OEM 的桌面客户端发布形态：同一套代码可以按品牌 manifest 构建为不同名称、图标、包名和运行时控制面的 App，同时继续补强 v2 内容工厂的输入源、SOP、素材回炉和混剪包主链。
+v0.10.0 将内容工厂 v2 推进到本地总闸可验证的桌面发布候选：围绕普通运营用户的输入源、品牌 / IP 知识库、场景库、Prompt 工作台、素材审核、混剪包和平台草稿包形成可追溯主链，并把发布矩阵扩展为 `bugu` 和 `seenx` 双品牌。
 
-### OEM 与发布
+### 双品牌发布
 
-- 新增 `oem/brands` 品牌 manifest 体系，首批支持 `bugu` 和 `seenx`。
-- 新增 OEM 构建脚本：`oem:prepare`、`oem:clean`、`oem:assert`。
-- 打包时生成单品牌临时 app 目录，产物内只保留当前品牌的 `package.json`、runtime config、图标和文件关联信息。
-- 登录页、侧边栏、设置页、窗口标题、`.skill` 文件关联、更新检查和本地 fallback bootstrap 均接入当前品牌配置。
-- Renderer 不再静态打入默认布谷 logo，改为消费运行时 branding logo。
-- GitHub Actions 发布流升级为通用 OEM matrix：tag push 仅自动构建并发布 `bugu + mac`；其他品牌和其他平台必须手动 workflow 构建。
-- 手动 OEM 构建会生成独立 R2 上传目录：`desktop/content-studio/<brand>/<platform>/<tag>/`，并同步同平台 `latest.json` manifest。
-- CI build matrix 设置 `max-parallel: 1`，避免免费 GitHub runner 同时占用过多。
+- 发布版本升级到 `0.10.0`，同步 `package.json` 和 `package-lock.json`。
+- tag push 发布矩阵改为自动构建并发布 `bugu`、`seenx` 两个 OEM 品牌。
+- 继续使用 GitHub Release 作为桌面安装包归档事实源；`bugu` 运行时入口保持 `bugu.run` 同域。
+- 移除旧 R2 同步链路，发布工作流只负责验证、构建 OEM 包和更新 GitHub Release。
+- 更新 `bugu` OEM 图标与品牌配置，保留 `seenx` 独立品牌 manifest 和产物目录。
 
-### 内容工厂主链增强
+### v2 内容工厂主链
 
-- 输入源、品牌知识库、IP 知识库、场景库、Prompt 草稿、资产审核、混剪包和 SOP 工作流进一步打通 `workflowRunId` 追踪。
-- Prompt 工作台支持围绕当前 workflow 和输入源沉淀、复制、回用和继续调整草稿。
-- 素材库增强回炉、Prompt 提炼、资产审核和工作流事件记录。
-- 混剪包导出补强素材归档、文件追踪和 workflow 联动。
-- 视频导入、图片模块、场景提示词和工作流功能模块继续收敛到 v2 桌面工作台体验。
+- 新增 v2 provider 诊断、业务验收和证据目录脚本，并将 `npm run verify:v2` 纳入 `npm run verify:local`。
+- 输入源页补齐产品资料结构化、SKU / 规格追溯、评论痛点聚类、客服异议话术和普通用户任务导轨。
+- 品牌 / 产品知识库、IP 知识库、场景库、Prompt 工作台和视频 Prompt 页面继续收敛到可发现的二级入口。
+- SOP 执行页新增运行前资料选择，显式记录本次 `inputSourceIds`，取消全部资料时禁止启动运行。
+- 工作流引擎补齐产品商业素材、评论痛点选题、绿幕文案图、平台草稿包和混剪包主链追溯。
 
-### 服务端协同
+### 素材与交付
 
-- LimeCore `/client/bootstrap` 增加 `branding` 字段，用作桌面客户端登录后的运行时品牌事实源。
-- 客户端未登录 / 离线时使用打包期 `oem-runtime-config.json` 作为兼容 fallback；登录后以 bootstrap branding 覆盖同名字段。
+- 素材库强化审核决策、回炉、成功素材沉淀和混剪包导出追踪。
+- 视频 Prompt 外部生成路径记录复制动作，成品视频支持手动导入并关联原 Prompt。
+- 绿幕文案图生成、审核和混剪 manifest 写入形成可验证闭环。
+- 文章页支持导出平台草稿包、平台复制稿、格式指南、发布前检查和 manifest，不接平台账号或自动发布。
 
 ### 工程与验证
 
-- 同步更新 `package.json` 和 `package-lock.json` 到 `0.8.0`。
-- 更新 GitHub Actions release workflow，支持品牌、平台和发布开关的手动输入。
-- 新增 R2 布局生成脚本，确保每个 OEM 品牌 / 平台的软件包、校验信息和 manifest 都进入独立目录。
-- 新增 OEM 文档和产物范围断言，防止多品牌配置目录进入最终安装产物。
-- 扩展功能测试和 E2E 覆盖 v2 工作流、Prompt、素材、混剪和 OEM 相关行为。
+- 更新 v2 路线图、实施计划、完成度审计、业务验收样例和原型文档。
+- 扩展功能测试和 E2E，覆盖普通用户关键二级入口、v2 工作流、Prompt、素材、混剪和平台草稿包路径。
+- 发布 workflow 会在构建前执行 `npm run verify:local`，再分别构建 `bugu` / `seenx` 的 macOS、Windows 和 Linux 产物。
 
 ### 验证
 
 - `npm run typecheck`
 - `npm run build`
+- `npm run verify:v2`
+- `npm run test:functional`
+- `npm run smoke:electron`
+- `npm run test:e2e`
 - `npm run verify:local`
-- `node scripts/prepare-oem-build.mjs --brand=bugu`
-- `node scripts/prepare-oem-build.mjs --brand=seenx`
-- `npx electron-builder --config .tmp/oem/bugu/electron-builder.json --mac dir --publish never`
-- `npx electron-builder --config .tmp/oem/seenx/electron-builder.json --mac dir --publish never`
-- `node scripts/assert-oem-artifact-scope.mjs --brand=bugu`
-- `node scripts/assert-oem-artifact-scope.mjs --brand=seenx`
-- `node scripts/prepare-oem-r2-layout.mjs --tag=v0.8.0 --artifact-root=.tmp/r2-fixture --out=.tmp/r2-upload-test`
 
 ### 明确不包含
 
 - 正式 macOS Developer ID 签名和 notarization 仍未启用，当前 macOS 包继续使用 unsigned 内部预览策略。
 - 未配置真实文字 / 图片 / 视频生成服务时仍返回 `blocked`，不伪造生成成功。
-- 删除历史 GitHub Release / tag 需要单独确认具体版本范围。
+- v2 不接平台账号，不做自动发布，不实现云端多租户协作或复杂权限系统。

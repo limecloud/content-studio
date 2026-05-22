@@ -89,8 +89,17 @@ export function buildScenePromptGroupContent(
   userIntent: string,
   scenes: SceneCard[],
 ): string {
+  if (scenes.length === 0) {
+    return [
+      '# 场景 Prompt 组',
+      '',
+      `用户意图：${compactText(userIntent)}`,
+      '',
+      '生成状态：缺少已确认场景卡，无法生成可追溯 Prompt 组。',
+    ].join('\n');
+  }
   const count =
-    purpose === 'video' ? 6 :
+    purpose === 'video' ? 10 :
     purpose === 'image' ? 10 :
     purpose === 'green-screen' ? 8 :
     5;

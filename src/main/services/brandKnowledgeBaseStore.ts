@@ -23,6 +23,21 @@ function compactText(value: string | undefined, fallback: string): string {
   return normalized || fallback;
 }
 
+const DEFAULT_COMPLIANCE_BOUNDARIES = [
+  '不承诺治疗、见效、改善疾病或替代专业建议',
+  '不写绝对化收益，不做无依据背书',
+];
+
+function complianceList(values: string[] | undefined): string[] {
+  const normalized = compactList(values, DEFAULT_COMPLIANCE_BOUNDARIES);
+  const text = normalized.join('\n');
+  return compactList([
+    ...normalized,
+    text.includes('治疗') ? '' : DEFAULT_COMPLIANCE_BOUNDARIES[0],
+    text.includes('绝对化') ? '' : DEFAULT_COMPLIANCE_BOUNDARIES[1],
+  ], DEFAULT_COMPLIANCE_BOUNDARIES);
+}
+
 function inferTitle(citations: KnowledgeCitation[], fallback?: string): string {
   if (fallback?.trim()) return fallback.trim();
   const first = citations[0];
@@ -36,9 +51,8 @@ function localRecord(input: GenerateBrandKnowledgeBaseInput, reason?: string): B
     ]),
     ['待补充产品事实'],
   );
-  const complianceBoundaries = compactList(
+  const complianceBoundaries = complianceList(
     input.citations.filter((citation) => citation.sectionType === 'compliance' || citation.sectionType === 'boundary').map((citation) => citation.excerpt),
-    ['不夸大效果，不承诺治疗，不做无依据背书'],
   );
   const coreSellingPoints = compactList(
     input.citations.filter((citation) => ['product', 'selling-point', 'spec', 'brand'].includes(citation.sectionType)).map((citation) => citation.excerpt),
@@ -139,7 +153,7 @@ export class BrandKnowledgeBaseStore {
         audience: compactText(value.audience, '目标用户待补齐'),
         productFacts: compactList(value.productFacts, ['待补充产品事实']),
         coreSellingPoints: compactList(value.coreSellingPoints, ['先讲使用场景，再讲卖点']),
-        complianceBoundaries: compactList(value.complianceBoundaries, ['不夸大效果，不承诺治疗，不做无依据背书']),
+        complianceBoundaries: complianceList(value.complianceBoundaries),
         sceneSeeds: compactList(value.sceneSeeds, ['早餐后', '办公室抽屉', '家庭场景']),
         promptFragments: compactList(value.promptFragments, ['真实生活场景、自然光、少字、可读、可复用。']),
         model: result.model,

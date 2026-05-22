@@ -88,6 +88,7 @@ export class SceneLibraryStore {
     const promptPack = await this.promptPacks.find(input.workspacePath, input.promptPackId);
     if (!promptPack) throw new Error(`提示词包不存在: ${input.promptPackId}`);
     const citations = input.citations?.length ? input.citations : promptPack.citations;
+    const inputSourceIds = input.inputSourceIds?.length ? input.inputSourceIds : promptPack.inputSourceIds ?? [];
     const count = Math.min(Math.max(input.count ?? 4, 1), 8);
     const now = new Date().toISOString();
 
@@ -126,7 +127,7 @@ export class SceneLibraryStore {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
         promptPackId: input.promptPackId,
-        inputSourceIds: input.inputSourceIds ?? [],
+        inputSourceIds,
         title: compactText(card.title, `场景卡 ${index + 1}`),
         audience: compactText(card.audience, '需要更明确的目标人群'),
         painPoint: compactText(card.painPoint, '需要更明确的用户痛点'),

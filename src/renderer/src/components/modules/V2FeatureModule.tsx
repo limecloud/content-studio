@@ -82,11 +82,11 @@ export function V2FeatureModule({ module, onSelectModule }: V2FeatureModuleProps
         </article>
         <article className="v2-feature-card panel">
           <h3>运行状态</h3>
-          <p>这里展示当前能力的可运行状态、来源追溯和恢复路径；未配置真实能力时只保留 blocked 记录。</p>
+          <p>这里展示当前能力的可运行状态、来源追溯和恢复路径；未配置真实能力时只保留待配置记录。</p>
           <div className="v2-state-row">
             <span>本地工作区</span>
             <span>来源追溯</span>
-            <span>blocked 恢复路径</span>
+            <span>待配置恢复路径</span>
           </div>
         </article>
       </section>

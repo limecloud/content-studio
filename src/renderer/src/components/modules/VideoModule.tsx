@@ -102,17 +102,17 @@ export function VideoModule({
       <header className="video-replica-header">
         <div>
           <p className="eyebrow">视频素材</p>
-          <h3>视频复刻引擎</h3>
-          <p>导入高价值视频并逐步解析，替换为新产品后生成脚本、分镜图和视频队列。</p>
+          <h3>参考视频拆解工作台</h3>
+          <p>导入已授权参考视频并拆解结构，再替换为本方产品脚本、分镜和可追溯视频 Prompt。</p>
         </div>
         <span className="status-pill">三步流</span>
       </header>
 
-      <nav className="video-stage-tabs" aria-label="视频复刻步骤">
+      <nav className="video-stage-tabs" aria-label="参考视频拆解步骤">
         {[
-          { key: 'breakdown' as const, title: '视频拆解', text: '导入高价值视频并逐秒解析' },
-          { key: 'script' as const, title: '脚本生成', text: '替换为新产品并生成复刻脚本' },
-          { key: 'generate' as const, title: '视频生成', text: '分镜图与视频模型生成队列' },
+          { key: 'breakdown' as const, title: '视频拆解', text: '导入已授权视频并解析结构' },
+          { key: 'script' as const, title: '脚本生成', text: '替换为本方产品并生成新脚本' },
+          { key: 'generate' as const, title: '视频生成', text: '分镜图与视频 Prompt 交接' },
         ].map((stage) => (
           <button
             key={stage.key}
@@ -130,8 +130,8 @@ export function VideoModule({
           <article className="video-card video-source-card">
             <div className="video-card-title">
               <div>
-                <h4>原视频导入</h4>
-                <p>前端只负责配置和展示，真实拆解由后端视频理解服务完成。</p>
+                <h4>参考视频导入</h4>
+                <p>仅处理用户有权使用的参考视频；真实拆解由后端视频理解服务完成。</p>
               </div>
               <span>{sourceCount} 个来源</span>
             </div>
@@ -150,13 +150,13 @@ export function VideoModule({
             <label>
               <span>视频链接</span>
               <div className="video-inline-field">
-                <input value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="粘贴抖音链接、点击下载按钮" />
-                <button className="ghost small" disabled={!videoUrl.trim()}>下载</button>
+                <input value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="粘贴已授权视频链接，仅作为来源记录" />
+                <button className="ghost small" disabled>不下载</button>
               </div>
             </label>
             <div className="video-mode-card">
-              <strong>后端任务模式</strong>
-              <p>单次生成会提交一个视频拆解任务；批量生成后续按文件夹或多视频创建队列。</p>
+              <strong>处理边界</strong>
+              <p>软件不下载平台视频、不复制竞品元素，只保存参考来源、拆解结果和可复用结构。</p>
             </div>
           </article>
 
@@ -207,7 +207,7 @@ export function VideoModule({
             <div className="video-card-title">
               <div>
                 <h4>新产品信息</h4>
-                <p>基于原视频结构生成新脚本。</p>
+                <p>基于拆解结构生成本方产品脚本，避免照搬参考视频画面。</p>
               </div>
             </div>
             <div className="video-form-grid">
@@ -262,7 +262,7 @@ export function VideoModule({
                 <p>生成脚本后，这里会展示分镜预览和镜头节奏。</p>
               </div>
             </div>
-            <button className="primary wide" disabled={busy || !workspaceReady} onClick={onGenerateVideoScript}>生成复刻脚本</button>
+            <button className="primary wide" disabled={busy || !workspaceReady} onClick={onGenerateVideoScript}>生成新视频脚本</button>
           </article>
         </div>
       ) : null}
@@ -298,13 +298,23 @@ export function VideoModule({
             <div className="video-card-title">
               <div>
                 <h4>生成视频历史</h4>
-                <p>配置真实视频接口后，生成结果会显示在这里；未配置时只保留可追溯的 blocked 记录。</p>
+                <p>配置真实视频接口后，生成结果会显示在这里；未配置时只保留可追溯的待配置记录。</p>
               </div>
             </div>
             {mediaResult ? (
               <div className={`result-card ${mediaResult.status}`}>
                 <strong>{statusLabel(mediaResult.status)}</strong>
                 <p>{mediaResult.message}</p>
+                {mediaResult.billing ? (
+                  <div className="video-cost-estimate">
+                    <span>内部 API 成本估算</span>
+                    <strong>{mediaResult.billing.currency === 'CNY' ? '¥' : `${mediaResult.billing.currency} `}{mediaResult.billing.estimatedCost.toFixed(2)}</strong>
+                    <small>
+                      {mediaResult.billing.durationSeconds}s × {mediaResult.billing.currency === 'CNY' ? '¥' : `${mediaResult.billing.currency} `}
+                      {mediaResult.billing.unitPrice.toFixed(2)}/秒
+                    </small>
+                  </div>
+                ) : null}
                 {mediaResult.assetRefs.length ? (
                   <div className="asset-output-grid">
                     {mediaResult.assetRefs.map((assetRef) => (

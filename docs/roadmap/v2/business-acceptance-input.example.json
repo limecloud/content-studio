@@ -1,0 +1,373 @@
+{
+  "brand": {
+    "title": "真实验收品牌",
+    "facts": [
+      "产品事实：便携条包，适合早餐后、办公室抽屉和通勤包中随手取用。",
+      "内容事实：表达先讲真实使用场景和坚持门槛，再讲成分与规格。"
+    ],
+    "compliance": [
+      "不承诺治疗、见效、改善疾病或替代专业建议。",
+      "不做无依据用户背书，不写绝对化收益。"
+    ],
+    "scenes": [
+      {
+        "title": "通勤包侧袋备用",
+        "audience": "通勤用户",
+        "painPoint": "出门后容易忘记准备。",
+        "usageScene": "通勤包侧袋",
+        "visualComposition": "真实包内俯拍，自然光，产品只占画面三分之一。",
+        "sellingPoint": "便携条包方便随手取用。",
+        "imageMaterialSuggestion": "生成手机实拍包内场景图。",
+        "videoMaterialSuggestion": "生成 15 秒手部取用动作素材。"
+      },
+      "办公室抽屉里备用"
+    ]
+  },
+  "ip": {
+    "title": "真实验收 IP",
+    "layers": {
+      "identity": "身份锚定。",
+      "values": "价值观立场。",
+      "language": "语言风格。",
+      "methodology": "判断方法。",
+      "materials": "内容素材。",
+      "engine": "创作引擎。"
+    }
+  },
+  "productBrief": {
+    "sources": [
+      {
+        "id": "product-brief-real",
+        "kind": "manual-note",
+        "purpose": "product-brief",
+        "title": "真实产品 brief",
+        "tags": [
+          "产品资料",
+          "brief"
+        ],
+        "extractedText": "产品名称：每日轻补便携条包\n卖点：小条包装，早餐后、办公室和通勤包里都能随手取用\n规格：每盒 20 条，每条独立包装\n适用场景：早餐后、办公室抽屉、通勤包侧袋、出差洗漱包\n禁用表达：不承诺治疗、见效、改善疾病或替代专业建议"
+      },
+      {
+        "id": "sku-table-real",
+        "kind": "sku-table",
+        "purpose": "product-brief",
+        "title": "真实 SKU 表",
+        "tags": [
+          "SKU",
+          "规格"
+        ],
+        "extractedText": "SKU,规格,价格,适用场景\ntrial-10,10 条装,49,首次尝试\nfamily-30,30 条装,129,家庭常备"
+      }
+    ],
+    "expectedPromptTypes": [
+      "main-image",
+      "selling-point-image",
+      "detail-page-section"
+    ]
+  },
+  "feedback": {
+    "sources": [
+      {
+        "id": "feedback-real",
+        "kind": "manual-note",
+        "purpose": "user-feedback",
+        "title": "真实评论和客服问题",
+        "tags": [
+          "评论",
+          "客服问题"
+        ],
+        "extractedText": "用户：价格有点贵，值不值，怕是智商税。\n差评：买了以后不知道怎么用，步骤太复杂，坚持几天就忘记。\n客服：孩子和老人能不能吃，敏感人群有没有禁忌？\n评论：早餐后放办公室抽屉和通勤包里会不会更方便？\n私信：发货包装会不会破损，售后怎么处理？\n问答：和别家同款有什么区别，哪个更适合上班族？"
+      }
+    ],
+    "expectedTitleMinimum": 2,
+    "expectedObjectionMinimum": 2
+  },
+  "reference": {
+    "sources": [
+      "reference-a.png",
+      "reference-video-a.mp4"
+    ],
+    "actualSourceKinds": [
+      "image",
+      "video"
+    ],
+    "actualPromptFields": [
+      "composition",
+      "lighting",
+      "negativePrompt",
+      "risks",
+      "qualityChecklist"
+    ],
+    "actualBoundaryTerms": [
+      "不要复制竞品 Logo、包装、文案、人物肖像或可识别品牌元素。",
+      "需要人工复核素材授权、商标和肖像风险。"
+    ]
+  },
+  "videoBreakdown": {
+    "sources": [
+      "reference-video-a.mp4"
+    ],
+    "actual": {
+      "summary": "已拆解参考视频的钩子、镜头、字幕、节奏和可复用结构。",
+      "dimensions": [
+        "开头钩子",
+        "字幕口播",
+        "镜头运镜",
+        "转化设计"
+      ],
+      "segments": [
+        {
+          "timeRange": "0-3s",
+          "hook": "先抛早餐后难坚持的真实痛点",
+          "visual": "早餐桌自然光，手把便携条包放进通勤包侧袋",
+          "voiceover": "很多人不是不知道要坚持，而是每天准备太麻烦。",
+          "subtitle": "早餐后顺手放进包里",
+          "rhythm": "快节奏钩子，镜头停留产品动作",
+          "reusablePoint": "用具体生活动作降低坚持门槛"
+        }
+      ],
+      "reusableFormula": [
+        "痛点 -> 顺手使用 -> 事实边界"
+      ],
+      "risks": [
+        {
+          "level": "warning",
+          "message": "新脚本只能复用结构，不照搬原视频画面；发布前复核素材授权和合规表达。"
+        }
+      ]
+    },
+    "script": {
+      "title": "便携条包 15 秒新视频脚本",
+      "script": "镜头 1：早餐后顺手放进包里。\n镜头 2：办公室抽屉备用。\n镜头 3：提醒不做夸张承诺。",
+      "storyboard": [
+        {
+          "shot": 1,
+          "duration": "0-3s",
+          "visual": "自然光早餐桌，手拿起条包。",
+          "voiceover": "每天坚持，难的不是知道，而是顺手。",
+          "subtitle": "早餐后顺手完成",
+          "rhythm": "快速钩子"
+        },
+        {
+          "shot": 2,
+          "duration": "3-9s",
+          "visual": "办公室抽屉里备用条包。",
+          "voiceover": "放在真实会用到的位置，比临时想起来更容易。",
+          "subtitle": "办公室也能备用",
+          "rhythm": "中速说明"
+        }
+      ],
+      "videoPrompt": "15 秒 9:16 手机实拍视频，自然光，早餐桌和办公室抽屉两个真实场景，不复制原视频构图和品牌元素。",
+      "publishCheck": [
+        {
+          "level": "warning",
+          "message": "复核素材授权，避免照搬参考视频画面。"
+        },
+        {
+          "level": "risk",
+          "message": "不要承诺治疗、见效或替代专业建议。"
+        }
+      ],
+      "breakdownLogId": "video-breakdown-real"
+    }
+  },
+  "greenScreen": {
+    "actualCards": [
+      {
+        "id": "overlay-title-real",
+        "type": "title",
+        "title": "标题卡",
+        "text": "早餐后顺手一次",
+        "durationSeconds": 3,
+        "assetPath": "overlays/001-overlay-title.svg",
+        "background": "green-screen",
+        "aspectRatio": "9:16",
+        "promptDraftId": "video-prompt-real",
+        "tags": [
+          "绿幕文案图",
+          "标题卡"
+        ]
+      },
+      {
+        "id": "overlay-selling-point-real",
+        "type": "selling-point",
+        "title": "卖点卡",
+        "text": "抽屉包里都能放",
+        "durationSeconds": 4,
+        "assetPath": "overlays/002-overlay-selling-point.svg",
+        "background": "green-screen",
+        "aspectRatio": "9:16",
+        "promptDraftId": "video-prompt-real",
+        "tags": [
+          "绿幕文案图",
+          "卖点卡"
+        ]
+      },
+      {
+        "id": "overlay-cta-real",
+        "type": "cta",
+        "title": "行动卡",
+        "text": "先从顺手一次开始",
+        "durationSeconds": 4,
+        "assetPath": "overlays/003-overlay-cta.svg",
+        "background": "green-screen",
+        "aspectRatio": "9:16",
+        "promptDraftId": "video-prompt-real",
+        "tags": [
+          "绿幕文案图",
+          "行动卡"
+        ]
+      }
+    ],
+    "actualReviewStatuses": [
+      "approved"
+    ]
+  },
+  "videoPackage": {
+    "actualFiles": [
+      "videos/",
+      "overlays/",
+      "manifest.json",
+      "manifest.csv",
+      "import-guide.md"
+    ],
+    "actualTraceFields": [
+      "workflowRunId",
+      "promptDraftId",
+      "sourceId",
+      "packagedPath"
+    ],
+    "actualAssetKinds": [
+      "video",
+      "overlay"
+    ],
+    "actualReviewStatuses": [
+      "approved"
+    ],
+    "actualGuideTerms": [
+      "第三方混剪软件",
+      "manifest.csv",
+      "overlays/",
+      "videos/",
+      "人工审核"
+    ]
+  },
+  "platformDraft": {
+    "actualFiles": [
+      "draft.md",
+      "platform-copy.txt",
+      "format-guide.md",
+      "publish-checklist.md",
+      "manifest.json"
+    ],
+    "actualTraceFields": [
+      "workflowRunId",
+      "promptDraftId",
+      "sourceLogId"
+    ],
+    "actualContentFields": [
+      "draft",
+      "platformCopy",
+      "formatGuide",
+      "publishChecklist",
+      "publishBoundary"
+    ]
+  },
+  "mediaCost": {
+    "actual": {
+      "model": "test-video-model",
+      "status": "succeeded",
+      "durationSeconds": 10,
+      "currency": "CNY",
+      "unitPrice": 1.5,
+      "estimatedCost": 15,
+      "source": "provider-response"
+    }
+  },
+  "successfulAsset": {
+    "actual": {
+      "assetKey": "generated:real-image-log:0:approved-breakfast.png",
+      "kind": "image",
+      "path": "approved-breakfast.png",
+      "title": "已通过早餐桌素材",
+      "reviewStatus": "approved",
+      "workflowRunId": "workflow-run-real",
+      "originalPromptDraftId": "image-prompt-real",
+      "workflowArtifactRefs": [
+        "generated:real-image-log:0:approved-breakfast.png",
+        "input-source:successful-asset-real",
+        "prompt-draft:successful-asset-draft-real"
+      ],
+      "distilledInputSource": {
+        "id": "successful-asset-real",
+        "kind": "image",
+        "purpose": "successful-asset",
+        "title": "成功素材沉淀 / 已通过早餐桌素材",
+        "sourcePath": "approved-breakfast.png",
+        "tags": [
+          "successful-asset",
+          "prompt-distilled",
+          "image",
+          "workflow-run"
+        ],
+        "relatedPromptDraftId": "image-prompt-real",
+        "relatedSceneCardIds": [
+          "scene-real-001"
+        ],
+        "extractedText": "素材状态：已通过审核。\n质量原因：真实早餐桌自然光，产品清楚但不过度硬广。\n复用 Prompt 草稿：早餐桌自然光，手部自然拿起便携条包。\n复用要求：只沉淀本方已通过审核的素材经验，不复制竞品 Logo、包装、文案或可识别元素。\n下游生成前需要人工确认产品事实、平台规则和禁用表达。"
+      },
+      "distilledPromptDraft": {
+        "id": "successful-asset-draft-real",
+        "title": "成功素材 Prompt：已通过早餐桌素材",
+        "purpose": "image",
+        "status": "confirmed",
+        "workflowRunId": "workflow-run-real",
+        "inputSourceIds": [
+          "successful-asset-real"
+        ],
+        "sceneCardIds": [
+          "scene-real-001"
+        ],
+        "model": "local-successful-asset-distiller",
+        "content": "素材状态：已通过审核。\n质量原因：真实早餐桌自然光，产品清楚但不过度硬广。\n复用 Prompt 草稿：早餐桌自然光，手部自然拿起便携条包。\n复用要求：只沉淀本方已通过审核的素材经验，不复制竞品 Logo、包装、文案或可识别元素。\n下游生成前需要人工确认产品事实、平台规则和禁用表达。"
+      }
+    }
+  },
+  "trace": {
+    "expectedWorkflowRunId": "workflow-run-real",
+    "requiredSources": [
+      "reference-log",
+      "video-breakdown-log",
+      "video-script-log",
+      "video-generation-log",
+      "mix-package",
+      "platform-draft"
+    ],
+    "actualWorkflowRunRefs": [
+      {
+        "source": "reference-log",
+        "workflowRunId": "workflow-run-real"
+      },
+      {
+        "source": "video-breakdown-log",
+        "workflowRunId": "workflow-run-real"
+      },
+      {
+        "source": "video-script-log",
+        "workflowRunId": "workflow-run-real"
+      },
+      {
+        "source": "video-generation-log",
+        "workflowRunId": "workflow-run-real"
+      },
+      {
+        "source": "mix-package",
+        "workflowRunId": "workflow-run-real"
+      },
+      {
+        "source": "platform-draft",
+        "workflowRunId": "workflow-run-real"
+      }
+    ]
+  }
+}

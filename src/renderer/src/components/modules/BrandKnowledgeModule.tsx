@@ -6,6 +6,7 @@ import type {
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
 import { clip, knowledgeBaseKey, sectionLabel } from '../../app/formatters';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
+import { UserJourneyGuide } from '../UserJourneyGuide';
 import { SelectableRecordCard, StatusPill } from '../WorkbenchPrimitives';
 
 interface BrandKnowledgeModuleProps {
@@ -39,6 +40,8 @@ export function BrandKnowledgeModule({
 }: BrandKnowledgeModuleProps) {
   const feature = V2_FEATURES['knowledge-brand'];
   const activeSourceLabel = activeKnowledgeBase ? `${activeKnowledgeBase.title} · ${knowledgeBaseKey(activeKnowledgeBase)}` : '当前未选知识库';
+  const hasSource = citationCount > 0;
+  const hasBrandKnowledge = Boolean(activeBrandKnowledgeBase);
 
   return (
     <section className="knowledge-brand-workbench">
@@ -58,6 +61,43 @@ export function BrandKnowledgeModule({
             </button>
           </div>
         )}
+      />
+
+      <UserJourneyGuide
+        title="品牌 / 产品资料先变成场景库"
+        description="品牌运营和短视频运营不应该从知识库直接跳到提示词。先抽取产品事实、卖点、人群和合规边界，再生成可生产的场景卡。"
+        steps={[
+          {
+            key: 'source',
+            title: '选择品牌资料',
+            description: 'DOCX、Markdown、产品资料或已转换输入源都可以作为来源。',
+            state: hasSource ? 'done' : 'active',
+          },
+          {
+            key: 'extract',
+            title: '抽取品牌事实',
+            description: '确认口吻、受众、产品事实、核心卖点和合规边界。',
+            state: hasBrandKnowledge ? 'done' : hasSource ? 'active' : 'blocked',
+          },
+          {
+            key: 'scene',
+            title: '生成场景库',
+            description: '把事实拆成具体人群、问题、空间、动作、情绪和镜头。',
+            state: hasBrandKnowledge ? 'active' : 'next',
+          },
+          {
+            key: 'prompt',
+            title: '生产提示词组',
+            description: '场景确认后再生成图片、图生视频、文案和绿幕图提示词。',
+            state: 'next',
+          },
+        ]}
+        actions={[
+          { label: '补充输入源', onClick: onOpenInputSources, disabled: !workspaceReady || busy },
+          { label: '抽取品牌知识库', primary: true, onClick: onGenerateBrandKnowledgeBase, disabled: !workspaceReady || busy || !hasSource },
+          { label: '生成场景库', onClick: onOpenKnowledgeScenes, disabled: !workspaceReady || busy },
+        ]}
+        aside={<StatusPill tone={hasBrandKnowledge ? 'ready' : 'idle'}>{hasBrandKnowledge ? '已抽取' : '待抽取'}</StatusPill>}
       />
 
       <div className="prompt-workbench-layout">
@@ -98,7 +138,7 @@ export function BrandKnowledgeModule({
               <label><span>核心卖点</span><textarea readOnly value={activeBrandKnowledgeBase.coreSellingPoints.join('\n')} /></label>
               <label><span>合规边界</span><textarea readOnly value={activeBrandKnowledgeBase.complianceBoundaries.join('\n')} /></label>
               <label><span>场景种子</span><textarea readOnly value={activeBrandKnowledgeBase.sceneSeeds.join('\n')} /></label>
-              <label><span>Prompt 片段</span><textarea readOnly value={activeBrandKnowledgeBase.promptFragments.join('\n')} /></label>
+              <label><span>提示词片段</span><textarea readOnly value={activeBrandKnowledgeBase.promptFragments.join('\n')} /></label>
             </div>
           ) : (
             <div className="empty-state">选择知识引用后，生成品牌 / 产品知识库记录。</div>
@@ -108,7 +148,7 @@ export function BrandKnowledgeModule({
         <aside className="panel prompt-draft-list-panel">
           <div className="panel-title">
             <div>
-              <p className="eyebrow">记录</p>
+              <p className="eyebrow">版本</p>
               <h3>品牌知识库版本</h3>
             </div>
           </div>

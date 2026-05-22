@@ -1146,6 +1146,14 @@ p {
     var(--shadow-sm),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
+.nav-advanced-toggle {
+  margin-top: 4px;
+}
+.nav-item-advanced {
+  margin-left: 12px;
+  width: calc(100% - 12px);
+  border-left-color: color-mix(in srgb, var(--cyan) 20%, transparent);
+}
 .nav-item.disabled {
   opacity: 0.4;
   cursor: not-allowed;

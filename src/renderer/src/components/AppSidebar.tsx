@@ -1,4 +1,5 @@
 import { NAV_GROUPS } from "../app/constants";
+import { useState } from "react";
 import type {
   AutoUpdateState,
   BuguAuthState,
@@ -36,6 +37,7 @@ const NAV_ICONS = new Map<string, string>([
   ["视频脚本", "拆"],
   ["视频 Prompt", "▶"],
   ["成品视频入库", "入"],
+  ["成品视频导入", "入"],
   ["混剪包导出", "包"],
   ["创意视频", "🎞️"],
   ["自定义视频", "🎥"],
@@ -57,19 +59,13 @@ const NAV_ICONS = new Map<string, string>([
 ]);
 
 const NAV_ACTIVE_PARENT = new Map<ModuleKey, ModuleKey>([
-  ["image-compliance", "assets"],
-  ["image-retouch", "assets"],
-  ["video-script", "video"],
-  ["video-import", "video-prompt"],
   ["video-creative", "assets-prompt-workbench"],
   ["video-custom", "assets-prompt-workbench"],
-  ["article-title", "article"],
-  ["article-script", "article"],
-  ["knowledge-scenes", "knowledge-brand"],
-  ["knowledge-inputs", "assets-prompt-workbench"],
-  ["assets-history", "assets-sop"],
-  ["workflow-definition", "assets-sop"],
-  ["workflow-canvas", "assets-sop"],
+]);
+
+const ADVANCED_MODULES = new Set<ModuleKey>([
+  "workflow-definition",
+  "workflow-canvas",
 ]);
 
 export function AppSidebar({
@@ -106,6 +102,8 @@ export function AppSidebar({
     : `未登录${brandName}账号`;
   const avatarText = displayName.trim().slice(0, 1).toUpperCase() || "B";
   const visibleActiveModule = NAV_ACTIVE_PARENT.get(activeModule) ?? activeModule;
+  const [advancedMaintenanceOpen, setAdvancedMaintenanceOpen] = useState(false);
+  const shouldShowAdvancedMaintenance = advancedMaintenanceOpen || ADVANCED_MODULES.has(visibleActiveModule);
 
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
@@ -159,26 +157,58 @@ export function AppSidebar({
       </section>
 
       <nav className="nav-stack">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.title} className="nav-group">
-            <p>{group.title}</p>
-            {group.items.map((item) => (
-              <button
-                key={`${group.title}:${item.label}`}
-                className={`nav-item ${item.key && visibleActiveModule === item.key ? "active" : ""} ${item.disabled ? "disabled" : ""}`}
-                title={item.label}
-                onClick={() =>
-                  item.key && !item.disabled && onSelectModule(item.key)
-                }
-              >
-                <span className="nav-icon">
-                  {NAV_ICONS.get(item.label) ?? "•"}
-                </span>
-                <span className="nav-label">{item.label}</span>
-              </button>
-            ))}
-          </div>
-        ))}
+        {NAV_GROUPS.map((group) => {
+          const normalItems = group.items.filter((item) => !item.advanced);
+          const advancedItems = group.items.filter((item) => item.advanced);
+          return (
+            <div key={group.title} className="nav-group">
+              <p>{group.title}</p>
+              {normalItems.map((item) => (
+                <button
+                  key={`${group.title}:${item.label}`}
+                  className={`nav-item ${item.key && visibleActiveModule === item.key ? "active" : ""} ${item.disabled ? "disabled" : ""}`}
+                  title={item.label}
+                  onClick={() =>
+                    item.key && !item.disabled && onSelectModule(item.key)
+                  }
+                >
+                  <span className="nav-icon">
+                    {NAV_ICONS.get(item.label) ?? "•"}
+                  </span>
+                  <span className="nav-label">{item.label}</span>
+                </button>
+              ))}
+              {advancedItems.length > 0 ? (
+                <button
+                  className={`nav-item nav-advanced-toggle ${shouldShowAdvancedMaintenance ? "active" : ""}`}
+                  type="button"
+                  title="高级维护"
+                  aria-expanded={shouldShowAdvancedMaintenance}
+                  onClick={() => setAdvancedMaintenanceOpen((current) => !current)}
+                >
+                  <span className="nav-icon">高</span>
+                  <span className="nav-label">高级维护</span>
+                  <em>{shouldShowAdvancedMaintenance ? "收起" : "展开"}</em>
+                </button>
+              ) : null}
+              {shouldShowAdvancedMaintenance ? advancedItems.map((item) => (
+                <button
+                  key={`${group.title}:${item.label}`}
+                  className={`nav-item nav-item-advanced ${item.key && visibleActiveModule === item.key ? "active" : ""} ${item.disabled ? "disabled" : ""}`}
+                  title={item.label}
+                  onClick={() =>
+                    item.key && !item.disabled && onSelectModule(item.key)
+                  }
+                >
+                  <span className="nav-icon">
+                    {NAV_ICONS.get(item.label) ?? "•"}
+                  </span>
+                  <span className="nav-label">{item.label}</span>
+                </button>
+              )) : null}
+            </div>
+          );
+        })}
       </nav>
 
       <div className="sidebar-bottom">

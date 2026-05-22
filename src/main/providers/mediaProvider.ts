@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isImageGenerationProtocol, type ImageGenerationProtocol, type ImageGenerationRequest, type MediaGenerationResult, type VideoGenerationRequest } from '../../shared/types';
+import { isImageGenerationProtocol, type ImageGenerationProtocol, type ImageGenerationRequest, type MediaGenerationResult, type VideoCostEstimate, type VideoGenerationRequest } from '../../shared/types';
 import { generateImageAssets } from './imageGenerationProvider';
 import { GenerationLogStore } from '../services/generationLogStore';
 import { ModelConfigStore } from '../services/modelConfigStore';
@@ -47,7 +47,88 @@ function collectStringFields(payload: unknown, fieldNames: string[]): string[] {
   return Array.from(new Set(values));
 }
 
-async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: string): Promise<string[]> {
+function collectNumberFields(payload: unknown, fieldNames: string[]): number[] {
+  const values: number[] = [];
+  const keys = new Set(fieldNames);
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    for (const [key, child] of Object.entries(record)) {
+      if (keys.has(key)) {
+        const parsed = typeof child === 'number' ? child : typeof child === 'string' ? Number(child) : Number.NaN;
+        if (Number.isFinite(parsed) && parsed >= 0) values.push(parsed);
+      } else {
+        visit(child);
+      }
+    }
+  };
+  visit(payload);
+  return values;
+}
+
+function roundCost(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function videoCostEstimate(input: VideoGenerationRequest, providerResponse?: unknown): VideoCostEstimate {
+  const durationSeconds = Math.max(1, input.params.durationSeconds || 1);
+  const providerCost = collectNumberFields(providerResponse, [
+    'cost',
+    'total_cost',
+    'totalCost',
+    'estimated_cost',
+    'estimatedCost',
+    'amount',
+  ])[0];
+  if (providerCost !== undefined) {
+    const currency = collectStringFields(providerResponse, ['currency'])[0]?.toUpperCase() || 'CNY';
+    return {
+      currency,
+      durationSeconds,
+      unit: 'second',
+      unitPrice: roundCost(providerCost / durationSeconds),
+      estimatedCost: roundCost(providerCost),
+      source: 'provider-response',
+    };
+  }
+
+  const envUnitPrice = Number(process.env.CONTENT_STUDIO_VIDEO_CNY_PER_SECOND);
+  const unitPrice = Number.isFinite(envUnitPrice) && envUnitPrice > 0 ? envUnitPrice : 2;
+  return {
+    currency: 'CNY',
+    durationSeconds,
+    unit: 'second',
+    unitPrice: roundCost(unitPrice),
+    estimatedCost: roundCost(unitPrice * durationSeconds),
+    source: Number.isFinite(envUnitPrice) && envUnitPrice > 0 ? 'env' : 'default-internal-api',
+  };
+}
+
+function videoGenerationMeta(
+  input: VideoGenerationRequest,
+  model: string,
+  provider: string,
+  providerResponse?: unknown,
+) {
+  return {
+    provider,
+    model,
+    aspectRatio: input.params.aspectRatio,
+    durationSeconds: input.params.durationSeconds,
+    costEstimate: videoCostEstimate(input, providerResponse),
+  };
+}
+
+function formatVideoCost(cost: VideoCostEstimate): string {
+  const symbol = cost.currency === 'CNY' ? '¥' : `${cost.currency} `;
+  return `${symbol}${cost.estimatedCost.toFixed(2)}（${cost.durationSeconds}s × ${symbol}${cost.unitPrice.toFixed(2)}/秒）`;
+}
+
+async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: string, costEstimate: VideoCostEstimate): Promise<string[]> {
   const operationId = randomUUID().slice(0, 8);
   const outputDir = join(getWorkspaceAssetDir(input.workspacePath), 'videos');
   await mkdir(outputDir, { recursive: true });
@@ -60,6 +141,7 @@ async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: st
     model,
     aspectRatio: input.params.aspectRatio,
     durationSeconds: input.params.durationSeconds,
+    costEstimate,
     prompt: input.prompt,
     script: input.script,
     imageAssetRefs: input.imageAssetRefs,
@@ -79,6 +161,7 @@ async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: st
     `- 模型：${model}`,
     `- 比例：${input.params.aspectRatio}`,
     `- 时长：${input.params.durationSeconds}s`,
+    `- 内部 API 成本估算：${formatVideoCost(costEstimate)}`,
     `- 图片素材：${input.imageAssetRefs.length} 个`,
     `- 参考视频：${input.videoAssetRefs.length} 个`,
     `- 内容能力：${input.selectedSkillSlugs.join(', ') || '未选择'}`,
@@ -280,6 +363,7 @@ export class MediaProvider {
     if (config.videoProvider === 'generic-http' && apiKey && endpoint) {
       try {
         const providerResponse = await postGenericVideo({ endpoint, apiKey, model, request: input });
+        const meta = videoGenerationMeta(input, model, config.videoProvider, providerResponse);
         const urls = collectStringFields(providerResponse, ['url', 'video_url', 'videoUrl', 'download_url', 'downloadUrl']);
         const base64Videos = collectStringFields(providerResponse, ['b64_json', 'base64', 'video_base64', 'videoBase64']);
         const assetRefs: string[] = [];
@@ -302,10 +386,16 @@ export class MediaProvider {
             citations: input.citations,
             artifactRefs: assetRefs,
             input,
-            output: { assetRefs, provider: config.videoProvider },
+            output: { assetRefs, ...meta },
             durationMs: Date.now() - startedAt,
           });
-          return { logId: log.id, status: 'succeeded', message: `已通过真实视频生成服务生成 ${assetRefs.length} 个视频素材。`, assetRefs };
+          return {
+            logId: log.id,
+            status: 'succeeded',
+            message: `已通过真实视频生成服务生成 ${assetRefs.length} 个视频素材。内部 API 成本估算 ${formatVideoCost(meta.costEstimate)}。`,
+            assetRefs,
+            billing: meta.costEstimate,
+          };
         }
 
         const jobArtifact = await writeProviderJobArtifact(input, model, providerResponse);
@@ -321,12 +411,19 @@ export class MediaProvider {
           citations: input.citations,
           artifactRefs: [jobArtifact],
           input,
-          output: { assetRefs: [jobArtifact], provider: config.videoProvider, providerResponse },
+          output: { assetRefs: [jobArtifact], ...meta, providerResponse },
           durationMs: Date.now() - startedAt,
         });
-        return { logId: log.id, status: 'queued', message: '已提交真实视频生成服务；未直接返回视频文件，已保存任务响应。', assetRefs: [jobArtifact] };
+        return {
+          logId: log.id,
+          status: 'queued',
+          message: `已提交真实视频生成服务；未直接返回视频文件，已保存任务响应。内部 API 成本估算 ${formatVideoCost(meta.costEstimate)}。`,
+          assetRefs: [jobArtifact],
+          billing: meta.costEstimate,
+        };
       } catch (error) {
         const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
+        const meta = videoGenerationMeta(input, model, config.videoProvider);
         const log = await this.logs.append({
           workspacePath: input.workspacePath,
           kind: 'video',
@@ -338,15 +435,16 @@ export class MediaProvider {
           sceneCardIds: input.sceneCardIds,
           citations: input.citations,
           input,
-          output: { assetRefs: [] },
+          output: { assetRefs: [], ...meta },
           error: message,
           durationMs: Date.now() - startedAt,
         });
-        return { logId: log.id, status: 'failed', message, assetRefs: [] };
+        return { logId: log.id, status: 'failed', message, assetRefs: [], billing: meta.costEstimate };
       }
     }
 
-    const assetRefs = await writeVideoQueueArtifacts(input, model);
+    const meta = videoGenerationMeta(input, model, config.videoProvider);
+    const assetRefs = await writeVideoQueueArtifacts(input, model, meta.costEstimate);
     const log = await this.logs.append({
       workspacePath: input.workspacePath,
       kind: 'video',
@@ -359,15 +457,16 @@ export class MediaProvider {
       citations: input.citations,
       artifactRefs: assetRefs,
       input,
-      output: { assetRefs, placeholderType: 'video-queue' },
+      output: { assetRefs, placeholderType: 'video-queue', ...meta },
       error: 'VIDEO_PROVIDER_NOT_CONFIGURED',
       durationMs: Date.now() - startedAt,
     });
     return {
       logId: log.id,
       status: 'blocked',
-      message: '视频生成服务未配置：已保存可追溯队列文件，未伪造视频生成成功。',
+      message: `视频生成服务未配置：已保存可追溯队列文件，未伪造视频生成成功。内部 API 成本估算 ${formatVideoCost(meta.costEstimate)}。`,
       assetRefs,
+      billing: meta.costEstimate,
     };
   }
 }

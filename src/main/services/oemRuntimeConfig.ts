@@ -7,7 +7,7 @@ import type { ContentStudioBrandingConfig, OemRuntimeConfig } from '../../shared
 const DEFAULT_BRAND_ID = 'bugu';
 const DEFAULT_TENANT_ID = 'tenant-2230';
 const DEFAULT_PRODUCT_NAME = '布谷AI';
-const DEFAULT_API_BASE_URL = 'https://api.bugu.run/api';
+const DEFAULT_API_BASE_URL = 'https://bugu.run/api';
 
 function normalizeText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -55,7 +55,7 @@ export function getOemRuntimeConfig(): OemRuntimeConfig {
     logoUrl: normalizeText(raw?.logoUrl),
     supportUrl: normalizeText(raw?.supportUrl),
     apiBaseUrl: normalizeText(process.env.CONTENT_STUDIO_API_BASE_URL) ?? normalizeText(process.env.BUGU_API_BASE_URL) ?? normalizeText(raw?.apiBaseUrl) ?? DEFAULT_API_BASE_URL,
-    downloadBaseUrl: normalizeText(process.env.CONTENT_STUDIO_DOWNLOAD_BASE_URL) ?? normalizeText(raw?.downloadBaseUrl) ?? 'https://downloads.bugu.run',
+    downloadBaseUrl: normalizeText(process.env.CONTENT_STUDIO_DOWNLOAD_BASE_URL) ?? normalizeText(raw?.downloadBaseUrl) ?? 'https://bugu.run',
   };
 }
 

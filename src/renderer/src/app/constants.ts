@@ -6,6 +6,7 @@ import type {
   KnowledgeBaseType,
   KnowledgeSectionType,
 } from '../../../shared/types';
+import { VIDEO_ANALYSIS_DIMENSIONS } from '../../../shared/videoDimensions';
 export { IMAGE_TEMPLATE_CONFIGS, IMAGE_TEMPLATE_OPTIONS } from '../../../shared/imageTemplates';
 import type { ColorTheme, NavItem } from './types';
 
@@ -28,13 +29,17 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
       { key: 'image-reference-reverse', label: '对标图反推' },
       { key: 'image-scene-prompts', label: '场景提示词' },
       { key: 'image-green-screen', label: '绿幕文案图' },
+      { key: 'image-compliance', label: '合规检测' },
+      { key: 'image-retouch', label: '图片精修' },
     ],
   },
   {
     title: '视频',
     items: [
       { key: 'video', label: '视频生成' },
+      { key: 'video-script', label: '视频脚本' },
       { key: 'video-prompt', label: '视频 Prompt' },
+      { key: 'video-import', label: '成品视频导入' },
       { key: 'video-mix-export', label: '混剪包导出' },
     ],
   },
@@ -42,6 +47,8 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: '文案',
     items: [
       { key: 'article', label: '文章生成' },
+      { key: 'article-title', label: '标题生成' },
+      { key: 'article-script', label: '脚本生成' },
     ],
   },
   {
@@ -49,7 +56,9 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     items: [
       { key: 'knowledge', label: '成型知识库' },
       { key: 'knowledge-brand', label: '品牌 / 产品知识库' },
+      { key: 'knowledge-scenes', label: '场景库' },
       { key: 'knowledge-ip', label: 'IP 知识库' },
+      { key: 'knowledge-inputs', label: '输入源 / 文档转换' },
     ],
   },
   {
@@ -58,19 +67,22 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
       { key: 'assets', label: '素材库' },
       { key: 'assets-prompt-workbench', label: 'Prompt 工作台' },
       { key: 'assets-sop', label: 'SOP 工作流' },
+      { key: 'assets-history', label: '运行历史' },
     ],
   },
   {
     title: '管理',
     items: [
       { key: 'skills', label: 'skills 管理' },
+      { key: 'workflow-definition', label: '工作流定义', advanced: true },
+      { key: 'workflow-canvas', label: 'Canvas 编排', advanced: true },
     ],
   },
 ];
 
 export const PIPELINE_STEPS = ['知识库', '提示词包', '场景库', '图片素材', '视频队列', '文章生成'];
 
-export const VIDEO_DIMENSIONS = ['开头钩子', '钩子评分', '语气风格', '卖点逻辑', '镜头运镜', '画面构图', '关键词视觉元素', '字幕口播', '情绪曲线', '节奏密度', '视觉风格', '转化设计', '爆点因素', '内容公式', '转场方式', '用户停留点'];
+export const VIDEO_DIMENSIONS = [...VIDEO_ANALYSIS_DIMENSIONS];
 
 export const IMAGE_PROMPT_MODE_OPTIONS: Array<{ value: ImageGenerationRequest['promptMode']; label: string }> = [
   { value: 'free', label: '自由模式' },
