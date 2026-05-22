@@ -14,10 +14,12 @@ import {
   extractPromptFromLog,
   fileNameFromPath,
   formatDuration,
+  generationServiceLabel,
   isImageFilePath,
   isVideoFilePath,
   kindLabel,
   localAssetUrl,
+  statusLabel,
 } from '../../app/formatters';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 
@@ -290,10 +292,10 @@ function collectGeneratedAssets(logs: GenerationLogEntry[], promptDrafts: Prompt
         source: 'generation' as const,
         path,
         title: fileNameFromPath(path),
-        subtitle: `${kindLabel(log.kind)} · ${log.model ?? 'local'} · ${formatDuration(log.durationMs)}`,
+        subtitle: `${kindLabel(log.kind)} · ${generationServiceLabel(log.model)} · ${formatDuration(log.durationMs)}`,
         prompt: extractPromptFromLog(log),
         createdAt: log.createdAt,
-        tags: [kindLabel(log.kind), log.model ?? '', log.status].filter(Boolean),
+        tags: [kindLabel(log.kind), generationServiceLabel(log.model), statusLabel(log.status)],
         model: log.model,
         durationMs: log.durationMs,
         promptDraftId: relatedDraft?.id,

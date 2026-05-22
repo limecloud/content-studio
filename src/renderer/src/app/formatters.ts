@@ -70,6 +70,12 @@ export function statusLabel(status: GenerationLogEntry['status']): string {
   }[status];
 }
 
+export function generationServiceLabel(model?: string): string {
+  const value = model?.trim();
+  if (!value || value.toLowerCase().startsWith('local')) return '本地生成服务';
+  return `生成服务：${value}`;
+}
+
 export function formatDuration(durationMs?: number): string {
   if (durationMs === undefined) return '未记录耗时';
   if (durationMs < 1000) return `${durationMs}ms`;

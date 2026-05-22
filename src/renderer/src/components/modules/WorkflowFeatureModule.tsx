@@ -685,7 +685,7 @@ function nextGreenScreenCardAction(run: WorkflowRunRecord): WorkflowRunNextActio
   return {
     action: 'open-mix-export',
     title: '导出混剪包',
-    description: 'SOP 已完成，可把绿幕文案图加入 manifest，交给第三方混剪软件。',
+    description: 'SOP 已完成，可把绿幕文案图加入混剪清单，交给第三方混剪软件。',
   };
 }
 

@@ -20,10 +20,12 @@ import {
   extractPromptFromLog,
   fileNameFromPath,
   formatDuration,
+  generationServiceLabel,
   isImageFilePath,
   isVideoFilePath,
   kindLabel,
   localAssetUrl,
+  statusLabel,
 } from '../../app/formatters';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
@@ -155,9 +157,9 @@ function collectGeneratedCandidates(logs: GenerationLogEntry[], promptDrafts: Pr
         relatedSceneCardIds: log.sceneCardIds ?? relatedDraft?.sceneCardIds ?? [],
         workflowRunId: log.workflowRunId ?? relatedDraft?.workflowRunId,
         reworkSource: log.reworkSource,
-        tags: [kindLabel(log.kind), log.model ?? '', log.status].filter(Boolean),
+        tags: [kindLabel(log.kind), generationServiceLabel(log.model), statusLabel(log.status)],
         createdAt: log.createdAt,
-        subtitle: `${kindLabel(log.kind)} · ${log.model ?? 'local'} · ${formatDuration(log.durationMs)}`,
+        subtitle: `${kindLabel(log.kind)} · ${generationServiceLabel(log.model)} · ${formatDuration(log.durationMs)}`,
       }];
     });
   });

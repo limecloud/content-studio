@@ -1115,8 +1115,8 @@ test('新增 SOP 下一步动作能进入普通用户业务工作台', async ({}
 
       await runList.locator('.workflow-run-card').filter({ hasText: '评论痛点选题 SOP' }).first().click();
       await expect(runDetail).toContainText('评论痛点选题 SOP');
-      await expect(runDetail.locator('.workflow-run-action-panel')).toContainText('审核选题 Prompt');
-      await runDetail.locator('.workflow-run-action-panel button').filter({ hasText: '审核选题 Prompt' }).click();
+      await expect(runDetail.locator('.workflow-run-action-panel')).toContainText('审核选题提示词');
+      await runDetail.locator('.workflow-run-action-panel button').filter({ hasText: '审核选题提示词' }).click();
       await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.prompt-draft-editor')).toHaveValue(/价格和信任顾虑|客服异议处理|真实用户原声/);
 
@@ -1462,7 +1462,7 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     await expect(importEvidenceForm).toBeVisible();
     await expect(importEvidenceForm.locator('label').filter({ hasText: '第三方工具' }).locator('input')).toHaveValue('剪映专业版');
     await expect(importEvidenceForm.locator('label').filter({ hasText: '导入文件数' }).locator('input')).toHaveValue('2');
-    await expect(importEvidenceForm.locator('label').filter({ hasText: 'manifest 已导入或已核对' }).locator('input')).toBeChecked();
+    await expect(importEvidenceForm.locator('label').filter({ hasText: '清单文件已导入或已核对' }).locator('input')).toBeChecked();
     await expect(importEvidenceForm.locator('label').filter({ hasText: '已在混剪工具创建时间线 / 工程' }).locator('input')).toBeChecked();
     await importEvidenceForm.locator('label').filter({ hasText: '导入备注' }).locator('textarea').fill('E2E 验收：已按导入说明核对 manifest、成品视频和绿幕文案图。');
     await importEvidenceForm.getByRole('button', { name: '保存导入证据' }).click();

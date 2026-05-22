@@ -21,6 +21,7 @@ import { IMAGE_TEMPLATE_CONFIGS } from "../../app/constants";
 import {
   extractPromptFromLog,
   fileNameFromPath,
+  generationServiceLabel,
   imageRequestFromLog,
   statusLabel,
 } from "../../app/formatters";
@@ -1110,7 +1111,7 @@ export function ImageModule({
                   <p>{log.summary ?? log.error ?? "暂无摘要。"}</p>
                   <small>
                     {new Date(log.createdAt).toLocaleString()} ·{" "}
-                    {log.model ?? "未记录模型"}
+                    {generationServiceLabel(log.model)}
                   </small>
                   <div className="image-preview-log-actions">
                     <button
