@@ -10,6 +10,7 @@
 - `productName` / `shortName`：窗口标题、登录页、侧边栏、关于页和本地 fallback branding。
 - `artifactName`：安装包文件名前缀。
 - `apiBaseUrl`：客户端账号、bootstrap 和更新检查的控制面 API base URL。
+- `downloadBaseUrl`：客户端更新兜底清单和安装包所在的统一 R2 下载域名，例如 `https://downloads.limeai.run`。
 - `supportUrl`：账号验证 / 支持入口，可选。
 - `skillPackageName` / `skillPackageDescription` / `skillMimeType`：`.skill` 文件关联信息。
 - `icons.png` / `icons.icns` / `icons.ico`：当前品牌图标资源。

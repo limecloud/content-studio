@@ -178,6 +178,7 @@ const runtimeConfig = {
   productName: brand.productName,
   shortName: brand.shortName,
   apiBaseUrl: brand.apiBaseUrl,
+  downloadBaseUrl: normalizeId(brand.downloadBaseUrl, undefined),
   logoUrl: `data:image/png;base64,${(await readFile(iconPngPath)).toString('base64')}`,
   supportUrl: brand.supportUrl,
   generatedAt: new Date().toISOString(),

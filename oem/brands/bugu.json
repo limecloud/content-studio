@@ -6,6 +6,7 @@
   "shortName": "布谷AI",
   "artifactName": "bugu",
   "apiBaseUrl": "https://api.bugu.run/api",
+  "downloadBaseUrl": "https://downloads.bugu.run",
   "supportUrl": "https://bugu.run/login/?mode=verify",
   "skillPackageName": "Bugu AI Skill Package",
   "skillPackageDescription": "布谷AI Skill 安装包",

@@ -32,6 +32,20 @@ interface RemoteDownloadPayload {
   assets?: RemoteDownloadAsset[];
 }
 
+interface R2ManifestFile {
+  name?: string;
+  size?: number;
+  sha256?: string;
+  r2Key?: string;
+}
+
+interface R2ManifestPayload {
+  tag?: string;
+  version?: string;
+  platform?: string;
+  files?: R2ManifestFile[];
+}
+
 interface DownloadSource {
   payload: RemoteDownloadPayload;
   manifestUrl: string;
@@ -43,11 +57,15 @@ function normalizeText(value: unknown): string {
 }
 
 function getRuntimeBrandId(): string {
-  return normalizeText(getOemRuntimeConfig().brandId) || 'bugu';
+  return normalizeText(getOemRuntimeConfig().brandId) || 'content-studio';
 }
 
 function getRuntimeApiBaseUrl(): string {
-  return normalizeText(getOemRuntimeConfig().apiBaseUrl).replace(/\/+$/, '') || 'https://api.bugu.run/api';
+  return normalizeText(getOemRuntimeConfig().apiBaseUrl).replace(/\/+$/, '') || 'https://lime-api.limeai.run/api';
+}
+
+function getRuntimeDownloadBaseUrl(): string {
+  return normalizeText(getOemRuntimeConfig().downloadBaseUrl).replace(/\/+$/, '') || 'https://downloads.limeai.run';
 }
 
 function getLatestApiUrl(): string {
@@ -57,10 +75,17 @@ function getLatestApiUrl(): string {
     || `${getRuntimeApiBaseUrl()}/v1/public/agent-apps/${encodeURIComponent(appId)}/downloads/latest?channel=stable`;
 }
 
+function currentR2PlatformKey(): string {
+  if (process.platform === 'win32') return 'win';
+  if (process.platform === 'darwin') return 'mac';
+  if (process.platform === 'linux') return 'linux';
+  return process.platform;
+}
+
 function getLatestManifestUrl(): string {
   const brandId = getRuntimeBrandId();
   return process.env.CONTENT_STUDIO_UPDATE_MANIFEST_URL
-    || `https://downloads.bugu.run/${encodeURIComponent(brandId)}/stable/latest.json`;
+    || `${getRuntimeDownloadBaseUrl()}/desktop/content-studio/${encodeURIComponent(brandId)}/${currentR2PlatformKey()}/latest.json`;
 }
 
 function getUpdateSourceLabel(): string {
@@ -105,6 +130,64 @@ function safeHttpUrl(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function kindFromFileName(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.exe')) return 'nsis';
+  if (lower.endsWith('.dmg')) return 'dmg';
+  if (lower.endsWith('.zip')) return 'zip';
+  if (lower.endsWith('.appimage')) return 'appimage';
+  return '';
+}
+
+function platformFromManifest(fileName: string, platform: string | undefined): string {
+  const lower = fileName.toLowerCase();
+  if (platform === 'win' || lower.endsWith('.exe')) return lower.includes('arm64') ? 'windows-arm64' : 'windows-x64';
+  if (platform === 'mac' || lower.endsWith('.dmg') || lower.endsWith('.zip')) {
+    return lower.includes('x64') || lower.includes('x86_64') ? 'macos-x64' : 'macos-arm64';
+  }
+  if (platform === 'linux' || lower.endsWith('.appimage')) return lower.includes('arm64') ? 'linux-arm64' : 'linux-x64';
+  return platform || currentPlatformKey();
+}
+
+function isInstallerFile(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  return ['.exe', '.dmg', '.zip', '.appimage'].some((extension) => lower.endsWith(extension));
+}
+
+function urlFromR2Key(r2Key: string): string {
+  return `${getRuntimeDownloadBaseUrl()}/${r2Key.replace(/^\/+/, '')}`;
+}
+
+function sourceFromR2Manifest(value: R2ManifestPayload, manifestUrl: string, sourceLabel: string): DownloadSource {
+  const assets = (value.files ?? [])
+    .filter((file) => isInstallerFile(normalizeText(file.name)) && normalizeText(file.r2Key))
+    .map<RemoteDownloadAsset>((file) => {
+      const fileName = normalizeText(file.name);
+      const platform = platformFromManifest(fileName, value.platform);
+      const kind = kindFromFileName(fileName);
+      return {
+        platform,
+        kind,
+        label: fileName,
+        fileName,
+        url: urlFromR2Key(normalizeText(file.r2Key)),
+        sha256: normalizeText(file.sha256),
+        size: file.size,
+        primary: platform === currentPlatformKey() && kind === kindPreference()[0],
+      };
+    });
+
+  return {
+    payload: {
+      version: value.version || value.tag,
+      releasePageUrl: GITHUB_RELEASES_URL,
+      assets,
+    },
+    manifestUrl,
+    sourceLabel,
+  };
 }
 
 function currentPlatformKey(): string {
@@ -154,6 +237,10 @@ function sourceFromJson(value: unknown, manifestUrl: string, sourceLabel: string
   const payload = envelope.data && typeof envelope.data === 'object'
     ? envelope.data as RemoteDownloadPayload
     : value as RemoteDownloadPayload;
+  const maybeR2Manifest = payload as R2ManifestPayload;
+  if (Array.isArray(maybeR2Manifest.files)) {
+    return sourceFromR2Manifest(maybeR2Manifest, manifestUrl, sourceLabel);
+  }
   return { payload, manifestUrl, sourceLabel };
 }
 

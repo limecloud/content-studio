@@ -102,6 +102,7 @@ export interface OemRuntimeConfig {
   logoUrl?: string;
   supportUrl?: string;
   apiBaseUrl?: string;
+  downloadBaseUrl?: string;
 }
 
 export interface BuguCurrentSession {
