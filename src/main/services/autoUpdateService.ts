@@ -1,10 +1,12 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, shell } from 'electron';
 import { mkdir } from 'node:fs/promises';
+import type { BrowserWindow } from 'electron';
 import type { AutoUpdateAsset, AutoUpdateState, UpdateActionResult, UpdateCheckOptions } from '../../shared/types';
 import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { SettingsStore } from './settingsStore';
 
 const GITHUB_RELEASES_URL = 'https://github.com/limecloud/content-studio/releases/latest';
+const GITHUB_RELEASES_API_URL = 'https://api.github.com/repos/limecloud/content-studio/releases/latest';
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const STARTUP_CHECK_DELAY_MS = 5000;
 const REQUEST_TIMEOUT_MS = 15000;
@@ -54,6 +56,20 @@ interface DownloadSource {
   sourceLabel: string;
 }
 
+interface GitHubReleaseAsset {
+  name?: string;
+  size?: number;
+  browser_download_url?: string;
+}
+
+interface GitHubReleasePayload {
+  tag_name?: string;
+  name?: string;
+  html_url?: string;
+  published_at?: string;
+  assets?: GitHubReleaseAsset[];
+}
+
 function normalizeText(value: unknown): string {
   return String(value ?? '').trim();
 }
@@ -88,6 +104,10 @@ function getLatestManifestUrl(): string {
   const brandId = getRuntimeBrandId();
   return process.env.CONTENT_STUDIO_UPDATE_MANIFEST_URL
     || `${getRuntimeDownloadBaseUrl()}/desktop/content-studio/${encodeURIComponent(brandId)}/${currentR2PlatformKey()}/latest.json`;
+}
+
+function getGitHubReleaseApiUrl(): string {
+  return process.env.CONTENT_STUDIO_GITHUB_RELEASE_API_URL || GITHUB_RELEASES_API_URL;
 }
 
 function getUpdateSourceLabel(): string {
@@ -132,6 +152,11 @@ function safeHttpUrl(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function sourceErrorMessage(label: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `${label}: ${message}`;
 }
 
 function kindFromFileName(fileName: string): string {
@@ -249,12 +274,64 @@ function sourceFromJson(value: unknown, manifestUrl: string, sourceLabel: string
   return { payload, manifestUrl, sourceLabel };
 }
 
+function assetMatchesRuntimeBrand(fileName: string): boolean {
+  const brandId = getRuntimeBrandId().toLowerCase();
+  return Boolean(brandId) && fileName.toLowerCase().startsWith(`${brandId}-`);
+}
+
+function sourceFromGitHubRelease(value: unknown): DownloadSource {
+  const payload = value && typeof value === 'object' ? value as GitHubReleasePayload : {};
+  const releasePageUrl = safeHttpUrl(payload.html_url) || GITHUB_RELEASES_URL;
+  const releaseAssets = (payload.assets ?? [])
+    .map((asset) => ({
+      name: normalizeText(asset.name),
+      size: asset.size,
+      url: safeHttpUrl(asset.browser_download_url),
+    }))
+    .filter((asset) => asset.name && asset.url && isInstallerFile(asset.name));
+  const selectedAssets = releaseAssets.filter((asset) => assetMatchesRuntimeBrand(asset.name));
+
+  return {
+    payload: {
+      version: payload.tag_name || payload.name,
+      publishedAt: payload.published_at,
+      releasePageUrl,
+      releaseNotesUrl: releasePageUrl,
+      assets: selectedAssets.map((asset) => {
+        const platform = platformFromManifest(asset.name, undefined);
+        const kind = kindFromFileName(asset.name);
+        return {
+          platform,
+          kind,
+          label: asset.name,
+          fileName: asset.name,
+          url: asset.url,
+          size: asset.size,
+          primary: platform === currentPlatformKey() && kind === kindPreference()[0],
+        };
+      }),
+    },
+    manifestUrl: getGitHubReleaseApiUrl(),
+    sourceLabel: 'GitHub Release',
+  };
+}
+
+function ensureUsableSource(source: DownloadSource): DownloadSource {
+  if (!normalizeVersion(source.payload.version)) {
+    throw new Error('更新清单缺少版本号。');
+  }
+  return source;
+}
+
 async function fetchJson(url: string): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(url, {
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'content-studio-updater',
+      },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
@@ -267,17 +344,33 @@ async function fetchJson(url: string): Promise<unknown> {
 async function loadLatestSource(): Promise<DownloadSource> {
   const latestApiUrl = getLatestApiUrl();
   const latestManifestUrl = getLatestManifestUrl();
+  const errors: string[] = [];
   try {
     const json = await fetchJson(latestApiUrl);
-    return sourceFromJson(json, latestApiUrl, getUpdateSourceLabel());
+    return ensureUsableSource(sourceFromJson(json, latestApiUrl, getUpdateSourceLabel()));
   } catch (error) {
+    errors.push(sourceErrorMessage(getUpdateSourceLabel(), error));
+  }
+
+  try {
     const json = await fetchJson(latestManifestUrl);
-    const source = sourceFromJson(json, latestManifestUrl, '发布清单');
+    const source = ensureUsableSource(sourceFromJson(json, latestManifestUrl, '发布清单'));
     if (!source.payload.releaseNotesUrl && !source.payload.releasePageUrl) {
       source.payload.releasePageUrl = GITHUB_RELEASES_URL;
     }
     return source;
+  } catch (error) {
+    errors.push(sourceErrorMessage('发布清单', error));
   }
+
+  try {
+    const json = await fetchJson(getGitHubReleaseApiUrl());
+    return ensureUsableSource(sourceFromGitHubRelease(json));
+  } catch (error) {
+    errors.push(sourceErrorMessage('GitHub Release', error));
+  }
+
+  throw new Error(`无法读取更新清单：${errors.join('；')}`);
 }
 
 export class AutoUpdateService {

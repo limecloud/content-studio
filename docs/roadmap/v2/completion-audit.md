@@ -1,7 +1,7 @@
 # 布谷AI内容工厂 v2 完成度审计
 
 更新时间：2026-05-22
-状态：Local Verified / 真实 provider 联调待确认
+状态：Local Verified / 发布级真实证据待补
 
 ## 1. 审计目标
 
@@ -13,9 +13,9 @@
 
 真实 provider 发布门槛：`npm run verify:v2:providers:strict`。严格模式下必须显式开启网络和媒体联调，且只要存在 `failed` 或 `blocked` 就退出非 0；默认 dry-run 仍用于诊断，不作为发布通过信号。
 
-真实业务素材验收入口：`npm run verify:v2:acceptance`。当前默认使用 local-sample 固化品牌资料、IP 六层、产品资料结构化、主图 / 卖点图 / 详情页 Prompt 追溯、评论痛点聚类、标题方向、客服异议话术、对标图字段、参考视频拆解、绿幕文案图、成功素材回炉、混剪包导入说明、平台草稿包、视频成本边界、跨产物 runId 关键覆盖和一致性的验收口径；真实素材可通过 `npm run verify:v2:acceptance -- --input docs/roadmap/v2/business-acceptance-input.example.json` 替换同一报告输入，也可通过 `npm run verify:v2:acceptance -- --workspace <工作区路径>` 直接从 `.content-studio/` 读取已生成产物，而不是另建一套不可复核的人工清单。目录 / 工作区模式会校验输入源里的产品资料 / 评论反馈、视频拆解与脚本、绿幕文案图、成功素材沉淀、混剪 manifest 的 `packagedPath` 是否指向真实文件，并校验 `import-guide.md` 是否覆盖第三方混剪软件、素材目录、CSV 和人工审核边界。需要把“已在真实混剪工具导入”作为门槛时，加 `-- --require-external-mix-evidence`，并在混剪包目录放 `import-evidence.json` 及截图 / 录屏 / 验收记录文件，参考 `docs/roadmap/v2/mix-import-evidence.example.json`。需要证明不是 local-sample 或手填清单，而是完整真实工作区闭环时，加 `-- --require-real-workspace-evidence`；该门槛要求 `--workspace`、真实产品资料 / 评论反馈 / 参考图视频、视频拆解、绿幕图审核、成功素材沉淀、混剪包实存文件、平台草稿包、runId 一致性和 provider strict 证据都成立。需要留存验收证据时使用 `-- --output <报告路径>` 或 `CONTENT_STUDIO_V2_ACCEPTANCE_REPORT=<报告路径>`。
+真实业务素材验收入口：`npm run verify:v2:acceptance`。当前默认使用 local-sample 固化品牌资料、IP 六层、产品资料结构化、主图 / 卖点图 / 详情页 Prompt 追溯、评论痛点聚类、标题方向、客服异议话术、对标图字段、参考视频拆解、绿幕文案图、成功素材回炉、混剪包导入说明、平台草稿包、视频成本边界、跨产物 runId 关键覆盖和一致性的验收口径；真实素材可通过 `npm run verify:v2:acceptance -- --input docs/roadmap/v2/business-acceptance-input.example.json` 替换同一报告输入，也可通过 `npm run verify:v2:acceptance -- --workspace <工作区路径>` 直接从 `.content-studio/` 读取已生成产物，而不是另建一套不可复核的人工清单。目录 / 工作区模式会校验输入源里的产品资料 / 评论反馈、视频拆解与脚本、绿幕文案图、成功素材沉淀、混剪清单文件的 `packagedPath` 是否指向真实文件，并校验 `import-guide.md` 是否覆盖第三方混剪软件、素材目录、CSV 和人工审核边界。需要把“已在真实混剪工具导入”作为门槛时，加 `-- --require-external-mix-evidence`，并在混剪包目录放 `import-evidence.json` 及截图 / 录屏 / 验收记录文件，参考 `docs/roadmap/v2/mix-import-evidence.example.json`。需要证明不是 local-sample 或手填清单，而是完整真实工作区闭环时，加 `-- --require-real-workspace-evidence --require-external-mix-evidence`；其中 `--require-real-workspace-evidence` 会自动要求真实混剪工具导入证据，并要求 `--workspace`、真实产品资料 / 评论反馈 / 参考图视频、视频拆解、绿幕图审核、成功素材沉淀、混剪包实存文件、平台草稿包、runId 一致性和 provider strict 证据都成立。需要留存验收证据时使用 `-- --output <报告路径>` 或 `CONTENT_STUDIO_V2_ACCEPTANCE_REPORT=<报告路径>`。
 
-成套验收证据入口：`npm run verify:v2:evidence -- --output-dir docs/dev/v2-acceptance/<日期>`。该命令会在同一目录生成 `provider-check.json`、`business-acceptance.json`、`manifest.json` 和 `SUMMARY.md`；默认无 Key 环境只保留 provider blocked 诊断，不把它当成本地业务验收失败。真实发布门槛使用 `-- --provider-strict --require-real-workspace-evidence --workspace <工作区路径>` 并配合 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1`。
+成套验收证据入口：`npm run verify:v2:evidence -- --output-dir docs/dev/v2-acceptance/<日期>`。该命令会在同一目录生成 `provider-check.json`、`business-acceptance.json`、`manifest.json` 和 `SUMMARY.md`；默认无 Key 环境只保留 provider blocked 诊断，不把它当成本地业务验收失败。真实发布门槛优先使用 `npm run verify:v2:release -- --workspace <工作区路径> --output-dir docs/dev/v2-acceptance/<日期>`；该入口固定启用 provider strict、真实工作区闭环、真实混剪导入证据、网络联调和媒体联调。
 
 v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和业务验收报告，并已纳入 `npm run verify:local`。真实 provider 发布门槛仍使用 `verify:v2:providers:strict`，避免无 Key 的本地环境伪装为生产就绪。
 
@@ -87,7 +87,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 | US-14 / UC-16 场景提示词生成 | 从场景卡生成 10 组图片 / 图生视频 / 文案 / 绿幕图提示词，并进入下游。 | 场景提示词页新增“场景库到素材生产”导轨，提示词组生成、图片生成、视频 Prompt 的下一步不再靠用户猜；新增“下游交接”面板，区分内部图片 / 视频 / 文案 / 绿幕下游和外部图片 / 视频工具，视频复制会记录到 `PromptDraft.copyCount / lastCopiedTarget` 并进入待导入状态。 | 仍需真实外部工具交接和内部 provider 生成质量验收。 |
 | US-15 / US-16 / UC-17 / UC-18 IP 运营 | 构建六层 IP 知识库，再延伸出口播、私域、产品化等场景。 | IP 知识库页新增六层导轨，并把层级 key 显示为中文业务层级，避免普通用户看到 `identity`、`methodology` 等内部字段；新增结构化“IP 运营场景库”，按口播、私域、产品化等场景展示来源 IP 版本、延伸知识库状态、提示词状态和下一步动作。 | 仍需真实 IP 素材验收口播 / 私域 / 产品化输出质量。 |
 | US-05 / UC-08 / UC-09 视频 Prompt 外部生成 | 生成 15 秒视频提示词，复制到第三方平台，成品回来后手动导入。 | 视频 Prompt 页新增外部生成导轨，强调软件只记录提示词和复制动作；导航新增“成品视频导入”；复制后按本地证据派生“已复制待导入 / 已导入成品 / 未复制”状态并可筛选。 | 仍需真实第三方平台交接后的业务素材验收。 |
-| US-06 / UC-10 绿幕文案图 | 把口播脚本或卖点拆成标题卡、卖点卡和 CTA 卡，审核后交给第三方混剪叠加。 | 绿幕文案图已纳入业务验收；`green-screen-card-package` SOP 已能把脚本 / 卖点 / CTA 拆成三类本地 9:16 SVG 绿幕卡，并自动创建 pending 审核记录，后续可作为 overlay 进入混剪 manifest。 | 仍需真实口播脚本、真实绿幕图和真实混剪工具导入验收。 |
+| US-06 / UC-10 绿幕文案图 | 把口播脚本或卖点拆成标题卡、卖点卡和 CTA 卡，审核后交给第三方混剪叠加。 | 绿幕文案图已纳入业务验收；`green-screen-card-package` SOP 已能把脚本 / 卖点 / CTA 拆成三类本地 9:16 SVG 绿幕卡，并自动创建 pending 审核记录，后续可作为 overlay 进入混剪清单。 | 仍需真实口播脚本、真实绿幕图和真实混剪工具导入验收。 |
 | US-07 / UC-11 审核与入库 | 审核人员能从素材看到输入、提示词、参数、质检和下一步。 | 导航新增“合规检测”和“图片精修”，让审核 / 回炉入口可直接找到；素材详情已补“审核决策”面板，按来源、质检结果、建议下一步和处理动作组织；驳回素材必须填写原因，回炉提示词会带入该原因。 | 已接入生成日志和关联 Prompt 草稿中的结构化质检 / 风险证据；仍需真实 provider 素材质量验收。 |
 | US-08 / UC-12 混剪素材包 | 剪辑人员拿到已通过素材文件夹、manifest、CSV 和导入说明。 | 导航保留“混剪包导出”，成品视频导入和运行历史成为可发现入口；导出包新增 `import-guide.md`，说明第三方混剪软件导入顺序、`videos/` / `overlays/` 目录、`manifest.csv` 用法和人工审核边界，并纳入业务验收。 | 仍需真实混剪工具按导入说明试导入一次，补外部验收证据。 |
 | US-09 / US-12 内容工程师 SOP / Canvas | 工程师维护定义，普通用户用表单执行。 | 工作流定义和 Canvas 已收进“高级维护”，默认导航和 SOP 页面只展示普通用户需要的执行表单、运行记录和恢复路径；内容工程师展开高级维护后仍可编辑定义和 Canvas。 | 仍需真实团队权限 / 角色策略验收；v2 暂不做复杂权限系统。 |
@@ -260,7 +260,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 验收：
 
 - 不配置视频 API 也能生成并复制视频 Prompt。
-- 绿幕文案图包含标题卡、卖点卡和 CTA 卡，文案可读、通过审核，并以 overlay 写入混剪 manifest。
+- 绿幕文案图包含标题卡、卖点卡和 CTA 卡，文案可读、通过审核，并以 overlay 写入混剪清单。
 - 手动导入视频关联原 Prompt。
 - 通过审核的第三方成品视频可在混剪包页沉淀 Prompt，并回写 SOP artifactRefs。
 - 混剪包只导出已通过审核的素材，包含 manifest、CSV、导入说明和 SOP 追溯。
@@ -485,7 +485,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 - 外部输入可以手填 `actualFiles` / `actualTraceFields` / `actualAssetKinds`，也可以只提供 `videoPackage.packageDir`、`platformDraft.packageDir` 或对应 `manifestPath`，脚本会扫描目录并解析 manifest 提取真实交付证据。
 - 报告支持 `-- --workspace <path>` 或 `CONTENT_STUDIO_V2_ACCEPTANCE_WORKSPACE=<path>`，可从工作区 `.content-studio/brand-knowledge-bases.json`、`ip-knowledge-bases.json`、`scene-cards.json`、`generation-logs.json`、`mix-packages.json` 和 `platform-drafts.json` 自动组装验收输入。
 - 报告会校验 `mediaCost.actual`，或从最新视频 `generation-log.output.costEstimate` 自动提取模型、时长、币种、单价、总成本和成本来源，确保内部视频 API 成本边界可复核。
-- 报告会校验 `trace.requiredSources` 与 `trace.actualWorkflowRunRefs`，或从 reference log、视频拆解日志、视频脚本日志、视频生成日志、混剪 manifest、平台草稿 manifest / record 自动提取 `workflowRunId`，确保关键产物都留下证据且没有分叉到不同 SOP 运行。
+- 报告会校验 `trace.requiredSources` 与 `trace.actualWorkflowRunRefs`，或从 reference log、视频拆解日志、视频脚本日志、视频生成日志、混剪清单文件、平台草稿 manifest / record 自动提取 `workflowRunId`，确保关键产物都留下证据且没有分叉到不同 SOP 运行。
 - 已提供外部输入示例：`docs/roadmap/v2/business-acceptance-input.example.json`。
 - 品牌场景验收复用生产 `buildScenePromptGroupContent` 组合器，并把图片 / 视频 Prompt 数量、Prompt 片段和结构字段写入 `promptGroupEvidence`，避免业务验收和真实生成逻辑分裂。
 - 报告会内嵌 `verify:v2:providers` 的 dry-run 结果；provider 未配置时保留 blocked 状态，但不把 blocked 当作本地业务口径失败。
@@ -573,9 +573,9 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 - `buguai.v2-business-acceptance.v1` 的品牌分区新增 `scene-prompt-structure` 检查，要求生产 Prompt 组合器输出的图片 Prompt 包含主体、画面、自然光和负面约束，视频 Prompt 包含 0-3s / 3-9s / 9-15s 结构、自然光和负面约束。
 - reference 分区新增 `reference-source-kinds` 检查，真实验收必须同时证明参考图和参考视频来源，避免只用单一图片冒充完整对标链路。
 - `reference-boundary` 不再只因存在参考来源而通过，还要求反推输出或手工验收输入显式保留竞品复制和素材授权风险边界。
-- delivery 分区新增 `mix-package-assets` 检查，混剪 manifest 必须包含至少一个视频素材记录，避免只有目录和 manifest 的空壳包。
+- delivery 分区新增 `mix-package-assets` 检查，混剪清单文件必须包含至少一个视频素材记录，避免只有目录和清单文件的空壳包。
 - 目录 / 工作区模式下，`mix-package-assets` 还会校验 manifest `assets[].packagedPath` 指向的本地文件真实存在，避免 manifest 指向不存在素材。
-- delivery 分区新增 `mix-package-approved-assets` 检查，混剪 manifest 必须保留 `reviewStatus: approved`，证明导出素材已通过审核门槛。
+- delivery 分区新增 `mix-package-approved-assets` 检查，混剪清单文件必须保留 `reviewStatus: approved`，证明导出素材已通过审核门槛。
 - delivery 分区新增 `platform-draft-trace` 检查，平台草稿 manifest 必须保留 `workflowRunId`、`promptDraftId` 和 `sourceLogId`，保证草稿能回到 SOP、PromptDraft 和来源文章日志。
 - delivery 分区新增 `platform-draft-content` 检查，平台草稿包必须证明正文、复制稿、格式指南和发布检查清单都有可复核内容，避免只交付空文件。
 - `platform-draft-content` 同时要求 `publishBoundary` 证据，证明平台草稿包只用于本地人工复制和发布前确认，不包含账号授权或自动发布任务。
@@ -773,7 +773,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 - `InputSourcePurpose` 新增 `user-feedback`，和 v2 工作流模型中的 `user-feedback` 对齐。
 - 新增 `src/shared/userFeedbackInsights.ts`，从评论、差评、客服问题和私信输入源中提取真实原声，并按价格信任、使用门槛、人群禁忌、场景需求、售后包装、竞品对比等维度聚类。
 - 输入源页新增“评论痛点聚类 / 用户问题矩阵”面板，普通用户登记评论后可以看到痛点分类、证据示例、推荐标签、选题方向、客服异议处理话术和 `痛点 x 人群 x 场景 x 内容角度` 矩阵。
-- Prompt 工作台、工作流输入源选择和视频 Prompt 来源已把 `user-feedback` 纳入可用事实源，评论痛点能继续进入标题、文案、Prompt 和 SOP。
+- Prompt 工作台、工作流输入源选择和视频提示词来源已把 `user-feedback` 纳入可用事实源，评论痛点能继续进入标题、文案、Prompt 和 SOP。
 - 聚类只引用用户输入的原声；未识别到明确类型时归入“待人工归类的真实问题”，不编造痛点。
 
 已补验证：
@@ -866,7 +866,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 
 已完成：
 
-- `scripts/v2-business-acceptance.mjs` 新增 `greenScreen` 分区，覆盖 `US-06 / UC-10` 的“口播脚本 / 卖点 -> 标题卡、卖点卡、CTA 卡 -> 绿幕文案图 -> 审核 -> 混剪 manifest”路径。
+- `scripts/v2-business-acceptance.mjs` 新增 `greenScreen` 分区，覆盖 `US-06 / UC-10` 的“口播脚本 / 卖点 -> 标题卡、卖点卡、CTA 卡 -> 绿幕文案图 -> 审核 -> 混剪清单”路径。
 - 验收会检查绿幕卡类型是否包含 `title`、`selling-point` 和 `cta`，字段是否包含 `type`、`title`、`text`、`durationSeconds`、`assetPath`、`background`、`aspectRatio` 和 `promptDraftId`。
 - 绿幕卡必须是 `background=green-screen`、`aspectRatio=9:16`，资产路径必须进入 `overlays/` 或 SVG / PNG / WebP 等可打包文件；文案超过可读长度会失败，避免普通用户拿到不可读的叠加字幕图。
 - 绿幕卡必须通过审核；混剪包验收从“至少有视频素材”升级为“视频素材 + 绿幕图素材”同时存在，manifest 里的 overlay `packagedPath` 必须指向真实文件。
@@ -1303,17 +1303,295 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 
 - 高级维护和本地文件层仍保留结构化定义、ID、路径和 manifest 文件名，用于内容工程师维护、验收脚本和第三方交接；本轮只收敛普通用户可见表达。
 
+### 6.59 2026-05-22 视频三步工作台改为 Prompt 交接主路径
+
+已完成：
+
+- 参考视频拆解工作台第三步从“视频生成 / 生成视频队列”收敛为“Prompt 交接 / 打开视频 Prompt 交接”，普通用户主按钮不再默认创建内部视频任务。
+- 打开交接会把当前视频 Prompt、脚本、分镜、参考素材、时长、画幅和“第三方生成后手动导入”边界登记为本次输入源，并创建已确认的视频 Prompt 草稿。
+- 交接后的页面进入“视频 Prompt”工作台，沿用复制到第三方平台、记录复制动作、导入成品视频的 `US-05 / UC-08 / UC-09` 主路径。
+- 视频入口和自定义视频 Prompt 入口的说明同步收敛为“生成视频 Prompt / 外部复制 / 成品手动导入”，不再把内部生成服务当默认步骤。
+- 成品视频导入页在未选择视频 Prompt 或未记录复制动作时禁用导入按钮，并提示先复制视频 Prompt，避免绕过外部生成交接记录直接导入无关联成品。
+- 内部视频生成保留为“可选：内部视频生成”，继续在未配置真实服务时走 blocked 分支和成本估算，不伪造视频结果。
+- E2E 已同步断言：第三步主动作进入视频 Prompt 交接并产生可追溯输入源；可选内部生成仍记录真实 blocked 视频日志。
+
+边界：
+
+- 这一刀纠正的是三步工作台的默认流向；真实第三方平台复制、真实成品视频导入和真实素材审核仍属于第 7 节真实验收剩余项，不能据此宣称 v2 整体完成。
+
+### 6.60 2026-05-22 成功素材沉淀和回炉 Prompt 去工程追溯字段
+
+已完成：
+
+- 驳回素材回炉时写入 Prompt 版本的内容从“原素材路径 / 原素材 Key”收敛为“原素材 / 原素材文件 / 审核记录已关联 / 回炉原因”，避免普通用户把 asset key 当作复用方法。
+- 成功素材反向沉淀 Prompt 的素材来源从 `generation-log / input-source / SOP Run / 场景卡 ID 列表` 收敛为“生成记录 / 输入资料 / 已关联运行记录 / 场景卡 N 张”等业务语义。
+- 底层 `assetKey / sourceId / workflowRunId / artifactRefs` 仍继续保留在 store、运行记录和验收脚本可读位置，不削弱 SOP 追溯。
+- E2E 已补断言：视频素材包 SOP 的成品视频沉淀、图片 SOP 回炉后的成功素材沉淀，Prompt 编辑器里不能出现 `原素材 Key / SOP Run / generation-log / input-source`。
+
+边界：
+
+- 这一刀只处理 Prompt 正文的普通用户可读性；真实成功素材是否值得复用，仍需第 7 节真实素材质量、授权边界和回炉效果验收。
+
+### 6.61 2026-05-22 场景提示词视频交接保留当前草稿上下文
+
+已完成：
+
+- 场景提示词页的“打开视频 Prompt”入口不再只切模块，而是先选中当前场景生成的视频 Prompt 草稿，再进入视频 Prompt 工作台。
+- “去导入成品”会先选中当前视频 Prompt 草稿，再进入成品视频导入页；导入页继续使用复制状态控制是否允许导入。
+- E2E 已补断言：从场景提示词复制到 Vidu 后点击“去导入成品”，导入页必须显示当前 Prompt 已复制状态、最近目标为 Vidu，且“导入并关联提示词”可用。
+
+边界：
+
+- 场景提示词复制到真实外部工具后的成品质量和导入证据，仍需按第 7 节真实外部工具验收补齐。
+
+### 6.62 2026-05-22 产品商业素材 Prompt 和 Agent 上下文去内部追溯字段
+
+已完成：
+
+- 产品商业素材 SOP 生成的主图 / 卖点图 / 详情页模块 Prompt 正文不再写 source id、`追溯输入源` 或 `main-image` 这类内部用途枚举；普通用户只看到“追溯资料：已关联 N 份产品资料 / SKU 表”。
+- 产品资料结构化生成的 Prompt 仍保留产品名、SKU / 规格、卖点、适用场景和禁用表达，底层 `sourceIds` 继续留在步骤输出和 `artifactRefs`，不削弱验收脚本追溯。
+- Agent Prompt 会话和 Prompt 草稿生成上下文从 `kind / purpose / status`、本地转换稿路径、场景卡 ID 收敛为“产品资料 / 评论问题 / 参考素材 / 已登记 / 待补齐 / 已生成可追溯转换稿 / 场景卡 N 张”等业务语义，避免模型把工程字段写回用户可复用 Prompt。
+- Skill 物化来源从“输入源 ID / 场景卡 ID”收敛为“输入资料 N 份 / 场景卡 N 张”。
+- 视频素材包 SOP 运行摘要和导出步骤继续收敛为“混剪清单”，不把 manifest 当普通用户动作目标。
+- E2E 已补断言：产品商业素材 SOP 打开图片工作台后，Prompt 内容必须包含资料追溯数量，且不能出现被选产品资料 source id、`追溯输入源` 或 `类型：main-image`。
+
+边界：
+
+- 这一刀只处理 Prompt 正文、Agent 上下文和 Skill 指令的普通用户语义；`US-04 / UC-05` 仍需要第 7 节真实产品 brief、SKU、参考详情页、真实图片生成和人工审核证据，不能据此宣称 v2 整体完成。
+
+### 6.63 2026-05-22 SOP 启动资料来源接受已选知识引用
+
+已完成：
+
+- `WorkflowStore.startRun` 的必填校验不再只看“补充资料说明”和 `inputSourceIds`；当用户已选择知识引用时，`source` 可以为空，避免普通用户勾选知识库章节后还要重复粘贴资料名称。
+- `WorkflowEngine.executeInputStep` 在只有知识引用、没有临时补充资料时，不创建空的 workflow-run 输入源；输入步骤摘要改为“已使用 N 条已选择知识引用”，下游通过 citations 追溯。
+- 品牌知识库 -> 场景库 -> Prompt 组 functional 用例改为真正的知识引用主路径：`source` 留空，PromptPack、场景卡和 Prompt 草稿不要求 `inputSourceIds`，而是验证 citations 和场景卡引用不断链。
+- 继续保留“已选择输入源时补充资料说明可以为空”和“用户粘贴临时资料 / 本地文件路径时自动留痕”的既有路径，避免把补充说明重新变成隐藏必填项。
+- `scripts/v2-business-acceptance.mjs` 的产品 Prompt 追溯检查同步改为普通用户语义：底层必须保留 `sourceIds` 和 `sourceTrace`，用户可见 Prompt 必须显示“追溯资料”，且不能泄露 source id 或 `追溯输入源`。
+- functional 覆盖新增“已选择知识引用时补充资料说明可以为空”，并加强产品资料 Prompt 断言：看得到资料数量追溯，看不到 source id 和内部追溯词。
+
+验证：
+
+- `npm run typecheck` 通过。
+- `npm run test:functional` 通过，57/57。
+- `npm run verify:v2:acceptance -- --output .tmp/v2-acceptance-debug.json` 通过，50/50。
+- `npm run verify:v2` 通过；provider dry-run 仍按本地无 Key / 端点报告 4 个 blocked，业务验收 50/50。
+
+边界：
+
+- 这一刀修正的是普通用户“已选知识引用 / 已选资料后不再重复填补充说明”的主路径；真实知识库内容质量、真实 provider 返回和真实素材交付仍在第 7 节真实验收范围内。
+
+### 6.64 2026-05-22 混剪导入说明和验收文件去 manifest 主任务化
+
+已完成：
+
+- `MixPackageStore` 生成的 `import-guide.md` 不再把 manifest 当作剪辑人员主任务；交付文件改为“清单文件 `manifest.json` / CSV 简表 `manifest.csv`”，导入步骤使用“清单文件 / 提示词来源”，交付边界改为“素材文件夹和清单文件”。
+- 第三方导入验收 `import-check.md` 从“manifest 已导入”收敛为“清单文件已导入或已核对”，与 App 表单标签保持一致。
+- 视频素材包 SOP 的测试用户意图、E2E 导入备注和 functional 用例名称同步改成“混剪清单 / 清单文件”，避免测试继续把旧词当普通用户路径。
+- v2 README、PRD、workflow-model、user-story-flow-map、ui-blueprint、llm-playbook 和静态原型的产品描述同步从“混剪 manifest”改为“混剪清单”，只在底层文件契约、验收脚本和文件名处保留 `manifest.json` / `manifest.csv`。
+- 静态原型的混剪包预览不再展示 raw JSON，改为展示平台、素材数量、审核状态和提示词来源摘要；素材库和成品视频导入文案也从 `PromptRef / Prompt 来源` 收敛为“提示词来源”。
+- `mix-import-evidence.example.json` 的备注示例使用“提示词来源”，避免第三方导入证据模板继续传播旧词。
+
+验证：
+
+- `npm run typecheck` 通过。
+- `npm run build` 通过。
+- `npm run test:functional` 通过，57/57。
+- `npm run test:e2e` 通过，20/20。
+- `npm run verify:v2` 通过；provider dry-run 仍按本地无 Key / 端点报告 4 个 blocked，业务验收 50/50。
+- `node -e "JSON.parse(require('fs').readFileSync('docs/roadmap/v2/mix-import-evidence.example.json','utf8')); console.log('mix-import-evidence.example.json ok')"` 通过。
+- `git diff --check` 通过。
+
+边界：
+
+- 文件名和机器可读字段仍保留 `manifestPath / manifestCsvPath / manifestImported`，用于第三方交接格式、验收脚本和历史兼容；本轮只修普通用户可读文案和生成的交接说明。
+
+### 6.65 2026-05-22 静态原型去 blocked 状态主路径化
+
+已完成：
+
+- `docs/roadmap/v2/prototype/README.md` 的统一状态契约从 `blocked` 改为“待配置”，US-08 映射从 manifest 导出改为混剪清单导出。
+- `docs/roadmap/v2/prototype/index.html` 中普通用户可见的失败状态从 `blocked` 收敛为“待配置 / 待处理 / 可重试”，并把图片 / 视频 provider 文案改为“生成服务”。
+- `src/renderer/src/app/v2FeatureTypes.ts` 不再允许 v2 功能入口状态使用 `blocked`，改为“待配置”；`V2FeatureModule` 只在“待配置”状态下使用 blocked 样式，避免后续 registry 把英文状态码显示给普通用户。
+- `src/renderer/src/app/v2FeatureRegistry.ts` 的运行历史预览从 `run_20260520_001 / run_001` 改为“运行记录 / 运行记录 001”，避免 v2 入口页把内部运行编号当作普通用户上下文。
+- 原型的运行历史、输入源转换、Provider 设置和右侧恢复路径均强调“显示恢复路径、不能伪造成果”，但不再要求普通用户理解底层状态码。
+- 原型混剪包、素材库、成品视频导入和绿幕文案图继续使用“混剪清单 / 提示词来源”，避免后续原型迭代重新把 manifest 或 `PromptRef` 当作主对象。
+
+验证：
+
+- `rg -n "\\bblocked\\b|PromptRef|Prompt 来源|badge\\\">manifest|\\+ manifest|manifest 字段|导出 manifest|混剪 manifest|Provider 状态|选择 provider|provider 未配置|配置 provider" docs/roadmap/v2/prototype/README.md docs/roadmap/v2/prototype/index.html` 无结果。
+- `rg -n "status: 'blocked'|status: \\"blocked\\"|V2FeatureStatus|feature.status === 'blocked'|feature.status === \\"blocked\\"" src/renderer/src/app src/renderer/src/components/modules/V2FeatureModule.tsx` 仅剩 `V2FeatureStatus` 类型定义，无可显示 `blocked` 状态。
+- `rg -n "run_[0-9]|run_\\d|run_" src/renderer/src/app/v2FeatureRegistry.ts docs/roadmap/v2/prototype/index.html` 无结果。
+- `npm run typecheck` 通过。
+- `npm run test:e2e -- --grep "v2 新增入口能落到真实工作流动作"` 通过，1/1。
+- `npm run build` 通过。
+- `git diff --check` 通过。
+
+边界：
+
+- 这一刀只修原型契约和静态原型的普通用户可见语义；底层 provider dry-run、验收脚本和类型字段仍可保留英文状态码作为机器契约。
+
+### 6.66 2026-05-22 SOP 运行产物线索不暴露 step key
+
+已完成：
+
+- `WorkflowFeatureModule` 的 `workflow-run:*:step:*` 产物引用不再显示“步骤快照 / input_register”这类内部步骤 ID，统一显示为“步骤快照”。
+- `.content-studio/input-sources/<uuid>.md` 这类内部输入源转换稿路径不再显示 UUID 文件名，统一显示为“输入源转换稿”；混剪包目录和平台草稿包路径也继续显示为业务交付物。
+- 产物线索的 hover title 不再使用原始 `artifactRef`，而是使用同一套业务标签；未知引用也不再截断显示内部字符串，统一显示“可追溯产物”。
+- 自定义 SOP 发布并运行的 E2E 增加断言：运行详情的“产物线索”必须显示“步骤快照”和“输入源转换稿”，且正文与 title 都不能出现 `workflow-run:`、`input_register` 或 UUID `.md` 文件名。
+- 该修正只改普通用户可见标签；底层 `artifactRefs` 仍保留 `workflow-run:<runId>:step:<stepId>`，用于审计和自动验收。
+
+验证：
+
+- `rg -n "步骤快照 /|workflow-run:.*步骤" src/renderer/src/components/modules/WorkflowFeatureModule.tsx out/renderer/assets` 仅显示 `workflow-run:` 分支返回“步骤快照”，无 step key 拼接输出。
+- `npm run typecheck` 通过。
+- `npm run build` 通过，并刷新 `out/renderer`。
+- `npm run test:e2e -- --grep "SOP 定义草案可以编辑、发布并从表单运行"` 通过，1/1。
+- `npm run test:e2e` 通过，20/20。
+
+边界：
+
+- 这一刀只处理运行详情里 `workflow-run:*` 产物引用的显示；其他 artifact 类型继续按既有映射显示为品牌知识库、提示词草稿、输入源、生成素材、清单文件等业务词。
+
+### 6.67 2026-05-22 普通用户文案审计总闸
+
+已完成：
+
+- 新增 `scripts/v2-ux-copy-audit.mjs`，把 v2 普通用户可见面纳入固定审计，覆盖产品文档、静态原型、v2 功能入口、SOP 运行详情和混剪导入证据模板。
+- `npm run verify:v2:ux-copy` 已接入 `npm run verify:v2`，后续本地 v2 总闸会同时检查 provider dry-run、业务验收报告和普通用户文案退化。
+- 审计规则会阻断把 `blocked`、`provider`、`PromptRef`、`Prompt 来源`、`run_*`、manifest 主任务、步骤 key 或原始 artifactRef 重新暴露给普通用户的回退。
+- 功能测试新增“v2 UX 文案审计会阻断普通用户可见工程词回退”，验证脚本既能通过当前仓库，也能在临时文件命中 `配置 Provider` 时失败并指出文件、行号和规则。
+- 静态原型曾被该总闸拦出“配置 Provider”旧词，已改为“配置生成服务”，证明审计不是只做静态清单，而能拦真实回退。
+
+验证：
+
+- `npm run verify:v2:ux-copy` 通过，11 个文件、38 条规则。
+
+边界：
+
+- 这一刀解决的是“普通用户可见语言不能退回工程对象”的质量门槛；它不替代真实 provider strict、真实业务素材、真实工作区闭环和第三方混剪导入证据。
+
+### 6.68 2026-05-22 smoke 验证对齐视频 Prompt 交接主路径
+
+已完成：
+
+- `scripts/electron-smoke.mjs` 的视频三步工作台点击路径从旧的“视频生成 / 生成视频队列”对齐到当前产品主路径“Prompt 交接 / 可选：内部视频生成”。
+- smoke 仍保留无 provider 环境下的真实恢复验证：视频拆解无真实理解服务时必须提示待配置，脚本生成无文字模型时必须提示文字模型未配置，可选内部视频生成无视频服务时只能保存可追溯队列文件，不伪造视频素材。
+- 该修正只更新验证脚本，不改 App 业务代码；当前 App 第三步仍以外部平台 Prompt 交接为普通用户主路径，内部视频生成是高成本备选能力。
+
+验证：
+
+- `npm run smoke:electron` 通过。
+
+边界：
+
+- smoke 只覆盖无 Key 环境的恢复路径和基础点击链；真实第三方平台复制、真实成品导入和真实混剪软件导入仍归入第 7 节真实验收。
+
+### 6.69 2026-05-22 真实工作区门槛自动要求混剪导入证据
+
+已完成：
+
+- `scripts/v2-business-acceptance.mjs` 中 `--require-real-workspace-evidence` 会自动启用真实混剪工具导入证据检查，不再依赖用户额外记住 `--require-external-mix-evidence`。
+- `scripts/v2-acceptance-evidence.mjs` 的 manifest、SUMMARY 和建议重跑命令会在真实工作区门槛下同时显示 `requireExternalMixEvidence=true` 和 `requireRealWorkspaceEvidence=true`。
+- 最终发布门槛文档已统一为 `--provider-strict --require-real-workspace-evidence --require-external-mix-evidence --workspace <工作区路径>`，并说明真实工作区闭环会自动要求第三方混剪导入证据。
+- 功能测试同步断言真实工作区门槛会阻断本地样例，并且失败项必须同时包含 `real-workspace-evidence` 和 `mix-package-external-import`。
+
+验证：
+
+- `npm run test:functional -- --test-name-pattern "v2 验收证据 CLI 真实工作区门槛|v2 业务验收脚本支持外部真实素材输入"` 通过。
+- `npm run verify:v2:evidence -- --provider-strict --require-real-workspace-evidence --output-dir .tmp/v2-final-missing-evidence` 按预期失败；manifest 显示 `requireExternalMixEvidence=true`、`requireRealWorkspaceEvidence=true`，业务验收 50/52，失败项包含“真实工作区验收门槛”和“真实混剪工具导入证据”。
+
+边界：
+
+- 这一刀收紧的是发布级验收门槛；它不会让本地无 Key 环境通过真实验收，也不会用 `import-guide.md` 代替剪映 / CapCut / Premiere 等第三方工具的真实导入证据。
+
+### 6.70 2026-05-22 v2 发布级验收一键入口
+
+已完成：
+
+- `package.json` 新增 `npm run verify:v2:release`，固定执行 `run-v2-acceptance-evidence` 的 provider strict、真实工作区闭环、真实混剪导入证据、网络联调和媒体联调参数。
+- 发布级入口只需要追加 `-- --workspace <工作区路径> --output-dir <证据目录>`，避免人工漏掉 `--require-real-workspace-evidence`、`--require-external-mix-evidence`、`--allow-network` 或 `--allow-media`。
+- 功能测试同步断言 `verify:v2:release` 保持发布级参数，不允许后续改回 dry-run 或 local-sample 口径。
+
+验证：
+
+- `npm run verify:v2:release -- --output-dir .tmp/v2-release-gate-check` 按预期失败；manifest 显示 `networkAllowed=true`、`mediaAllowed=true`、`requireExternalMixEvidence=true`、`requireRealWorkspaceEvidence=true`，业务验收 50/52，失败项为真实工作区验收门槛和真实混剪工具导入证据。
+- `npm run verify:v2` 通过，默认 local-sample 业务验收仍为 50/50，UX 文案审计 11 个文件、38 条规则。
+- `npm run test:functional` 通过。
+
+边界：
+
+- `verify:v2:release` 是发布级真实证据入口，不会在无真实 provider / 无真实工作区时通过；当前本地无 Key 环境仍必须按第 7 节补真实证据。
+
+### 6.71 2026-05-22 最终本地收口验证和剩余项确认
+
+已完成：
+
+- 普通用户可见文案禁用词最终扫描通过；README、PRD、UI 蓝图和 LLM playbook 中没有重新出现 `provider`、`blocked`、`PromptRef`、`Prompt 来源`、manifest 主任务、步骤 key 或原始追溯对象。
+- PRD 中“软件不导出 RunningHub 任务包”已收敛为“软件不导出第三方平台任务文件”，避免普通用户误解为 App 会管理第三方平台任务。
+- 本地 v2 总闸、构建、功能测试、Electron smoke 和 Playwright E2E 已在最新工作树上重新跑通。
+- 发布级总闸已用 `verify:v2:release` 复核，确认当前剩余不是本地流程断裂，而是缺真实生成服务 strict、真实工作区闭环和真实混剪工具导入证据。
+
+验证：
+
+- `rg -n "\\bprovider\\b|\\bblocked\\b|pending external|waiting external|PromptRef|Prompt 来源|混剪\\s+manifest|导出\\s+manifest|RunningHub 任务包|回填任务|KnowledgeCitation|Context Run|\\bBuilder\\b" docs/roadmap/v2/README.md docs/roadmap/v2/prd.md docs/roadmap/v2/ui-blueprint.md docs/roadmap/v2/llm-playbook.md` 无结果。
+- `git diff --check` 通过。
+- `npm run verify:v2` 通过；provider dry-run 在无 Key / 端点环境下报告 4 个待配置，业务验收 local-sample 50/50，UX 文案审计 11 个文件、38 条规则。
+- `npm run build` 通过。
+- `npm run test:functional` 通过。
+- `npm run smoke:electron` 通过。
+- `npm run test:e2e` 通过，20/20。
+- `npm run verify:v2:release -- --output-dir .tmp/v2-release-gate-final` 按预期失败；provider strict 未通过，业务验收 50/52，失败项为 `real-workspace-evidence` 和 `mix-package-external-import`。
+- `npm run verify:local` 通过；本地总验收覆盖 typecheck、build、v2 provider dry-run / 业务验收 / UX 文案审计、功能测试、Electron smoke 和 Playwright E2E 20/20。
+
+边界：
+
+- 本地工程主链可收口，但 v2 发布级完成不能宣称完成；仍必须按第 7 节补真实生成服务、真实业务素材工作区和第三方混剪导入证据。
+
+### 6.72 2026-05-22 目标到证据收口审计
+
+目标拆解：
+
+- 普通用户主路径必须按用户故事可用，不再把工程对象、Canvas、状态码或清单文件当作主任务。
+- 品牌 / 产品知识库、IP 知识库、场景库、Prompt、SOP、图片、视频 Prompt、成品导入、审核、素材库和混剪包必须连成可追溯链路。
+- 本地验证必须覆盖主路径；发布完成必须额外有真实生成服务、真实工作区和真实第三方混剪导入证据。
+
+| 要求 | 证据 | 当前判断 |
+| --- | --- | --- |
+| 普通用户入口和下一步动作可发现 | `user-story-flow-map.md`、`ui-blueprint.md`、`ModuleOutlet.tsx`、`WorkflowFeatureModule.tsx`；`npm run test:e2e` 覆盖 v2 入口、SOP 下一步、运行详情跳转 | 本地已验证 |
+| 不把 Canvas 作为普通用户主路径 | `WorkflowFeatureModule.tsx` 高级维护收拢；`completion-audit.md` 6.22 / 6.59 / 6.68 | 本地已验证 |
+| 视频第三方生成只复制 Prompt，成品手动导入 | `VideoModule.tsx`、`VideoImportModule.tsx`、`scripts/electron-smoke.mjs`；E2E 覆盖 Prompt 交接、复制状态、导入关联 | 本地已验证，真实外部平台待验收 |
+| SOP 执行前显式选择资料，已选输入源或知识引用时不重复要求补充说明 | `workflowEngine.ts`、`workflowStore.ts`、`WorkflowFeatureModule.tsx`；functional 和 E2E 覆盖输入源选择、知识引用、运行记录写入 | 本地已验证 |
+| 用户可见文案不回退到工程词 | `scripts/v2-ux-copy-audit.mjs`、`package.json` 的 `verify:v2:ux-copy`；审计通过 11 个文件、38 条规则 | 本地已验证 |
+| 混剪交接为素材文件夹、清单文件、CSV 和剪辑人员说明 | `mixPackageStore.ts`、`mix-import-evidence.example.json`、`workflow-model.md`、`prd.md`；业务验收 local-sample 覆盖混剪包导入说明 | 本地已验证，真实混剪工具导入待补 |
+| 发布级门槛不能被本地样例冒充 | `verify:v2:release`、`v2-business-acceptance.mjs`、`v2-acceptance-evidence.mjs`；`.tmp/v2-release-gate-final/manifest.json` 显示 provider strict 和真实证据均为必需 | 已阻断伪完成 |
+| 本地总验收 | `npm run verify:local` 通过，覆盖 typecheck、build、v2 总闸、功能测试、Electron smoke、Playwright E2E 20/20 | 本地已验证 |
+
+缺口审计：
+
+- 真实生成服务 strict：缺文字、视觉、图片、视频服务配置与联调结果。
+- 真实业务工作区：缺真实品牌 / IP / 产品 / SKU / 评论 / 参考图 / 参考视频跑完主链后的 `.content-studio/` 证据。
+- 真实混剪工具导入：缺 `import-evidence.json`、截图 / 录屏 / 验收记录，以及视频和绿幕图在真实工具里的导入证明。
+
 ## 7. 剩余工作
 
-下一刀只处理真实验收，不再新增平行架构：
+工程主链和普通用户流程已进入本地总闸；剩余项只剩不能在无 Key / 无真实素材环境里伪造的发布级证据。下一刀只处理真实验收，不再新增平行架构：
+
+最后只剩三类必补证据：
+
+1. 真实生成服务 strict：配置文字、视觉理解、图片生成和视频生成服务，开启网络和媒体联调，跑通 `verify:v2:release` 中的 provider strict。
+2. 真实业务工作区闭环：用 1 套真实品牌资料、1 套真实 IP 资料、真实产品 brief / SKU、真实评论客服语料、参考图和参考视频跑完 App 主链，并从 `.content-studio/` 自动生成验收报告。
+3. 真实第三方混剪导入：把包含视频素材和绿幕图的混剪包导入剪映 / CapCut / Premiere 等真实工具，在混剪包目录保存 `import-evidence.json`、截图 / 录屏 / 验收记录文件。
+
+不再新增新的并行模块、Canvas 主路径或手工清单口径；发布级验收统一使用 `npm run verify:v2:release -- --workspace <工作区路径> --output-dir docs/dev/v2-acceptance/<日期>`。
 
 - 用用户真实评论、差评和客服问答跑 `US-11` 业务验收报告，确认痛点聚类、标题方向和客服异议话术在真实行业语料下可用。
 - 用用户真实产品 brief、SKU 表和参考详情页跑 `US-04 / UC-05` 业务验收报告，确认主图、卖点图和详情页模块 Prompt 在真实电商资料下可用，并继续补真实生成图的审核证据。
 - 用用户真实通过审核的图片 / 视频素材跑 `US-10 / UC-14` 业务验收报告，确认成功素材沉淀在真实素材质量和授权边界下仍可复用。
-- 用用户真实口播脚本、卖点列表和审核后的绿幕图跑 `US-06 / UC-10` 业务验收报告，确认标题卡、卖点卡、CTA 卡在真实文案长度下可读、过审，并作为 overlay 进入真实混剪 manifest。
+- 用用户真实口播脚本、卖点列表和审核后的绿幕图跑 `US-06 / UC-10` 业务验收报告，确认标题卡、卖点卡、CTA 卡在真实文案长度下可读、过审，并作为 overlay 进入真实混剪清单。
 - 用真实混剪工具按 `import-guide.md` 导入包含视频素材和绿幕图的混剪包，在 App 历史混剪包里登记真实截图 / 录屏 / 验收记录，再用 `npm run verify:v2:acceptance -- --workspace <工作区路径> --require-external-mix-evidence` 补齐 `US-08 / UC-12` 的外部工具验收证据。
 - 用用户真实文字 / 视觉 / 图片 / 视频 provider 配置跑一遍品牌场景 SOP、小红书对标图 SOP、IP 长文 SOP 和视频素材包 SOP，记录真实 provider 返回、成本、失败恢复和生成质量。
 - 用 1 套真实品牌资料、1 套真实 IP 资料、1 组参考图和 1 条参考视频跑完 App 主链后，优先用 `npm run verify:v2:acceptance -- --workspace <工作区路径>` 从真实工作区产物生成业务验收报告；必要时再按 `business-acceptance-input.example.json` 手工补充缺失字段。
-- 真实素材验收报告优先通过 `npm run verify:v2:evidence -- --workspace <工作区路径> --require-real-workspace-evidence --output-dir docs/dev/v2-acceptance/<日期>` 成套归档，避免 local-sample 和真实验收口径分裂。
-- 运行 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1 npm run verify:v2:evidence -- --provider-strict --require-real-workspace-evidence --workspace <工作区路径> --output-dir <证据目录>` 生成真实 provider 联调报告和真实工作区闭环报告并作为发布门槛；如媒体成本不可接受，先只开 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1` 做文字 / 视觉联调诊断，但不能替代最终 strict 门槛。
+- 真实素材验收报告优先通过 `npm run verify:v2:release -- --workspace <工作区路径> --output-dir docs/dev/v2-acceptance/<日期>` 成套归档，避免 local-sample 和真实验收口径分裂；该入口已经包含 provider strict、真实工作区闭环、真实混剪导入证据、网络联调和媒体联调。
+- 如媒体成本不可接受，先只开 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1` 做文字 / 视觉联调诊断，但不能替代最终 `npm run verify:v2:release -- --workspace <工作区路径> --output-dir <证据目录>` 发布门槛。
 - 发布前在最终工作区状态重跑 `npm run verify:local`；该命令已经包含 `verify:v2`，但不替代真实 provider strict 联调。commit / tag / push 仍按发布流程另行确认。

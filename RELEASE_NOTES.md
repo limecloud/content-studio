@@ -1,5 +1,21 @@
 # Release Notes
 
+## v0.10.1 - 2026-05-23
+
+### 更新查询修复
+
+- 修复“设置 -> 关于”手动检查更新在品牌 API 和静态发布清单返回 404 时直接失败的问题。
+- 更新检查现在保持原有品牌 API、静态清单优先级，并新增 GitHub Release API 作为自动兜底来源。
+- GitHub Release 兜底会按当前 OEM 品牌前缀筛选安装包，避免 `bugu` 与 `seenx` 混用下载资产。
+- 功能测试新增双 OEM 更新查询回退覆盖，并补齐 Electron 测试 shim 的版本和 shell 能力。
+
+### 验证
+
+- `npm run typecheck`
+- `npm run test:functional -- --test-name-pattern "更新检查"`
+- `npm run build`
+- `npm run verify:local`
+
 ## v0.10.0 - 2026-05-22
 
 ### 版本定位

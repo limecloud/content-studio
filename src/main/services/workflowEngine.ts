@@ -116,10 +116,10 @@ function formatProductBriefPromptPlanContent(plan: ReturnType<typeof buildProduc
     ...plan.flatMap((item, index) => [
       `## ${index + 1}. ${item.label}`,
       '',
-      `类型：${item.type}`,
+      `素材用途：${item.label.replace(/\s*Prompt$/, '')}`,
       `产品：${item.productName}`,
       `SKU / 规格追溯：${item.skuTrace}`,
-      `输入源：${item.sourceIds.join(', ') || '待补充'}`,
+      `追溯资料：${item.sourceIds.length ? `已关联 ${item.sourceIds.length} 份产品资料 / SKU 表` : '待补充产品资料 / SKU 表'}`,
       '',
       item.prompt,
       '',
@@ -276,10 +276,20 @@ function sourceSectionType(source: InputSourceRecord, definition: WorkflowDefini
 function citationFromInputSource(source: InputSourceRecord, definition: WorkflowDefinition): KnowledgeCitation | null {
   const excerpt = clipCitationExcerpt(source.extractedText || source.summary);
   if (!excerpt) return null;
+  const purposeLabels: Record<InputSourcePurpose, string> = {
+    'brand-kb': '品牌 / 产品知识库',
+    'ip-kb': 'IP 知识库',
+    'ip-scenario-kb': 'IP 场景库',
+    reference: '参考素材',
+    'product-brief': '产品资料',
+    'user-feedback': '评论 / 客服问题',
+    'sop-input': '任务输入',
+    'successful-asset': '成功素材',
+  };
   return {
     knowledgeBaseId: `input-source:${source.id}`,
     sectionId: source.markdownPath ? 'markdown' : 'summary',
-    title: `${source.title} / ${source.purpose}`,
+    title: `${source.title} / ${purposeLabels[source.purpose] ?? '输入资料'}`,
     sectionType: sourceSectionType(source, definition),
     excerpt,
   };
@@ -591,31 +601,44 @@ export class WorkflowEngine {
     context: WorkflowExecutionContext,
   ): Promise<WorkflowRunRecord> {
     const purpose = sourcePurposeFor(definition);
-    const text = [
-      `# ${definition.title}`,
-      '',
-      '## 输入源',
-      compactText(run.inputs.source),
-      '',
-      '## 用户意图',
-      compactText(run.inputs.intent),
-      '',
-      '## 审核人',
-      compactText(run.inputs.reviewOwner),
-    ].join('\n');
-    const source = await this.inputSources.register({
-      workspacePath: run.workspacePath,
-      workflowRunId: run.id,
-      kind: 'manual-note',
-      purpose,
-      title: `${definition.title} / ${new Date(run.createdAt).toLocaleString()}`,
-      text,
-      summary: compactText(run.inputs.intent, definition.description),
-      tags: ['workflow-run', definition.key, run.id],
-    });
+    const sourceText = run.inputs.source?.trim() ?? '';
+    const localFilePaths = extractLocalFilePaths(sourceText);
+    const remainingSourceText = localFilePaths
+      .reduce((current, filePath) => current
+        .replaceAll(`"${filePath}"`, '')
+        .replaceAll(`'${filePath}'`, '')
+        .replaceAll(filePath, ''), sourceText)
+      .trim();
+    const shouldRegisterManualSource = Boolean(remainingSourceText);
+    let source: InputSourceRecord | undefined;
+
+    if (shouldRegisterManualSource) {
+      const text = [
+        `# ${definition.title}`,
+        '',
+        '## 输入源',
+        sourceText,
+        '',
+        '## 用户意图',
+        compactText(run.inputs.intent),
+        '',
+        '## 审核人',
+        compactText(run.inputs.reviewOwner),
+      ].join('\n');
+      source = await this.inputSources.register({
+        workspacePath: run.workspacePath,
+        workflowRunId: run.id,
+        kind: 'manual-note',
+        purpose,
+        title: `${definition.title} / ${new Date(run.createdAt).toLocaleString()}`,
+        text,
+        summary: compactText(run.inputs.intent, definition.description),
+        tags: ['workflow-run', definition.key, run.id],
+      });
+    }
 
     const importedSources: InputSourceRecord[] = [];
-    for (const filePath of extractLocalFilePaths(run.inputs.source)) {
+    for (const filePath of localFilePaths) {
       importedSources.push(await this.inputSources.importFile(run.workspacePath, filePath, purpose, {
         workflowRunId: run.id,
         tags: ['workflow-run', definition.key, 'auto-import'],
@@ -624,15 +647,18 @@ export class WorkflowEngine {
 
     context.inputSourceIds = uniqueRefs([
       ...context.inputSourceIds,
-      source.id,
+      ...(source ? [source.id] : []),
       ...importedSources.map((item) => item.id),
     ]);
     const sourceRecords = (await this.inputSources.list(run.workspacePath))
       .filter((item) => context.inputSourceIds.includes(item.id));
     const explicitCitations = run.citations ?? [];
-    const importedSourceIds = new Set(importedSources.map((item) => item.id));
+    const newSourceIds = new Set([
+      ...(source ? [source.id] : []),
+      ...importedSources.map((item) => item.id),
+    ]);
     const citationSourceRecords = explicitCitations.length > 0
-      ? sourceRecords.filter((item) => importedSourceIds.has(item.id))
+      ? sourceRecords.filter((item) => newSourceIds.has(item.id))
       : sourceRecords;
     const sourceCitations = citationSourceRecords
       .map((item) => citationFromInputSource(item, definition))
@@ -644,20 +670,31 @@ export class WorkflowEngine {
       citations: nextCitations,
     };
 
-    return this.patchStep(nextRun, step, 'succeeded', '已登记 SOP 输入源，并生成可追溯 Markdown。', {
-      inputSourceId: source.id,
+    const summary = source
+      ? '已登记本次补充资料，并生成可追溯转换稿。'
+      : importedSources.length
+        ? `已导入 ${importedSources.length} 个本地文件资料，并写入运行追溯。`
+        : context.inputSourceIds.length
+          ? `已使用 ${context.inputSourceIds.length} 份已登记资料。`
+          : explicitCitations.length
+            ? `已使用 ${explicitCitations.length} 条已选择知识引用。`
+            : '未选择资料，后续步骤会要求补充可追溯输入。';
+
+    return this.patchStep(nextRun, step, 'succeeded', summary, {
+      inputSourceId: source?.id,
       importedInputSourceIds: importedSources.map((item) => item.id),
-      sourceStatus: source.status,
-      markdownPath: source.markdownPath,
+      selectedInputSourceCount: context.inputSourceIds.length,
+      sourceStatus: source?.status,
+      markdownPath: source?.markdownPath,
       citationCount: nextCitations.length,
       artifactRefs: uniqueRefs([
-        ...source.artifactRefs,
+        ...(source?.artifactRefs ?? []),
         ...importedSources.flatMap((item) => item.artifactRefs),
       ]),
     }, uniqueRefs([
-      `input-source:${source.id}`,
+      ...(source ? [`input-source:${source.id}`] : []),
       ...importedSources.map((item) => `input-source:${item.id}`),
-      ...source.artifactRefs,
+      ...(source?.artifactRefs ?? []),
       ...importedSources.flatMap((item) => item.artifactRefs),
     ]));
   }
@@ -980,7 +1017,7 @@ export class WorkflowEngine {
         run,
         step,
         'succeeded',
-        '已通过真实视觉理解服务完成对标图反推，并生成图片 PromptDraft。',
+        '已通过真实视觉理解服务完成对标图反推，并生成图片提示词草稿。',
         {
           logId: result.logId,
           promptDraftId: result.promptDraft.id,
@@ -1061,7 +1098,7 @@ export class WorkflowEngine {
       userIntent: compactText(run.inputs.intent, definition.description),
       inputSourceIds: brief.sourceIds,
       content: formatProductBriefPromptPlanContent(promptPlan, brief.variableTable),
-      note: '由产品资料结构化步骤生成，保留 SKU / 输入源追溯',
+      note: '由产品资料结构化步骤生成，保留 SKU / 资料追溯',
       model: 'workflow-product-brief-structurer',
       status: 'confirmed',
     });
@@ -1232,7 +1269,7 @@ export class WorkflowEngine {
         run,
         step,
         blocked ? 'blocked' : 'succeeded',
-        blocked ? 'Agent 会话已保存，但文字模型未配置，等待配置后继续。' : 'Agent 会话已读取输入源并生成首版 PromptDraft。',
+        blocked ? 'Agent 会话已保存，但文字模型未配置，等待配置后继续。' : 'Agent 会话已读取输入源并生成首版提示词草稿。',
         {
           agentSessionId: result.session.id,
           promptDraftId: result.draft.id,
@@ -1272,7 +1309,7 @@ export class WorkflowEngine {
         run,
         step,
         blocked ? 'blocked' : 'succeeded',
-        blocked ? 'PromptDraft 已保存，但文字模型未配置，等待配置后继续。' : '已生成可下游使用的 PromptDraft。',
+        blocked ? '提示词草稿已保存，但文字模型未配置，等待配置后继续。' : '已生成可下游使用的提示词草稿。',
         {
           promptDraftId: draft.id,
           purpose: draft.purpose,

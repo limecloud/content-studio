@@ -26,7 +26,7 @@ export function V2FeatureModule({ module, onSelectModule }: V2FeatureModuleProps
         density="flow"
         actions={(
           <div className="v2-feature-actions">
-            <span className={`status-pill ${feature.status === 'blocked' ? 'blocked' : 'idle'}`}>
+            <span className={`status-pill ${feature.status === '待配置' ? 'blocked' : 'idle'}`}>
               {feature.status}
             </span>
             <button

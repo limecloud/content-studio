@@ -105,6 +105,12 @@ export function VideoImportModule({
   );
   const selectedHandoff = videoPromptHandoff(selectedDraft, inputSources);
   const selectedDraftContent = activeContent(selectedDraft);
+  const importBlockedReason = !selectedDraft
+    ? '请先生成或选择一个视频 Prompt，再导入第三方成品视频。'
+    : selectedHandoff.status === 'not-copied'
+      ? '请先复制视频 Prompt 到第三方平台并记录复制动作，再导入成品视频。'
+      : '';
+  const canImportFinishedVideo = workspaceReady && !busy && !importBlockedReason;
 
   useEffect(() => {
     if (selectedDraftId || !selectedDraft) return;
@@ -140,7 +146,7 @@ export function VideoImportModule({
             <button className="ghost small" onClick={() => onSelectModule('video-prompt')}>回到视频 Prompt</button>
             <button
               className="primary small"
-              disabled={!workspaceReady || busy}
+              disabled={!canImportFinishedVideo}
               onClick={() => onImportFinishedVideo(selectedDraft?.id)}
             >
               导入并关联提示词
@@ -152,6 +158,11 @@ export function VideoImportModule({
             <span key={step}>{step}</span>
           ))}
         </div>
+        {importBlockedReason ? (
+          <div className="inline-warning">
+            {importBlockedReason}
+          </div>
+        ) : null}
       </ModuleCommandCenter>
 
       <div className="video-import-layout">
@@ -213,7 +224,7 @@ export function VideoImportModule({
             <span className={`status-pill ${selectedHandoff.className}`}>{selectedHandoff.label}</span>
             <button
               className="primary small"
-              disabled={!workspaceReady || busy}
+              disabled={!canImportFinishedVideo}
               onClick={() => onImportFinishedVideo(selectedDraft?.id)}
             >
               选择视频文件

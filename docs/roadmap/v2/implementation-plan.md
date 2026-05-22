@@ -21,7 +21,7 @@
 - 真实 provider 端到端联调仍需按用户配置逐项验证，现有自动化主要覆盖 blocked 分支和 mock 成功分支。
 - 本地总闸 `npm run verify:local` 已通过；后续发布前仍需在最终提交状态重跑一次。
 - 已新增 `npm run verify:v2:providers` 作为真实 provider 联调入口；默认 dry-run 不外发，显式开启 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1` / `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1` 后再调用真实服务。
-- 已新增 `npm run verify:v2:acceptance` 作为 v2 业务验收报告入口；默认 local-sample 不外发，先固化品牌、IP、产品资料结构化、主图 / 卖点图 / 详情页 Prompt 追溯、用户反馈痛点聚类、标题方向、客服异议话术、对标图、参考视频拆解、绿幕文案图、成功素材回炉、混剪包导入说明、平台草稿包、视频成本边界、跨产物 runId 关键覆盖和一致性的验收结构；也支持 `-- --input <json>` 读取真实验收输入，或 `-- --workspace <path>` 直接从 `.content-studio` 读取真实工作区产物，并可从输入源、PromptDraft、审核记录、SOP 运行记录、绿幕文案图、混剪包 / 平台草稿包目录、视频 generation log、manifest 和 `import-guide.md` 自动提取交付证据，真实素材验收复用同一报告 schema；如需把真实第三方混剪导入作为门槛，追加 `-- --require-external-mix-evidence`，验收脚本会读取混剪包目录中的 `import-evidence.json` 并校验证据文件存在；如需证明完整真实工作区闭环，追加 `-- --require-real-workspace-evidence`，该门槛会拒绝 local-sample、手填清单、样例占位和 provider dry-run。
+- 已新增 `npm run verify:v2:acceptance` 作为 v2 业务验收报告入口；默认 local-sample 不外发，先固化品牌、IP、产品资料结构化、主图 / 卖点图 / 详情页 Prompt 追溯、用户反馈痛点聚类、标题方向、客服异议话术、对标图、参考视频拆解、绿幕文案图、成功素材回炉、混剪包导入说明、平台草稿包、视频成本边界、跨产物 runId 关键覆盖和一致性的验收结构；也支持 `-- --input <json>` 读取真实验收输入，或 `-- --workspace <path>` 直接从 `.content-studio` 读取真实工作区产物，并可从输入源、PromptDraft、审核记录、SOP 运行记录、绿幕文案图、混剪包 / 平台草稿包目录、视频 generation log、manifest 和 `import-guide.md` 自动提取交付证据，真实素材验收复用同一报告 schema；如需把真实第三方混剪导入作为门槛，追加 `-- --require-external-mix-evidence`，验收脚本会读取混剪包目录中的 `import-evidence.json` 并校验证据文件存在；如需证明完整真实工作区闭环，追加 `-- --require-real-workspace-evidence`，该门槛会自动要求真实第三方混剪导入证据，并拒绝 local-sample、手填清单、样例占位和 provider dry-run。
 - 功能测试已新增真实服务写工作区的验收护栏：由 `WorkflowEngine` 和各 Store 写出品牌 / IP / 产品 / 评论 / 绿幕 / 视频素材包 / 成功素材 / 平台草稿产物，再通过 `loadWorkspaceAcceptanceInput` 读取同一工作区，避免验收口径只停在手写 JSON fixture。
 - provider 联调和业务验收都支持 `--output <json>` 写入报告文件，真实联调不再只依赖终端输出。
 - 已新增 `npm run verify:v2:evidence` 作为成套证据目录入口，一次性生成 provider 报告、业务验收报告、manifest 和人可读摘要；默认无 Key 本地不失败，只有业务验收失败或显式 `--provider-strict` 时 provider strict 未过才退出非 0。
@@ -482,12 +482,13 @@ npm run verify:v2:acceptance
 npm run verify:v2:acceptance -- --input docs/roadmap/v2/business-acceptance-input.example.json
 npm run verify:v2:acceptance -- --workspace <工作区路径>
 npm run verify:v2:acceptance -- --workspace <工作区路径> --require-external-mix-evidence
-npm run verify:v2:acceptance -- --workspace <工作区路径> --require-real-workspace-evidence
+npm run verify:v2:acceptance -- --workspace <工作区路径> --require-real-workspace-evidence --require-external-mix-evidence
 npm run verify:v2:acceptance -- --workspace <工作区路径> --output docs/dev/v2-acceptance/<日期>/business-acceptance.json
 npm run verify:v2:evidence -- --output-dir docs/dev/v2-acceptance/<日期>
 npm run verify:v2:evidence -- --workspace <工作区路径> --output-dir docs/dev/v2-acceptance/<日期>
 npm run verify:v2:evidence -- --workspace <工作区路径> --require-external-mix-evidence --output-dir docs/dev/v2-acceptance/<日期>
-npm run verify:v2:evidence -- --provider-strict --workspace <工作区路径> --require-real-workspace-evidence --output-dir docs/dev/v2-acceptance/<日期>
+npm run verify:v2:evidence -- --provider-strict --workspace <工作区路径> --require-real-workspace-evidence --require-external-mix-evidence --output-dir docs/dev/v2-acceptance/<日期>
+npm run verify:v2:release -- --workspace <工作区路径> --output-dir docs/dev/v2-acceptance/<日期>
 npm run verify:local
 ```
 
@@ -512,7 +513,7 @@ npm run verify:local
 - `videoPackage.actualReviewStatuses`、混剪 manifest `assets[].reviewStatus` 或 `.content-studio/asset-reviews.json` 必须证明混剪包素材已通过审核，不接受未过审素材进入混剪交付包。
 - `videoPackage.actualGuideTerms` 或混剪包目录中的 `import-guide.md` 必须证明剪辑人员可读导入说明覆盖第三方混剪软件、`manifest.csv`、`videos/`、`overlays/` 和人工审核边界。
 - 如使用 `--require-external-mix-evidence`，`videoPackage.externalImportEvidence` 或混剪包目录 `import-evidence.json` 必须证明真实第三方混剪工具已导入素材；至少包含 `toolName`、`importedAt`、`importedAssetKinds`、`manifestImported=true` 和真实存在的 `evidenceFiles`。示例见 `docs/roadmap/v2/mix-import-evidence.example.json`。
-- 如使用 `--require-real-workspace-evidence`，验收必须来自 `--workspace` 真实 App 工作区，并同时证明真实产品资料 / SKU、评论或客服语料、参考图和参考视频、视频拆解和脚本、绿幕图审核、成功素材沉淀、混剪包真实素材文件、平台草稿包、关键产物 runId 一致性和 provider strict 均成立；该门槛会拒绝 local-sample、外部手填清单、`sample-*` / “示例”占位内容和 provider dry-run。
+- 如使用 `--require-real-workspace-evidence --require-external-mix-evidence`，验收必须来自 `--workspace` 真实 App 工作区，并同时证明真实产品资料 / SKU、评论或客服语料、参考图和参考视频、视频拆解和脚本、绿幕图审核、成功素材沉淀、混剪包真实素材文件、真实第三方混剪导入证据、平台草稿包、关键产物 runId 一致性和 provider strict 均成立；该门槛会拒绝 local-sample、外部手填清单、`sample-*` / “示例”占位内容和 provider dry-run。
 - `platformDraft.actualTraceFields` 或平台草稿 manifest 必须证明 `workflowRunId`、`promptDraftId` 和 `sourceLogId`，草稿包需要能回到 SOP、PromptDraft 和来源文章日志。
 - `platformDraft.actualContentFields` 或平台草稿包文件内容必须证明正文、复制稿、格式指南、发布检查清单和 `publishBoundary` 都有可复核内容；`publishBoundary` 要能证明本地草稿包不自动发布且发布前需要人工确认。使用 `--workspace` 时脚本会读取 `draft.md`、`platform-copy.txt`、`format-guide.md` 和 `publish-checklist.md`。
 - `mediaCost.actual` 必须证明视频模型、时长、币种、单价、总成本和可信成本来源；成本来源只接受 `provider-response`、`env` 或 `default-internal-api`，不接受 `manual` 等手填来源伪过。使用 `--workspace` 时脚本会从最新视频 generation log 的 `output.costEstimate` 自动提取。
@@ -526,7 +527,8 @@ npm run verify:local
 ```bash
 npm run verify:v2:providers
 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1 npm run verify:v2:providers:strict -- --output docs/dev/v2-acceptance/<日期>/provider-check.json
-CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1 npm run verify:v2:evidence -- --provider-strict --require-real-workspace-evidence --workspace <工作区路径> --output-dir docs/dev/v2-acceptance/<日期>
+CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1 npm run verify:v2:evidence -- --provider-strict --require-real-workspace-evidence --require-external-mix-evidence --workspace <工作区路径> --output-dir docs/dev/v2-acceptance/<日期>
+npm run verify:v2:release -- --workspace <工作区路径> --output-dir docs/dev/v2-acceptance/<日期>
 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1 npm run verify:v2:providers:strict
 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1 npm run verify:v2:providers:strict
 CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1 npm run verify:v2:providers

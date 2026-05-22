@@ -42,6 +42,7 @@ interface VideoModuleProps {
   onSelectVideo: () => void;
   onAnalyzeReferenceVideo: () => void;
   onGenerateVideoScript: () => void;
+  onOpenVideoPromptHandoff: () => void;
   onGenerateVideo: () => void;
 }
 
@@ -82,6 +83,7 @@ export function VideoModule({
   onSelectVideo,
   onAnalyzeReferenceVideo,
   onGenerateVideoScript,
+  onOpenVideoPromptHandoff,
   onGenerateVideo,
 }: VideoModuleProps) {
   const [activeStage, setActiveStage] = useState<VideoStage>(initialStage);
@@ -112,7 +114,7 @@ export function VideoModule({
         {[
           { key: 'breakdown' as const, title: '视频拆解', text: '导入已授权视频并解析结构' },
           { key: 'script' as const, title: '脚本生成', text: '替换为本方产品并生成新脚本' },
-          { key: 'generate' as const, title: '视频生成', text: '分镜图与视频 Prompt 交接' },
+          { key: 'generate' as const, title: 'Prompt 交接', text: '复制外部平台并手动导入成品' },
         ].map((stage) => (
           <button
             key={stage.key}
@@ -272,8 +274,8 @@ export function VideoModule({
           <article className="video-card video-material-card">
             <div className="video-card-title">
               <div>
-                <h4>生成视频使用的图片</h4>
-                <p>分镜图、上传图片、上传视频都会作为本次视频生成参考素材。</p>
+                <h4>视频 Prompt 使用的素材</h4>
+                <p>分镜图、上传图片、参考视频都会随视频 Prompt 一起进入交接资料。</p>
               </div>
               <div className="video-card-actions">
                 <button className="ghost small" onClick={onSelectReferenceImages}>上传图片</button>
@@ -288,7 +290,7 @@ export function VideoModule({
               ) : (
                 <div className="video-placeholder">
                   <strong>暂无参考素材</strong>
-                  <p>请先生分镜图，或上传图片/视频。</p>
+                  <p>可先上传产品图、参考图或视频；也可以直接用脚本生成 Prompt。</p>
                 </div>
               )}
             </div>
@@ -297,8 +299,8 @@ export function VideoModule({
           <article className="video-card video-history-card">
             <div className="video-card-title">
               <div>
-                <h4>生成视频历史</h4>
-                <p>配置真实视频接口后，生成结果会显示在这里；未配置时只保留可追溯的待配置记录。</p>
+                <h4>可选内部视频生成</h4>
+                <p>这是高成本备选能力。普通用户主路径是复制视频 Prompt 到第三方平台，再手动导入成品。</p>
               </div>
             </div>
             {mediaResult ? (
@@ -319,7 +321,7 @@ export function VideoModule({
                   <div className="asset-output-grid">
                     {mediaResult.assetRefs.map((assetRef) => (
                       <article key={assetRef} className="asset-output-card">
-                        <span>队列产物</span>
+                        <span>内部生成产物</span>
                         <strong>{fileNameFromPath(assetRef)}</strong>
                         <small>可打开位置或导出副本</small>
                         <div className="log-actions">
@@ -332,21 +334,24 @@ export function VideoModule({
                 ) : null}
               </div>
             ) : (
-              <div className="video-placeholder tall">暂无视频生成历史</div>
+              <div className="video-placeholder tall">暂无内部生成记录</div>
             )}
           </article>
 
           <article className="video-card video-prompt-card">
             <div className="video-card-title">
               <div>
-                <h4>视频提示词</h4>
-                <p>生成视频时会使用当前分镜图和这里的视频提示词。</p>
+                <h4>视频 Prompt 交接</h4>
+                <p>打开交接后可复制到第三方视频平台；软件只记录 Prompt、复制动作和手动导入的成品视频。</p>
               </div>
             </div>
             <pre>{suggestedVideoPrompt}</pre>
             {videoBreakdown ? <div className="script-block"><strong>拆解片段</strong>{videoBreakdown.segments.map((segment) => <p key={segment.timeRange}>{segment.timeRange} · {segment.hook} · {segment.reusablePoint}</p>)}</div> : null}
             {videoScript ? <div className="script-block"><strong>分镜脚本</strong><pre>{videoScript.script}</pre></div> : null}
-            <button className="primary wide" disabled={busy || !workspaceReady} onClick={onGenerateVideo}>生成视频队列</button>
+            <div className="video-handoff-actions">
+              <button className="primary wide" disabled={busy || !workspaceReady} onClick={onOpenVideoPromptHandoff}>打开视频 Prompt 交接</button>
+              <button className="ghost wide" disabled={busy || !workspaceReady} onClick={onGenerateVideo}>可选：内部视频生成</button>
+            </div>
           </article>
         </div>
       ) : null}

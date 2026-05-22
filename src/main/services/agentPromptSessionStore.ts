@@ -40,14 +40,45 @@ function snapshotSource(source: InputSourceRecord): AgentPromptSourceSnapshot {
   };
 }
 
+function sourceKindLabel(kind: InputSourceRecord['kind']): string {
+  if (kind === 'docx' || kind === 'markdown') return '文档';
+  if (kind === 'image') return '图片';
+  if (kind === 'video') return '视频';
+  if (kind === 'sku-table') return 'SKU 表';
+  if (kind === 'url') return '网页';
+  if (kind === 'manual-note') return '手动记录';
+  return '文本';
+}
+
+function sourcePurposeLabel(purpose: InputSourceRecord['purpose']): string {
+  const labels: Record<InputSourceRecord['purpose'], string> = {
+    'brand-kb': '品牌 / 产品知识库',
+    'ip-kb': 'IP 知识库',
+    'ip-scenario-kb': 'IP 场景库',
+    reference: '参考素材',
+    'product-brief': '产品资料',
+    'user-feedback': '评论 / 客服问题',
+    'sop-input': '任务输入',
+    'successful-asset': '成功素材',
+  };
+  return labels[purpose] ?? '输入资料';
+}
+
+function sourceStatusLabel(status: InputSourceRecord['status']): string {
+  if (status === 'converted') return '已生成可追溯转换稿';
+  if (status === 'blocked') return '待补齐';
+  if (status === 'failed') return '解析失败';
+  return '已登记';
+}
+
 function sourceSnapshotText(sources: AgentPromptSourceSnapshot[]): string {
   if (sources.length === 0) return '未选择输入源。';
   return sources.map((source, index) => [
     `${index + 1}. ${source.title}`,
-    `类型：${source.kind}/${source.purpose}/${source.status}`,
-    source.markdownPath ? `转换稿：${source.markdownPath}` : '',
+    `资料类型：${sourcePurposeLabel(source.purpose)} / ${sourceKindLabel(source.kind)} / ${sourceStatusLabel(source.status)}`,
+    source.markdownPath ? '转换稿：已生成可追溯转换稿' : '',
     source.summary ? `摘要：${source.summary}` : '',
-    source.blockedReason ? `阻塞原因：${source.blockedReason}` : '',
+    source.blockedReason ? `待补齐原因：${source.blockedReason}` : '',
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 

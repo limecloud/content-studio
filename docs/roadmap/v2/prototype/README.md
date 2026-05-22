@@ -1,7 +1,7 @@
 # 布谷AI内容工厂 v2 桌面原型
 
-更新时间：2026-05-20
-状态：Draft
+更新时间：2026-05-22
+状态：Draft / 普通用户主路径已校准，等待真实验收
 使用 Skill：`.codex/skills/bugu-product-design-cheatsheet`
 
 ## 原型契约
@@ -24,7 +24,7 @@ PRD 映射：
 
 核心对象：品牌知识库、IP 知识库、场景库、场景卡、提示词组、输入源、Agent 会话、Prompt 草稿、SOP、图片素材、文案素材、视频 Prompt、绿幕文案图、审核结果、素材库、Provider 配置、skill 草稿、工作流定义、混剪素材包。
 
-统一状态：草稿、可运行、生成中、待审核、已复制外部、已完成、blocked。
+统一状态：草稿、可运行、生成中、待审核、已复制外部、已完成、待配置。
 
 禁用词：`external-package`、`waiting-external`、`RunningHub 任务包`、`回填任务`、`KnowledgeCitation`、`runtime`、`Context Run`。
 
@@ -48,7 +48,7 @@ PRD 映射：
 - `US-15 / UC-17`：IP 知识库六层体系，不混入品牌知识库。
 - `US-05 / UC-08`：视频 Prompt 复制到第三方，第三方生成过程脱离软件。
 - `US-07 / UC-11`：审核通过、驳回、重生成和入库。
-- `US-08 / UC-12`：混剪素材包和 manifest 导出。
+- `US-08 / UC-12`：混剪素材包和混剪清单导出。
 - `US-09 / UC-13`：SOP 表单执行和工作流定义管理，普通用户不依赖 canvas。
 
 ## 交互说明

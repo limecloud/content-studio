@@ -13,7 +13,7 @@ const DEFAULT_EXPECTATIONS = {
   productBriefVariableTerms: ['产品名称', '卖点', '规格参数', '适用场景', '禁用表达', 'SKU 行数'],
   productBriefSkuMinimum: 1,
   productBriefPromptTypes: ['main-image', 'selling-point-image', 'detail-page-section'],
-  productBriefPromptFields: ['type', 'title', 'prompt', 'sourceIds', 'skuTrace', 'productName', 'sellingPoint', 'scenario', 'restrictions'],
+  productBriefPromptFields: ['type', 'title', 'prompt', 'sourceIds', 'sourceTrace', 'skuTrace', 'productName', 'sellingPoint', 'scenario', 'restrictions'],
   feedbackClusterKeys: ['price-trust', 'usage-friction', 'audience-fit', 'scenario-need'],
   feedbackMatrixFields: ['painPoint', 'audience', 'scenario', 'contentAngle'],
   feedbackTagMinimum: 2,
@@ -841,14 +841,28 @@ function productBriefAcceptance(sample) {
     }))
     .filter((row) => row.missingFields.length > 0);
   const promptRowsMissingTrace = promptPlan
-    .filter((prompt) =>
-      prompt.sourceIds.length === 0 ||
-      !prompt.skuTrace.trim() ||
-      prompt.skuTrace === '未提供 SKU 行' ||
-      !prompt.prompt.includes('追溯输入源') ||
-      !prompt.prompt.includes('禁用表达'),
-    )
-    .map((prompt) => ({ type: prompt.type, title: prompt.title, skuTrace: prompt.skuTrace, sourceIds: prompt.sourceIds }));
+    .map((prompt) => {
+      const leakedSourceIds = prompt.sourceIds.filter((sourceId) => prompt.prompt.includes(sourceId));
+      const issues = [
+        prompt.sourceIds.length === 0 ? '缺少底层 sourceIds' : '',
+        !String(prompt.sourceTrace ?? '').trim() ? '缺少资料追溯摘要' : '',
+        !prompt.skuTrace.trim() || prompt.skuTrace === '未提供 SKU 行' ? '缺少 SKU / 规格追溯' : '',
+        !prompt.prompt.includes('追溯资料') ? '用户可见 Prompt 缺少资料追溯' : '',
+        prompt.prompt.includes('追溯输入源') ? '用户可见 Prompt 泄露内部追溯字段' : '',
+        leakedSourceIds.length > 0 ? '用户可见 Prompt 泄露 source id' : '',
+        !prompt.prompt.includes('禁用表达') ? '缺少禁用表达追溯' : '',
+      ].filter(Boolean);
+      return {
+        type: prompt.type,
+        title: prompt.title,
+        skuTrace: prompt.skuTrace,
+        sourceTrace: prompt.sourceTrace,
+        sourceIds: prompt.sourceIds,
+        leakedSourceIds,
+        issues,
+      };
+    })
+    .filter((row) => row.issues.length > 0);
   return {
     sourceIds: brief.sourceIds,
     sourceTitles: brief.sourceTitles,
@@ -909,11 +923,11 @@ function productBriefAcceptance(sample) {
           promptRowsWithMissingFields,
         }),
       brief.sourceIds.length > 0 && brief.skuRows.length >= expectedRows && promptRowsMissingTrace.length === 0
-        ? passCheck('product-brief-prompt-trace', '产品 Prompt 保留资料和 SKU 追溯', '主图、卖点图和详情页 Prompt 均保留输入源、SKU / 规格和禁用表达追溯。', {
+        ? passCheck('product-brief-prompt-trace', '产品 Prompt 保留资料和 SKU 追溯', '主图、卖点图和详情页 Prompt 均保留底层 sourceIds，并向普通用户展示资料数量、SKU / 规格和禁用表达追溯。', {
           sourceIds: brief.sourceIds,
           skuRows: brief.skuRows.length,
         })
-        : failCheck('product-brief-prompt-trace', '产品 Prompt 保留资料和 SKU 追溯', '产品 Prompt 缺少输入源、SKU / 规格或禁用表达追溯。', {
+        : failCheck('product-brief-prompt-trace', '产品 Prompt 保留资料和 SKU 追溯', '产品 Prompt 缺少底层 sourceIds、资料数量、SKU / 规格或禁用表达追溯，或泄露了 source id / 内部追溯字段。', {
           sourceIds: brief.sourceIds,
           skuRows: brief.skuRows.length,
           promptRowsMissingTrace,
@@ -2316,7 +2330,8 @@ function realWorkspaceEvidenceAcceptance(sample, providerReport, options = {}) {
 
 export async function buildBusinessAcceptanceReport(env = process.env, options = {}) {
   const sample = await hydrateAcceptanceInputEvidence(normalizeAcceptanceInput(options.acceptanceInput ?? LOCAL_SAMPLE));
-  if (options.requireExternalMixEvidence) {
+  const requireExternalMixEvidence = Boolean(options.requireExternalMixEvidence || options.requireRealWorkspaceEvidence);
+  if (requireExternalMixEvidence) {
     sample.videoPackage.requireExternalImportEvidence = true;
   }
   const mode = options.mode ?? sample.mode;
@@ -2394,10 +2409,11 @@ if (isMain) {
   const inputPath = readArgValue('--input') || process.env.CONTENT_STUDIO_V2_ACCEPTANCE_INPUT;
   const workspacePath = readArgValue('--workspace') || process.env.CONTENT_STUDIO_V2_ACCEPTANCE_WORKSPACE;
   const outputPath = readArgValue('--output') || process.env.CONTENT_STUDIO_V2_ACCEPTANCE_REPORT;
-  const requireExternalMixEvidence = hasArgFlag('--require-external-mix-evidence', '--require-mix-import-evidence') ||
-    process.env.CONTENT_STUDIO_REQUIRE_MIX_IMPORT_EVIDENCE === '1';
   const requireRealWorkspaceEvidence = hasArgFlag('--require-real-workspace-evidence', '--require-real-business-evidence') ||
     process.env.CONTENT_STUDIO_REQUIRE_REAL_WORKSPACE_EVIDENCE === '1';
+  const requireExternalMixEvidence = hasArgFlag('--require-external-mix-evidence', '--require-mix-import-evidence') ||
+    process.env.CONTENT_STUDIO_REQUIRE_MIX_IMPORT_EVIDENCE === '1' ||
+    requireRealWorkspaceEvidence;
   const acceptanceInput = inputPath
     ? await loadAcceptanceInput(inputPath)
     : workspacePath

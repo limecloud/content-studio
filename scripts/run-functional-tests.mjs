@@ -30,7 +30,12 @@ await esbuild.build({
           import { tmpdir } from 'node:os';
           export const app = {
             getAppPath: () => process.cwd(),
+            getVersion: () => process.env.CONTENT_STUDIO_TEST_APP_VERSION || '0.0.0',
             getPath: (name) => name === 'userData' ? join(tmpdir(), 'content-studio-functional-user-data') : tmpdir(),
+          };
+          export const shell = {
+            openExternal: async () => undefined,
+            openPath: async () => '',
           };
           export const safeStorage = {
             isEncryptionAvailable: () => false,

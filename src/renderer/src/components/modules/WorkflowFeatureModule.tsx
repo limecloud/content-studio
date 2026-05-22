@@ -378,9 +378,9 @@ function pushWorkflowArtifactAction(
 }
 
 function artifactRefLabel(ref: string): string {
-  const colonParts = ref.split(':');
-  const pathParts = ref.replace(/\\/g, '/').split('/').filter(Boolean);
-  if (ref.startsWith('workflow-run:')) return `步骤快照 / ${colonParts[colonParts.length - 1] ?? 'step'}`;
+  const normalizedRef = ref.replace(/\\/g, '/');
+  const pathParts = normalizedRef.split('/').filter(Boolean);
+  if (ref.startsWith('workflow-run:')) return '步骤快照';
   if (ref.startsWith('brand-knowledge-base:')) return '品牌知识库';
   if (ref.startsWith('ip-knowledge-base:')) return 'IP 知识库';
   if (ref.startsWith('prompt-pack:')) return '提示词包';
@@ -393,10 +393,12 @@ function artifactRefLabel(ref: string): string {
   if (ref.startsWith('mix-package:')) return '混剪包';
   if (ref.startsWith('generated:')) return '生成素材';
   if (ref.startsWith('/') || /^[A-Za-z]:[\\/]/.test(ref)) {
-    if (ref.replace(/\\/g, '/').includes('/platform-drafts/')) return '平台草稿包';
+    if (normalizedRef.includes('/platform-drafts/')) return '平台草稿包';
+    if (normalizedRef.includes('/input-sources/')) return '输入源转换稿';
+    if (normalizedRef.includes('/mix-packages/')) return '混剪包文件';
     return pathParts[pathParts.length - 1] ?? '本地文件';
   }
-  return ref.length > 32 ? `${ref.slice(0, 24)}...` : ref;
+  return '可追溯产物';
 }
 
 function workflowKeyMatches(key: string, baseKey: string): boolean {
@@ -1801,9 +1803,10 @@ function RunDetail({
         <article>
           <h4>产物线索</h4>
           <div className="workflow-run-steps">
-            {run.artifactRefs.length > 0 ? run.artifactRefs.map((ref) => (
-              <span key={ref} title={ref}>{artifactRefLabel(ref)}</span>
-            )) : <span className="idle">暂无引用</span>}
+            {run.artifactRefs.length > 0 ? run.artifactRefs.map((ref) => {
+              const label = artifactRefLabel(ref);
+              return <span key={ref} title={label}>{label}</span>;
+            }) : <span className="idle">暂无引用</span>}
           </div>
         </article>
       </div>

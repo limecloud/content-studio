@@ -604,7 +604,7 @@ export interface WorkflowArtifact {
   8. export-package: 混剪素材包
 
 输出：
-  视频 Prompt、复制记录、可选 15 秒视频素材、绿幕图、混剪 manifest
+  视频 Prompt、复制记录、可选 15 秒视频素材、绿幕图、混剪清单
 ```
 
 ## 14. 存储建议

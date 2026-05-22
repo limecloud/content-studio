@@ -283,10 +283,11 @@ async function acceptanceInputFromArgs() {
 async function main() {
   const outputDir = resolve(argValue('--output-dir') || process.env.CONTENT_STUDIO_V2_EVIDENCE_DIR || defaultOutputDir());
   const providerStrictRequired = hasFlag('--provider-strict', '--strict-provider', '--strict');
-  const requireExternalMixEvidence = hasFlag('--require-external-mix-evidence', '--require-mix-import-evidence') ||
-    process.env.CONTENT_STUDIO_REQUIRE_MIX_IMPORT_EVIDENCE === '1';
   const requireRealWorkspaceEvidence = hasFlag('--require-real-workspace-evidence', '--require-real-business-evidence') ||
     process.env.CONTENT_STUDIO_REQUIRE_REAL_WORKSPACE_EVIDENCE === '1';
+  const requireExternalMixEvidence = hasFlag('--require-external-mix-evidence', '--require-mix-import-evidence') ||
+    process.env.CONTENT_STUDIO_REQUIRE_MIX_IMPORT_EVIDENCE === '1' ||
+    requireRealWorkspaceEvidence;
   const allowNetwork = hasFlag('--allow-network') ? true : undefined;
   const allowMedia = hasFlag('--allow-media') ? true : undefined;
   const acceptance = await acceptanceInputFromArgs();

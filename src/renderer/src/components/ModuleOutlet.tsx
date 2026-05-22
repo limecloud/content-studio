@@ -125,6 +125,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onSelectVideo={() => app.runAction(() => app.selectAssetFiles('video'))}
         onAnalyzeReferenceVideo={() => app.runAction(app.analyzeReferenceVideo)}
         onGenerateVideoScript={() => app.runAction(app.generateVideoScript)}
+        onOpenVideoPromptHandoff={() => app.runAction(app.openVideoPromptHandoff, '正在准备视频 Prompt 交接')}
         onGenerateVideo={() => app.runAction(app.generateVideo)}
       />
     );

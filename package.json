@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "布谷AI内容工厂桌面应用，用于知识库、提示词、图片、视频和文章生产。",
   "type": "module",
   "main": "out/main/index.js",
@@ -26,7 +26,9 @@
     "verify:v2:providers:strict": "node scripts/v2-provider-check.mjs --strict",
     "verify:v2:acceptance": "node scripts/run-v2-business-acceptance.mjs",
     "verify:v2:evidence": "node scripts/run-v2-acceptance-evidence.mjs",
-    "verify:v2": "npm run verify:v2:providers && npm run verify:v2:acceptance",
+    "verify:v2:ux-copy": "node scripts/v2-ux-copy-audit.mjs",
+    "verify:v2:release": "node scripts/run-v2-acceptance-evidence.mjs --provider-strict --require-real-workspace-evidence --require-external-mix-evidence --allow-network --allow-media",
+    "verify:v2": "npm run verify:v2:providers && npm run verify:v2:acceptance && npm run verify:v2:ux-copy",
     "test:functional": "node scripts/run-functional-tests.mjs",
     "test:e2e": "node scripts/run-playwright-e2e.mjs",
     "test:e2e:headed": "npm run test:e2e -- --headed",

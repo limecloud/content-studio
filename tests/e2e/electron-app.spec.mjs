@@ -1027,6 +1027,11 @@ test('SOP 执行页显式选择资料并写入运行记录', async ({}, testInfo
     await actionPanel.locator('button').filter({ hasText: '打开图片工作台' }).click();
     await expect(page.locator('.image-workbench-layout')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.image-prompt-panel textarea')).toHaveValue(/主图 Prompt|卖点图 Prompt|详情页模块 Prompt/);
+    const promptValue = await page.locator('.image-prompt-panel textarea').inputValue();
+    expect(promptValue).toContain('追溯资料：已关联 1 份产品资料 / SKU 表');
+    expect(promptValue).not.toContain(setup.productSourceId);
+    expect(promptValue).not.toContain('追溯输入源');
+    expect(promptValue).not.toContain('类型：main-image');
   });
 });
 
@@ -1310,7 +1315,7 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     await videoSopCard.click();
     await expect(page.locator('.workflow-runner-panel')).toContainText('视频素材包 SOP');
     await page.locator('.workflow-runner-panel textarea').nth(0).fill('品牌场景库、脚本和产品素材。');
-    await page.locator('.workflow-runner-panel textarea').nth(1).fill('生成 15 秒视频素材 Prompt，第三方生成后手动导入，再生成绿幕图和混剪 manifest。');
+    await page.locator('.workflow-runner-panel textarea').nth(1).fill('生成 15 秒视频素材 Prompt，第三方生成后手动导入，再生成绿幕图和混剪清单。');
     await page.locator('.workflow-runner-panel input[type="number"]').fill('15');
     await page.locator('.workflow-runner-panel button').filter({ hasText: '运行 SOP' }).click();
 
@@ -1364,6 +1369,7 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     await importedVideoCard.getByRole('button', { name: '沉淀提示词', exact: true }).click();
     await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.prompt-draft-editor')).toHaveValue(/成功素材反向沉淀 Prompt|third-party-finished-video\.mp4|视频 Prompt/, { timeout: 20_000 });
+    await expect(page.locator('.prompt-draft-editor')).not.toHaveValue(/原素材 Key|SOP Run|generation-log|input-source/);
 
     const distilledVideoTrace = await page.evaluate(async (workspacePath) => {
       const api = window.contentStudio;
@@ -1464,7 +1470,7 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     await expect(importEvidenceForm.locator('label').filter({ hasText: '导入文件数' }).locator('input')).toHaveValue('2');
     await expect(importEvidenceForm.locator('label').filter({ hasText: '清单文件已导入或已核对' }).locator('input')).toBeChecked();
     await expect(importEvidenceForm.locator('label').filter({ hasText: '已在混剪工具创建时间线 / 工程' }).locator('input')).toBeChecked();
-    await importEvidenceForm.locator('label').filter({ hasText: '导入备注' }).locator('textarea').fill('E2E 验收：已按导入说明核对 manifest、成品视频和绿幕文案图。');
+    await importEvidenceForm.locator('label').filter({ hasText: '导入备注' }).locator('textarea').fill('E2E 验收：已按导入说明核对清单文件、成品视频和绿幕文案图。');
     await importEvidenceForm.getByRole('button', { name: '保存导入证据' }).click();
     await expect(exportedPackageCard).toContainText('导入证据已登记', { timeout: 20_000 });
     await expect(exportedPackageCard.getByRole('button', { name: '打开导入证据' })).toBeVisible();
@@ -1527,7 +1533,7 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     await repeatedVideoSopCard.click();
     await expect(page.locator('.workflow-runner-panel')).toContainText('视频素材包 SOP');
     await page.locator('.workflow-runner-panel textarea').nth(0).fill('品牌场景库、脚本和产品素材。');
-    await page.locator('.workflow-runner-panel textarea').nth(1).fill('生成 15 秒视频素材 Prompt，第三方生成后手动导入，再生成绿幕图和混剪 manifest。');
+    await page.locator('.workflow-runner-panel textarea').nth(1).fill('生成 15 秒视频素材 Prompt，第三方生成后手动导入，再生成绿幕图和混剪清单。');
     await page.locator('.workflow-runner-panel input[type="number"]').fill('15');
     await page.locator('.workflow-runner-panel button').filter({ hasText: '运行 SOP' }).click();
 
@@ -1655,6 +1661,12 @@ test('视频 Prompt 需要可追溯资料并支持临时资料自动留痕', asy
     await generateButton.click();
     await expect(page.locator('.video-prompt-preview pre')).toContainText(/视频 Prompt|任务：|15 秒/, { timeout: 20_000 });
 
+    await promptPanel.locator('button').filter({ hasText: '导入成品视频' }).click();
+    await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.video-import-workbench .inline-warning')).toContainText('请先复制视频 Prompt 到第三方平台');
+    await expect(page.locator('.video-import-workbench .module-command-center button').filter({ hasText: '导入并关联提示词' })).toBeDisabled();
+    await expect(page.locator('.video-import-main-panel button').filter({ hasText: '选择视频文件' })).toBeDisabled();
+
     const trace = await page.evaluate(async (workspacePath) => {
       const api = window.contentStudio;
       const sources = await api.listInputSources(workspacePath);
@@ -1762,6 +1774,21 @@ test('SOP 定义草案可以编辑、发布并从表单运行', async ({}, testI
     await expect(page.locator('.workflow-run-detail-panel')).toContainText('功能测试 UI 可运行 SOP');
     await expect(page.locator('.workflow-run-detail-panel')).toContainText('排队');
     await expect(page.locator('.workflow-run-detail-panel')).toContainText('登记事实源');
+    const artifactTracePanel = page.locator('.workflow-run-detail-panel article').filter({ hasText: '产物线索' }).last();
+    await expect(artifactTracePanel).toContainText('步骤快照');
+    await expect(artifactTracePanel).toContainText('输入源转换稿');
+    await expect(artifactTracePanel).not.toContainText('workflow-run:');
+    await expect(artifactTracePanel).not.toContainText('input_register');
+    await expect(artifactTracePanel).not.toContainText(/[0-9a-f-]{36}\.md/i);
+    const artifactLabels = await artifactTracePanel.locator('span').evaluateAll((items) =>
+      items.map((item) => ({
+        text: item.textContent ?? '',
+        title: item.getAttribute('title') ?? '',
+      })),
+    );
+    expect(JSON.stringify(artifactLabels)).not.toContain('workflow-run:');
+    expect(JSON.stringify(artifactLabels)).not.toContain('input_register');
+    expect(JSON.stringify(artifactLabels)).not.toMatch(/[0-9a-f-]{36}\.md/i);
   });
 });
 
@@ -2099,6 +2126,7 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
       await approvedReworkedAsset.getByRole('button', { name: '沉淀提示词', exact: true }).click();
       await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.prompt-draft-editor')).toHaveValue(/成功素材反向沉淀 Prompt|复用 Prompt 草稿|真实手机实拍/, { timeout: 20_000 });
+      await expect(page.locator('.prompt-draft-editor')).not.toHaveValue(/原素材 Key|SOP Run|generation-log|input-source/);
 
       const persistedTrace = await page.evaluate(async ({ workspacePath, runId }) => {
         const api = window.contentStudio;
@@ -2447,6 +2475,14 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
       await sceneHandoffPanel.locator('button').filter({ hasText: '复制到第三方视频平台' }).click();
       await expect(sceneHandoffPanel).toContainText('已复制到Vidu，待导入成品', { timeout: 20_000 });
       await expect(sceneHandoffPanel.locator('button').filter({ hasText: '去导入成品' })).toBeEnabled();
+      await sceneHandoffPanel.locator('button').filter({ hasText: '去导入成品' }).click();
+      await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.video-import-handoff-note')).toContainText('Prompt 已复制到第三方平台');
+      await expect(page.locator('.video-import-draft-panel')).toContainText('最近：Vidu');
+      await expect(page.locator('.video-import-workbench .module-command-center button').filter({ hasText: '导入并关联提示词' })).toBeEnabled();
+
+      await clickNavItem(page, '场景提示词');
+      await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
 
       await page.locator('.purpose-tabs button').filter({ hasText: '图片' }).click();
       await page.locator('.scene-prompt-builder-panel button').filter({ hasText: '生成10 组 UGC 图片 Prompt' }).click();
@@ -3052,7 +3088,7 @@ test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造�
     await expect(page.locator('.video-stage-tabs button')).toHaveCount(3);
     await expect(page.locator('.video-stage-tabs button').nth(0)).toContainText('视频拆解');
     await expect(page.locator('.video-stage-tabs button').nth(1)).toContainText('脚本生成');
-    await expect(page.locator('.video-stage-tabs button').nth(2)).toContainText('视频生成');
+    await expect(page.locator('.video-stage-tabs button').nth(2)).toContainText('Prompt 交接');
 
     await expect(page.getByRole('heading', { name: '参考视频导入' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '片段拆解结果' })).toBeVisible();
@@ -3078,20 +3114,51 @@ test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造�
     await expect(page.getByText('文字模型未配置')).toBeVisible();
     await expect(page.locator('.video-script-card')).toContainText('等待生成新视频脚本');
 
-    await clickVideoStageTab(page, '视频生成');
-    await expect(page.getByRole('heading', { name: '生成视频使用的图片' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '生成视频历史' })).toBeVisible();
+    await clickVideoStageTab(page, 'Prompt 交接');
+    await expect(page.getByRole('heading', { name: '视频 Prompt 使用的素材' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '可选内部视频生成' })).toBeVisible();
     await expect(page.locator('.video-material-list')).toContainText('hero-product.png');
-    await expect(page.locator('.video-prompt-card')).toContainText('视频提示词');
+    await expect(page.locator('.video-prompt-card')).toContainText('视频 Prompt 交接');
     await assertVideoWorkbenchLayout(page);
 
-    await clickVideoAction(page, '生成视频队列');
+    await clickVideoAction(page, '打开视频 Prompt 交接');
+    const promptPanel = page.locator('.video-prompt-builder-panel');
+    await expect(promptPanel).toBeVisible({ timeout: 20_000 });
+    await expect(promptPanel.locator('.panel-title')).toContainText('Prompt 交接');
+    await expect(page.locator('.video-prompt-preview pre')).toContainText('软件只生成可复制到第三方视频平台的视频 Prompt');
+    await expect(page.locator('.video-prompt-handoff-card')).toContainText('未复制');
+
+    const handoffTrace = await page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      const sources = await api.listInputSources(workspacePath);
+      const drafts = await api.listPromptDrafts(workspacePath);
+      const draft = drafts.find((item) => item.title.includes('Prompt 交接'));
+      const source = sources.find((item) => draft?.inputSourceIds.includes(item.id));
+      return {
+        draftTitle: draft?.title ?? '',
+        draftPurpose: draft?.purpose ?? '',
+        draftStatus: draft?.status ?? '',
+        sourcePurpose: source?.purpose ?? '',
+        sourceTags: source?.tags ?? [],
+        sourceText: source?.extractedText ?? '',
+      };
+    }, workspaceDir);
+    expect(handoffTrace.draftTitle, JSON.stringify(handoffTrace)).toContain('Prompt 交接');
+    expect(handoffTrace.draftPurpose, JSON.stringify(handoffTrace)).toBe('video');
+    expect(handoffTrace.draftStatus, JSON.stringify(handoffTrace)).toBe('confirmed');
+    expect(handoffTrace.sourcePurpose, JSON.stringify(handoffTrace)).toBe('sop-input');
+    expect(handoffTrace.sourceTags, JSON.stringify(handoffTrace)).toEqual(expect.arrayContaining(['video-prompt', '视频交接']));
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('第三方生成后的成品视频需要由用户手动导入');
+
+    await clickButton(page, '视频生成');
+    await clickVideoStageTab(page, 'Prompt 交接');
+    await clickVideoAction(page, '可选：内部视频生成');
     await expect(page.locator('.result-card.blocked')).toBeVisible();
     await expect(page.locator('.result-card.blocked')).toContainText(/视频生成服务未配置|视频 provider 未配置/);
     await expect(page.locator('.video-cost-estimate')).toContainText('内部 API 成本估算');
     await expect(page.locator('.video-cost-estimate')).toContainText('18s × ¥2.00/秒');
     await expect(page.locator('.asset-output-card')).toHaveCount(2);
-    await expect(page.locator('.asset-output-card').first()).toContainText('队列产物');
+    await expect(page.locator('.asset-output-card').first()).toContainText('内部生成产物');
 
     const logs = await page.evaluate(async (workspacePath) => {
       const entries = await window.contentStudio.listGenerationLogs(workspacePath);

@@ -11,6 +11,7 @@ import { promisify } from 'node:util';
 import { ArticleGenerationService } from '../../src/main/services/articleGenerationService.ts';
 import { AgentPromptSessionStore } from '../../src/main/services/agentPromptSessionStore.ts';
 import { AssetReviewStore } from '../../src/main/services/assetReviewStore.ts';
+import { AutoUpdateService } from '../../src/main/services/autoUpdateService.ts';
 import { BrandKnowledgeBaseStore } from '../../src/main/services/brandKnowledgeBaseStore.ts';
 import { GenerationLogStore } from '../../src/main/services/generationLogStore.ts';
 import { ImageSkillGenerationService } from '../../src/main/services/imageSkillGenerationService.ts';
@@ -39,6 +40,7 @@ import { extractGeneratedAssetRefsFromLog, extractLocalRefsFromLog } from '../..
 import { SkillManager } from '../../src/main/services/skillManager.ts';
 import { buildBusinessAcceptanceReport, loadWorkspaceAcceptanceInput } from '../../scripts/v2-business-acceptance.mjs';
 import { buildProviderCheckReport, hasProviderStrictFailure } from '../../scripts/v2-provider-check.mjs';
+import { buildV2UxCopyAudit } from '../../scripts/v2-ux-copy-audit.mjs';
 
 const execFileAsync = promisify(execFile);
 const ONE_PIXEL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
@@ -460,6 +462,121 @@ test('本地图片技能 JSON 可以导入并归一化为模板配置', async ()
   });
 });
 
+test('更新检查在品牌 API 和静态清单 404 时回退到 GitHub Release', async () => {
+  const previousApiUrl = process.env.CONTENT_STUDIO_UPDATE_API_URL;
+  const previousManifestUrl = process.env.CONTENT_STUDIO_UPDATE_MANIFEST_URL;
+  const previousReleaseApiUrl = process.env.CONTENT_STUDIO_GITHUB_RELEASE_API_URL;
+  const previousBrandId = process.env.CONTENT_STUDIO_BRAND_ID;
+  const requests = [];
+  const server = createServer((request, response) => {
+    requests.push(request.url);
+    if (request.url === '/api/latest' || request.url === '/static/latest.json') {
+      response.statusCode = 404;
+      response.end('not found');
+      return;
+    }
+    if (request.url === '/github/latest') {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({
+        tag_name: 'v0.10.0',
+        html_url: 'https://github.com/limecloud/content-studio/releases/tag/v0.10.0',
+        published_at: '2026-05-22T11:30:27Z',
+        assets: [
+          {
+            name: 'bugu-0.10.0-linux-x86_64.AppImage',
+            size: 266502323,
+            browser_download_url: 'https://github.com/limecloud/content-studio/releases/download/v0.10.0/bugu-0.10.0-linux-x86_64.AppImage',
+          },
+          {
+            name: 'bugu-0.10.0-mac-arm64.dmg',
+            size: 182018032,
+            browser_download_url: 'https://github.com/limecloud/content-studio/releases/download/v0.10.0/bugu-0.10.0-mac-arm64.dmg',
+          },
+          {
+            name: 'bugu-0.10.0-win-x64.exe',
+            size: 151754456,
+            browser_download_url: 'https://github.com/limecloud/content-studio/releases/download/v0.10.0/bugu-0.10.0-win-x64.exe',
+          },
+          {
+            name: 'seenx-0.10.0-linux-x86_64.AppImage',
+            size: 265497525,
+            browser_download_url: 'https://github.com/limecloud/content-studio/releases/download/v0.10.0/seenx-0.10.0-linux-x86_64.AppImage',
+          },
+          {
+            name: 'seenx-0.10.0-mac-arm64.dmg',
+            size: 179065910,
+            browser_download_url: 'https://github.com/limecloud/content-studio/releases/download/v0.10.0/seenx-0.10.0-mac-arm64.dmg',
+          },
+          {
+            name: 'seenx-0.10.0-win-x64.exe',
+            size: 151036537,
+            browser_download_url: 'https://github.com/limecloud/content-studio/releases/download/v0.10.0/seenx-0.10.0-win-x64.exe',
+          },
+        ],
+      }));
+      return;
+    }
+    response.statusCode = 500;
+    response.end('unexpected request');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    process.env.CONTENT_STUDIO_UPDATE_API_URL = `${baseUrl}/api/latest`;
+    process.env.CONTENT_STUDIO_UPDATE_MANIFEST_URL = `${baseUrl}/static/latest.json`;
+    process.env.CONTENT_STUDIO_GITHUB_RELEASE_API_URL = `${baseUrl}/github/latest`;
+    process.env.CONTENT_STUDIO_BRAND_ID = 'bugu';
+
+    const settings = {
+      async readView() {
+        return {
+          hasAnthropicApiKey: false,
+          apiKeyStorage: 'none',
+          autoUpdateEnabled: true,
+        };
+      },
+      async setAutoUpdateEnabled() { return this.readView(); },
+      async setLastUpdateCheckAt() { return this.readView(); },
+    };
+    const mainWindow = {
+      isDestroyed: () => false,
+      webContents: {
+        isDestroyed: () => false,
+        send: () => undefined,
+      },
+    };
+
+    const updates = new AutoUpdateService(settings, mainWindow);
+    const state = await updates.checkForUpdates({ manual: true });
+
+    assert.deepEqual(requests, ['/api/latest', '/static/latest.json', '/github/latest']);
+    assert.equal(state.status, 'update-available');
+    assert.equal(state.latestVersion, '0.10.0');
+    assert.equal(state.sourceLabel, 'GitHub Release');
+    assert.match(state.asset?.fileName ?? '', /^bugu-0\.10\.0-/);
+    assert.doesNotMatch(state.asset?.fileName ?? '', /^seenx-/);
+    assert.match(state.downloadUrl ?? '', /\/bugu-0\.10\.0-/);
+
+    process.env.CONTENT_STUDIO_BRAND_ID = 'seenx';
+    const seenxState = await new AutoUpdateService(settings, mainWindow).checkForUpdates({ manual: true });
+    assert.equal(seenxState.sourceLabel, 'GitHub Release');
+    assert.match(seenxState.asset?.fileName ?? '', /^seenx-0\.10\.0-/);
+    assert.doesNotMatch(seenxState.asset?.fileName ?? '', /^bugu-/);
+    assert.match(seenxState.downloadUrl ?? '', /\/seenx-0\.10\.0-/);
+  } finally {
+    if (previousApiUrl === undefined) delete process.env.CONTENT_STUDIO_UPDATE_API_URL;
+    else process.env.CONTENT_STUDIO_UPDATE_API_URL = previousApiUrl;
+    if (previousManifestUrl === undefined) delete process.env.CONTENT_STUDIO_UPDATE_MANIFEST_URL;
+    else process.env.CONTENT_STUDIO_UPDATE_MANIFEST_URL = previousManifestUrl;
+    if (previousReleaseApiUrl === undefined) delete process.env.CONTENT_STUDIO_GITHUB_RELEASE_API_URL;
+    else process.env.CONTENT_STUDIO_GITHUB_RELEASE_API_URL = previousReleaseApiUrl;
+    if (previousBrandId === undefined) delete process.env.CONTENT_STUDIO_BRAND_ID;
+    else process.env.CONTENT_STUDIO_BRAND_ID = previousBrandId;
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('内容工厂文字主链可以生成提示词包、场景卡、文章和视频脚本', async () => {
   await withWorkspace(async (workspacePath) => {
     const logs = new GenerationLogStore();
@@ -732,6 +849,11 @@ test('产品资料输入源会结构化为变量表且不编造缺失字段', ()
   assert.deepEqual(promptPlan.map((item) => item.type), ['main-image', 'selling-point-image', 'detail-page-section']);
   assert.ok(promptPlan.every((item) => item.sourceIds.includes('product-brief-1')));
   assert.ok(promptPlan.every((item) => item.skuTrace.includes('A01')));
+  assert.ok(promptPlan.every((item) => item.sourceTrace === '已关联 2 份产品资料 / SKU 表'));
+  assert.ok(promptPlan.every((item) => item.prompt.includes('追溯资料：已关联 2 份产品资料 / SKU 表')));
+  assert.ok(promptPlan.every((item) => !item.prompt.includes('追溯输入源')));
+  assert.ok(promptPlan.every((item) => !item.prompt.includes('product-brief-1')));
+  assert.ok(promptPlan.every((item) => !item.prompt.includes('sku-1')));
   assert.ok(promptPlan.some((item) => item.prompt.includes('详情页模块')));
 
   const partialBrief = structureProductBriefSources([
@@ -824,9 +946,40 @@ test('v2 provider 验收脚本默认只做 dry-run 配置诊断', async () => {
 test('本地总闸包含 v2 provider dry-run 和业务验收入口', async () => {
   const packageJson = JSON.parse(await readFile(join(process.cwd(), 'package.json'), 'utf-8'));
 
-  assert.equal(packageJson.scripts['verify:v2'], 'npm run verify:v2:providers && npm run verify:v2:acceptance');
+  assert.equal(packageJson.scripts['verify:v2'], 'npm run verify:v2:providers && npm run verify:v2:acceptance && npm run verify:v2:ux-copy');
   assert.equal(packageJson.scripts['verify:v2:evidence'], 'node scripts/run-v2-acceptance-evidence.mjs');
+  assert.equal(packageJson.scripts['verify:v2:ux-copy'], 'node scripts/v2-ux-copy-audit.mjs');
+  assert.equal(packageJson.scripts['verify:v2:release'], 'node scripts/run-v2-acceptance-evidence.mjs --provider-strict --require-real-workspace-evidence --require-external-mix-evidence --allow-network --allow-media');
   assert.match(packageJson.scripts['verify:local'], /npm run verify:v2/);
+});
+
+test('v2 UX 文案审计会阻断普通用户可见工程词回退', async () => {
+  const report = await buildV2UxCopyAudit();
+  assert.equal(report.schema, 'buguai.v2-ux-copy-audit.v1');
+  assert.equal(report.summary.passed, true, JSON.stringify(report.checks.flatMap((item) => item.failures), null, 2));
+  assert.equal(report.summary.failed, 0);
+  assert.ok(report.summary.files >= 8);
+  assert.ok(report.summary.rules >= 10);
+
+  const tmpRoot = await mkdtemp(join(tmpdir(), 'content-studio-ux-copy-'));
+  try {
+    await writeFile(join(tmpRoot, 'bad.md'), '用户主路径：导出 manifest 后查看 blocked 状态。', 'utf-8');
+    const failed = await buildV2UxCopyAudit({
+      projectRoot: tmpRoot,
+      audits: [{
+        path: 'bad.md',
+        rules: [
+          { id: 'mix-manifest-main-task', pattern: /导出\s+manifest/, message: '应使用“混剪清单”。' },
+          { id: 'visible-blocked-status', pattern: /\bblocked\b/, message: '应使用“待配置”。' },
+        ],
+      }],
+    });
+    assert.equal(failed.summary.passed, false);
+    assert.equal(failed.summary.failed, 2);
+    assert.deepEqual(failed.checks[0].failures.map((item) => item.ruleId), ['mix-manifest-main-task', 'visible-blocked-status']);
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
 });
 
 test('v2 验收 CLI 可以把 provider 和业务报告写入文件', async () => {
@@ -968,17 +1121,25 @@ test('v2 验收证据 CLI 真实工作区门槛会阻断本地样例', async () 
     const realWorkspaceCheck = businessReport.sections.realEvidence.checks.find((check) => check.id === 'real-workspace-evidence');
 
     assert.equal(manifest.requireRealWorkspaceEvidence, true);
+    assert.equal(manifest.requireExternalMixEvidence, true);
     assert.equal(manifest.businessAcceptancePassed, false);
     assert.equal(manifest.exitCode, 1);
     assert.ok(manifest.businessFailures.some((check) => check.id === 'real-workspace-evidence'));
+    assert.ok(manifest.businessFailures.some((check) => check.id === 'mix-package-external-import'));
     assert.ok(manifest.businessNextActions.some((item) => item.includes('--workspace')));
-    assert.match(manifest.commands.business, /verify:v2:acceptance -- --require-real-workspace-evidence/);
+    assert.match(manifest.commands.business, /verify:v2:acceptance --/);
+    assert.match(manifest.commands.business, /--require-external-mix-evidence/);
+    assert.match(manifest.commands.business, /--require-real-workspace-evidence/);
+    assert.match(manifest.commands.evidence, /--require-external-mix-evidence/);
     assert.match(manifest.commands.evidence, /--require-real-workspace-evidence/);
+    assert.match(summary, /真实混剪导入证据要求：是/);
     assert.match(summary, /真实工作区闭环要求：是/);
     assert.match(summary, /业务失败项/);
     assert.match(summary, /必须使用 --workspace 从真实工作区读取产物/);
+    assert.match(summary, /真实混剪工具导入证据/);
     assert.match(missingEvidence, /v2 缺口补齐清单/);
     assert.match(missingEvidence, /真实工作区验收门槛/);
+    assert.match(missingEvidence, /真实混剪工具导入证据/);
     assert.match(missingEvidence, /- \[ \] 必须使用 --workspace 从真实工作区读取产物/);
     assert.equal(realWorkspaceCheck.status, 'fail');
     assert.ok(realWorkspaceCheck.missing.includes('必须使用 --workspace 从真实工作区读取产物'));
@@ -1028,6 +1189,11 @@ test('v2 业务验收脚本覆盖本地 sample 主链口径', async () => {
   assert.ok(report.sections.productBrief.checks.some((check) => check.id === 'product-brief-prompt-plan' && check.status === 'pass'));
   assert.ok(report.sections.productBrief.checks.some((check) => check.id === 'product-brief-prompt-trace' && check.status === 'pass'));
   assert.deepEqual(report.sections.productBrief.promptPlan.map((item) => item.type), ['main-image', 'selling-point-image', 'detail-page-section']);
+  assert.ok(report.sections.productBrief.promptPlan.every((item) => item.sourceTrace === '已关联 2 份产品资料 / SKU 表'));
+  assert.ok(report.sections.productBrief.promptPlan.every((item) => item.prompt.includes('追溯资料：已关联 2 份产品资料 / SKU 表')));
+  assert.ok(report.sections.productBrief.promptPlan.every((item) => !item.prompt.includes('追溯输入源')));
+  assert.ok(report.sections.productBrief.promptPlan.every((item) => !item.prompt.includes('sample-product-brief')));
+  assert.ok(report.sections.productBrief.promptPlan.every((item) => !item.prompt.includes('sample-sku-table')));
   assert.equal(report.sections.productBrief.skuRows.length, 2);
   assert.ok(report.sections.feedback.checks.some((check) => check.id === 'feedback-clusters' && check.status === 'pass'));
   assert.ok(report.sections.feedback.checks.some((check) => check.id === 'feedback-title-directions' && check.status === 'pass'));
@@ -1309,10 +1475,14 @@ test('v2 业务验收脚本支持外部真实素材输入并暴露缺口', async
     requireRealWorkspaceEvidence: true,
   });
   const realWorkspaceCheck = missingRealWorkspaceEvidence.sections.realEvidence.checks.find((check) => check.id === 'real-workspace-evidence');
-  assert.equal(missingRealWorkspaceEvidence.summary.failed, 1);
+  assert.ok(missingRealWorkspaceEvidence.summary.failed >= 2);
   assert.equal(realWorkspaceCheck.status, 'fail');
   assert.ok(realWorkspaceCheck.missing.includes('必须使用 --workspace 从真实工作区读取产物'));
   assert.ok(realWorkspaceCheck.missing.includes('真实 provider strict 未通过；请用 verify:v2:evidence --provider-strict 联调'));
+  assert.equal(
+    missingRealWorkspaceEvidence.sections.delivery.checks.find((check) => check.id === 'mix-package-external-import').status,
+    'fail',
+  );
 
   const missingMixImportEvidence = await buildBusinessAcceptanceReport({}, {
     providerReport,
@@ -1538,7 +1708,7 @@ test('v2 业务验收脚本可从真实交付包目录自动提取证据', async
     await writeFile(join(mixDir, 'import-guide.md'), [
       '# 真实混剪包导入说明',
       '第三方混剪软件中先导入 videos/ 主体素材，再导入 overlays/ 绿幕文案图。',
-      '使用 manifest.csv 对照素材用途、Prompt 来源和人工审核状态。',
+      '使用 manifest.csv 对照素材用途、提示词来源和人工审核状态。',
     ].join('\n'), 'utf-8');
     await writeFile(join(mixDir, 'capcut-import-screenshot.txt'), '剪映专业版导入截图占位：视频轨和绿幕叠加轨均已导入。', 'utf-8');
     await writeFile(join(mixDir, 'import-evidence.json'), JSON.stringify({
@@ -1842,7 +2012,7 @@ test('v2 业务验收脚本可从工作区数据自动生成验收输入', async
     await writeFile(join(mixDir, 'import-guide.md'), [
       '# 工作区混剪包导入说明',
       '第三方混剪软件中先导入 videos/ 主体素材，再导入 overlays/ 绿幕文案图。',
-      '使用 manifest.csv 对照素材用途、Prompt 来源和人工审核状态。',
+      '使用 manifest.csv 对照素材用途、提示词来源和人工审核状态。',
     ].join('\n'), 'utf-8');
     await writeFile(join(mixDir, 'manifest.json'), JSON.stringify({
       schema: 'buguai.mix-package.v1',
@@ -2900,6 +3070,39 @@ test('SOP 已选择输入源时补充资料说明可以为空', async () => {
   });
 });
 
+test('SOP 已选择知识引用时补充资料说明可以为空', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const workflows = new WorkflowStore();
+    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'brand-scene-prompts');
+    assert.ok(definition, '应存在品牌场景提示词 SOP');
+
+    const citations = [
+      {
+        knowledgeBaseId: 'brand-kb-selected',
+        sectionId: 'facts',
+        title: '产品知识库 / 产品事实',
+        sectionType: 'product',
+        excerpt: '便携条包适合早餐后和办公室抽屉场景。',
+      },
+    ];
+    const run = await workflows.startRun({
+      workspacePath,
+      workflowDefinitionId: definition.id,
+      citations,
+      inputs: {
+        source: '',
+        intent: '从已选择知识引用生成真实生活场景 Prompt。',
+      },
+    });
+
+    assert.equal(run.status, 'queued');
+    assert.deepEqual(run.citations, citations);
+    assert.equal(run.steps[0].status, 'succeeded');
+    assert.equal(run.steps[0].output.missingRequired, undefined);
+    assert.match(JSON.stringify(run.steps[0].input), /selectedCitations/);
+  });
+});
+
 test('SOP 草案可以编辑、发布并运行', async () => {
   await withWorkspace(async (workspacePath) => {
     const workflows = new WorkflowStore();
@@ -2956,7 +3159,7 @@ test('无模板 SOP 草案使用通用方法论脚手架，不误套图片 SOP',
     const draft = await workflows.createDraft({
       workspacePath,
       title: 'Prompt 工作台沉淀 SOP 草案',
-      description: '由 SOP PromptDraft 物化，应该保持通用步骤而不是小红书图片模板。',
+      description: '由 SOP 提示词草稿物化，应该保持通用步骤而不是小红书图片模板。',
     });
 
     assert.match(draft.key, /^custom-sop-draft-/);
@@ -2965,7 +3168,7 @@ test('无模板 SOP 草案使用通用方法论脚手架，不误套图片 SOP',
     assert.equal(draft.steps.some((step) => step.id === 'agent_read'), true);
     assert.equal(draft.steps.some((step) => step.id === 'image_generate'), false);
     assert.equal(draft.reviewRules.some((rule) => rule.includes('真实 provider')), true);
-    assert.deepEqual(draft.tags, ['自定义', 'PromptDraft', 'SOP']);
+    assert.deepEqual(draft.tags, ['自定义', '提示词草稿', 'SOP']);
   });
 });
 
@@ -3239,7 +3442,7 @@ test('WorkflowEngine 可以执行品牌知识库到场景库和 Prompt 组 SOP',
       workflowDefinitionId: definition.id,
       citations,
       inputs: {
-        source: '唯他瑞品牌知识库',
+        source: '',
         intent: '生成小红书 UGC 手机实拍图片 Prompt 组。',
         reviewOwner: '场景负责人',
       },
@@ -3253,6 +3456,7 @@ test('WorkflowEngine 可以执行品牌知识库到场景库和 Prompt 组 SOP',
     assert.equal(run.steps.find((step) => step.stepId === 'prompt_group')?.status, 'succeeded');
     assert.equal(run.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
     assert.ok(JSON.stringify(run.steps[0].input).includes('selectedCitations'));
+    assert.match(run.steps[0].summary, /已选择知识引用/);
     assert.ok(run.artifactRefs.some((ref) => ref.startsWith('brand-knowledge-base:')));
     assert.ok(run.artifactRefs.some((ref) => ref.startsWith('prompt-pack:')));
     assert.ok(run.artifactRefs.some((ref) => ref.startsWith('scene-card:')));
@@ -3261,16 +3465,17 @@ test('WorkflowEngine 可以执行品牌知识库到场景库和 Prompt 组 SOP',
     const storedPacks = await promptPacks.list(workspacePath);
     assert.equal(storedPacks.length, 1);
     assert.equal(storedPacks[0].workflowRunId, run.id);
-    assert.ok(storedPacks[0].inputSourceIds.length >= 1);
+    assert.equal(storedPacks[0].inputSourceIds.length, 0);
     assert.ok(storedPacks[0].citations.some((item) => item.knowledgeBaseId.startsWith('brand-kb:')));
     const storedSceneCards = await sceneCards.list(workspacePath);
     assert.equal(storedSceneCards.length, 3);
     assert.equal(storedSceneCards.every((card) => card.workflowRunId === run.id), true);
-    assert.equal(storedSceneCards.every((card) => card.inputSourceIds.length >= 1), true);
+    assert.equal(storedSceneCards.every((card) => card.inputSourceIds.length === 0), true);
+    assert.equal(storedSceneCards.every((card) => card.citations.length >= 1), true);
     const storedDrafts = await promptDrafts.list(workspacePath);
     assert.equal(storedDrafts.length, 1);
     assert.equal(storedDrafts[0].workflowRunId, run.id);
-    assert.ok(storedDrafts[0].inputSourceIds.length >= 1);
+    assert.equal(storedDrafts[0].inputSourceIds.length, 0);
     assert.equal(storedDrafts[0].sceneCardIds.length, 3);
     assert.match(storedDrafts[0].versions[0].content, /办公室早餐场景/);
     assert.equal(storedDrafts[0].versions[0].content.match(/### 图片 Prompt/g)?.length, 10);
@@ -4103,7 +4308,7 @@ test('图片工作台生成候选图后可以回写图片 SOP 并继续审核', 
   });
 });
 
-test('视频素材包 SOP 可以通过手工事件推进到混剪 manifest', async () => {
+test('视频素材包 SOP 可以通过手工事件推进到混剪清单', async () => {
   await withWorkspace(async (workspacePath) => {
     const logs = new GenerationLogStore();
     const text = new FakeTextGenerationService();
@@ -4140,7 +4345,7 @@ test('视频素材包 SOP 可以通过手工事件推进到混剪 manifest', asy
       workflowDefinitionId: definition.id,
       inputs: {
         source: '品牌场景库和视频素材需求',
-        intent: '生成 15 秒视频素材 Prompt、绿幕文案图和混剪 manifest。',
+        intent: '生成 15 秒视频素材 Prompt、绿幕文案图和混剪清单。',
         reviewOwner: '视频负责人',
         duration: '15',
       },
@@ -4352,7 +4557,7 @@ test('视频素材包 SOP 可以通过手工事件推进到混剪 manifest', asy
       manifestImported: true,
       timelineCreated: true,
       result: 'verified',
-      notes: '已按导入说明核对成品视频、绿幕文案图和 manifest。',
+      notes: '已按导入说明核对成品视频、绿幕文案图和清单文件。',
     });
     assert.ok(recordedEvidence.externalImportEvidencePath);
     assert.ok(recordedEvidence.externalImportEvidence);
@@ -4369,7 +4574,7 @@ test('视频素材包 SOP 可以通过手工事件推进到混剪 manifest', asy
     assert.equal(evidenceJson.toolName, '剪映专业版');
     assert.deepEqual(evidenceJson.importedAssetKinds.sort(), ['overlay', 'video']);
     assert.match(importCheck, /第三方导入验收/);
-    assert.match(importCheck, /manifest 已导入：是/);
+    assert.match(importCheck, /清单文件已导入或已核对：是/);
 
     const importVerifiedRun = await workflows.recordManualEvent({
       workspacePath,

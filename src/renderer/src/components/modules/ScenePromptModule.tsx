@@ -270,6 +270,17 @@ export function ScenePromptModule({
     onUsePromptInGreenScreen(activeDraft.id);
   }
 
+  function openVideoPromptDraft(): void {
+    if (!activeDraft) return;
+    onUsePromptInVideo(activeDraft.id);
+  }
+
+  function openVideoImportForDraft(): void {
+    if (!activeDraft) return;
+    onUsePromptInVideo(activeDraft.id);
+    onSelectModule('video-import');
+  }
+
   useEffect(() => {
     if (selectedSceneIds.length || sceneCards.length === 0) return;
     onSelectSceneIds(sceneCards.slice(0, 2).map((scene) => scene.id));
@@ -384,7 +395,7 @@ export function ScenePromptModule({
           { label: `生成${purposeResult(purpose)}`, primary: true, onClick: generatePromptGroup, disabled: !canGeneratePrompt },
           { label: copiedPromptIndex === selectedPromptIndex ? '已复制选中提示词' : '复制选中提示词', onClick: () => void copyPromptItem(), disabled: !selectedPrompt },
           { label: '发送到图片生成', onClick: () => selectedPrompt && onUsePromptInImage(selectedPrompt.content, effectiveSceneIds), disabled: !selectedPrompt || purpose !== 'image' },
-          { label: '打开视频 Prompt', module: 'video-prompt', disabled: !activeDraft || purpose !== 'video' },
+          { label: '打开视频 Prompt', onClick: openVideoPromptDraft, disabled: !activeDraft || purpose !== 'video' },
         ]}
         onSelectModule={onSelectModule}
       />
@@ -566,7 +577,7 @@ export function ScenePromptModule({
                 </button>
               )}
               {purpose === 'video' ? (
-                <button className="ghost small" disabled={!activeDraft} onClick={() => onSelectModule('video-import')}>
+                <button className="ghost small" disabled={!activeDraft} onClick={openVideoImportForDraft}>
                   去导入成品
                 </button>
               ) : null}
@@ -679,11 +690,11 @@ export function ScenePromptModule({
               <strong>图片生成</strong>
               <small>把选中图片提示词放入现有图片模块，继续走真实图片生成服务或待配置结果。</small>
             </button>
-            <button type="button" disabled={!activeDraft} onClick={() => onSelectModule('video-prompt')}>
+            <button type="button" disabled={!activeDraft} onClick={openVideoPromptDraft}>
               <strong>视频 Prompt</strong>
               <small>复制 15 秒视频 Prompt 到第三方平台，软件只记录复制动作。</small>
             </button>
-            <button type="button" disabled={!activeDraft} onClick={() => onSelectModule('video-import')}>
+            <button type="button" disabled={!activeDraft} onClick={openVideoImportForDraft}>
               <strong>成品导入</strong>
               <small>第三方生成后只允许用户手动导入视频文件，并关联原 Prompt。</small>
             </button>

@@ -30,11 +30,42 @@ function purposeLabel(purpose: PromptDraftPurpose): string {
   return 'Skill';
 }
 
+function sourceKindLabel(kind: InputSourceRecord['kind']): string {
+  if (kind === 'docx' || kind === 'markdown') return '文档';
+  if (kind === 'image') return '图片';
+  if (kind === 'video') return '视频';
+  if (kind === 'sku-table') return 'SKU 表';
+  if (kind === 'url') return '网页';
+  if (kind === 'manual-note') return '手动记录';
+  return '文本';
+}
+
+function sourcePurposeLabel(purpose: InputSourceRecord['purpose']): string {
+  const labels: Record<InputSourceRecord['purpose'], string> = {
+    'brand-kb': '品牌 / 产品知识库',
+    'ip-kb': 'IP 知识库',
+    'ip-scenario-kb': 'IP 场景库',
+    reference: '参考素材',
+    'product-brief': '产品资料',
+    'user-feedback': '评论 / 客服问题',
+    'sop-input': '任务输入',
+    'successful-asset': '成功素材',
+  };
+  return labels[purpose] ?? '输入资料';
+}
+
+function sourceStatusLabel(status: InputSourceRecord['status']): string {
+  if (status === 'converted') return '已生成可追溯转换稿';
+  if (status === 'blocked') return '待补齐';
+  if (status === 'failed') return '解析失败';
+  return '已登记';
+}
+
 function sourceDigest(sources: InputSourceRecord[]): string {
   if (sources.length === 0) return '当前没有选择输入源，只能基于用户意图生成草稿。';
   return sources.map((source, index) => {
     const content = source.extractedText || source.summary || source.blockedReason || source.title;
-    return `${index + 1}. ${source.title}（${source.kind}/${source.status}）：${content.slice(0, 280)}`;
+    return `${index + 1}. ${source.title}（${sourcePurposeLabel(source.purpose)} / ${sourceStatusLabel(source.status)}）：${content.slice(0, 280)}`;
   }).join('\n');
 }
 
@@ -46,13 +77,12 @@ function sourceMaterialForModel(sources: InputSourceRecord[]): string {
     const content = rawContent.slice(0, Math.max(600, Math.min(4_000, remaining)));
     remaining -= content.length;
     return [
-      `### 输入源 ${index + 1}: ${source.title}`,
-      `id: ${source.id}`,
-      `kind/status/purpose: ${source.kind}/${source.status}/${source.purpose}`,
-      source.markdownPath ? `markdownPath: ${source.markdownPath}` : '',
-      source.sourcePath ? `sourcePath: ${source.sourcePath}` : '',
-      source.blockedReason ? `blockedReason: ${source.blockedReason}` : '',
-      'content:',
+      `### 输入资料 ${index + 1}: ${source.title}`,
+      `资料类型：${sourcePurposeLabel(source.purpose)} / ${sourceKindLabel(source.kind)} / ${sourceStatusLabel(source.status)}`,
+      source.markdownPath ? '转换稿：已生成可追溯转换稿' : '',
+      source.sourcePath ? '原始文件：已导入工作区' : '',
+      source.blockedReason ? `待补齐原因：${source.blockedReason}` : '',
+      '资料内容：',
       content,
     ].filter(Boolean).join('\n');
   }).join('\n\n');
@@ -62,7 +92,7 @@ function buildLocalPromptContent(input: GeneratePromptDraftInput, sources: Input
     const sourceText = sourceDigest(sources);
     const purpose = purposeLabel(input.purpose);
     const sceneContext = input.sceneCardIds?.length
-      ? `已选择场景卡：${input.sceneCardIds.join(', ')}`
+      ? `已选择 ${input.sceneCardIds.length} 张场景卡`
       : '未选择场景卡。';
     return [
       `任务：生成${purpose}可执行 Prompt。`,
@@ -243,7 +273,7 @@ export class PromptDraftStore {
         prompt: [
           `下游用途：${purposeLabel(input.purpose)}`,
           `用户意图：${input.userIntent.trim()}`,
-          input.sceneCardIds?.length ? `场景卡 ID：${input.sceneCardIds.join(', ')}` : '未选择场景卡。',
+          input.sceneCardIds?.length ? `场景卡：已选择 ${input.sceneCardIds.length} 张` : '未选择场景卡。',
           '',
           '本地输入源：',
           sourceMaterialForModel(selectedSources),

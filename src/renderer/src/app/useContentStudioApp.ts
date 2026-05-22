@@ -162,8 +162,8 @@ function buildSkillInstructionsFromPromptDraft(draft: PromptDraft, content: stri
     `- 来源提示词草稿：${draft.title}`,
     `- 下游用途：${draft.purpose}`,
     `- 用户意图：${draft.userIntent}`,
-    draft.inputSourceIds.length ? `- 输入源 ID：${draft.inputSourceIds.join(', ')}` : '- 输入源 ID：未绑定',
-    draft.sceneCardIds?.length ? `- 场景卡 ID：${draft.sceneCardIds.join(', ')}` : '- 场景卡 ID：未绑定',
+    draft.inputSourceIds.length ? `- 输入资料：已关联 ${draft.inputSourceIds.length} 份` : '- 输入资料：未绑定',
+    draft.sceneCardIds?.length ? `- 场景卡：已关联 ${draft.sceneCardIds.length} 张` : '- 场景卡：未绑定',
     '',
     '### 执行规范',
     content.trim(),
@@ -198,6 +198,12 @@ function promptWorkbenchModuleForPurpose(purpose: PromptDraftPurpose): ModuleKey
   if (purpose === "article") return "article-script";
   if (purpose === "green-screen") return "image-green-screen";
   return "assets-prompt-workbench";
+}
+
+function videoSubtitleModeLabel(value: string): string {
+  if (value === "caption-file") return "输出字幕文件";
+  if (value === "no-subtitle") return "无字幕";
+  return "内嵌字幕";
 }
 
 function brandKnowledgeBaseCitations(record?: BrandKnowledgeBaseRecord): KnowledgeCitation[] {
@@ -1743,6 +1749,24 @@ export function useContentStudioApp() {
     };
   }
 
+  function assetKindLabel(kind: AssetReworkSource["kind"]): string {
+    if (kind === "video") return "视频素材";
+    if (kind === "overlay") return "绿幕文案图";
+    return "图片素材";
+  }
+
+  function assetSourceLineageLabel(input: {
+    source: AssetReworkSource;
+    sourceLog?: GenerationLogEntry;
+    sourceInput?: InputSourceRecord;
+  }): string {
+    if (input.sourceLog?.title) return `生成记录：${input.sourceLog.title}`;
+    if (input.source.sourceType === "generation-log") return "生成记录已关联";
+    if (input.sourceInput?.title) return `输入资料：${input.sourceInput.title}`;
+    if (input.source.sourceType === "input-source") return "输入资料已关联";
+    return "手动选择素材";
+  }
+
   async function createReworkPromptVersion(
     input: ReworkAssetRequest,
     source: AssetReworkSource,
@@ -1754,11 +1778,13 @@ export function useContentStudioApp() {
     const previousContent = promptDraftActiveContent(draft) || input.promptText?.trim();
     if (!previousContent) return undefined;
     const reason = source.reviewNote || "人工选择回炉重做。";
+    const assetTitle = source.title ?? (source.path ? fileNameFromPath(source.path) : "原素材");
     const content = [
       "基于驳回素材回炉重做，保留原始事实来源、构图意图和合规边界。",
       `回炉原因：${reason}`,
-      source.path ? `原素材：${source.path}` : "",
-      source.assetKey ? `原素材 Key：${source.assetKey}` : "",
+      `原素材：${assetTitle}`,
+      source.path ? `原素材文件：${fileNameFromPath(source.path)}` : "",
+      source.reviewId ? "审核记录：已关联原素材记录" : "",
       "",
       previousContent,
     ].filter(Boolean).join("\n");
@@ -1853,6 +1879,7 @@ export function useContentStudioApp() {
     promptText?: string;
     sceneCardIds: string[];
   }): string {
+    const assetTitle = input.source.title ?? (input.source.path ? fileNameFromPath(input.source.path) : "未命名素材");
     const previousPrompt =
       input.promptText?.trim() ||
       promptDraftActiveContent(input.relatedDraft) ||
@@ -1866,13 +1893,13 @@ export function useContentStudioApp() {
       "把已经通过人工审核的素材沉淀成可复用 Prompt 草稿，后续可继续物化为 SOP 或 Skill。",
       "",
       "素材来源：",
-      `- 素材：${input.source.title ?? (input.source.path ? fileNameFromPath(input.source.path) : "未命名素材")}`,
-      `- 路径：${input.source.path}`,
-      `- 类型：${input.source.kind}`,
-      `- 来源：${input.source.sourceType}${input.source.sourceId ? ` / ${input.source.sourceId}` : ""}`,
-      input.source.workflowRunId ? `- SOP Run：${input.source.workflowRunId}` : "- SOP Run：未关联",
+      `- 素材：${assetTitle}`,
+      input.source.path ? `- 文件：${fileNameFromPath(input.source.path)}` : "",
+      `- 类型：${assetKindLabel(input.source.kind)}`,
+      `- 来源：${assetSourceLineageLabel(input)}`,
+      input.source.workflowRunId ? "- 关联 SOP：已关联运行记录" : "- 关联 SOP：未关联",
       input.relatedDraft ? `- 原提示词草稿：${input.relatedDraft.title}` : "- 原提示词草稿：未关联",
-      input.sceneCardIds.length ? `- 关联场景卡：${input.sceneCardIds.join(", ")}` : "- 关联场景卡：未关联",
+      input.sceneCardIds.length ? `- 关联场景卡：${input.sceneCardIds.length} 张` : "- 关联场景卡：未关联",
       "",
       "审核结论：",
       `- 状态：${input.review?.status === "approved" ? "人工审核通过" : "未找到通过审核记录"}`,
@@ -2961,6 +2988,97 @@ export function useContentStudioApp() {
     await refresh(workspace);
   }
 
+  function buildVideoPromptHandoffContent(): string {
+    const materialLines = [
+      ...productImageRefs.map((ref) => `- 产品图：${fileNameFromPath(ref)}`),
+      ...referenceImageRefs.map((ref) => `- 参考图：${fileNameFromPath(ref)}`),
+      ...videoAssetRefs.map((ref) => `- 参考视频：${fileNameFromPath(ref)}`),
+      videoUrl.trim() ? `- 参考视频链接：${videoUrl.trim()}` : "",
+    ].filter(Boolean);
+    const sceneLines = activeScenes.map((scene, index) => [
+      `### 场景 ${index + 1}：${scene.title}`,
+      `- 人群：${scene.audience}`,
+      `- 痛点：${scene.painPoint}`,
+      `- 场景：${scene.usageScene}`,
+      `- 画面：${scene.visualComposition}`,
+      `- 卖点：${scene.sellingPoint}`,
+      `- 视频素材建议：${scene.videoMaterialSuggestion}`,
+    ].join("\n"));
+    const breakdownLines = videoBreakdown?.segments.map((segment) =>
+      `- ${segment.timeRange}：${segment.hook}；可复用点：${segment.reusablePoint}`,
+    ) ?? [];
+    const storyboardLines = videoScript?.storyboard.map((shot) => [
+      `### 镜头 ${shot.shot}（${shot.duration}）`,
+      `画面：${shot.visual}`,
+      `口播：${shot.voiceover}`,
+      `字幕：${shot.subtitle || "无"}`,
+      `节奏：${shot.rhythm}`,
+    ].join("\n")) ?? [];
+
+    return [
+      "# 视频 Prompt 交接",
+      "",
+      "## 使用边界",
+      "- 软件只生成可复制到第三方视频平台的视频 Prompt。",
+      "- 不创建外部任务，不轮询第三方任务状态。",
+      "- 第三方生成后的成品视频需要由用户手动导入，并关联本提示词。",
+      "",
+      "## 本次设置",
+      `- 产品名称：${videoProductName.trim() || "未填写"}`,
+      `- 场景背景：${videoSceneBackground}`,
+      `- 视频时长：${videoDurationSeconds} 秒`,
+      `- 镜头数量：${videoShotCount}`,
+      `- 字幕方式：${videoSubtitleModeLabel(videoSubtitleMode)}`,
+      `- 视频语音：${videoVoiceStyle.trim() || "自然可信"}`,
+      `- 画幅：${params.aspectRatio}`,
+      videoCustomRequirement.trim() ? `- 额外要求：${videoCustomRequirement.trim()}` : "",
+      "",
+      "## 可复制视频 Prompt",
+      suggestedVideoPrompt.trim(),
+      materialLines.length ? ["", "## 本次素材", ...materialLines].join("\n") : "",
+      sceneLines.length ? ["", "## 关联场景", ...sceneLines].join("\n\n") : "",
+      breakdownLines.length ? ["", "## 参考视频拆解", ...breakdownLines].join("\n") : "",
+      videoScript?.script ? ["", "## 新视频脚本", videoScript.script].join("\n") : "",
+      storyboardLines.length ? ["", "## 分镜脚本", ...storyboardLines].join("\n\n") : "",
+    ].filter((line) => line.trim().length > 0).join("\n");
+  }
+
+  async function openVideoPromptHandoff(context?: ActionContext): Promise<void> {
+    const workspace = requireWorkspace();
+    const content = buildVideoPromptHandoffContent();
+    const source = await window.contentStudio.registerInputSource({
+      workspacePath: workspace,
+      kind: "manual-note",
+      purpose: "sop-input",
+      title: "视频 Prompt 交接资料",
+      text: content,
+      summary: "由参考视频拆解工作台整理的视频 Prompt、脚本、素材和使用边界。",
+      tags: ["video-prompt", "视频交接"],
+      relatedSceneCardIds: selectedSceneIdsForRequest,
+    });
+    context?.throwIfCancelled();
+    const titleBase = videoScript?.title || videoProductName.trim() || "视频素材";
+    const draft = await window.contentStudio.createPromptDraftFromContent({
+      workspacePath: workspace,
+      title: `${titleBase} Prompt 交接`,
+      purpose: "video",
+      userIntent: "复制视频 Prompt 到第三方视频平台，生成完成后手动导入成品视频。",
+      inputSourceIds: [source.id],
+      sceneCardIds: selectedSceneIdsForRequest,
+      content,
+      note: "由参考视频拆解工作台生成交接草稿。",
+      model: "local-video-prompt-handoff",
+      status: "confirmed",
+    });
+    context?.throwIfCancelled();
+    setInputSources((current) => [source, ...current.filter((item) => item.id !== source.id)]);
+    setPromptDrafts((current) => [draft, ...current.filter((item) => item.id !== draft.id)]);
+    setSelectedSceneIds(selectedSceneIdsForRequest);
+    setActivePromptDraftId(draft.id);
+    setActiveModule("video-prompt");
+    await refresh(workspace);
+  }
+
   async function analyzeReferenceVideo(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
     const source = videoAssetRefs[0] || videoUrl.trim();
@@ -3382,6 +3500,7 @@ export function useContentStudioApp() {
     retryLog,
     generateImage,
     generateVideo,
+    openVideoPromptHandoff,
     analyzeReferenceVideo,
     generateVideoScript,
     installSkill,

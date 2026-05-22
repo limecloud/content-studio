@@ -54,12 +54,13 @@ function missingRequiredInputs(
   definition: WorkflowDefinition,
   inputs: Record<string, string>,
   inputSourceIds: string[],
+  citations: KnowledgeCitation[] = [],
 ): string[] {
   const missing = definition.inputSchema
     .filter((field) => field.key !== 'source' && isRequiredWorkflowInput(field) && !inputs[field.key]?.trim())
     .map((field) => field.label);
   const sourceText = inputs.source?.trim() ?? '';
-  if (!sourceText && inputSourceIds.length === 0 && definition.inputSchema.some((field) => field.key === 'source')) {
+  if (!sourceText && inputSourceIds.length === 0 && citations.length === 0 && definition.inputSchema.some((field) => field.key === 'source')) {
     return ['资料来源', ...missing];
   }
   return missing;
@@ -257,7 +258,7 @@ function seedDefinitions(workspacePath: string, now: string): WorkflowDefinition
       key: 'video-material-package',
       version: 'v0.2',
       title: '视频素材包 SOP',
-      description: '生成 15 秒视频 Prompt、绿幕文案图和混剪 manifest；第三方视频生成后手动导入成品素材。',
+      description: '生成 15 秒视频 Prompt、绿幕文案图和混剪清单；第三方视频生成后手动导入成品素材。',
       status: 'published',
       priority: 'P1',
       inputSchema: [
@@ -271,11 +272,11 @@ function seedDefinitions(workspacePath: string, now: string): WorkflowDefinition
         step('finished_video_import', '导入成品视频', 'manual-video-import', '第三方平台生成完成后，手动导入本地 15 秒视频素材并关联原 Prompt。', ['prompt_copy'], ['FinishedVideoInputSource']),
         step('overlay_cards', '生成绿幕文案图', 'overlay-generate', '从视频 Prompt / 脚本拆出标题卡、卖点卡、金句卡和 CTA 卡，本地生成 9:16 绿幕 SVG。', ['finished_video_import'], ['OverlayCards']),
         step('human_review', '人工审核', 'review', '审核成品视频、绿幕卡和图片素材是否可进入混剪包。', ['overlay_cards'], ['ReviewResult']),
-        step('export_manifest', '导出混剪包', 'export', '导出素材文件夹和 manifest，交给第三方混剪软件。', ['human_review'], ['MixManifest']),
+        step('export_manifest', '导出混剪包', 'export', '导出素材文件夹和混剪清单，交给第三方混剪软件。', ['human_review'], ['MixManifest']),
       ],
-      reviewRules: ['视频生成平台不在本软件创建任务，只记录 Prompt 和手动导入结果。', 'manifest 必须保留 PromptRef 和输入源。'],
+      reviewRules: ['视频生成平台不在本软件创建任务，只记录 Prompt 和手动导入结果。', '混剪清单必须保留提示词和输入资料追溯。'],
       outputSpec: ['VideoPrompt', 'OverlayImages', 'MixManifest'],
-      tags: ['视频', '混剪', 'manifest'],
+      tags: ['视频', '混剪', '混剪清单'],
       createdAt: now,
       updatedAt: now,
       publishedAt: now,
@@ -290,14 +291,14 @@ function customDraftDefinition(workspacePath: string, now: string): WorkflowDefi
     key: 'custom-sop',
     version: 'v0.1',
     title: '自定义 SOP',
-    description: '从 PromptDraft 或人工方法论沉淀的通用 SOP 草案，发布前必须确认输入、步骤、审核和导出规则。',
+    description: '从提示词草稿或人工方法论沉淀的通用 SOP 草案，发布前必须确认输入、步骤、审核和导出规则。',
     status: 'draft',
     priority: 'P2',
     inputSchema: baseInputSchema(),
     steps: [
       step('input_register', '登记输入源', 'input', '记录本次 SOP 需要读取的文档、素材、用户意图和审核责任人。', [], ['InputSource']),
       step('agent_read', 'Agent 读取和追问', 'agent-read', '读取输入源和用户意图，识别缺口并沉淀可执行方法。', ['input_register'], ['AgentSession']),
-      step('prompt_generate', '生成 Prompt / 执行草稿', 'prompt-generate', '根据已确认的方法生成可下游执行的 Prompt 或操作草稿。', ['agent_read'], ['PromptDraft']),
+      step('prompt_generate', '生成提示词 / 执行草稿', 'prompt-generate', '根据已确认的方法生成可下游执行的提示词或操作草稿。', ['agent_read'], ['PromptDraft']),
       step('human_review', '人工审核', 'review', '确认事实来源、步骤顺序、下游边界和交付标准。', ['prompt_generate'], ['ReviewResult']),
       step('asset_store', '归档为可复用 SOP', 'asset-store', '保存输入源、Prompt 版本、审核结论和后续产物引用。', ['human_review'], ['RunArchive']),
     ],
@@ -307,7 +308,7 @@ function customDraftDefinition(workspacePath: string, now: string): WorkflowDefi
       '如果包含图片、视频或混剪步骤，必须明确真实 provider、手工交接或 blocked 边界。',
     ],
     outputSpec: ['InputSource', 'AgentSession', 'PromptDraft', 'ReviewResult', 'RunArchive'],
-    tags: ['自定义', 'PromptDraft', 'SOP'],
+    tags: ['自定义', '提示词草稿', 'SOP'],
     createdAt: now,
     updatedAt: now,
   };
@@ -597,7 +598,7 @@ function buildStepOutputSnapshot(
 
   if (step.kind === 'export') {
     return {
-      summary: '导出可交给第三方混剪软件的素材包与 manifest。',
+      summary: '导出可交给第三方混剪软件的素材包与混剪清单。',
       destination: 'mix-package',
       outputKeys: step.outputKeys,
     };
@@ -764,7 +765,7 @@ function finalizeManualRun(
   return {
     ...run,
     status: 'succeeded',
-    summary: '视频素材包 SOP 已完成：Prompt 复制、成品视频导入、绿幕文案图、人工审核和混剪 manifest 均已留痕。',
+    summary: '视频素材包 SOP 已完成：Prompt 复制、成品视频导入、绿幕文案图、人工审核和混剪清单均已留痕。',
     updatedAt: now,
   };
 }
@@ -782,7 +783,7 @@ function applyManualEvent(
     if (input.promptDraftId) refs.push(`prompt-draft:${input.promptDraftId}`);
     next = updateStep(next, 'prompt_generate', {
       status: 'succeeded',
-      summary: '已确认视频 PromptDraft，可复制到第三方视频平台。',
+      summary: '已确认视频提示词草稿，可复制到第三方视频平台。',
       output: {
         promptDraftId: input.promptDraftId,
         action: 'manual-prompt-draft-confirmed',
@@ -853,7 +854,7 @@ function applyManualEvent(
           reviewedAt: now,
         },
       }, now);
-      next = queueStep(next, 'export_manifest', '等待导出混剪包文件夹和 manifest。', {
+      next = queueStep(next, 'export_manifest', '等待导出混剪包文件夹和混剪清单。', {
         assetReviewId: input.assetReviewId,
         assetKey: input.assetKey,
       }, now);
@@ -884,7 +885,7 @@ function applyManualEvent(
     if (input.packageDir) refs.push(input.packageDir);
     next = updateStep(next, 'export_manifest', {
       status: 'succeeded',
-      summary: summary || '已导出混剪包文件夹和 manifest，可交给第三方混剪软件。',
+      summary: summary || '已导出混剪包文件夹和混剪清单，可交给第三方混剪软件。',
       output: {
         mixPackageId: input.mixPackageId,
         manifestPath: input.manifestPath,
@@ -1334,7 +1335,7 @@ export class WorkflowStore {
     const inputs = defaultInputs(definition, input.inputs);
     const citations = input.citations ?? [];
     const inputSourceIds = input.inputSourceIds ?? [];
-    const missingRequired = missingRequiredInputs(definition, inputs, inputSourceIds);
+    const missingRequired = missingRequiredInputs(definition, inputs, inputSourceIds, citations);
     const now = new Date().toISOString();
     const runId = randomUUID();
     const firstBlocked = definition.steps.find((item) => item.blockedReason);

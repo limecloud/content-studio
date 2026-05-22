@@ -150,6 +150,7 @@ function formatSkuTrace(brief: StructuredProductBrief): string {
 function productPromptBase(brief: StructuredProductBrief) {
   return {
     sourceIds: brief.sourceIds,
+    sourceTrace: brief.sourceIds.length ? `已关联 ${brief.sourceIds.length} 份产品资料 / SKU 表` : '待补充产品资料 / SKU 表',
     skuTrace: formatSkuTrace(brief),
     productName: brief.productName || '待补充产品名称',
     sellingPoint: firstText(brief.sellingPoints, '待补充卖点'),
@@ -172,7 +173,7 @@ export function buildProductBriefPromptPlan(brief: StructuredProductBrief): Prod
         `画面：电商主图，产品清楚，背景干净，突出 ${base.sellingPoint}`,
         `场景：${base.scenario}`,
         `禁用表达：${base.restrictions}`,
-        `追溯输入源：${base.sourceIds.join(', ') || '待补充'}`,
+        `追溯资料：${base.sourceTrace}`,
       ].join('\n'),
     },
     {
@@ -187,7 +188,7 @@ export function buildProductBriefPromptPlan(brief: StructuredProductBrief): Prod
         `画面：围绕真实使用动作表达卖点，不堆砌大字报，保留适合平台排版的留白`,
         `场景：${base.scenario}`,
         `禁用表达：${base.restrictions}`,
-        `追溯输入源：${base.sourceIds.join(', ') || '待补充'}`,
+        `追溯资料：${base.sourceTrace}`,
       ].join('\n'),
     },
     {
@@ -202,7 +203,7 @@ export function buildProductBriefPromptPlan(brief: StructuredProductBrief): Prod
         `使用场景：${base.scenario}`,
         `卖点证据：${base.sellingPoint}`,
         `禁用表达：${base.restrictions}`,
-        `追溯输入源：${base.sourceIds.join(', ') || '待补充'}`,
+        `追溯资料：${base.sourceTrace}`,
       ].join('\n'),
     },
   ];
