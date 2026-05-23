@@ -206,6 +206,7 @@ export class AgentPromptSessionStore {
       sourceSnapshots,
       messages,
       model: draft.model,
+      textProtocol: draft.textProtocol,
       createdAt: now,
       updatedAt: now,
     };
@@ -232,6 +233,7 @@ export class AgentPromptSessionStore {
       content: generated.content,
       note: generated.note,
       model: generated.model,
+      textProtocol: generated.protocol,
     });
     const now = new Date().toISOString();
     const updatedSession: AgentPromptSession = {
@@ -261,6 +263,7 @@ export class AgentPromptSessionStore {
         },
       ].slice(-80),
       model: generated.model,
+      textProtocol: updatedDraft.textProtocol ?? session.textProtocol,
       updatedAt: now,
     };
     await writeJsonFile(
@@ -274,7 +277,7 @@ export class AgentPromptSessionStore {
     session: AgentPromptSession,
     previousContent: string,
     adjustment: string,
-  ): Promise<{ content: string; note: string; model: string }> {
+  ): Promise<{ content: string; note: string; model: string; protocol?: AgentPromptSession['textProtocol'] }> {
     try {
       const result = await this.textGeneration.generateJson<RefinePromptOutput>({
         workspacePath: session.workspacePath,
@@ -308,6 +311,7 @@ export class AgentPromptSessionStore {
         content: formatRefinedContent(previousContent, adjustment, result.value),
         note: `Agent 多轮调整：${result.model}`,
         model: result.model,
+        protocol: result.protocol,
       };
     } catch (error) {
       const reason = error instanceof TextProviderBlockedError
@@ -319,6 +323,7 @@ export class AgentPromptSessionStore {
         content: fallbackRefinedContent(previousContent, adjustment, reason),
         note: `Agent 多轮调整未完成，已记录本轮要求：${reason}`,
         model: error instanceof TextProviderBlockedError ? 'blocked:text-provider' : 'fallback:local-rule',
+        protocol: undefined,
       };
     }
   }

@@ -98,6 +98,7 @@ export function App() {
 
       <ParamsPanel
         params={app.params}
+        textProtocol={app.modelConfig?.textProtocol ?? "claude-sdk"}
         citations={app.citationsForRequest}
         logs={app.logs}
         skillSelection={app.skillSelection}

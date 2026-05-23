@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
@@ -96,7 +96,44 @@ function kindFromFile(fileName) {
 }
 
 async function readJson(filePath) {
-  return JSON.parse(await readFile(filePath, 'utf-8'));
+  if (existsSync(filePath)) {
+    return JSON.parse(await readFile(filePath, 'utf-8'));
+  }
+  const relativePath = relative(rootDir, filePath);
+  if (!relativePath) {
+    throw new Error(`未找到文件：${filePath}`);
+  }
+  const repo = normalizeText(process.env.GITHUB_REPOSITORY);
+  const ref = normalizeText(process.env.GITHUB_SHA) || 'main';
+  const githubToken = normalizeText(process.env.GITHUB_TOKEN || process.env.GH_TOKEN);
+  if (!repo) {
+    throw new Error(`未找到文件：${filePath}`);
+  }
+  const encodedPath = relativePath
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const remote = await fetchJson(
+    `https://api.github.com/repos/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
+    {
+      headers: {
+        accept: 'application/vnd.github+json',
+        ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}),
+        'user-agent': 'content-studio-oem-promote',
+        'x-github-api-version': '2022-11-28',
+      },
+    }
+  );
+  const content = normalizeText(remote.content).replace(/\n/g, '');
+  if (!content) {
+    throw new Error(`未找到文件：${filePath}`);
+  }
+  const decoded =
+    remote.encoding === 'base64'
+      ? Buffer.from(content, 'base64').toString('utf-8')
+      : content;
+  return JSON.parse(decoded);
 }
 
 async function fetchJson(url, init = {}) {
@@ -345,11 +382,6 @@ const token =
   process.env.LIMECORE_CONTROL_PLANE_TOKEN ||
   '';
 const brandPath = join(brandDir, `${brandId}.json`);
-
-if (!existsSync(brandPath)) {
-  throw new Error(`未找到品牌配置：oem/brands/${brandId}.json`);
-}
-
 const brand = await readJson(brandPath);
 brand.brandId = normalizeText(brand.brandId);
 brand.artifactName = normalizeText(brand.artifactName);

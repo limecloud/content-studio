@@ -68,24 +68,30 @@ jobs:
     needs: verify
     if: ${{ inputs.dry_run == 'false' }}
     environment: oem-promotion
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_SHA: ${{ github.sha }}
+      RELEASE_PROMOTE_API_URL: ${{ vars.RELEASE_PROMOTE_API_URL || secrets.RELEASE_PROMOTE_API_URL }}
+      RELEASE_PROMOTE_API_TOKEN: ${{ secrets.RELEASE_PROMOTE_API_TOKEN }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Download promote script
+        run: |
+          curl -fsSL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3.raw" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/scripts/promote-oem-release.mjs?ref=${GITHUB_SHA}" \
+            -o /tmp/promote-oem-release.mjs
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Promote OEM release
         run: |
-          node scripts/promote-oem-release.mjs \
+          node /tmp/promote-oem-release.mjs \
             --brand=${{ inputs.brand }} \
             --tag=${{ inputs.tag }} \
             --channel=${{ inputs.channel }} \
             --dry-run=false
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_PROMOTE_API_URL: ${{ vars.RELEASE_PROMOTE_API_URL || secrets.RELEASE_PROMOTE_API_URL }}
-          RELEASE_PROMOTE_API_TOKEN: ${{ secrets.RELEASE_PROMOTE_API_TOKEN }}

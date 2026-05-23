@@ -4,12 +4,15 @@ import type {
   GlobalGenerationParams,
   KnowledgeCitation,
   SkillSelectionView,
+  TextGenerationProtocol,
 } from '../../../shared/types';
-import { formatDuration, generationServiceLabel, kindLabel, sectionLabel, skillKey, statusLabel } from '../app/formatters';
+import { isClaudeModelName } from '../../../shared/types';
+import { formatDuration, generationServiceLabel, kindLabel, sectionLabel, skillKey, statusLabel, textProtocolLabel } from '../app/formatters';
 import type { SetGlobalParams } from '../app/types';
 
 interface ParamsPanelProps {
   params: GlobalGenerationParams;
+  textProtocol: TextGenerationProtocol;
   citations: KnowledgeCitation[];
   logs: GenerationLogEntry[];
   skillSelection: SkillSelectionView | null;
@@ -23,6 +26,7 @@ type ParamsPanelTab = 'params' | 'logs';
 
 export function ParamsPanel({
   params,
+  textProtocol,
   citations,
   logs,
   skillSelection,
@@ -33,6 +37,7 @@ export function ParamsPanel({
 }: ParamsPanelProps) {
   const [activeTab, setActiveTab] = useState<ParamsPanelTab>('params');
   const recentLogs = useMemo(() => logs.slice(0, 8), [logs]);
+  const textModelProtocolMismatch = textProtocol === 'claude-sdk' && !isClaudeModelName(params.textModel);
   const collapseButton = (
     <button
       className="params-panel-collapse-btn"
@@ -84,9 +89,18 @@ export function ParamsPanel({
               </button>
             </div>
             <label>
+              <span>文字协议</span>
+              <input readOnly value={textProtocolLabel(textProtocol)} />
+            </label>
+            <label>
               <span>文字模型</span>
               <input readOnly value={params.textModel} />
             </label>
+            {textModelProtocolMismatch ? (
+              <div className="inline-warning subtle">
+                Claude SDK 只支持 Claude 系列模型；当前文字模型与协议不一致。
+              </div>
+            ) : null}
             <label>
               <span>图片模型</span>
               <input readOnly value={params.imageModel} />

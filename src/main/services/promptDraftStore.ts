@@ -212,6 +212,7 @@ export class PromptDraftStore {
       sceneCardIds: input.sceneCardIds ?? [],
       copyCount: 0,
       model: generated.model,
+      textProtocol: generated.protocol,
       versions: [firstVersion],
       activeVersionId: firstVersion.id,
       createdAt: now,
@@ -245,6 +246,7 @@ export class PromptDraftStore {
       sceneCardIds: input.sceneCardIds ?? [],
       copyCount: 0,
       model: input.model,
+      textProtocol: input.textProtocol,
       versions: [firstVersion],
       activeVersionId: firstVersion.id,
       createdAt: now,
@@ -258,7 +260,7 @@ export class PromptDraftStore {
   private async generateDraftContent(
     input: GeneratePromptDraftInput,
     selectedSources: InputSourceRecord[],
-  ): Promise<{ title?: string; content: string; note: string; model: string }> {
+  ): Promise<{ title?: string; content: string; note: string; model: string; protocol?: PromptDraft['textProtocol'] }> {
     const blockedSources = selectedSources.filter((source) => source.status === 'blocked' || source.status === 'failed');
     try {
       const result = await this.textGeneration.generateJson<PromptDraftModelOutput>({
@@ -293,6 +295,7 @@ export class PromptDraftStore {
           blockedSources.length ? `包含 ${blockedSources.length} 个未解析输入源，已在提醒中保留人工确认。` : '',
         ].filter(Boolean).join('；'),
         model: result.model,
+        protocol: result.protocol,
       };
     } catch (error) {
       const reason = error instanceof TextProviderBlockedError
@@ -304,6 +307,7 @@ export class PromptDraftStore {
         content: buildLocalPromptContent(input, selectedSources, reason),
         note: `文字模型未完成，已生成本地可追溯草稿：${reason}`,
         model: error instanceof TextProviderBlockedError ? 'blocked:text-provider' : 'fallback:local-rule',
+        protocol: undefined,
       };
     }
   }
@@ -326,6 +330,7 @@ export class PromptDraftStore {
       ...draft,
       status: input.status ?? draft.status,
       model: input.model ?? draft.model,
+      textProtocol: input.textProtocol ?? draft.textProtocol,
       materializedTarget: input.materializedTarget ?? draft.materializedTarget,
       versions: [...draft.versions, nextVersion].slice(-40),
       activeVersionId: nextVersion.id,

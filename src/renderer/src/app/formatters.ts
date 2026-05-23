@@ -9,6 +9,7 @@ import type {
   KnowledgeSearchResult,
   LoadedSkill,
   SkillRef,
+  TextGenerationProtocol,
 } from '../../../shared/types';
 
 export function sourceLabel(source: LoadedSkill['source']): string {
@@ -105,6 +106,15 @@ export function generationServiceLabel(model?: string): string {
   if (value.startsWith('blocked:')) return '生成服务待配置';
   if (value.startsWith('fallback:')) return '本地规则草稿';
   return `生成服务：${value}`;
+}
+
+export function textProtocolLabel(protocol?: TextGenerationProtocol): string {
+  if (!protocol) return '协议未记录';
+  if (protocol === 'claude-sdk') return 'Claude SDK';
+  if (protocol === 'anthropic-messages') return 'Anthropic Messages';
+  if (protocol === 'openai-chat') return 'OpenAI Chat';
+  if (protocol === 'gemini-generate-content') return 'Gemini GenerateContent';
+  return protocol;
 }
 
 export function formatDuration(durationMs?: number): string {

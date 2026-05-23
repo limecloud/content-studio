@@ -7,6 +7,8 @@ files:
   - out/**
   - resources/**
   - package.json
+asarUnpack:
+  - node_modules/@anthropic-ai/claude-agent-sdk-*/**
 fileAssociations:
   - ext: skill
     name: Bugu AI Skill Package

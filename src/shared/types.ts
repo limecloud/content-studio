@@ -17,6 +17,10 @@ export function isImageGenerationProtocol(value: unknown): value is ImageGenerat
   return typeof value === 'string' && IMAGE_GENERATION_PROTOCOLS.includes(value as ImageGenerationProtocol);
 }
 
+export function isClaudeModelName(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().toLowerCase().startsWith('claude-');
+}
+
 export type KnowledgeSectionType =
   | 'science'
   | 'brand'
@@ -601,6 +605,7 @@ export interface PromptDraft {
   lastCopiedAt?: string;
   lastCopiedTarget?: string;
   model?: string;
+  textProtocol?: TextGenerationProtocol;
   versions: PromptDraftVersion[];
   activeVersionId: string;
   materializedTarget?: 'prompt-pack' | 'workflow' | 'skill';
@@ -629,6 +634,7 @@ export interface CreatePromptDraftFromContentInput {
   content: string;
   note?: string;
   model?: string;
+  textProtocol?: TextGenerationProtocol;
   status?: PromptDraftStatus;
 }
 
@@ -639,6 +645,7 @@ export interface UpdatePromptDraftInput {
   note?: string;
   status?: PromptDraftStatus;
   model?: string;
+  textProtocol?: TextGenerationProtocol;
   materializedTarget?: PromptDraft['materializedTarget'];
 }
 
@@ -687,6 +694,7 @@ export interface AgentPromptSession {
   sourceSnapshots: AgentPromptSourceSnapshot[];
   messages: AgentPromptMessage[];
   model?: string;
+  textProtocol?: TextGenerationProtocol;
   createdAt: string;
   updatedAt: string;
 }

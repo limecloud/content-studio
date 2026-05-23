@@ -1,7 +1,8 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
+import { statSync } from 'node:fs';
 import type { ModelConfigView } from '../../shared/types';
-import { buildClaudeSubprocessEnv, ensureClaudeConfig } from '../services/claudeSdkRuntime';
+import { buildClaudeSubprocessEnv, ensureClaudeConfig, resolveClaudeCodeExecutable } from '../services/claudeSdkRuntime';
 
 export class TextProviderBlockedError extends Error {
   readonly code = 'TEXT_PROVIDER_NOT_CONFIGURED';
@@ -41,6 +42,7 @@ export interface TextGenerationOutput<T> {
   value: T;
   model: string;
   rawText: string;
+  protocol: TextRuntimeConfig['protocol'];
 }
 
 interface JsonTextProvider {
@@ -100,6 +102,17 @@ function textMaxTokens(): number {
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 8192;
 }
 
+function ensureWorkspaceDirectory(workspacePath: string): void {
+  const normalized = workspacePath.trim();
+  if (!normalized) throw new TextProviderBlockedError('工作区路径为空：请先在设置中选择有效的工作区目录。');
+  try {
+    if (statSync(normalized).isDirectory()) return;
+  } catch {
+    // 下面统一给出用户可读错误，避免 SDK 子进程暴露 spawn ENOENT/ENOTDIR。
+  }
+  throw new TextProviderBlockedError('工作区路径不是可访问目录：请在设置中重新选择工作区后再生成。');
+}
+
 function buildJsonSystemPrompt(input: GenerateJsonInput, includeSchema: boolean): string {
   return [
     input.systemPrompt,
@@ -151,7 +164,9 @@ function providerError(payload: unknown, fallback: string): string {
 
 class ClaudeSdkTextProvider implements JsonTextProvider {
   async generateJson<T>(input: GenerateJsonInput, runtime: TextRuntimeConfig): Promise<TextGenerationOutput<T>> {
+    ensureWorkspaceDirectory(input.workspacePath);
     ensureClaudeConfig();
+    const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable();
     const options: Options = {
       cwd: input.workspacePath,
       model: runtime.model,
@@ -165,6 +180,7 @@ class ClaudeSdkTextProvider implements JsonTextProvider {
       settingSources: ['user', 'project'],
       outputFormat: { type: 'json_schema', schema: input.schema },
     };
+    if (pathToClaudeCodeExecutable) options.pathToClaudeCodeExecutable = pathToClaudeCodeExecutable;
 
     let assistantText = '';
     let resultText = '';
@@ -194,7 +210,7 @@ class ClaudeSdkTextProvider implements JsonTextProvider {
     }
 
     const rawText = resultText || assistantText;
-    return { value: parseJsonObject<T>(structuredOutput, rawText), model: runtime.model, rawText };
+    return { value: parseJsonObject<T>(structuredOutput, rawText), model: runtime.model, rawText, protocol: runtime.protocol };
   }
 }
 
@@ -220,7 +236,7 @@ class AnthropicMessagesTextProvider implements JsonTextProvider {
       const payload = await readJsonResponse(response) as Record<string, unknown>;
       if (!response.ok) throw new TextProviderFailedError(providerError(payload, `HTTP ${response.status}`));
       const rawText = contentText(payload.content);
-      return { value: parseJsonObject<T>(undefined, rawText), model: runtime.model, rawText };
+      return { value: parseJsonObject<T>(undefined, rawText), model: runtime.model, rawText, protocol: runtime.protocol };
     } catch (error) {
       if (error instanceof TextProviderFailedError || error instanceof TextProviderBlockedError) throw error;
       const message = sanitizeProviderError(error);
@@ -256,7 +272,7 @@ class OpenAIChatTextProvider implements JsonTextProvider {
       const first = choices[0] as Record<string, unknown> | undefined;
       const message = first?.message as Record<string, unknown> | undefined;
       const rawText = contentText(message?.content);
-      return { value: parseJsonObject<T>(undefined, rawText), model: runtime.model, rawText };
+      return { value: parseJsonObject<T>(undefined, rawText), model: runtime.model, rawText, protocol: runtime.protocol };
     } catch (error) {
       if (error instanceof TextProviderFailedError || error instanceof TextProviderBlockedError) throw error;
       const message = sanitizeProviderError(error);
@@ -285,7 +301,7 @@ class GeminiGenerateContentTextProvider implements JsonTextProvider {
       const payload = await readJsonResponse(response) as Record<string, unknown>;
       if (!response.ok) throw new TextProviderFailedError(providerError(payload, `HTTP ${response.status}`));
       const rawText = collectGeminiText(payload);
-      return { value: parseJsonObject<T>(undefined, rawText), model: runtime.model, rawText };
+      return { value: parseJsonObject<T>(undefined, rawText), model: runtime.model, rawText, protocol: runtime.protocol };
     } catch (error) {
       if (error instanceof TextProviderFailedError || error instanceof TextProviderBlockedError) throw error;
       const message = sanitizeProviderError(error);

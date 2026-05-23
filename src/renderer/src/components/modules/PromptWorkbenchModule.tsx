@@ -10,6 +10,7 @@ import type {
   PromptDraftStatus,
 } from '../../../../shared/types';
 import { isPromptDistilledSource, isReusablePromptInputSource } from '../../../../shared/inputSourcePolicy';
+import { textProtocolLabel } from '../../app/formatters';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 import { PlatformDraftTraceList } from '../PlatformDraftTraceList';
@@ -353,6 +354,7 @@ export function PromptWorkbenchModule({
   const canUseCurrentDraft = canSave && Boolean(activeDraft);
   const hasAgentSessionPanel = visibleSessions.length > 0 || Boolean(activeSession);
   const activePurpose = activeDraft?.purpose ?? purpose;
+  const activeDraftTextProtocol = activeDraft?.textProtocol ?? activeSession?.textProtocol;
   const downstreamAction: JourneyAction | undefined =
     activePurpose === 'image'
       ? { label: '发送到图片生成', module: 'image', disabled: !canUseCurrentDraft, onClick: () => activeDraft && onUsePromptInImage(draftContent, activeDraft.sceneCardIds) }
@@ -521,6 +523,7 @@ export function PromptWorkbenchModule({
               <div className="workflow-summary-stack compact">
                 <StatusPill tone={statusClass(activeDraft.status)}>{STATUS_LABELS[activeDraft.status]}</StatusPill>
                 <StatusPill tone={modelStatusClass(activeDraft.model)}>{modelLabel(activeDraft.model)}</StatusPill>
+                <StatusPill tone={activeDraftTextProtocol ? 'ready' : 'idle'}>{textProtocolLabel(activeDraftTextProtocol)}</StatusPill>
                 {activeDraft.workflowRunId ? (
                   <StatusPill tone="ready">已关联 SOP</StatusPill>
                 ) : null}
@@ -659,7 +662,7 @@ export function PromptWorkbenchModule({
                 status={STATUS_LABELS[draft.status]}
                 statusTone={statusClass(draft.status)}
                 title={draft.title}
-                meta={`${PURPOSE_LABELS[draft.purpose]} · ${draft.versions.length} 个版本 · ${draft.inputSourceIds.length} 个输入源${draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}${draft.workflowRunId ? ' · 已关联 SOP' : ''} · ${modelLabel(draft.model)}`}
+                meta={`${PURPOSE_LABELS[draft.purpose]} · ${draft.versions.length} 个版本 · ${draft.inputSourceIds.length} 个输入源${draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}${draft.workflowRunId ? ' · 已关联 SOP' : ''} · ${modelLabel(draft.model)} · ${textProtocolLabel(draft.textProtocol)}`}
                 onClick={() => onSelectDraft(draft.id)}
               />
             ))}
@@ -675,9 +678,14 @@ export function PromptWorkbenchModule({
               <h3>{activeSession?.title ?? '尚未启动会话'}</h3>
             </div>
             {activeSession ? (
-              <StatusPill tone={sessionStatusClass(activeSession.status)}>
-                {SESSION_STATUS_LABELS[activeSession.status]}
-              </StatusPill>
+              <div className="workflow-summary-stack compact">
+                <StatusPill tone={sessionStatusClass(activeSession.status)}>
+                  {SESSION_STATUS_LABELS[activeSession.status]}
+                </StatusPill>
+                <StatusPill tone={activeSession.textProtocol ? 'ready' : 'idle'}>
+                  {textProtocolLabel(activeSession.textProtocol)}
+                </StatusPill>
+              </div>
             ) : null}
           </div>
           <div className="prompt-session-layout">
@@ -688,7 +696,7 @@ export function PromptWorkbenchModule({
                   className="prompt-session-card"
                   active={session.id === activeSession?.id}
                   title={session.title}
-                  meta={`${PURPOSE_LABELS[session.purpose]} · ${session.messages.length} 条消息 · ${session.promptDraftIds.length} 个草稿${session.workflowRunId ? ' · 已关联 SOP' : ''}`}
+                  meta={`${PURPOSE_LABELS[session.purpose]} · ${session.messages.length} 条消息 · ${session.promptDraftIds.length} 个草稿${session.workflowRunId ? ' · 已关联 SOP' : ''} · ${textProtocolLabel(session.textProtocol)}`}
                   onClick={() => onSelectSession(session.id)}
                 />
               ))}

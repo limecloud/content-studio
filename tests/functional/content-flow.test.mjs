@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { ArticleGenerationService } from '../../src/main/services/articleGenerationService.ts';
@@ -29,6 +29,7 @@ import { TextGenerationService } from '../../src/main/services/textGenerationSer
 import { VideoWorkflowService } from '../../src/main/services/videoWorkflowService.ts';
 import { WorkflowEngine } from '../../src/main/services/workflowEngine.ts';
 import { WorkflowStore } from '../../src/main/services/workflowStore.ts';
+import { buildClaudeSubprocessEnv, resolveAsarUnpackedPath } from '../../src/main/services/claudeSdkRuntime.ts';
 import { getOemRuntimeConfig } from '../../src/main/services/oemRuntimeConfig.ts';
 import { MediaProvider } from '../../src/main/providers/mediaProvider.ts';
 import { formatImageTemplateInputs, formatImageTemplatePromptContext } from '../../src/shared/imageTemplates.ts';
@@ -4813,6 +4814,93 @@ test('知识库可以导入、结构化并参与搜索引用', async () => {
   });
 });
 
+test('Claude SDK 子进程环境会过滤非法路径并定位 asar 解包路径', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const notDirectory = join(workspacePath, 'not-a-directory');
+    await writeFile(notDirectory, 'not a directory', 'utf-8');
+    const previousPath = process.env.PATH;
+    const previousConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    const previousNpmPrefix = process.env.npm_config_prefix;
+
+    try {
+      process.env.PATH = [notDirectory, workspacePath, previousPath].filter(Boolean).join(delimiter);
+      process.env.CLAUDE_CONFIG_DIR = notDirectory;
+      process.env.npm_config_prefix = '';
+
+      const env = buildClaudeSubprocessEnv({ extra: { EXTRA_EMPTY_VALUE: undefined } });
+      const pathEntries = env?.PATH?.split(delimiter) ?? [];
+
+      assert.ok(pathEntries.includes(workspacePath));
+      assert.ok(!pathEntries.includes(notDirectory));
+      assert.equal(env?.CLAUDE_CONFIG_DIR, undefined);
+      assert.equal(env?.npm_config_prefix, undefined);
+      assert.equal(env?.EXTRA_EMPTY_VALUE, undefined);
+      assert.ok(resolveAsarUnpackedPath('/Applications/Bugu.app/Contents/Resources/app.asar/node_modules/native/claude').includes('/app.asar.unpacked/'));
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      if (previousConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = previousConfigDir;
+      if (previousNpmPrefix === undefined) delete process.env.npm_config_prefix;
+      else process.env.npm_config_prefix = previousNpmPrefix;
+    }
+  });
+});
+
+test('Claude SDK 文字模型在工作区不是目录时返回可读错误', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const notDirectory = join(workspacePath, 'workspace-file');
+    await writeFile(notDirectory, 'not a directory', 'utf-8');
+    const previousRequireExplicitKey = process.env.CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY;
+    delete process.env.CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY;
+
+    try {
+      const text = new TextGenerationService({
+        async readView() {
+          return {
+            textProtocol: 'claude-sdk',
+            textApiEndpoint: '',
+            textModel: 'claude-sonnet-4-5',
+          };
+        },
+        async getTextApiKey() { return undefined; },
+      });
+
+      await assert.rejects(() => text.generateJson({
+        workspacePath: notDirectory,
+        systemPrompt: '只输出 JSON。',
+        prompt: '{"task":"invalid_workspace"}',
+        schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
+      }), /工作区路径不是可访问目录/);
+    } finally {
+      if (previousRequireExplicitKey === undefined) delete process.env.CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY;
+      else process.env.CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY = previousRequireExplicitKey;
+    }
+  });
+});
+
+test('Claude SDK 文字协议拒绝非 Claude 模型', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const text = new TextGenerationService({
+      async readView() {
+        return {
+          textProtocol: 'claude-sdk',
+          textApiEndpoint: 'https://api.anthropic.com',
+          textModel: 'gemini-3-pro-preview',
+        };
+      },
+      async getTextApiKey() { return 'test-text-key'; },
+    });
+
+    await assert.rejects(() => text.generateJson({
+      workspacePath,
+      systemPrompt: '只输出 JSON。',
+      prompt: '{"task":"model_mismatch"}',
+      schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
+    }), /Claude SDK 只支持 Claude 系列模型/);
+  });
+});
+
 test('文字模型支持 Anthropic 兼容 HTTP 网关生成 JSON', async () => {
   await withWorkspace(async (workspacePath) => {
     let capturedRequest;
@@ -4867,6 +4955,7 @@ test('文字模型支持 Anthropic 兼容 HTTP 网关生成 JSON', async () => {
 
       assert.deepEqual(result.value, { ok: true, name: '兼容网关' });
       assert.equal(result.model, 'gemini-3-pro-preview');
+      assert.equal(result.protocol, 'anthropic-messages');
       assert.equal(capturedRequest.model, 'gemini-3-pro-preview');
       assert.match(capturedRequest.system, /JSON Schema/);
     } finally {
@@ -4914,6 +5003,7 @@ test('文字模型支持 OpenAI Chat Completions 兼容协议生成 JSON', async
         schema: { type: 'object', required: ['ok', 'name'], properties: { ok: { type: 'boolean' }, name: { type: 'string' } } },
       });
       assert.deepEqual(result.value, { ok: true, name: 'OpenAI 兼容' });
+      assert.equal(result.protocol, 'openai-chat');
       assert.equal(capturedRequest.model, 'gpt-compatible');
       assert.equal(capturedRequest.response_format.type, 'json_object');
     } finally {
@@ -4961,6 +5051,7 @@ test('文字模型支持 Gemini GenerateContent 原生协议生成 JSON', async 
         schema: { type: 'object', required: ['ok', 'name'], properties: { ok: { type: 'boolean' }, name: { type: 'string' } } },
       });
       assert.deepEqual(result.value, { ok: true, name: 'Gemini 原生' });
+      assert.equal(result.protocol, 'gemini-generate-content');
       assert.equal(capturedRequest.generationConfig.responseMimeType, 'application/json');
     } finally {
       await new Promise((resolve) => server.close(resolve));

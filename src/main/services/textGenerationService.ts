@@ -1,4 +1,4 @@
-import { isTextGenerationProtocol, type ModelConfigView, type TextGenerationProtocol } from '../../shared/types';
+import { isClaudeModelName, isTextGenerationProtocol, type ModelConfigView, type TextGenerationProtocol } from '../../shared/types';
 import { ModelConfigStore } from './modelConfigStore';
 import {
   createTextProvider,
@@ -29,6 +29,12 @@ function envTextApiKey(protocol: TextGenerationProtocol): string | undefined {
   return process.env.ANTHROPIC_API_KEY;
 }
 
+function ensureProtocolModelCompatibility(protocol: TextGenerationProtocol, model: string): void {
+  if (protocol === 'claude-sdk' && !isClaudeModelName(model)) {
+    throw new TextProviderBlockedError(`Claude SDK 只支持 Claude 系列模型。当前模型是 ${model || '未设置'}。请切换为 Claude 模型，或把文字协议改成 Gemini GenerateContent / Anthropic Messages / OpenAI Chat。`);
+  }
+}
+
 export class TextGenerationService {
   constructor(private readonly modelConfig: ModelConfigStore) {}
 
@@ -47,8 +53,9 @@ export class TextGenerationService {
     };
   }
 
-  async generateJson<T>(input: GenerateJsonInput): Promise<{ value: T; model: string; rawText: string }> {
+  async generateJson<T>(input: GenerateJsonInput): Promise<{ value: T; model: string; rawText: string; protocol: TextGenerationProtocol }> {
     const runtime = await this.getRuntimeConfig(input.model);
+    ensureProtocolModelCompatibility(runtime.protocol, runtime.model);
     return createTextProvider(runtime.protocol).generateJson<T>(input, runtime);
   }
 }
