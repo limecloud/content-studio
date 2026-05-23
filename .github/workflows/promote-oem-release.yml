@@ -87,5 +87,5 @@ jobs:
             --dry-run=false
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_PROMOTE_API_URL: ${{ secrets.RELEASE_PROMOTE_API_URL }}
+          RELEASE_PROMOTE_API_URL: ${{ vars.RELEASE_PROMOTE_API_URL || secrets.RELEASE_PROMOTE_API_URL }}
           RELEASE_PROMOTE_API_TOKEN: ${{ secrets.RELEASE_PROMOTE_API_TOKEN }}

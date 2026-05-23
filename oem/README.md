@@ -73,8 +73,8 @@ GitHub Release 是桌面安装包的归档和审计入口。`bugu.run` / `www.bu
 首次配置需要在 GitHub 仓库设置中准备：
 
 1. Environment：`oem-promotion`。真实 promote job 绑定该环境，建议开启人工审批。
-2. Secret：`RELEASE_PROMOTE_API_URL`。内部发布服务的 promote endpoint。
-3. Secret：`RELEASE_PROMOTE_API_TOKEN`。只允许更新 OEM latest 指针的最小权限 token。
+2. Environment Variable：`RELEASE_PROMOTE_API_URL`。内部发布服务的 promote endpoint。
+3. Environment Secret：`RELEASE_PROMOTE_API_TOKEN`。只允许更新 OEM latest 指针的最小权限 token。
 
 常规流程：
 
