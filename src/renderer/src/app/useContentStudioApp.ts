@@ -30,6 +30,7 @@ import type {
   MediaGenerationResult,
   MixPackageAssetInput,
   MixPackageRecord,
+  ModelCatalogView,
   ModelConfigView,
   GenerateBrandKnowledgeBaseInput,
   GenerateIpKnowledgeBaseInput,
@@ -103,6 +104,7 @@ type PromptDraftCreateRequest = {
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+  textModel?: string;
   temporarySourceText?: string;
   temporarySourceTitle?: string;
 };
@@ -335,6 +337,7 @@ export function useContentStudioApp() {
   const [updateState, setUpdateState] =
     useState<AutoUpdateState>(INITIAL_UPDATE_STATE);
   const [modelConfig, setModelConfig] = useState<ModelConfigView | null>(null);
+  const [modelCatalog, setModelCatalog] = useState<ModelCatalogView | null>(null);
   const [modelDraft, setModelDraft] = useState<ModelDraft>({
     apiEndpoint: "",
     apiKey: "",
@@ -666,9 +669,10 @@ export function useContentStudioApp() {
     "根据知识库和场景卡生成短视频镜头提示词。";
 
   async function refresh(nextWorkspace?: string): Promise<void> {
-    const [nextSettings, nextModelConfig] = await Promise.all([
+    const [nextSettings, nextModelConfig, nextModelCatalog] = await Promise.all([
       window.contentStudio.getSettings(),
       window.contentStudio.getModelConfig(),
+      window.contentStudio.getModelCatalog(),
     ]);
     const workspace = nextWorkspace ?? nextSettings.workspacePath;
     const [nextSkills, nextKnowledgeBases, nextSearchResults] =
@@ -685,6 +689,7 @@ export function useContentStudioApp() {
       ]);
     setSettings(nextSettings);
     setModelConfig(nextModelConfig);
+    setModelCatalog(nextModelCatalog);
     setSkills(nextSkills);
     setKnowledgeBases(nextKnowledgeBases);
     setBrandKnowledgeBases([]);
@@ -1005,7 +1010,9 @@ export function useContentStudioApp() {
       videoApiKey: modelDraft.videoApiKey || undefined,
       videoModel: modelDraft.videoModel,
     });
+    const catalog = await window.contentStudio.getModelCatalog();
     setModelConfig(next);
+    setModelCatalog(catalog);
     setParams((current) => ({
       ...current,
       textModel: next.textModel,
@@ -1017,6 +1024,7 @@ export function useContentStudioApp() {
 
   async function loadModelCatalog(): Promise<void> {
     const catalog = await window.contentStudio.getModelCatalog();
+    setModelCatalog(catalog);
     setModelDraft((current) => ({
       ...current,
       textModel: current.textModel || catalog.textModels[0] || params.textModel,
@@ -1269,6 +1277,7 @@ export function useContentStudioApp() {
       userIntent: input.userIntent,
       inputSourceIds: input.inputSourceIds,
       sceneCardIds: input.sceneCardIds,
+      textModel: input.textModel ?? params.textModel,
     });
     setPromptDrafts((current) => [result.draft, ...current.filter((item) => item.id !== result.draft.id)]);
     setAgentPromptSessions((current) => [result.session, ...current.filter((item) => item.id !== result.session.id)]);
@@ -1280,12 +1289,14 @@ export function useContentStudioApp() {
   async function continueAgentPromptSession(input: {
     sessionId: string;
     message: string;
+    textModel?: string;
   }): Promise<void> {
     const workspace = requireWorkspace();
     const result = await window.contentStudio.continueAgentPromptSession({
       workspacePath: workspace,
       sessionId: input.sessionId,
       message: input.message,
+      textModel: input.textModel ?? params.textModel,
     });
     setPromptDrafts((current) => [result.draft, ...current.filter((item) => item.id !== result.draft.id)]);
     setAgentPromptSessions((current) =>
@@ -3270,6 +3281,7 @@ export function useContentStudioApp() {
     updateState,
     setUpdateState,
     modelConfig,
+    modelCatalog,
     modelDraft,
     setModelDraft,
     authState,

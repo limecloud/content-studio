@@ -26,6 +26,7 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: '图片',
     items: [
       { key: 'image', label: '图片生成' },
+      { key: 'image-showcase', label: 'AI 生图' },
       { key: 'image-reference-reverse', label: '对标图反推' },
       { key: 'image-scene-prompts', label: '场景提示词' },
       { key: 'image-green-screen', label: '绿幕文案图' },

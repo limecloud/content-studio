@@ -19,3 +19,6 @@ docs/roadmap/*
 !docs/roadmap/v2/
 !docs/roadmap/v2/**
 docs/roadmap/v2/**/.DS_Store
+!docs/roadmap/v3/
+!docs/roadmap/v3/**
+docs/roadmap/v3/**/.DS_Store

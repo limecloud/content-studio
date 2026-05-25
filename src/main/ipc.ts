@@ -47,14 +47,15 @@ import type {
   ImportInputSourceFromFileOptions,
   InputSourcePurpose,
   InstallSkillPackageInput,
+  OemSiteConfigRequest,
   CreateSkillInput,
   RenameSkillInput,
   ReplaceSkillPackageInput,
   RegisterInputSourceInput,
   SkillWorkspaceInput,
 } from '../shared/types';
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { basename, extname, join, dirname, isAbsolute, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { MediaProvider } from './providers/mediaProvider';
 import { ArticleGenerationService } from './services/articleGenerationService';
@@ -64,6 +65,7 @@ import { AssetReviewStore } from './services/assetReviewStore';
 import { AutoUpdateService } from './services/autoUpdateService';
 import { BuguAuthService } from './services/buguAuthService';
 import { ClaudeAgentService } from './services/claudeAgentService';
+import { ClaudePromptAgentService } from './services/claudePromptAgentService';
 import { FileAssociationService } from './services/fileAssociationService';
 import { GenerationLogStore } from './services/generationLogStore';
 import { ImageSkillGenerationService } from './services/imageSkillGenerationService';
@@ -106,6 +108,182 @@ function safeSkillPackageFileName(fileName: string): string {
   return base.toLowerCase().endsWith('.skill') ? base : `${base}.skill`;
 }
 
+function normalizeUrlBase(value: string): string {
+  return value.trim().replace(/\/+$/, '');
+}
+
+function toLocalAssetUrl(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/');
+  const absolutePath = /^[A-Za-z]:\//.test(normalized)
+    ? `/${normalized}`
+    : normalized.startsWith('/')
+      ? normalized
+      : `/${normalized}`;
+  return `local-asset://${encodeURI(absolutePath).replace(/#/g, '%23')}`;
+}
+
+function resolveFixturePath(fixturePath: string, assetPath: string): string {
+  if (isAbsolute(assetPath)) return assetPath;
+  return resolve(dirname(fixturePath), assetPath);
+}
+
+function normalizeFixtureFeatureFlags(data: Record<string, unknown>): Record<string, unknown> | undefined {
+  const featureFlags =
+    data.featureFlags && typeof data.featureFlags === 'object' && !Array.isArray(data.featureFlags)
+      ? { ...(data.featureFlags as Record<string, unknown>) }
+      : {};
+  if (!featureFlags['ai-image-showcase-ui'] && Array.isArray(data.featureGroups)) {
+    featureFlags['ai-image-showcase-ui'] = {
+      schemaVersion: 1,
+      source: data.source && typeof data.source === 'object' ? data.source : undefined,
+      featureGroups: data.featureGroups,
+    };
+  }
+  return Object.keys(featureFlags).length ? featureFlags : undefined;
+}
+
+function normalizeFixtureFeatureFlagItems(
+  data: Record<string, unknown>,
+  featureFlags: Record<string, unknown> | undefined,
+): Array<Record<string, unknown>> | undefined {
+  if (Array.isArray(data.featureFlagItems)) {
+    return data.featureFlagItems.filter((item): item is Record<string, unknown> =>
+      Boolean(item && typeof item === 'object' && !Array.isArray(item)),
+    );
+  }
+  if (!featureFlags) return undefined;
+  return Object.entries(featureFlags).map(([flagKey, flagValue]) => ({
+    flagKey,
+    flagValue,
+    status: 'published',
+  }));
+}
+
+function normalizeOemFixtureSiteConfig(raw: unknown, fixturePath: string): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const payload = raw as Record<string, unknown>;
+  const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : payload;
+  const cases = Array.isArray(data.cases) ? data.cases as Record<string, unknown>[] : [];
+  const assets = Array.isArray(data.assets) ? data.assets as Record<string, unknown>[] : [];
+  const featureFlags = normalizeFixtureFeatureFlags(data);
+  const featureFlagItems = normalizeFixtureFeatureFlagItems(data, featureFlags);
+
+  if (!cases.length && !assets.length && !featureFlags && !featureFlagItems?.length) return raw;
+
+  const rawAssets = [
+    ...assets,
+    ...cases.flatMap((item, caseIndex) => {
+      const caseId = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `case-${caseIndex + 1}`;
+      const caseAssets = Array.isArray(item.assets) ? item.assets as Record<string, unknown>[] : [];
+      return caseAssets.map((asset, assetIndex) => ({
+        ...asset,
+        id: typeof asset.id === 'string' && asset.id.trim()
+          ? asset.id.trim()
+          : `asset-${caseId}-${assetIndex + 1}`,
+      }));
+    }),
+  ];
+
+  const normalizedAssets = rawAssets.map((asset, index) => {
+    const assetRecord = asset as Record<string, unknown>;
+    const source = typeof assetRecord.publicUrl === 'string' && assetRecord.publicUrl.trim()
+      ? assetRecord.publicUrl.trim()
+      : typeof assetRecord.path === 'string' && assetRecord.path.trim()
+        ? assetRecord.path.trim()
+        : typeof assetRecord.url === 'string' && assetRecord.url.trim()
+          ? assetRecord.url.trim()
+          : '';
+    const publicUrl = typeof assetRecord.publicUrl === 'string' && assetRecord.publicUrl.trim()
+      ? assetRecord.publicUrl.trim()
+      : source
+        ? /^https?:\/\//i.test(source) || /^data:image\//i.test(source) || /^blob:/i.test(source) || /^local-asset:/i.test(source)
+          ? source
+          : toLocalAssetUrl(resolveFixturePath(fixturePath, source))
+        : undefined;
+    const id = typeof assetRecord.id === 'string' && assetRecord.id.trim()
+      ? assetRecord.id.trim()
+      : `asset-${index + 1}`;
+    return {
+      id,
+      kind: typeof assetRecord.kind === 'string' && assetRecord.kind.trim() ? assetRecord.kind.trim() : 'image',
+      publicUrl,
+      caption: typeof assetRecord.caption === 'string' && assetRecord.caption.trim() ? assetRecord.caption.trim() : undefined,
+      width: typeof assetRecord.width === 'number' ? assetRecord.width : undefined,
+      height: typeof assetRecord.height === 'number' ? assetRecord.height : undefined,
+      mimeType: typeof assetRecord.mimeType === 'string' && assetRecord.mimeType.trim() ? assetRecord.mimeType.trim() : undefined,
+    };
+  }).filter((asset) => Boolean(asset.publicUrl));
+  const uniqueAssets = Array.from(new Map(normalizedAssets.map((asset) => [asset.id, asset])).values());
+
+  const normalizedCases = cases.map((item, index) => {
+    const mediaRefs = Array.isArray(item.mediaRefs) && item.mediaRefs.length
+      ? item.mediaRefs.filter((ref): ref is string => typeof ref === 'string' && ref.trim().length > 0)
+      : [];
+    const caseAssets = Array.isArray(item.assets) ? item.assets as Record<string, unknown>[] : [];
+    const resolvedMediaRefs = mediaRefs.length
+      ? mediaRefs
+      : caseAssets.map((asset, assetIndex) => {
+          if (typeof asset.id === 'string' && asset.id.trim()) return asset.id.trim();
+          return `asset-${typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `case-${index + 1}`}-${assetIndex + 1}`;
+        });
+    return {
+      id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `case-${index + 1}`,
+      title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : `案例 ${index + 1}`,
+      industry: typeof item.industry === 'string' && item.industry.trim() ? item.industry.trim() : undefined,
+      summary: typeof item.summary === 'string' && item.summary.trim() ? item.summary.trim() : undefined,
+      prompt: typeof item.prompt === 'string' && item.prompt.trim() ? item.prompt.trim() : undefined,
+      tags: Array.isArray(item.tags)
+        ? item.tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
+        : undefined,
+      mediaRefs: resolvedMediaRefs,
+    };
+  });
+
+  return {
+    tenantId: typeof data.tenantId === 'string' && data.tenantId.trim() ? data.tenantId.trim() : undefined,
+    slug: typeof data.slug === 'string' && data.slug.trim() ? data.slug.trim() : undefined,
+    displayName: typeof data.displayName === 'string' && data.displayName.trim() ? data.displayName.trim() : undefined,
+    primaryDomain: typeof data.primaryDomain === 'string' && data.primaryDomain.trim() ? data.primaryDomain.trim() : undefined,
+    cases: normalizedCases,
+    assets: uniqueAssets,
+    featureFlags,
+    featureFlagItems,
+  };
+}
+
+function buildOemSiteConfigUrl(input?: OemSiteConfigRequest): string {
+  const runtime = getOemRuntimeConfig();
+  const tenant = input?.tenant || runtime.tenantId || runtime.brandId || 'bugu';
+  const base = normalizeUrlBase(input?.apiBaseUrl || runtime.oemPublicApiBaseUrl || 'https://api.bugu.run');
+  const path = base.endsWith('/api/v1')
+    ? '/public/oem/site-config'
+    : base.endsWith('/api')
+      ? '/v1/public/oem/site-config'
+      : '/api/v1/public/oem/site-config';
+  const searchParams = new URLSearchParams({ tenant });
+  if (input?.includeShared) {
+    searchParams.set('includeShared', '1');
+  }
+  return `${base}${path}?${searchParams.toString()}`;
+}
+
+async function fetchOemSiteConfig(input?: OemSiteConfigRequest): Promise<unknown> {
+  const fixturePath = process.env.CONTENT_STUDIO_OEM_SITE_CONFIG_FIXTURE_PATH?.trim();
+  if (fixturePath) {
+    const resolvedFixturePath = resolve(fixturePath);
+    const content = await readFile(resolvedFixturePath, 'utf8');
+    return normalizeOemFixtureSiteConfig(JSON.parse(content), resolvedFixturePath);
+  }
+  const response = await fetch(buildOemSiteConfigUrl(input), {
+    headers: { Accept: 'application/json' },
+  });
+  const payload = await response.json().catch(() => null) as { code?: number; message?: string; data?: unknown } | null;
+  if (!response.ok || !payload || payload.code) {
+    throw new Error(payload?.message || `OEM site config request failed: ${response.status}`);
+  }
+  return payload.data;
+}
+
 export function registerIpc(mainWindow: BrowserWindow): void {
   const settings = new SettingsStore();
   const buguAuth = new BuguAuthService();
@@ -117,10 +295,11 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const knowledgeBases = new KnowledgeBaseStore();
   const logs = new GenerationLogStore();
   const textGeneration = new TextGenerationService(modelConfig);
+  const claudePromptAgent = new ClaudePromptAgentService(settings, modelConfig, textGeneration);
   const imageSkills = new ImageSkillGenerationService(textGeneration);
   const inputSources = new InputSourceStore();
   const promptDrafts = new PromptDraftStore(inputSources, textGeneration);
-  const agentPromptSessions = new AgentPromptSessionStore(inputSources, promptDrafts, textGeneration);
+  const agentPromptSessions = new AgentPromptSessionStore(inputSources, promptDrafts, textGeneration, claudePromptAgent);
   const brandKnowledgeBases = new BrandKnowledgeBaseStore(textGeneration);
   const ipKnowledgeBases = new IpKnowledgeBaseStore(textGeneration);
   const overlayCards = new OverlayCardStore();
@@ -159,6 +338,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('auth:sendEmailCode', (_event, input: BuguEmailCodeSendInput) => buguAuth.sendEmailCode(input));
   ipcMain.handle('auth:verifyEmailCode', (_event, input: BuguEmailCodeVerifyInput) => buguAuth.verifyEmailCode(input));
   ipcMain.handle('auth:logout', () => buguAuth.logout());
+  ipcMain.handle('oem:getSiteConfig', (_event, input?: OemSiteConfigRequest) => fetchOemSiteConfig(input));
 
   ipcMain.handle('settings:get', () => settings.ensureDefaultWorkspace());
   ipcMain.handle('settings:save', (_event, input: SaveSettingsInput) => settings.save(input));

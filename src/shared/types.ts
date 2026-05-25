@@ -93,6 +93,7 @@ export interface ContentStudioBrandingConfig {
   primaryColor?: string;
   copyrightName?: string;
   supportUrl?: string;
+  oemPublicApiBaseUrl?: string;
   downloadChannel?: string;
 }
 
@@ -106,7 +107,53 @@ export interface OemRuntimeConfig {
   logoUrl?: string;
   supportUrl?: string;
   apiBaseUrl?: string;
+  oemPublicApiBaseUrl?: string;
   downloadBaseUrl?: string;
+}
+
+export interface OemSiteConfigRequest {
+  tenant?: string;
+  apiBaseUrl?: string;
+  includeShared?: boolean;
+}
+
+export interface OemPublicAsset {
+  id: string;
+  kind?: string;
+  publicUrl?: string;
+  caption?: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+}
+
+export interface OemPublicCase {
+  id: string;
+  title: string;
+  industry?: string;
+  summary?: string;
+  prompt?: string;
+  tags?: string[];
+  mediaRefs?: string[];
+}
+
+export interface OemFeatureFlagItem {
+  tenantId?: string;
+  flagKey: string;
+  flagValue?: unknown;
+  status?: string;
+  updatedAt?: string;
+}
+
+export interface OemPublicSiteConfig {
+  tenantId?: string;
+  slug?: string;
+  displayName?: string;
+  primaryDomain?: string;
+  cases?: OemPublicCase[];
+  assets?: OemPublicAsset[];
+  featureFlags?: Record<string, unknown>;
+  featureFlagItems?: OemFeatureFlagItem[];
 }
 
 export interface BuguCurrentSession {
@@ -707,12 +754,14 @@ export interface StartAgentPromptSessionInput {
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+  textModel?: string;
 }
 
 export interface ContinueAgentPromptSessionInput {
   workspacePath: string;
   sessionId: string;
   message: string;
+  textModel?: string;
 }
 
 export interface AgentPromptSessionResult {
@@ -1338,6 +1387,7 @@ export interface ContentStudioApi {
   authSendEmailCode(input: BuguEmailCodeSendInput): Promise<BuguEmailCodeSendResult>;
   authVerifyEmailCode(input: BuguEmailCodeVerifyInput): Promise<BuguAuthState>;
   authLogout(): Promise<BuguAuthState>;
+  getOemSiteConfig(input?: OemSiteConfigRequest): Promise<OemPublicSiteConfig>;
 
   getSettings(): Promise<AppSettingsView>;
   saveSettings(input: SaveSettingsInput): Promise<AppSettingsView>;

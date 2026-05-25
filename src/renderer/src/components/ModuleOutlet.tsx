@@ -2,6 +2,7 @@ import type { ContentStudioAppController } from '../app/useContentStudioApp';
 import { ArticleModule } from './modules/ArticleModule';
 import { AssetsModule } from './modules/AssetsModule';
 import { ImageModule } from './modules/ImageModule';
+import { ImageShowcaseModule } from './modules/ImageShowcaseModule';
 import { BrandKnowledgeModule } from './modules/BrandKnowledgeModule';
 import { InputSourcesModule } from './modules/InputSourcesModule';
 import { KnowledgeModule } from './modules/KnowledgeModule';
@@ -82,6 +83,19 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
         onGenerateImage={() => app.runAction(app.generateImage)}
+      />
+    );
+  }
+
+  if (app.activeModule === 'image-showcase') {
+    return (
+      <ImageShowcaseModule
+        busy={app.busy}
+        workspaceReady={Boolean(app.workspacePath)}
+        productImageRefs={app.productImageRefs}
+        authState={app.authState}
+        onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
+        onUsePromptInImage={app.useScenePromptInImage}
       />
     );
   }
@@ -330,6 +344,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           platformDrafts={app.platformDrafts}
           copiedPlatformDraftId={app.copiedPlatformDraftId}
           agentPromptSessions={app.agentPromptSessions}
+          textModel={app.params.textModel}
+          textModels={app.modelCatalog?.textModels ?? []}
           activeDraftId={app.activePromptDraftId}
           activeSessionId={app.activeAgentPromptSessionId}
           onSelectDraft={app.setActivePromptDraftId}

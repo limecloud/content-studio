@@ -9,6 +9,7 @@ import type {
   PromptDraftPurpose,
   PromptDraftStatus,
 } from '../../../../shared/types';
+import { isClaudeModelName } from '../../../../shared/types';
 import { isPromptDistilledSource, isReusablePromptInputSource } from '../../../../shared/inputSourcePolicy';
 import { textProtocolLabel } from '../../app/formatters';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
@@ -29,6 +30,8 @@ interface PromptWorkbenchModuleProps {
   platformDrafts: PlatformDraftRecord[];
   copiedPlatformDraftId: string | null;
   agentPromptSessions: AgentPromptSession[];
+  textModel?: string;
+  textModels?: string[];
   activeDraftId: string;
   activeSessionId: string;
   onSelectDraft: (draftId: string) => void;
@@ -45,10 +48,12 @@ interface PromptWorkbenchModuleProps {
     userIntent: string;
     inputSourceIds: string[];
     sceneCardIds?: string[];
+    textModel?: string;
   }) => void;
   onContinueSession: (input: {
     sessionId: string;
     message: string;
+    textModel?: string;
   }) => void;
   onUpdateDraft: (input: {
     draftId: string;
@@ -181,6 +186,16 @@ function modelLabel(model?: string): string {
   return model;
 }
 
+function uniqueNonEmptyModels(models: Array<string | undefined>): string[] {
+  return Array.from(new Set(models.map((model) => model?.trim()).filter((model): model is string => Boolean(model))));
+}
+
+function resolveDefaultSessionTextModel(textModel: string | undefined, textModels: string[]): string {
+  const configuredModel = textModel?.trim();
+  if (isClaudeModelName(configuredModel)) return configuredModel;
+  return textModels.find(isClaudeModelName) ?? configuredModel ?? '';
+}
+
 function sessionStatusClass(status: AgentPromptSession['status']): StatusPillTone {
   if (status === 'blocked') return 'blocked';
   if (status === 'draft-created' || status === 'active') return 'ready';
@@ -255,6 +270,8 @@ export function PromptWorkbenchModule({
   platformDrafts,
   copiedPlatformDraftId,
   agentPromptSessions,
+  textModel,
+  textModels = [],
   activeDraftId,
   activeSessionId,
   onSelectDraft,
@@ -276,9 +293,14 @@ export function PromptWorkbenchModule({
   onSelectModule,
 }: PromptWorkbenchModuleProps) {
   const feature = V2_FEATURES[featureKey];
+  const defaultSessionTextModel = useMemo(
+    () => resolveDefaultSessionTextModel(textModel, textModels),
+    [textModel, textModels],
+  );
   const [purpose, setPurpose] = useState<PromptDraftPurpose>(initialPurpose);
   const [title, setTitle] = useState(initialTitle);
   const [userIntent, setUserIntent] = useState(initialUserIntent);
+  const [sessionTextModel, setSessionTextModel] = useState(defaultSessionTextModel);
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const sourceSelectionModeRef = useRef<'auto' | 'manual'>('auto');
   const lastAutoSelectionContextRef = useRef<string>('');
@@ -304,6 +326,11 @@ export function PromptWorkbenchModule({
     visibleSessions.find((session) => session.id === activeSessionId) ??
     visibleSessions.find((session) => activeDraft?.id && session.promptDraftIds.includes(activeDraft.id)) ??
     visibleSessions[0];
+  const sessionModelOptions = useMemo(() => {
+    const models = uniqueNonEmptyModels([sessionTextModel, textModel, ...textModels]);
+    const claudeModels = models.filter(isClaudeModelName);
+    return claudeModels.length ? claudeModels : models;
+  }, [sessionTextModel, textModel, textModels]);
   const [draftContent, setDraftContent] = useState(activeContent(activeDraft));
   const [sessionAdjustment, setSessionAdjustment] = useState('请结合用户意图继续收紧文案结构，并补充合规提醒。');
   const selectedSources = useMemo(
@@ -334,6 +361,14 @@ export function PromptWorkbenchModule({
   }, [activeDraft?.id, activeDraft?.activeVersionId]);
 
   useEffect(() => {
+    if (isClaudeModelName(activeSession?.model)) {
+      setSessionTextModel(activeSession.model);
+      return;
+    }
+    setSessionTextModel(defaultSessionTextModel);
+  }, [activeSession?.id, activeSession?.model, defaultSessionTextModel]);
+
+  useEffect(() => {
     setPurpose(initialPurpose);
     setTitle(initialTitle);
     setUserIntent(initialUserIntent);
@@ -349,7 +384,8 @@ export function PromptWorkbenchModule({
   }, [activeDraft?.id, inputSources, purpose]);
 
   const canGenerate = workspaceReady && !busy && userIntent.trim().length > 0;
-  const canStartSession = canGenerate;
+  const sessionModelReady = !sessionTextModel || isClaudeModelName(sessionTextModel);
+  const canStartSession = canGenerate && sessionModelReady;
   const canSave = workspaceReady && !busy && Boolean(activeDraft) && draftContent.trim().length > 0;
   const canUseCurrentDraft = canSave && Boolean(activeDraft);
   const hasAgentSessionPanel = visibleSessions.length > 0 || Boolean(activeSession);
@@ -427,7 +463,7 @@ export function PromptWorkbenchModule({
         ]}
         actions={[
           { label: '补输入源', module: 'knowledge-inputs' },
-          { label: '启动 AI 会话', primary: true, onClick: () => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds }), disabled: !canStartSession },
+          { label: '启动 AI 会话', primary: true, onClick: () => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, textModel: sessionTextModel }), disabled: !canStartSession },
           { label: '仅生成草稿', onClick: () => onGenerateDraft({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds }), disabled: !canGenerate },
           ...(downstreamAction ? [downstreamAction] : []),
         ]}
@@ -452,6 +488,14 @@ export function PromptWorkbenchModule({
               </select>
             </label>
             <label>
+              <span>会话模型</span>
+              <select value={sessionTextModel} onChange={(event) => setSessionTextModel(event.target.value)}>
+                {sessionModelOptions.map((model) => (
+                  <option key={model} value={model}>{model === textModel ? `${model}（全局）` : model}</option>
+                ))}
+              </select>
+            </label>
+            <label>
               <span>标题</span>
               <input value={title} onChange={(event) => setTitle(event.target.value)} />
             </label>
@@ -460,6 +504,11 @@ export function PromptWorkbenchModule({
               <textarea value={userIntent} onChange={(event) => setUserIntent(event.target.value)} />
             </label>
           </div>
+          {!sessionModelReady ? (
+            <div className="inline-warning subtle">
+              Claude SDK Agent 只能使用 Claude 系列模型，请在会话模型中选择 Claude 模型后再启动。
+            </div>
+          ) : null}
           <div className="prompt-source-list">
             {orderedInputSources.map((source) => (
               <label key={source.id} className="prompt-source-option">
@@ -498,7 +547,7 @@ export function PromptWorkbenchModule({
             <button
               className="primary small"
               disabled={!canStartSession}
-              onClick={() => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds })}
+              onClick={() => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, textModel: sessionTextModel })}
             >
               启动 Agent 会话
             </button>
@@ -685,6 +734,9 @@ export function PromptWorkbenchModule({
                 <StatusPill tone={activeSession.textProtocol ? 'ready' : 'idle'}>
                   {textProtocolLabel(activeSession.textProtocol)}
                 </StatusPill>
+                <StatusPill tone={modelStatusClass(activeSession.model ?? textModel)}>
+                  {modelLabel(activeSession.model ?? textModel)}
+                </StatusPill>
               </div>
             ) : null}
           </div>
@@ -727,8 +779,8 @@ export function PromptWorkbenchModule({
                   <ActionGroup align="left">
                     <button
                       className="primary small"
-                      disabled={!workspaceReady || busy || !sessionAdjustment.trim() || !activeSession}
-                      onClick={() => activeSession && onContinueSession({ sessionId: activeSession.id, message: sessionAdjustment })}
+                      disabled={!workspaceReady || busy || !sessionAdjustment.trim() || !activeSession || !sessionModelReady}
+                      onClick={() => activeSession && onContinueSession({ sessionId: activeSession.id, message: sessionAdjustment, textModel: sessionTextModel })}
                     >
                       继续会话
                     </button>

@@ -11,6 +11,7 @@ import type {
   PromptDraftVersion,
   StartAgentPromptSessionInput,
 } from '../../shared/types';
+import { isClaudeModelName } from '../../shared/types';
 import { isReusablePromptInputSource } from '../../shared/inputSourcePolicy';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
@@ -18,6 +19,12 @@ import { InputSourceStore } from './inputSourceStore';
 import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { PromptDraftStore } from './promptDraftStore';
 import { TextGenerationService, TextProviderBlockedError, TextProviderFailedError } from './textGenerationService';
+import type {
+  GenerateAgentPromptDraftInput,
+  GenerateAgentPromptDraftResult,
+  GenerateAgentPromptRefinementInput,
+  GenerateAgentPromptRefinementResult,
+} from './claudePromptAgentService';
 
 function sessionsFilePath(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'agent-prompt-sessions.json');
@@ -139,11 +146,17 @@ function fallbackRefinedContent(previousContent: string, adjustment: string, rea
   ].join('\n');
 }
 
+interface AgentPromptModelService {
+  generatePromptDraft(input: GenerateAgentPromptDraftInput): Promise<GenerateAgentPromptDraftResult>;
+  generateRefinedPrompt(input: GenerateAgentPromptRefinementInput): Promise<GenerateAgentPromptRefinementResult>;
+}
+
 export class AgentPromptSessionStore {
   constructor(
     private readonly inputSources: InputSourceStore,
     private readonly promptDrafts: PromptDraftStore,
     private readonly textGeneration: TextGenerationService,
+    private readonly promptAgent?: AgentPromptModelService,
   ) {}
 
   async list(workspacePath: string): Promise<AgentPromptSession[]> {
@@ -156,15 +169,43 @@ export class AgentPromptSessionStore {
     const allSources = await this.inputSources.list(input.workspacePath);
     const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id) && isReusablePromptInputSource(source));
     const inputSourceIds = selectedSources.map((source) => source.id);
-    const draft = await this.promptDrafts.generate({
-      workspacePath: input.workspacePath,
-      workflowRunId: input.workflowRunId,
-      title: input.title,
-      purpose: input.purpose,
-      userIntent: input.userIntent,
-      inputSourceIds,
-      sceneCardIds: input.sceneCardIds,
-    });
+    let draft: PromptDraft;
+    if (this.promptAgent) {
+      const generated = await this.promptAgent.generatePromptDraft({
+        workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
+        title: input.title,
+        purpose: input.purpose,
+        userIntent: input.userIntent,
+        inputSourceIds,
+        sceneCardIds: input.sceneCardIds,
+        selectedSources,
+        textModel: input.textModel,
+      });
+      draft = await this.promptDrafts.createFromContent({
+        workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
+        title: input.title?.trim() || generated.title || '模型生成 Prompt 草稿',
+        purpose: input.purpose,
+        userIntent: input.userIntent.trim(),
+        inputSourceIds,
+        sceneCardIds: input.sceneCardIds ?? [],
+        content: generated.content,
+        note: generated.note,
+        model: generated.model,
+        textProtocol: generated.protocol,
+      });
+    } else {
+      draft = await this.promptDrafts.generate({
+        workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
+        title: input.title,
+        purpose: input.purpose,
+        userIntent: input.userIntent,
+        inputSourceIds,
+        sceneCardIds: input.sceneCardIds,
+      });
+    }
     const now = new Date().toISOString();
     const firstVersion = activeVersion(draft);
     const sourceSnapshots = selectedSources.map(snapshotSource);
@@ -226,7 +267,17 @@ export class AgentPromptSessionStore {
     if (!draft) throw new Error(`Agent 会话关联的 Prompt 草稿不存在: ${draftId}`);
 
     const previousContent = activeVersion(draft).content;
-    const generated = await this.generateRefinedContent(session, previousContent, adjustment);
+    const generated = this.promptAgent
+      ? await this.promptAgent.generateRefinedPrompt({
+        workspacePath: input.workspacePath,
+        purpose: session.purpose,
+        previousContent,
+        adjustment,
+        sourceSnapshots: session.sourceSnapshots,
+        messages: session.messages,
+        textModel: input.textModel ?? (isClaudeModelName(session.model) ? session.model : undefined),
+      })
+      : await this.generateRefinedContent(session, previousContent, adjustment);
     const updatedDraft = await this.promptDrafts.update({
       workspacePath: input.workspacePath,
       draftId: draft.id,

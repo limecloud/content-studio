@@ -13,6 +13,7 @@ import { AgentPromptSessionStore } from '../../src/main/services/agentPromptSess
 import { AssetReviewStore } from '../../src/main/services/assetReviewStore.ts';
 import { AutoUpdateService } from '../../src/main/services/autoUpdateService.ts';
 import { BrandKnowledgeBaseStore } from '../../src/main/services/brandKnowledgeBaseStore.ts';
+import { ClaudePromptAgentService } from '../../src/main/services/claudePromptAgentService.ts';
 import { GenerationLogStore } from '../../src/main/services/generationLogStore.ts';
 import { ImageSkillGenerationService } from '../../src/main/services/imageSkillGenerationService.ts';
 import { InputSourceStore } from '../../src/main/services/inputSourceStore.ts';
@@ -359,6 +360,44 @@ class FakeTextGenerationService {
       };
     }
     throw new Error(`未覆盖的测试任务：${task}`);
+  }
+}
+
+class FakeClaudePromptAgentService {
+  draftCalls = [];
+  refineCalls = [];
+
+  async generatePromptDraft(input) {
+    this.draftCalls.push(input);
+    return {
+      title: 'Claude 会话草稿',
+      content: [
+        'Claude 会话草稿',
+        '',
+        `模型：${input.textModel || 'claude-sonnet-4-5'}`,
+        '',
+        'Prompt 正文：',
+        '围绕用户意图与输入源生成可执行 Prompt。',
+      ].join('\n'),
+      note: `Claude SDK 会话草稿：${input.textModel || 'claude-sonnet-4-5'}`,
+      model: input.textModel || 'claude-sonnet-4-5',
+      protocol: 'claude-sdk',
+    };
+  }
+
+  async generateRefinedPrompt(input) {
+    this.refineCalls.push(input);
+    return {
+      content: [
+        input.previousContent,
+        '',
+        '本轮调整：',
+        input.adjustment,
+      ].join('\n'),
+      note: `Claude SDK 多轮调整：${input.textModel || 'claude-sonnet-4-5'}`,
+      model: input.textModel || 'claude-sonnet-4-5',
+      protocol: 'claude-sdk',
+    };
   }
 }
 
@@ -742,6 +781,63 @@ test('Agent 会话可以记录首版草稿和多轮调整', async () => {
     assert.equal(continued.session.messages.length, 4);
     assert.equal(continued.draft.versions.length, 2);
     assert.match(continued.draft.versions.at(-1).content, /本轮调整/);
+  });
+});
+
+test('Agent 会话启动会显式使用当前选中的 Claude 模型', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const text = new FakeTextGenerationService();
+    const promptAgent = new FakeClaudePromptAgentService();
+    const inputSources = new InputSourceStore();
+    const promptDrafts = new PromptDraftStore(inputSources, text);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text, promptAgent);
+
+    const source = await inputSources.register({
+      workspacePath,
+      kind: 'manual-note',
+      purpose: 'brand-kb',
+      title: '便携条包知识库',
+      text: '产品事实：便携条包。场景：早餐后、办公室抽屉。合规：不承诺治疗。',
+      tags: ['brand-kb'],
+    });
+
+    const started = await sessions.start({
+      workspacePath,
+      title: '便携条包 Prompt 会话',
+      purpose: 'image',
+      userIntent: '生成小红书真实生活场景图片 Prompt。',
+      inputSourceIds: [source.id],
+      textModel: 'claude-opus-4-1',
+    });
+
+    assert.equal(promptAgent.draftCalls.length, 1);
+    assert.equal(promptAgent.draftCalls[0].textModel, 'claude-opus-4-1');
+    assert.equal(started.draft.model, 'claude-opus-4-1');
+    assert.equal(started.session.model, 'claude-opus-4-1');
+    assert.equal(started.session.textProtocol, 'claude-sdk');
+
+    const continued = await sessions.continue({
+      workspacePath,
+      sessionId: started.session.id,
+      message: '把平台改成小红书，镜头更自然，不要广告棚拍感。',
+    });
+
+    assert.equal(promptAgent.refineCalls.length, 1);
+    assert.equal(promptAgent.refineCalls[0].textModel, 'claude-opus-4-1');
+    assert.equal(continued.draft.model, 'claude-opus-4-1');
+    assert.equal(continued.session.model, 'claude-opus-4-1');
+
+    const switched = await sessions.continue({
+      workspacePath,
+      sessionId: started.session.id,
+      message: '这一轮换成更快模型，保留同样结构。',
+      textModel: 'claude-haiku-4-5',
+    });
+
+    assert.equal(promptAgent.refineCalls.length, 2);
+    assert.equal(promptAgent.refineCalls[1].textModel, 'claude-haiku-4-5');
+    assert.equal(switched.draft.model, 'claude-haiku-4-5');
+    assert.equal(switched.session.model, 'claude-haiku-4-5');
   });
 });
 
@@ -4898,6 +4994,41 @@ test('Claude SDK 文字协议拒绝非 Claude 模型', async () => {
       prompt: '{"task":"model_mismatch"}',
       schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
     }), /Claude SDK 只支持 Claude 系列模型/);
+  });
+});
+
+test('Claude Prompt Agent 会拒绝非 Claude 模型选择', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const agent = new ClaudePromptAgentService(
+      {
+        async getAnthropicApiKey() {
+          return 'test-anthropic-key';
+        },
+      },
+      {
+        async readView() {
+          return {
+            textProtocol: 'claude-sdk',
+            textApiEndpoint: 'https://api.anthropic.com',
+            textModel: 'claude-sonnet-4-5',
+          };
+        },
+        async getTextApiKey() {
+          return 'test-text-key';
+        },
+      },
+    );
+
+    await assert.rejects(
+      () => agent.generateJson({
+        workspacePath,
+        model: 'gemini-3-pro-preview',
+        systemPrompt: '只输出 JSON。',
+        prompt: '{"task":"model_mismatch"}',
+        schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
+      }),
+      /Claude SDK 只支持 Claude 系列模型/,
+    );
   });
 });
 

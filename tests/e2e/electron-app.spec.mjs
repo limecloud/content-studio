@@ -167,9 +167,10 @@ async function launchContentStudio(testInfo, options = {}) {
     diagnostics.push(`[renderer:pageerror] ${error.message}`);
   });
 
+  const expectedShellSelector = options.expectAuthGate ? '.bugu-auth-shell' : '.app-shell';
   await expect.poll(
-    async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-    { message: '等待 Electron preload bridge 和主工作台加载完成', timeout: 30_000 },
+    async () => page.evaluate((selector) => Boolean(window.contentStudio) && Boolean(document.querySelector(selector)), expectedShellSelector),
+    { message: options.expectAuthGate ? '等待 Electron preload bridge 和登录页加载完成' : '等待 Electron preload bridge 和主工作台加载完成', timeout: 30_000 },
   ).toBe(true);
 
   return { electronApp, page, userDataDir, workspaceDir, e2eProductAssetPath, e2eVideoAssetPath, diagnostics, testInfo };
@@ -274,6 +275,13 @@ async function expectCommandCenter(page, selector, density) {
     height,
     `${selector} 顶部高度 ${height}px 超过 ${density} 上限 ${COMMAND_CENTER_MAX_HEIGHT[density]}px`,
   ).toBeLessThanOrEqual(COMMAND_CENTER_MAX_HEIGHT[density]);
+}
+
+async function expectRectNear(locator, expected, tolerance = 3) {
+  const rect = await locator.first().boundingBox();
+  expect(rect, `${locator} 应该有可测量尺寸`).not.toBeNull();
+  expect(Math.abs(rect.width - expected.width), `宽度 ${rect.width}px 应接近 ${expected.width}px`).toBeLessThanOrEqual(tolerance);
+  expect(Math.abs(rect.height - expected.height), `高度 ${rect.height}px 应接近 ${expected.height}px`).toBeLessThanOrEqual(tolerance);
 }
 
 async function ensureSidebarExpanded(page) {
@@ -439,6 +447,27 @@ function fakeBusinessChainTextOutput(prompt) {
     qualityChecklist: ['产品清晰', '场景真实', '无绝对化表达'],
   };
 }
+
+test('OEM 登录页会读取品牌 runtime 配置而不是写死 Bugu 官网', async ({}, testInfo) => {
+  await withContentStudio(
+    testInfo,
+    async ({ page }) => {
+      await expect(page.locator('.bugu-auth-brand strong')).toHaveText('seenx');
+      await expect(page.getByRole('link', { name: '去官网验证邮箱 / 设置密码' })).toHaveAttribute(
+        'href',
+        'https://seenx.run/login/?mode=verify',
+      );
+      await expect(page.locator('.bugu-auth-verify-card')).toContainText('去官网验证邮箱 / 设置密码');
+    },
+    {
+      env: {
+        CONTENT_STUDIO_E2E: '0',
+        CONTENT_STUDIO_OEM_RUNTIME_CONFIG: join(projectRoot, 'oem/brands/seenx.json'),
+      },
+      expectAuthGate: true,
+    },
+  );
+});
 
 test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', async ({}, testInfo) => {
   test.setTimeout(120_000);
@@ -701,6 +730,105 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     });
     expect(scrollState.ok, JSON.stringify(scrollState)).toBe(true);
   });
+});
+
+test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const aiImageFixturePath = resolve(projectRoot, '../../bugu/bugu/.tmp/ai-image-showcase/resolved-manifest.v2.ui.json');
+  const aiImageFixtureEnabled = existsSync(aiImageFixturePath);
+
+  await withContentStudio(
+    testInfo,
+    async ({ page }) => {
+    await ensureSidebarExpanded(page);
+    await clickNavItem(page, 'AI 生图');
+    await expect(page.locator('.ai-showcase-shell')).toBeVisible();
+    await expect(page.locator('.ai-showcase-left')).toContainText('选择场景');
+    await expect(page.locator('.ai-showcase-left')).toContainText('模特产品展示');
+    await expect(page.locator('.ai-showcase-left')).toContainText('上传素材');
+    await expect(page.locator('.ai-showcase-left')).toContainText('素材库');
+    await expect(page.locator('.ai-showcase-left')).toContainText('正面视角');
+    await expect(page.locator('.ai-showcase-left')).toContainText('背面视角');
+    await expect(page.locator('.ai-showcase-left')).toContainText('侧面视角');
+    await expect(page.locator('.ai-workspace-nav')).toHaveCount(0);
+    await expect(page.locator('.ai-category-tabs')).toContainText('Ai营销');
+    await expect(page.locator('.ai-category-tabs')).toContainText('Ai产品设计');
+    await expect(page.locator('.ai-category-tabs')).toContainText('Ai生产');
+    await expect(page.locator('.ai-feature-grid button')).toHaveCount(14);
+    await expectRectNear(page.locator('.ai-feature-grid .ai-feature-button'), { width: 114, height: 104 });
+    await expectRectNear(page.locator('.ai-feature-grid .ai-feature-icon-wrap'), { width: 46, height: 46 });
+    await expectRectNear(page.locator('.ai-feature-grid .ai-feature-icon'), { width: 30, height: 30 });
+    await expect(page.locator('.ai-feature-grid svg.ai-feature-icon')).toHaveCount(14);
+    await expect(page.locator('.ai-feature-grid img[src*="oss.dressingkit.com"]')).toHaveCount(0);
+    await expect(page.locator('.ai-feature-grid')).toContainText('模特产品展示');
+    await expect(page.locator('.ai-feature-grid')).toContainText('多人场景展示');
+    await expect(page.locator('.ai-feature-grid')).toContainText('批量产品展示');
+    await page.locator('.ai-category-tabs button').filter({ hasText: 'Ai产品设计' }).click();
+    await expect(page.locator('.ai-feature-grid button')).toHaveCount(17);
+    await expect(page.locator('.ai-feature-grid')).toContainText('文生图');
+    await page.locator('.ai-category-tabs button').filter({ hasText: 'Ai营销' }).click();
+    await expect(page.locator('.ai-industry-filter')).toContainText('服饰类');
+    await expect(page.locator('.ai-industry-filter')).toContainText('运动户外类');
+    await page.locator('.ai-panel-heading button').filter({ hasText: '选择功能' }).click();
+    await expect(page.locator('.detail-dialog-card')).toContainText('选择功能');
+    await expect(page.locator('.detail-dialog-card .ai-feature-picker-grid button')).toHaveCount(39);
+    await clickButton(page, '关闭');
+    await page.locator('.ai-section-title button').filter({ hasText: '素材库' }).click();
+    await expect(page.locator('.detail-dialog-card')).toContainText('当前上传素材');
+    await expect(page.locator('.detail-dialog-card')).toContainText('后端案例素材');
+    await clickButton(page, '关闭');
+    await page.locator('.ai-prompt-actions button').filter({ hasText: '提示词列表' }).click();
+    await expect(page.locator('.detail-dialog-card')).toContainText('默认提示词');
+    await expect(page.locator('.detail-dialog-card')).toContainText('当前模板');
+    await clickButton(page, '关闭');
+    await page.locator('.ai-prompt-actions button').filter({ hasText: '智能扩写' }).click();
+    await expect(page.locator('.ai-showcase-left textarea')).toContainText('补充生成约束');
+    await page.locator('.ai-prompt-actions button').filter({ hasText: '保存到模板' }).click();
+    await expect(page.locator('.detail-dialog-card')).toContainText('已保存模板');
+    await expect(page.locator('.detail-dialog-card .ai-saved-template-card')).toHaveCount(1);
+    await clickButton(page, '关闭');
+    await page.locator('.ai-history-pill').click();
+    await expect(page.locator('.detail-dialog-card')).toContainText('历史记录');
+    await expect(page.locator('.detail-dialog-card')).toContainText('已加载 OEM 案例清单');
+    await clickButton(page, '关闭');
+    if (aiImageFixtureEnabled) {
+      await expect(page.locator('.ai-case-board')).toContainText('后端素材 228 组 · 577 张资产');
+      await expect(page.locator('.ai-case-board')).toContainText('当前功能 33 组');
+      await expect(page.locator('.ai-case-card')).toHaveCount(33);
+    } else {
+      await expect.poll(async () => page.locator('.ai-case-card').count()).toBeGreaterThan(10);
+    }
+    await expectRectNear(page.locator('.ai-case-card'), { width: 279, height: 366 }, 4);
+    await expectRectNear(page.locator('.ai-case-compare'), { width: 241, height: 271 }, 4);
+    await expectRectNear(page.locator('.ai-case-compare > .ai-image-stack').first(), { width: 102, height: 247 }, 4);
+    await expectRectNear(page.locator('.ai-case-card-footer button').filter({ hasText: '预览' }), { width: 62, height: 32 }, 3);
+    await expectRectNear(page.locator('.ai-case-card-footer button').filter({ hasText: '尝试示例' }), { width: 86, height: 32 }, 3);
+    const examplePromptPattern = aiImageFixtureEnabled ? /图2模特穿着这套衣服|往镜头走来/ : /参考案例：/;
+    await page.locator('.ai-control-stack .ai-chip-group button').filter({ hasText: '背面视角' }).click();
+    await expect(page.locator('.ai-prompt-tabs button').filter({ hasText: '背面视角' })).toHaveClass(/active/);
+    await page.locator('.ai-case-card-footer button').filter({ hasText: '尝试示例' }).first().click();
+    await expect(page.locator('.ai-showcase-left textarea')).toHaveValue(examplePromptPattern);
+    await page.locator('.ai-prompt-tabs button').filter({ hasText: '正面视角' }).click();
+    await expect(page.locator('.ai-showcase-left textarea')).toHaveValue(examplePromptPattern);
+    await page.locator('.ai-feature-grid button').filter({ hasText: '换背景' }).click();
+    await expect(page.locator('.ai-showcase-left')).toContainText('黑白阈值');
+    await expect(page.locator('.ai-showcase-left input[type="color"]')).toHaveValue('#395745');
+    await page.locator('.ai-category-tabs button').filter({ hasText: 'Ai生产' }).click();
+    await expect(page.locator('.ai-feature-grid button')).toHaveCount(8);
+    await expect(page.locator('.ai-feature-grid')).toContainText('平铺图');
+    if (aiImageFixtureEnabled) {
+      await expect(page.locator('.ai-case-board')).toContainText('当前功能 5 组');
+      await expect(page.locator('.ai-case-card')).toHaveCount(5);
+    }
+    await page.locator('.ai-case-card button').filter({ hasText: '预览' }).first().click();
+    await expect(page.locator('.ai-preview-modal')).toBeVisible();
+    await expect(page.locator('.ai-preview-card')).toContainText('关闭');
+    },
+    aiImageFixtureEnabled
+      ? { env: { CONTENT_STUDIO_OEM_SITE_CONFIG_FIXTURE_PATH: aiImageFixturePath } }
+      : undefined,
+  );
 });
 
 test('v2 新增入口能落到真实工作流动作，不再只是静态说明页', async ({}, testInfo) => {

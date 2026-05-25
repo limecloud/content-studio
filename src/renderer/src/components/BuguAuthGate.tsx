@@ -3,8 +3,6 @@ import type { BuguAuthState } from '../../../shared/types';
 
 type RequestState = 'idle' | 'loading' | 'success' | 'error';
 
-const accountVerificationUrl = 'https://bugu.run/login/?mode=verify';
-
 export interface BuguAuthActions {
   onPasswordLogin: (input: { identifier: string; password: string }) => Promise<BuguAuthState>;
 }
@@ -28,8 +26,15 @@ interface SkipDirectActionProps {
   onSkip: () => void;
 }
 
-function resolveAccountVerificationUrl(authState?: BuguAuthState | null): string {
-  return authState?.bootstrap?.branding?.supportUrl || accountVerificationUrl;
+function resolveAccountVerificationUrl(authState?: BuguAuthState | null): string | undefined {
+  const value = authState?.bootstrap?.branding?.supportUrl?.trim();
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function friendlyAuthError(error: unknown): string {
@@ -131,9 +136,13 @@ export function BuguAuthForm({
           <div className="bugu-auth-verify-card">
             <strong>还没有密码？</strong>
             <p>前往官网完成 Cloudflare Turnstile 人机验证，再发送邮箱验证码并设置密码。</p>
-            <a href={verifyUrl} target="_blank" rel="noreferrer">
-              去官网验证邮箱 / 设置密码
-            </a>
+            {verifyUrl ? (
+              <a href={verifyUrl} target="_blank" rel="noreferrer">
+                去官网验证邮箱 / 设置密码
+              </a>
+            ) : (
+              <span>当前品牌暂未配置验证入口。</span>
+            )}
           </div>
 
           {message ? <p className={`bugu-auth-message ${requestState}`}>{message}</p> : null}

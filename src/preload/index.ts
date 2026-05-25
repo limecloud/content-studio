@@ -4,6 +4,7 @@ import type {
   ContinueAgentPromptSessionInput,
   ArticleGenerationRequest,
   CreatePromptDraftFromContentInput,
+  OemSiteConfigRequest,
   ReviewAssetInput,
   AssetFileKind,
   AutoUpdateState,
@@ -63,6 +64,7 @@ const api: ContentStudioApi = {
   authSendEmailCode: (input: BuguEmailCodeSendInput) => ipcRenderer.invoke('auth:sendEmailCode', input),
   authVerifyEmailCode: (input: BuguEmailCodeVerifyInput) => ipcRenderer.invoke('auth:verifyEmailCode', input),
   authLogout: () => ipcRenderer.invoke('auth:logout'),
+  getOemSiteConfig: (input?: OemSiteConfigRequest) => ipcRenderer.invoke('oem:getSiteConfig', input),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (input: SaveSettingsInput) => ipcRenderer.invoke('settings:save', input),
