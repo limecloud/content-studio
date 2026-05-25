@@ -1519,6 +1519,14 @@ export function useContentStudioApp() {
     setActiveModule("image");
   }
 
+  function useScenePromptInVideo(prompt: string, sceneCardIds?: string[]): void {
+    setSelectedSceneIds(sceneCardIds ?? []);
+    setVideoCustomRequirement(prompt);
+    setVideoShotCount(5);
+    setVideoDurationSeconds(18);
+    setActiveModule("video");
+  }
+
   function usePromptDraftInVideo(draftId: string): void {
     const draft = promptDrafts.find((item) => item.id === draftId);
     setSelectedSceneIds(draft?.sceneCardIds ?? []);
@@ -3467,6 +3475,7 @@ export function useContentStudioApp() {
     reworkAsset,
     distillAssetPrompt,
     useScenePromptInImage,
+    useScenePromptInVideo,
     usePromptDraftInVideo,
     usePromptDraftInArticle,
     usePromptDraftInGreenScreen,

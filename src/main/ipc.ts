@@ -132,10 +132,17 @@ function normalizeFixtureFeatureFlags(data: Record<string, unknown>): Record<str
     data.featureFlags && typeof data.featureFlags === 'object' && !Array.isArray(data.featureFlags)
       ? { ...(data.featureFlags as Record<string, unknown>) }
       : {};
-  if (!featureFlags['ai-image-showcase-ui'] && Array.isArray(data.featureGroups)) {
-    featureFlags['ai-image-showcase-ui'] = {
+  const source = data.source && typeof data.source === 'object' ? data.source as Record<string, unknown> : undefined;
+  const sourcePageUrl = typeof source?.pageUrl === 'string' ? source.pageUrl : '';
+  const fixtureShowcaseKind = typeof data.showcaseKind === 'string' ? data.showcaseKind : '';
+  const inferredFlagKey =
+    fixtureShowcaseKind === 'ai-video' || sourcePageUrl.includes('/pages-sub/video/video')
+      ? 'ai-video-showcase-ui'
+      : 'ai-image-showcase-ui';
+  if (!featureFlags[inferredFlagKey] && Array.isArray(data.featureGroups)) {
+    featureFlags[inferredFlagKey] = {
       schemaVersion: 1,
-      source: data.source && typeof data.source === 'object' ? data.source : undefined,
+      source,
       featureGroups: data.featureGroups,
     };
   }

@@ -14,6 +14,7 @@ import { ReferenceReverseModule } from './modules/ReferenceReverseModule';
 import { ScenePromptModule } from './modules/ScenePromptModule';
 import { VideoImportModule } from './modules/VideoImportModule';
 import { VideoPromptModule } from './modules/VideoPromptModule';
+import { VideoShowcaseModule } from './modules/VideoShowcaseModule';
 import { SkillsModule } from './modules/SkillsModule';
 import { V2FeatureModule } from './modules/V2FeatureModule';
 import { VideoModule } from './modules/VideoModule';
@@ -96,6 +97,21 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         authState={app.authState}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onUsePromptInImage={app.useScenePromptInImage}
+      />
+    );
+  }
+
+  if (app.activeModule === 'video-showcase') {
+    return (
+      <VideoShowcaseModule
+        busy={app.busy}
+        workspaceReady={Boolean(app.workspacePath)}
+        productImageRefs={app.productImageRefs}
+        videoAssetRefs={app.videoAssetRefs}
+        authState={app.authState}
+        onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
+        onSelectVideo={() => app.runAction(() => app.selectAssetFiles('video'))}
+        onUsePromptInVideo={app.useScenePromptInVideo}
       />
     );
   }

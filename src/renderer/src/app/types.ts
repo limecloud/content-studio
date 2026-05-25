@@ -1,7 +1,7 @@
 import type { GlobalGenerationParams, ImageGenerationProtocol, TextGenerationProtocol } from '../../../shared/types';
 import type { Dispatch, SetStateAction } from 'react';
 
-export type CoreModuleKey = 'image' | 'image-showcase' | 'video' | 'article' | 'knowledge' | 'assets' | 'skills';
+export type CoreModuleKey = 'image' | 'image-showcase' | 'video' | 'video-showcase' | 'article' | 'knowledge' | 'assets' | 'skills';
 
 export type V2ModuleKey =
   | 'image-reference-reverse'

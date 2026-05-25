@@ -38,6 +38,7 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: '视频',
     items: [
       { key: 'video', label: '视频生成' },
+      { key: 'video-showcase', label: 'AI 视频' },
       { key: 'video-script', label: '视频脚本' },
       { key: 'video-prompt', label: '视频 Prompt' },
       { key: 'video-import', label: '成品视频导入' },

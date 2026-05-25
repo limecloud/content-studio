@@ -831,6 +831,83 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
   );
 });
 
+test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const aiVideoFixturePath = resolve(projectRoot, '../../bugu/bugu/.tmp/ai-video-showcase/resolved-manifest.v1.ui.json');
+  test.skip(!existsSync(aiVideoFixturePath), `缺少 AI 视频 fixture：${aiVideoFixturePath}`);
+
+  await withContentStudio(
+    testInfo,
+    async ({ page }) => {
+      await ensureSidebarExpanded(page);
+      await clickNavItem(page, 'AI 视频');
+      await expect(page.locator('.ai-video-showcase-shell')).toBeVisible();
+      await expect(page.locator('.ai-video-left')).toContainText('选择场景');
+      await expect(page.locator('.ai-video-left')).toContainText('上传图片');
+      await expect(page.locator('.ai-video-left')).toContainText('上传视频');
+      await expect(page.locator('.ai-video-left')).toContainText('上传音频');
+      await expect(page.locator('.ai-video-feature-grid .ai-video-feature-button')).toHaveCount(3);
+      await expect(page.locator('.ai-video-feature-grid')).toContainText('分镜图');
+      await expect(page.locator('.ai-video-feature-grid')).toContainText('智能视频');
+      await expect(page.locator('.ai-video-feature-grid')).toContainText('全能视频');
+      await expectRectNear(page.locator('.ai-video-feature-grid .ai-video-feature-button'), { width: 130, height: 120 }, 3);
+      await expectRectNear(page.locator('.ai-video-feature-grid .ai-video-feature-icon-wrap'), { width: 46, height: 46 }, 3);
+      await expectRectNear(page.locator('.ai-video-feature-grid .ai-video-feature-icon'), { width: 36, height: 36 }, 3);
+      await expect(page.locator('.ai-video-feature-grid svg.ai-video-feature-icon')).toHaveCount(3);
+      await expect(page.locator('.ai-video-feature-grid img[src*="oss.dressingkit.com"]')).toHaveCount(0);
+      await expect(page.locator('img[src*="oss.dressingkit.com"], video[src*="oss.dressingkit.com"]')).toHaveCount(0);
+      await expect(page.locator('.ai-video-industry-filter')).toContainText('服饰类');
+      await expect(page.locator('.ai-video-industry-filter')).toContainText('运动户外类');
+      await expect(page.locator('.ai-video-case-board')).toContainText('后端素材 51 组 · 111 个资产 · 当前功能 9 组');
+      await expect(page.locator('.ai-video-case-card')).toHaveCount(9);
+      await expect(page.locator('.ai-video-case-card img')).not.toHaveCount(0);
+      await expect(page.locator('.ai-video-case-card video')).toHaveCount(0);
+      await expectRectNear(page.locator('.ai-video-case-card'), { width: 374, height: 359 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-media'), { width: 340, height: 271 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-media > .ai-video-media-stack').first(), { width: 152, height: 247 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-actions button').filter({ hasText: '预览' }), { width: 62, height: 32 }, 3);
+      await expectRectNear(page.locator('.ai-video-case-actions button').filter({ hasText: '尝试示例' }), { width: 86, height: 32 }, 3);
+      await page.locator('.ai-video-case-actions button').filter({ hasText: '尝试示例' }).first().click();
+      await expect(page.locator('.ai-video-industry-filter button.active')).toHaveText('全部');
+      await expect(page.locator('.ai-video-case-card')).toHaveCount(9);
+      await expect(page.locator('.ai-video-left textarea')).toHaveValue(/生成图片的6宫格分镜图|服装视觉大片/);
+
+      await page.locator('.ai-video-feature-grid button').filter({ hasText: '智能视频' }).click();
+      await expect(page.locator('.ai-video-case-board')).toContainText('当前功能 39 组');
+      await expect(page.locator('.ai-video-case-card')).toHaveCount(39);
+      await expect(page.locator('.ai-video-case-card img')).not.toHaveCount(0);
+      await expect(page.locator('.ai-video-case-card video')).not.toHaveCount(0);
+      await page.locator('.ai-video-case-actions button').filter({ hasText: '尝试示例' }).first().click();
+      await expect(page.locator('.ai-video-left textarea')).toHaveValue(/直播带货|小黄车|动态视频/);
+
+      await page.locator('.ai-video-feature-grid button').filter({ hasText: '全能视频' }).click();
+      await expect(page.locator('.ai-video-case-board')).toContainText('当前功能 3 组');
+      await expect(page.locator('.ai-video-case-card')).toHaveCount(3);
+      await expectRectNear(page.locator('.ai-video-case-card.is-wide'), { width: 633.33, height: 359 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-media.is-wide'), { width: 599.33, height: 271 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-media.is-wide > .ai-video-media-stack').first(), { width: 281.66, height: 247 }, 4);
+      await page.locator('.ai-video-case-actions button').filter({ hasText: '尝试示例' }).first().click();
+      await expect(page.locator('.ai-video-left textarea')).toHaveValue(/爆款复刻|拖把|负面提示词/);
+
+      await page.locator('.ai-video-panel-heading button').filter({ hasText: '选择功能' }).click();
+      await expect(page.locator('.detail-dialog-card')).toContainText('选择功能');
+      await expect(page.locator('.detail-dialog-card .ai-video-feature-picker-grid button')).toHaveCount(3);
+      await clickButton(page, '关闭');
+      await page.locator('.ai-video-case-actions button').filter({ hasText: '预览' }).first().click();
+      await expect(page.locator('.ai-video-preview-modal')).toBeVisible();
+      await expect(page.locator('.ai-video-preview-card')).toContainText('关闭');
+      await page.locator('.ai-video-preview-head button').filter({ hasText: '关闭' }).click();
+      await expect(page.locator('.ai-video-preview-modal')).toHaveCount(0);
+      await page.locator('.ai-video-generate-button').click();
+      await expect(page.locator('.video-replica-workbench')).toBeVisible();
+      await page.locator('.video-stage-tabs button').filter({ hasText: '脚本生成' }).click();
+      await expect(page.locator('.video-stage-layout.script textarea').first()).toHaveValue(/爆款复刻|拖把|负面提示词/);
+    },
+    { env: { CONTENT_STUDIO_OEM_SITE_CONFIG_FIXTURE_PATH: aiVideoFixturePath } },
+  );
+});
+
 test('v2 新增入口能落到真实工作流动作，不再只是静态说明页', async ({}, testInfo) => {
   test.setTimeout(120_000);
 

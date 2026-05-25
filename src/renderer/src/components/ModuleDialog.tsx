@@ -9,6 +9,7 @@ const CORE_MODULE_TITLES: Record<CoreModuleKey, ModuleDialogMeta> = {
   image: { eyebrow: '图片素材', title: '图片生成', description: '上传素材、选择场景卡，并调用真实图片生成服务产出可追溯素材。' },
   'image-showcase': { eyebrow: '商拍案例', title: 'AI 生图', description: '从 OEM 后端素材清单读取案例，组合场景、素材、视角和提示词后交接到图片生成。' },
   video: { eyebrow: '视频素材', title: '视频生成', description: '导入参考视频、生成本方脚本和视频 Prompt；成品视频由用户从第三方平台生成后手动导入。' },
+  'video-showcase': { eyebrow: '视频案例', title: 'AI 视频', description: '从 OEM 共享素材读取 AI 视频案例，复刻示例、输入输出素材和 Prompt 后交接到视频生成。' },
   article: { eyebrow: '文案生产', title: '文章生成', description: '基于知识引用、提示词包和场景卡生成正文草稿。' },
   knowledge: { eyebrow: '知识来源', title: '成型知识库', description: '管理产品型 / 个人 IP 知识库、引用片段和提示词包。' },
   assets: { eyebrow: '素材沉淀', title: '素材库', description: '集中查看成功生成的图片和视频产物。' },
