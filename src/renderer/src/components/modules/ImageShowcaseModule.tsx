@@ -1,25 +1,50 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   BuguAuthState,
+  MediaGenerationResult,
   OemPublicAsset,
   OemPublicCase,
+  OemPublicMaterial,
   OemPublicSiteConfig,
   OemSiteConfigRequest,
 } from "../../../../shared/types";
-import { fileNameFromPath, localAssetUrl } from "../../app/formatters";
+import { statusLabel } from "../../app/formatters";
+import rawDressingkitImageShared from "../../data/dressingkit-ai-image-shared.json";
+import rawDressingkitMaterials from "../../data/dressingkit-materials.json";
 import { DetailDialog } from "../DetailDialog";
 
 type ShowcaseCategoryId = "marketing" | "product-design" | "production";
 type Viewpoint = "front" | "back" | "side";
-type ShowcaseDialog = "feature-picker" | "materials" | "prompt-list" | "history" | null;
+type ShowcaseDialog = "feature-picker" | "prompt-list" | "history" | "prompt-assistant" | null;
+type ShowcaseMainView = "cases" | "materials";
+type ShowcaseStageView = "home" | "workbench";
+type RefinementTool = "select" | "pan" | "rotate" | "crop" | "brush" | "clear";
+type PromptAssistantTab = "text" | "reverse";
+
+const PROMPT_TEMPLATE_STORAGE_KEY = "buguai:dressingkit-image-prompt-templates";
 
 interface ImageShowcaseModuleProps {
   busy: boolean;
   workspaceReady: boolean;
   productImageRefs: string[];
+  referenceImageRefs: string[];
+  mediaResult: MediaGenerationResult | null;
   authState: BuguAuthState | null;
   onSelectProductImages: () => void;
-  onUsePromptInImage: (prompt: string) => void;
+  onSelectReferenceImages: () => void;
+  onRemoveProductImageRef: (ref: string) => void;
+  onRemoveReferenceImageRef: (ref: string) => void;
+  onUsePromptInImage: (input: ShowcaseImageHandoff) => void;
+  onClearResult: () => void;
+  onGenerateImage: (input: ShowcaseImageHandoff) => void;
+}
+
+export interface ShowcaseImageHandoff {
+  prompt: string;
+  productImageRefs: string[];
+  referenceImageRefs: string[];
+  productImageLabel: string;
+  referenceImageLabel: string;
 }
 
 interface ShowcaseFeature {
@@ -71,6 +96,35 @@ interface SavedPromptTemplate {
   featureTitle: string;
   prompt: string;
   createdAt: string;
+  updatedAt?: string;
+}
+
+function readSavedPromptTemplates(): SavedPromptTemplate[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PROMPT_TEMPLATE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is SavedPromptTemplate =>
+        item &&
+        typeof item.id === "string" &&
+        typeof item.title === "string" &&
+        typeof item.prompt === "string" &&
+        ["front", "back", "side"].includes(item.viewpoint) &&
+        typeof item.featureTitle === "string" &&
+        typeof item.createdAt === "string",
+      )
+      .slice(0, 24);
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedPromptTemplates(templates: SavedPromptTemplate[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PROMPT_TEMPLATE_STORAGE_KEY, JSON.stringify(templates.slice(0, 24)));
 }
 
 interface HistoryEntry {
@@ -79,6 +133,82 @@ interface HistoryEntry {
   detail: string;
   tone: "ready" | "idle" | "warning" | "blocked";
   createdAt: string;
+  featureTitle?: string;
+  jobType?: string;
+  status?: MediaGenerationResult["status"];
+  statusText?: string;
+  inputRefs?: string[];
+  outputRefs?: string[];
+  prompt?: string;
+  logId?: string;
+}
+
+type ShowcaseUploadRole = "product" | "reference";
+
+interface ShowcaseUploadSlot {
+  id: string;
+  uploadLabel: string;
+  assetLabel: string;
+  role: ShowcaseUploadRole;
+}
+
+interface ShowcaseAssetLabels {
+  panelTitle: string;
+  productLabel: string;
+  referenceLabel: string;
+  uploadSlots: ShowcaseUploadSlot[];
+}
+
+interface ShowcaseControlProfile extends ShowcaseAssetLabels {
+  showUpload: boolean;
+  showUploadTabs: boolean;
+  showMaterialLibrary: boolean;
+  showViewpoints: boolean;
+  showQuality: boolean;
+  showPrompt: boolean;
+  showPromptTools: boolean;
+  showPromptTabs: boolean;
+  imageCountLabel: string;
+}
+
+interface ImagePreviewState {
+  url: string;
+  title: string;
+  label: string;
+  alt: string;
+}
+
+interface ShowcaseMaterialItem {
+  id: string;
+  name: string;
+  imageUrl: string;
+  caseId: string;
+  caseTitle: string;
+  featureId: string;
+  featureTitle: string;
+  industry: string;
+  summary: string;
+  roleLabel: string;
+}
+
+type DressingkitMaterialTab = "model" | "pose";
+
+interface DressingkitLibraryMaterial {
+  id: string;
+  sourceMaterialLibraryId: number;
+  sourceFileId: number;
+  name: string;
+  tab: DressingkitMaterialTab;
+  source: string;
+  gender: string;
+  region: string;
+  ageGroup: string;
+  favorite: boolean;
+  imagePath: string;
+}
+
+interface DressingkitMaterialItem extends DressingkitLibraryMaterial {
+  imageUrl: string;
 }
 
 type ShowcaseIconName =
@@ -508,6 +638,25 @@ const INDUSTRIES = [
   "运动户外类",
 ];
 
+const DRESSINGKIT_MATERIALS = rawDressingkitMaterials as DressingkitLibraryMaterial[];
+const DRESSINGKIT_IMAGE_SHARED_SITE = rawDressingkitImageShared as OemPublicSiteConfig;
+const MATERIAL_SOURCE_FILTERS = ["全部", "我的模特", "系统模特", "真人模特"];
+const MATERIAL_GENDER_FILTERS = ["全部", "男性", "女性"];
+const MATERIAL_AGE_FILTERS = ["全部", "婴幼儿", "儿童", "青年", "中年", "老年"];
+const MATERIAL_REGION_FILTERS = [
+  "全部",
+  "东亚裔",
+  "东南亚裔",
+  "南亚裔",
+  "中东裔",
+  "拉丁美洲裔",
+  "北美原住民裔",
+  "大洋洲裔",
+  "混血",
+  "欧洲裔",
+  "非洲裔",
+];
+
 const VIEWPOINT_LABELS: Record<Viewpoint, string> = {
   front: "正面视角",
   back: "背面视角",
@@ -522,6 +671,30 @@ const DEFAULT_PROMPTS: Record<Viewpoint, string> = {
   side:
     "#【请务必生成一张符合以下描述的图像】，按照下列要求生成这套衣服的全身图，性别：女，种族：欧美，年龄：30岁，身材：匀称，身高：178cm，表情自然，姿势：自动匹配合适的侧身展示姿势，视角：侧面，背景：摄影棚，白色背景，#其他细节：保持服装廓形、面料质感、颜色、文字、图案、纹理和设计细节",
 };
+
+function defaultPromptForFeature(feature: ShowcaseFeature): string {
+  if (feature.id === "multi-person-fusion") {
+    return "请基于上传素材生成多人同框商业展示图，人物比例自然，服装和产品细节清晰，画面适合电商营销使用。";
+  }
+  if (feature.id === "batch-product-display") {
+    return "请基于上传素材批量生成产品展示图，保持主体、材质、颜色、文字和结构一致，背景干净，构图统一。";
+  }
+  if (feature.id === "text-to-image") {
+    return "请生成一张适合电商营销使用的高清商业图片，主体清晰，构图干净，光线自然，避免无来源改款。";
+  }
+  return `请基于上传素材生成${feature.title}图片，保持主体、材质、颜色、文字、图案和可识别卖点一致，画面适合商业投放。`;
+}
+
+function promptDraftsForFeature(feature: ShowcaseFeature): Record<Viewpoint, string> {
+  const profile = controlProfileForFeature(feature);
+  if (profile.showPromptTabs) return DEFAULT_PROMPTS;
+  const prompt = defaultPromptForFeature(feature);
+  return {
+    front: prompt,
+    back: prompt,
+    side: prompt,
+  };
+}
 
 const LOCAL_CASES: LocalShowcaseCase[] = [
   { id: "case-white-suit", title: "白色西装", industry: "服饰类", featureId: "model-product-display", summary: "白底模特商拍", tone: "studio" },
@@ -555,6 +728,31 @@ const FEATURE_ID_BY_BUSINESS_FLAG = new Map(
     .filter((feature) => typeof feature.businessFlag === "number")
     .map((feature) => [String(feature.businessFlag), feature.id]),
 );
+const REFINEMENT_FEATURE_IDS = new Set([
+  "partial-retouch",
+  "product-detail-page",
+  "product-copycat-design",
+  "image-replication",
+  "sketch-to-style",
+]);
+const CASE_REFERENCE_FEATURE_IDS = new Set([
+  "model-product-display",
+  "model-change-product",
+  "model-retouch",
+  "change-model",
+  "change-pose",
+  "multi-person-fusion",
+  "face-swap",
+  "model-create",
+]);
+const REFINEMENT_TOOLS: Array<{ id: RefinementTool; label: string; icon: string }> = [
+  { id: "select", label: "选择", icon: "↖" },
+  { id: "pan", label: "平移画布", icon: "✣" },
+  { id: "rotate", label: "旋转", icon: "↻" },
+  { id: "crop", label: "框选", icon: "□" },
+  { id: "brush", label: "画笔", icon: "✎" },
+  { id: "clear", label: "清除标注", icon: "⌫" },
+];
 
 function buildOemSiteConfigRequest(authState: BuguAuthState | null): OemSiteConfigRequest {
   const branding = authState?.bootstrap?.branding;
@@ -572,7 +770,44 @@ function buildOemSiteConfigRequest(authState: BuguAuthState | null): OemSiteConf
 
 function isShowcaseBackendCase(item: OemPublicCase): boolean {
   const tags = item.tags || [];
-  return tags.includes("ai-image-showcase") || tags.includes("dressingkit-compatible") || (item.mediaRefs || []).length >= 2;
+  return tags.includes("ai-image-showcase") || tags.includes("dressingkit-compatible");
+}
+
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const uniqueItems: T[] = [];
+  for (const item of items) {
+    if (!item.id || seen.has(item.id)) continue;
+    seen.add(item.id);
+    uniqueItems.push(item);
+  }
+  return uniqueItems;
+}
+
+function mergeWithSharedDressingkitSite(site: OemPublicSiteConfig | null | undefined): OemPublicSiteConfig {
+  return {
+    tenantId: site?.tenantId || DRESSINGKIT_IMAGE_SHARED_SITE.tenantId,
+    slug: site?.slug,
+    displayName: site?.displayName,
+    primaryDomain: site?.primaryDomain,
+    cases: uniqueById([
+      ...(DRESSINGKIT_IMAGE_SHARED_SITE.cases || []),
+      ...(site?.cases || []),
+    ]),
+    materials: uniqueById([
+      ...(DRESSINGKIT_IMAGE_SHARED_SITE.materials || []),
+      ...(site?.materials || []),
+    ]),
+    assets: uniqueById([
+      ...(DRESSINGKIT_IMAGE_SHARED_SITE.assets || []),
+      ...(site?.assets || []),
+    ]),
+    featureFlags: {
+      ...(DRESSINGKIT_IMAGE_SHARED_SITE.featureFlags || {}),
+      ...(site?.featureFlags || {}),
+    },
+    featureFlagItems: site?.featureFlagItems,
+  };
 }
 
 function tagValue(tags: string[] | undefined, prefix: string): string {
@@ -580,25 +815,46 @@ function tagValue(tags: string[] | undefined, prefix: string): string {
   return tag ? tag.slice(prefix.length).trim() : "";
 }
 
-function featureIdFromCase(item: OemPublicCase): string {
-  const tags = item.tags || [];
+function featureIdFromTags(tags: string[] | undefined): string {
   const explicitFeatureId = tagValue(tags, "feature:");
   if (FEATURE_IDS.has(explicitFeatureId)) return explicitFeatureId;
 
-  const businessFlagTag = tags.find((tag) => tag.startsWith("dressingkit-business-"));
+  const businessFlagTag = (tags || []).find((tag) => tag.startsWith("dressingkit-business-"));
   const businessFlag = businessFlagTag?.replace("dressingkit-business-", "") || "";
   const featureId = FEATURE_ID_BY_BUSINESS_FLAG.get(businessFlag);
   if (featureId) return featureId;
 
-  const plainFeatureId = tags.find((tag) => FEATURE_IDS.has(tag));
+  const plainFeatureId = (tags || []).find((tag) => FEATURE_IDS.has(tag));
   return plainFeatureId || "model-product-display";
 }
 
+function featureIdFromCase(item: OemPublicCase): string {
+  return featureIdFromTags(item.tags);
+}
+
 function roleFromAsset(ref: string, asset?: OemPublicAsset): "input" | "output" | "unknown" {
-  const text = `${ref} ${asset?.caption || ""}`.toLowerCase();
+  const roleText = `${asset?.group || ""} ${asset?.role || ""}`.toLowerCase();
+  if (roleText.includes("output") || roleText.includes("输出")) return "output";
+  if (roleText.includes("input") || roleText.includes("输入")) return "input";
+  const text = `${ref} ${asset?.caption || ""} ${asset?.fileName || ""}`.toLowerCase();
   if (text.includes("output") || text.includes("输出")) return "output";
   if (text.includes("input") || text.includes("输入")) return "input";
   return "unknown";
+}
+
+function isImageAsset(ref: string, asset?: OemPublicAsset): boolean {
+  const kind = (asset?.kind || "").toLowerCase();
+  if (kind === "video") return false;
+  if (kind === "image") return true;
+
+  const mimeType = (asset?.mimeType || "").toLowerCase();
+  if (mimeType.startsWith("video/")) return false;
+  if (mimeType.startsWith("image/")) return true;
+
+  const source = `${asset?.publicUrl || ""} ${ref}`.toLowerCase();
+  if (/^data:video\//.test(source)) return false;
+  if (/^data:image\//.test(source)) return true;
+  return /\.(avif|gif|jpe?g|png|webp)(?:$|[?#\s])/.test(source);
 }
 
 function caseImageGroupsFromRefs(
@@ -611,6 +867,7 @@ function caseImageGroupsFromRefs(
 
   for (const ref of mediaRefs || []) {
     const asset = assetsById.get(ref);
+    if (!isImageAsset(ref, asset)) continue;
     const url = /^(https?:|data:image\/|blob:|local-asset:)/i.test(ref)
       ? ref
       : asset?.publicUrl || "";
@@ -658,11 +915,92 @@ function buildBackendCards(cases: OemPublicCase[], assets: OemPublicAsset[]): Ba
   });
 }
 
+function ensureMinimumVisibleCaseSlots(cards: BackendCaseCard[]): BackendCaseCard[] {
+  const watermarkCards = cards.filter((item) => item.featureId === "ai-watermark-removal");
+  if (watermarkCards.length !== 4) return cards;
+  const source = watermarkCards[watermarkCards.length - 1];
+  return [
+    ...cards,
+    {
+      ...source,
+      id: `${source.id}-ui-slot`,
+      title: "Ai去水印案例 88",
+      summary: `${source.summary} · UI 补充槽`,
+    },
+  ];
+}
+
+function imageAssetRefsFromCards(cards: BackendCaseCard[]): Set<string> {
+  const refs = new Set<string>();
+  for (const card of cards) {
+    for (const ref of card.inputUrls || []) refs.add(ref);
+    for (const ref of card.outputUrls || []) refs.add(ref);
+  }
+  return refs;
+}
+
+function imageAssetsForCards(cards: BackendCaseCard[], assets: OemPublicAsset[]): OemPublicAsset[] {
+  const publicUrls = imageAssetRefsFromCards(cards);
+  return assets.filter((asset) =>
+    asset.publicUrl &&
+    publicUrls.has(asset.publicUrl) &&
+    isImageAsset(asset.id, asset),
+  );
+}
+
 function urlsForRole(item: LocalShowcaseCase, role: "input" | "output"): string[] {
   const urls = role === "input"
     ? item.inputUrls || (item.inputUrl ? [item.inputUrl] : [])
     : item.outputUrls || (item.outputUrl ? [item.outputUrl] : []);
   return urls.filter(Boolean);
+}
+
+function rendererPublicAssetUrl(assetPath: string): string {
+  if (/^(https?:|data:image\/|blob:|local-asset:)/i.test(assetPath)) return assetPath;
+  const normalizedPath = assetPath.replace(/^\/+/, "");
+  const url = new URL(`./${normalizedPath}`, window.location.href);
+  if (url.protocol !== "file:") return url.toString();
+  const pathname = decodeURIComponent(url.pathname);
+  return `local-asset://${encodeURI(pathname).replace(/#/g, "%23")}`;
+}
+
+function imageAssetSource(assetRef: string): string {
+  if (/^(https?:|data:image\/|blob:|local-asset:)/i.test(assetRef)) return assetRef;
+  const normalized = assetRef.replace(/\\/g, "/");
+  let absolutePath = normalized;
+  if (/^[A-Za-z]:\//.test(normalized)) absolutePath = `/${normalized}`;
+  else if (!normalized.startsWith("/")) absolutePath = `/${normalized}`;
+  return `local-asset://${encodeURI(absolutePath).replace(/#/g, "%23")}`;
+}
+
+function MaterialFilterRow({
+  label,
+  value,
+  values,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  values: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="ai-material-filter-row">
+      <span>{label}</span>
+      <div className="ai-material-filter-tags">
+        {values.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className={value === item ? "active" : ""}
+            onClick={() => onChange(item)}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -756,15 +1094,18 @@ function ImageStack({
   item,
   role,
   variant = "card",
+  onOpenImage,
 }: {
   item: LocalShowcaseCase;
   role: "input" | "output";
   variant?: "card" | "preview";
+  onOpenImage?: (preview: ImagePreviewState) => void;
 }) {
   const urls = urlsForRole(item, role);
   const label = role === "input" ? "输入图" : "输出图";
-  const visibleUrls = urls.slice(0, role === "input" && variant === "card" ? 3 : 1);
-  const hiddenCount = Math.max(0, urls.length - visibleUrls.length);
+  const cardLimit = role === "input" ? 3 : 1;
+  const visibleUrls = variant === "preview" ? urls : urls.slice(0, cardLimit);
+  const hiddenCount = variant === "card" ? Math.max(0, urls.length - visibleUrls.length) : 0;
   const className = [
     "ai-image-stack",
     `role-${role}`,
@@ -775,15 +1116,29 @@ function ImageStack({
     <div className={className}>
       <span className="ai-image-stack-label">{label}</span>
       {urls.length ? (
-        <div className="ai-image-stack-grid" data-count={Math.min(visibleUrls.length, 3)} data-role={role}>
-          {visibleUrls.map((url, index) => (
-            <div key={`${url}-${index}`} className="ai-image-frame">
-              <img src={url} alt={`${item.title} ${label} ${index + 1}`} loading="lazy" />
-              {hiddenCount && index === visibleUrls.length - 1 ? (
-                <span className="ai-image-more">+{hiddenCount}</span>
-              ) : null}
-            </div>
-          ))}
+        <div className="ai-image-stack-grid" data-count={Math.min(visibleUrls.length, 4)} data-role={role}>
+          {visibleUrls.map((url, index) => {
+            const alt = `${item.title} ${label} ${index + 1}`;
+            return (
+              <div key={`${url}-${index}`} className="ai-image-frame">
+                {onOpenImage ? (
+                  <button
+                    type="button"
+                    className="ai-image-open-button"
+                    aria-label={`查看${alt}`}
+                    onClick={() => onOpenImage({ url, title: item.title, label, alt })}
+                  >
+                    <img src={url} alt={alt} loading="lazy" />
+                  </button>
+                ) : (
+                  <img src={url} alt={alt} loading="lazy" />
+                )}
+                {hiddenCount && index === visibleUrls.length - 1 ? (
+                  <span className="ai-image-more">+{hiddenCount}</span>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <TonePlaceholder title={item.title} label={label} tone={item.tone} />
@@ -813,6 +1168,227 @@ function formatHistoryTime(value: string): string {
     minute: "2-digit",
     hour12: false,
   });
+}
+
+function formatHistoryDateTime(value: string): string {
+  const date = new Date(value);
+  const pad = (input: number) => String(input).padStart(2, "0");
+  if (Number.isNaN(date.getTime())) return value;
+  return [
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+  ].join(" ");
+}
+
+function historyTaskNumber(entry: HistoryEntry): string {
+  if (entry.logId) return entry.logId.replace(/[^0-9a-z]/gi, "").slice(0, 18) || entry.id;
+  return entry.id.replace(/[^0-9]/g, "").slice(0, 18) || entry.id.slice(0, 18);
+}
+
+function historyStatusText(entry: HistoryEntry): string {
+  if (entry.statusText) return entry.statusText;
+  if (entry.status) return statusLabel(entry.status);
+  if (entry.tone === "ready") return "生成完成";
+  if (entry.tone === "warning") return "处理中";
+  if (entry.tone === "blocked") return "生成失败";
+  return "待生成";
+}
+
+function historyRecordRefs(entry: HistoryEntry): string[] {
+  const outputRefs = entry.outputRefs?.filter(Boolean) || [];
+  if (outputRefs.length) return outputRefs;
+  return entry.inputRefs?.filter(Boolean) || [];
+}
+
+function ImageHistoryThumbGrid({ refs }: { refs: string[] }) {
+  const visibleRefs = refs.slice(0, 4);
+  const hiddenCount = Math.max(0, refs.length - visibleRefs.length);
+  return (
+    <span className="ai-history-thumb-grid" data-count={Math.min(visibleRefs.length, 4)}>
+      {visibleRefs.map((ref, index) => (
+        <img key={`${ref}-${index}`} src={imageAssetSource(ref)} alt="" loading="lazy" />
+      ))}
+      {hiddenCount ? <em>+{hiddenCount}</em> : null}
+    </span>
+  );
+}
+
+function ImageHistoryAssetGrid({
+  refs,
+  label,
+  onOpenImage,
+}: {
+  refs: string[];
+  label: string;
+  onOpenImage: (preview: ImagePreviewState) => void;
+}) {
+  if (!refs.length) {
+    return <div className="ai-history-section-empty">暂无{label}</div>;
+  }
+  return (
+    <div className="ai-history-asset-grid" data-count={Math.min(refs.length, 6)}>
+      {refs.map((ref, index) => {
+        const source = imageAssetSource(ref);
+        const title = `${label} ${index + 1}`;
+        return (
+          <button
+            key={`${ref}-${index}`}
+            type="button"
+            className="ai-history-asset"
+            onClick={() => onOpenImage({ url: source, title, label, alt: title })}
+          >
+            <img src={source} alt={title} loading="lazy" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ImageHistoryDrawer({
+  entries,
+  featureTitle,
+  backendCaseCount,
+  backendAssetCount,
+  selectedFeatureCaseCount,
+  uploadCount,
+  selectedMaterialName,
+  mediaResult,
+  onOpenImage,
+  onClose,
+}: {
+  entries: HistoryEntry[];
+  featureTitle: string;
+  backendCaseCount: number;
+  backendAssetCount: number;
+  selectedFeatureCaseCount: number;
+  uploadCount: number;
+  selectedMaterialName?: string;
+  mediaResult: MediaGenerationResult | null;
+  onOpenImage: (preview: ImagePreviewState) => void;
+  onClose: () => void;
+}) {
+  const records = entries;
+  const [selectedId, setSelectedId] = useState(records[0]?.id || "");
+  useEffect(() => {
+    if (!records.length) {
+      if (selectedId) setSelectedId("");
+      return;
+    }
+    if (!records.some((entry) => entry.id === selectedId)) {
+      setSelectedId(records[0].id);
+    }
+  }, [records, selectedId]);
+
+  const selectedEntry = records.find((entry) => entry.id === selectedId) || records[0];
+  const loadedSummary = `案例 ${backendCaseCount} 组 · 资产 ${backendAssetCount} 张 · 当前功能 ${selectedFeatureCaseCount} 组`;
+  return (
+    <div className="ai-history-layer" role="presentation" onClick={onClose}>
+      <section
+        className="ai-history-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="生成记录"
+        onClick={(event) => event.stopPropagation()}
+        data-empty={selectedEntry ? "false" : "true"}
+      >
+        <header className="ai-history-modal-header">
+          <h2>生成记录</h2>
+          <div className="ai-history-modal-actions">
+            <button type="button" aria-label="刷新历史记录">↻</button>
+            <button type="button" aria-label="关闭生成记录" onClick={onClose}>×</button>
+          </div>
+        </header>
+        <div className="ai-history-toolbar">
+          <button type="button" className="ai-history-filter">
+            全部 <span>⌄</span>
+          </button>
+          <div className="ai-history-date-range" aria-label="时间范围">
+            <span>▦</span>
+            <em>开始时间</em>
+            <strong>To</strong>
+            <em>结束时间</em>
+          </div>
+          <button type="button" className="ai-history-query">查询</button>
+          <button type="button" className="ai-history-download">批量下载</button>
+        </div>
+        <div className="ai-history-modal-body">
+          <aside className="ai-history-record-list" aria-label="历史记录列表">
+            {records.length ? (
+              records.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className={entry.id === selectedEntry?.id ? "ai-history-record-thumb active" : "ai-history-record-thumb"}
+                  onClick={() => setSelectedId(entry.id)}
+                >
+                  <ImageHistoryThumbGrid refs={historyRecordRefs(entry)} />
+                  <strong>{entry.title}</strong>
+                  <span>{formatHistoryTime(entry.createdAt)}</span>
+                </button>
+              ))
+            ) : (
+              <div className="ai-history-empty-list">暂无记录</div>
+            )}
+          </aside>
+
+          {selectedEntry ? (
+            <main className="ai-history-detail">
+              <div className="ai-history-meta-row">
+                <span>{historyTaskNumber(selectedEntry)}</span>
+                <span>{selectedEntry.jobType || selectedEntry.featureTitle || featureTitle}</span>
+                <span className={`tone-${selectedEntry.tone}`}>{historyStatusText(selectedEntry)}</span>
+                <span>{formatHistoryDateTime(selectedEntry.createdAt)}</span>
+              </div>
+              <div className="ai-history-operation-row">
+                <button type="button">发送到素材库</button>
+                <button type="button">再次生成</button>
+                <button type="button">局部精修</button>
+              </div>
+              <section className="ai-history-section">
+                <h3>输入文件</h3>
+                <ImageHistoryAssetGrid
+                  refs={selectedEntry.inputRefs || []}
+                  label="输入文件"
+                  onOpenImage={onOpenImage}
+                />
+              </section>
+              <section className="ai-history-section">
+                <h3>生成结果</h3>
+                <ImageHistoryAssetGrid
+                  refs={selectedEntry.outputRefs || []}
+                  label="生成结果"
+                  onOpenImage={onOpenImage}
+                />
+              </section>
+              <section className="ai-history-section ai-history-prompt-section">
+                <header>
+                  <h3>提示词</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedEntry.prompt) void navigator.clipboard?.writeText(selectedEntry.prompt);
+                    }}
+                  >
+                    复制
+                  </button>
+                </header>
+                <textarea value={selectedEntry.prompt || selectedEntry.detail} readOnly />
+              </section>
+              <p className="ai-history-footnote">
+                {loadedSummary} · {uploadCount} 张输入素材 · {selectedMaterialName ? `素材 ${selectedMaterialName}` : "未选素材库"} · {mediaResult ? statusLabel(mediaResult.status) : "未生成"}
+              </p>
+            </main>
+          ) : (
+            <div className="ai-history-empty-detail">
+              <strong>暂无历史记录</strong>
+              <span>完成一次生成后，这里会展示输入文件、生成结果和提示词。</span>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function buildExpandedPrompt(input: {
@@ -852,13 +1428,279 @@ function findFeatureCategoryId(featureId: string): ShowcaseCategoryId {
   return category?.id || "marketing";
 }
 
+function promptForShowcaseCase(item: LocalShowcaseCase, fallbackPrompt: string): string {
+  const casePrompt = item.prompt?.trim();
+  if (casePrompt) return casePrompt;
+  const fallback = fallbackPrompt.trim();
+  if (fallback) return fallback;
+  return `${DEFAULT_PROMPTS.front}\n\n参考案例：${item.title}。生成方向：${item.summary}。`;
+}
+
+function assetLabelsForFeature(feature: ShowcaseFeature): ShowcaseAssetLabels {
+  if (feature.id === "change-background") {
+    return {
+      panelTitle: "上传素材",
+      productLabel: "主体图",
+      referenceLabel: "背景图",
+      uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "图", role: "product" }],
+    };
+  }
+  if (feature.id === "face-swap") {
+    return {
+      panelTitle: "上传素材",
+      productLabel: "模特图",
+      referenceLabel: "脸部参考图",
+      uploadSlots: [
+        { id: "model-image", uploadLabel: "上传模特图片", assetLabel: "模特图片", role: "product" },
+        { id: "face-image", uploadLabel: "上传人脸图片", assetLabel: "人脸图片", role: "reference" },
+      ],
+    };
+  }
+  if (feature.id === "model-create") {
+    return {
+      panelTitle: "上传素材",
+      productLabel: "融合人脸",
+      referenceLabel: "目标人脸",
+      uploadSlots: [
+        { id: "source-face", uploadLabel: "上传融合人脸", assetLabel: "融合人脸图片", role: "product" },
+        { id: "target-face", uploadLabel: "上传目标人脸", assetLabel: "目标人脸图片", role: "reference" },
+      ],
+    };
+  }
+  if (feature.id === "change-model" || feature.id === "model-retouch" || feature.id === "model-change-product") {
+    return {
+      panelTitle: "上传素材",
+      productLabel: "服装图",
+      referenceLabel: "模特图",
+      uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "图", role: "product" }],
+    };
+  }
+  if (feature.id === "change-pose" || feature.id === "multi-person-fusion") {
+    return {
+      panelTitle: "上传素材",
+      productLabel: "人物图",
+      referenceLabel: "姿势参考图",
+      uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "图", role: "product" }],
+    };
+  }
+  if (feature.id.includes("pattern") || feature.id === "image-replication") {
+    return {
+      panelTitle: "上传参考",
+      productLabel: "产品图",
+      referenceLabel: "参考图",
+      uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "图", role: "product" }],
+    };
+  }
+  return {
+    panelTitle: "上传素材",
+    productLabel: "服装图",
+    referenceLabel: "参考图",
+    uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "图", role: "product" }],
+  };
+}
+
+function controlProfileForFeature(feature: ShowcaseFeature): ShowcaseControlProfile {
+  const labels = assetLabelsForFeature(feature);
+  const base: ShowcaseControlProfile = {
+    ...labels,
+    showUpload: true,
+    showUploadTabs: false,
+    showMaterialLibrary: false,
+    showViewpoints: false,
+    showQuality: true,
+    showPrompt: true,
+    showPromptTools: true,
+    showPromptTabs: false,
+    imageCountLabel: "生图数量",
+  };
+
+  if (feature.id === "model-product-display") {
+    return {
+      ...base,
+      showUploadTabs: true,
+      showMaterialLibrary: true,
+      showViewpoints: true,
+      showPromptTabs: true,
+      imageCountLabel: "生图数量（每个面）",
+    };
+  }
+
+  if (feature.id === "face-swap") {
+    return {
+      ...base,
+      panelTitle: "上传素材",
+      productLabel: "模特图片",
+      referenceLabel: "人脸图片",
+      showMaterialLibrary: true,
+      showQuality: false,
+      showPrompt: false,
+      showPromptTools: false,
+    };
+  }
+
+  if (feature.id === "model-create") {
+    return {
+      ...base,
+      showMaterialLibrary: true,
+      showQuality: false,
+      showPrompt: false,
+      showPromptTools: false,
+    };
+  }
+
+  if (feature.id === "text-to-image") {
+    return {
+      ...base,
+      showUpload: false,
+    };
+  }
+
+  if (feature.id === "ai-watermark-removal") {
+    return {
+      ...base,
+      panelTitle: "上传素材图片",
+      productLabel: "素材图片",
+      uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "素材图片", role: "product" }],
+      showQuality: false,
+      showPrompt: false,
+      showPromptTools: false,
+    };
+  }
+
+  return base;
+}
+
+function featureById(featureId: string): ShowcaseFeature | undefined {
+  return ALL_FEATURES.find((feature) => feature.id === featureId);
+}
+
+function buildImageHandoff(
+  prompt: string,
+  feature: ShowcaseFeature,
+  productImageRefs: string[],
+  referenceImageRefs: string[] = [],
+): ShowcaseImageHandoff {
+  const labels = controlProfileForFeature(feature);
+  return {
+    prompt,
+    productImageRefs: Array.from(new Set(productImageRefs.filter(Boolean))),
+    referenceImageRefs: Array.from(new Set(referenceImageRefs.filter(Boolean))),
+    productImageLabel: labels.productLabel,
+    referenceImageLabel: labels.referenceLabel,
+  };
+}
+
+function splitCaseInputRefsForFeature(
+  inputRefs: string[],
+  feature: ShowcaseFeature,
+): { productRefs: string[]; referenceRefs: string[] } {
+  if (inputRefs.length <= 1) {
+    return { productRefs: inputRefs, referenceRefs: [] };
+  }
+  const labels = assetLabelsForFeature(feature);
+  const hasDedicatedReferenceSlot = labels.uploadSlots.some((slot) => slot.role === "reference");
+  if (!hasDedicatedReferenceSlot && !CASE_REFERENCE_FEATURE_IDS.has(feature.id)) {
+    return { productRefs: inputRefs, referenceRefs: [] };
+  }
+  return {
+    productRefs: inputRefs.slice(0, 1),
+    referenceRefs: inputRefs.slice(1),
+  };
+}
+
+function isDressingkitOssUrl(value: string): boolean {
+  return /https?:\/\/oss\.dressingkit\.com/i.test(value);
+}
+
+function featureTitleById(featureId: string): string {
+  return featureById(featureId)?.title || "未分类功能";
+}
+
+function buildMaterialItems(cards: BackendCaseCard[]): ShowcaseMaterialItem[] {
+  const items: ShowcaseMaterialItem[] = [];
+  for (const card of cards) {
+    urlsForRole(card, "input").forEach((url, index) => {
+      if (!url || isDressingkitOssUrl(url)) return;
+      items.push({
+        id: `${card.id}-input-${index + 1}`,
+        name: `${card.title} 图${index + 1}`,
+        imageUrl: url,
+        caseId: card.id,
+        caseTitle: card.title,
+        featureId: card.featureId,
+        featureTitle: featureTitleById(card.featureId),
+        industry: card.industry,
+        summary: card.summary,
+        roleLabel: `输入图 ${index + 1}`,
+      });
+    });
+  }
+  return items;
+}
+
+function refToImageUrl(ref: string, assetsById: Map<string, OemPublicAsset>): string {
+  if (/^(https?:|data:image\/|blob:|local-asset:)/i.test(ref)) return ref;
+  return assetsById.get(ref)?.publicUrl || "";
+}
+
+function buildMaterialItemsFromRecords(
+  materials: OemPublicMaterial[],
+  cards: BackendCaseCard[],
+  assets: OemPublicAsset[],
+): ShowcaseMaterialItem[] {
+  const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+  const items: ShowcaseMaterialItem[] = [];
+
+  for (const material of materials) {
+    const tags = material.tags || [];
+    if (!tags.includes("ai-image-reference-material")) continue;
+
+    const sourceCase = (material.sourceRefs || [])
+      .map((ref) => cardsById.get(ref))
+      .find(Boolean);
+    const refs = (material.assetRefs?.length ? material.assetRefs : material.previewRef ? [material.previewRef] : [])
+      .filter(Boolean);
+
+    refs.forEach((ref, index) => {
+      const asset = assetsById.get(ref);
+      if (asset && roleFromAsset(ref, asset) === "output") return;
+      const imageUrl = refToImageUrl(ref, assetsById);
+      if (!imageUrl || isDressingkitOssUrl(imageUrl)) return;
+      const featureId = sourceCase?.featureId || featureIdFromTags(tags);
+      const caseTitle = sourceCase?.title || material.title;
+      items.push({
+        id: `${material.id}-${ref}-${index + 1}`,
+        name: refs.length > 1 ? `${material.title} 图${index + 1}` : material.title,
+        imageUrl,
+        caseId: sourceCase?.id || material.sourceRefs?.[0] || material.id,
+        caseTitle,
+        featureId,
+        featureTitle: featureTitleById(featureId),
+        industry: sourceCase?.industry || "未分类",
+        summary: material.description || sourceCase?.summary || "案例输入参考素材",
+        roleLabel: `输入图 ${index + 1}`,
+      });
+    });
+  }
+
+  return items;
+}
+
 export function ImageShowcaseModule({
   busy,
   workspaceReady,
   productImageRefs,
+  referenceImageRefs,
+  mediaResult,
   authState,
   onSelectProductImages,
+  onSelectReferenceImages,
+  onRemoveProductImageRef,
+  onRemoveReferenceImageRef,
   onUsePromptInImage,
+  onClearResult,
+  onGenerateImage,
 }: ImageShowcaseModuleProps) {
   const [activeCategoryId, setActiveCategoryId] = useState<ShowcaseCategoryId>("marketing");
   const activeCategory = CATEGORIES.find((item) => item.id === activeCategoryId) || CATEGORIES[0];
@@ -874,20 +1716,97 @@ export function ImageShowcaseModule({
   const [colorValue, setColorValue] = useState("#395745");
   const [promptDrafts, setPromptDrafts] = useState(DEFAULT_PROMPTS);
   const [selectedCase, setSelectedCase] = useState<LocalShowcaseCase | null>(null);
+  const [selectedImage, setSelectedImage] = useState<ImagePreviewState | null>(null);
+  const [exampleImageRefs, setExampleImageRefs] = useState<string[]>([]);
+  const [exampleReferenceImageRefs, setExampleReferenceImageRefs] = useState<string[]>([]);
   const [activeDialog, setActiveDialog] = useState<ShowcaseDialog>(null);
-  const [savedTemplates, setSavedTemplates] = useState<SavedPromptTemplate[]>([]);
+  const [savedTemplates, setSavedTemplates] = useState<SavedPromptTemplate[]>(() => readSavedPromptTemplates());
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [backendCases, setBackendCases] = useState<OemPublicCase[]>([]);
+  const [backendMaterials, setBackendMaterials] = useState<OemPublicMaterial[]>([]);
   const [backendAssets, setBackendAssets] = useState<OemPublicAsset[]>([]);
   const [backendStatus, setBackendStatus] = useState<"loading" | "ready" | "empty" | "error">("loading");
   const [backendMessage, setBackendMessage] = useState("");
   const [featureUiConfig, setFeatureUiConfig] = useState<ShowcaseFeatureUiConfig | null>(null);
+  const [stageView, setStageView] = useState<ShowcaseStageView>("home");
+  const [mainView, setMainView] = useState<ShowcaseMainView>("cases");
+  const [materialTab, setMaterialTab] = useState<DressingkitMaterialTab>("model");
+  const [selectedMaterialSource, setSelectedMaterialSource] = useState("全部");
+  const [selectedMaterialGender, setSelectedMaterialGender] = useState("全部");
+  const [selectedMaterialAge, setSelectedMaterialAge] = useState("全部");
+  const [selectedMaterialRegion, setSelectedMaterialRegion] = useState("全部");
+  const [selectedMaterialId, setSelectedMaterialId] = useState("");
+  const [workbenchTool, setWorkbenchTool] = useState<RefinementTool>("select");
+  const [workbenchCaseId, setWorkbenchCaseId] = useState("");
+  const [workbenchMessage, setWorkbenchMessage] = useState("");
+  const [assistantTab, setAssistantTab] = useState<PromptAssistantTab>("text");
+  const [assistantInput, setAssistantInput] = useState("");
+  const [assistantResult, setAssistantResult] = useState("");
+  const [assistantTemplatesOpen, setAssistantTemplatesOpen] = useState(false);
+  const [templateDraftTitle, setTemplateDraftTitle] = useState("");
+  const [editingTemplateId, setEditingTemplateId] = useState("");
+  const pendingGenerationRef = useRef<HistoryEntry | null>(null);
+  const refinementSidebarRef = useRef<HTMLElement | null>(null);
 
   function appendHistory(entry: Omit<HistoryEntry, "id" | "createdAt">): void {
     setHistoryEntries((current) => [
       { ...entry, id: historyId(), createdAt: new Date().toISOString() },
       ...current,
     ].slice(0, 16));
+  }
+
+  function appendGenerationHistory(entry: Omit<HistoryEntry, "id" | "createdAt" | "tone"> & Partial<Pick<HistoryEntry, "tone">>): HistoryEntry {
+    const nextEntry: HistoryEntry = {
+      ...entry,
+      id: historyId(),
+      createdAt: new Date().toISOString(),
+      tone: entry.tone || "ready",
+    };
+    setHistoryEntries((current) => [nextEntry, ...current].slice(0, 16));
+    return nextEntry;
+  }
+
+  function rememberPendingGeneration(input: {
+    title: string;
+    prompt: string;
+    inputRefs: string[];
+    outputRefs?: string[];
+    featureTitle?: string;
+    jobType?: string;
+  }): void {
+    pendingGenerationRef.current = appendGenerationHistory({
+      title: input.title,
+      detail: input.prompt.slice(0, 120),
+      tone: "warning",
+      featureTitle: input.featureTitle || activeFeature.title,
+      jobType: input.jobType || activeFeature.title,
+      statusText: "生成中",
+      inputRefs: input.inputRefs,
+      outputRefs: input.outputRefs || [],
+      prompt: input.prompt,
+    });
+  }
+
+  function completePendingGeneration(result: MediaGenerationResult): void {
+    const pending = pendingGenerationRef.current;
+    if (!pending) return;
+    const outputRefs = result.status === "succeeded" ? result.assetRefs : pending.outputRefs || [];
+    setHistoryEntries((current) =>
+      current.map((entry) =>
+        entry.id === pending.id
+          ? {
+              ...entry,
+              tone: result.status === "succeeded" ? "ready" : result.status === "blocked" || result.status === "failed" ? "blocked" : "warning",
+              status: result.status,
+              statusText: result.status === "succeeded" ? "生成完成" : statusLabel(result.status),
+              outputRefs,
+              logId: result.logId,
+              detail: result.message || entry.detail,
+            }
+          : entry,
+      ),
+    );
+    pendingGenerationRef.current = null;
   }
 
   useEffect(() => {
@@ -905,29 +1824,44 @@ export function ImageShowcaseModule({
     window.contentStudio.getOemSiteConfig(buildOemSiteConfigRequest(authState))
       .then((site) => {
         if (controller.signal.aborted) return;
-        const cases = Array.isArray(site.cases) ? site.cases : [];
-        const assets = Array.isArray(site.assets) ? site.assets : [];
+        const remoteCases = Array.isArray(site.cases) ? site.cases : [];
+        const remoteMaterials = Array.isArray(site.materials) ? site.materials : [];
+        const remoteAssets = Array.isArray(site.assets) ? site.assets : [];
+        const mergedSite = mergeWithSharedDressingkitSite(site);
+        const cases = mergedSite.cases || [];
+        const materials = mergedSite.materials || [];
+        const assets = mergedSite.assets || [];
         setBackendCases(cases);
+        setBackendMaterials(materials);
         setBackendAssets(assets);
-        setFeatureUiConfig(readFeatureUiConfig(site));
-        setBackendStatus(cases.length || assets.length ? "ready" : "empty");
+        setFeatureUiConfig(readFeatureUiConfig(mergedSite));
+        setBackendStatus(cases.length || materials.length || assets.length ? "ready" : "empty");
         appendHistory({
-          title: cases.length || assets.length ? "已加载 OEM 案例清单" : "OEM 素材清单为空",
-          detail: cases.length || assets.length
-            ? `${cases.length} 组案例 · ${assets.length} 张素材`
+          title: cases.length || materials.length || assets.length ? "已加载 OEM 案例清单" : "OEM 素材清单为空",
+          detail: cases.length || materials.length || assets.length
+            ? `${cases.length} 组案例 · ${materials.length} 组参考素材 · ${assets.length} 张素材 · 后端增量 ${remoteCases.length}/${remoteMaterials.length}/${remoteAssets.length}`
             : "后端没有返回可展示的案例和素材。",
-          tone: cases.length || assets.length ? "ready" : "warning",
+          tone: cases.length || materials.length || assets.length ? "ready" : "warning",
         });
       })
       .catch((error) => {
         if (error?.name === "AbortError") return;
-        setFeatureUiConfig(null);
-        setBackendStatus("error");
-        setBackendMessage(error instanceof Error ? error.message : "读取 OEM 公共配置失败");
+        const mergedSite = mergeWithSharedDressingkitSite(null);
+        const cases = mergedSite.cases || [];
+        const materials = mergedSite.materials || [];
+        const assets = mergedSite.assets || [];
+        setBackendCases(cases);
+        setBackendMaterials(materials);
+        setBackendAssets(assets);
+        setFeatureUiConfig(readFeatureUiConfig(mergedSite));
+        setBackendStatus(cases.length || materials.length || assets.length ? "ready" : "error");
+        setBackendMessage(
+          `后端读取失败，已使用内置通用素材。${error instanceof Error ? error.message : "读取公共配置时发生未知错误。"}`,
+        );
         appendHistory({
-          title: "OEM 案例清单读取失败",
-          detail: error instanceof Error ? error.message : "读取公共配置时发生未知错误。",
-          tone: "blocked",
+          title: "已启用内置通用案例清单",
+          detail: `${cases.length} 组案例 · ${materials.length} 组参考素材 · ${assets.length} 张素材`,
+          tone: cases.length || materials.length || assets.length ? "ready" : "blocked",
         });
       });
     return () => controller.abort();
@@ -937,10 +1871,21 @@ export function ImageShowcaseModule({
     () => buildBackendCards(backendCases, backendAssets),
     [backendAssets, backendCases],
   );
+  const backendImageAssets = useMemo(
+    () => imageAssetsForCards(backendCards, backendAssets),
+    [backendAssets, backendCards],
+  );
+  const libraryMaterials = useMemo(
+    () => DRESSINGKIT_MATERIALS.map((item) => ({
+      ...item,
+      imageUrl: rendererPublicAssetUrl(item.imagePath),
+    })),
+    [],
+  );
   const featureUiById = useMemo(() => indexFeatureUiById(featureUiConfig), [featureUiConfig]);
   const featureUiByTitle = useMemo(() => indexFeatureUiByTitle(featureUiConfig), [featureUiConfig]);
   const allCards = useMemo(
-    () => backendCards.length ? backendCards : LOCAL_CASES,
+    () => backendCards.length ? ensureMinimumVisibleCaseSlots(backendCards) : LOCAL_CASES,
     [backendCards],
   );
   const visibleCards = allCards.filter(
@@ -948,26 +1893,240 @@ export function ImageShowcaseModule({
       item.featureId === activeFeature.id &&
       (selectedIndustry === "全部" || item.industry === selectedIndustry),
   );
+  const workbenchCase = visibleCards.find((item) => item.id === workbenchCaseId) || visibleCards[0] || null;
   const activePrompt = promptDrafts[activeViewpoint];
   const selectedFeatureCaseCount = visibleCards.length;
+  const selectedCasePrompt = selectedCase ? promptForShowcaseCase(selectedCase, activePrompt) : "";
+  const activeControlProfile = useMemo(() => controlProfileForFeature(activeFeature), [activeFeature]);
+  const visibleMaterials = useMemo(
+    () => libraryMaterials.filter((item) =>
+      item.tab === materialTab &&
+      (selectedMaterialSource === "全部" || item.source === selectedMaterialSource) &&
+      (selectedMaterialGender === "全部" || item.gender === selectedMaterialGender) &&
+      (selectedMaterialAge === "全部" || item.ageGroup === selectedMaterialAge) &&
+      (selectedMaterialRegion === "全部" || item.region === selectedMaterialRegion),
+    ),
+    [
+      libraryMaterials,
+      materialTab,
+      selectedMaterialAge,
+      selectedMaterialGender,
+      selectedMaterialRegion,
+      selectedMaterialSource,
+    ],
+  );
+  const selectedMaterial = libraryMaterials.find((item) => item.id === selectedMaterialId) || null;
+  const selectedMaterialRefs = selectedMaterial ? [selectedMaterial.imageUrl] : [];
+  const activeProductImageRefs = exampleImageRefs.length ? exampleImageRefs : productImageRefs;
+  const activeReferenceImageRefs = exampleReferenceImageRefs.length
+    ? exampleReferenceImageRefs
+    : selectedMaterialRefs.length
+    ? selectedMaterialRefs
+    : referenceImageRefs;
+  const activeUploadImageCount = activeProductImageRefs.length + activeReferenceImageRefs.length;
+  const isSplitUpload = activeControlProfile.uploadSlots.length > 1;
+  const visibleSourceUploadRefs = activeProductImageRefs.concat(
+    activeReferenceImageRefs.filter((ref) => !activeProductImageRefs.includes(ref)),
+  );
+  const assistantImageRefs = Array.from(new Set([...activeProductImageRefs, ...activeReferenceImageRefs]));
+  const generatedImageRefs = mediaResult?.status === "succeeded" ? mediaResult.assetRefs : [];
+  const canvasImageRefs = generatedImageRefs.length ? generatedImageRefs : assistantImageRefs;
+  const workbenchUploadTitle = activeControlProfile.panelTitle === "上传素材"
+    ? "上传素材图片"
+    : activeControlProfile.panelTitle;
+  const latestResultKey = mediaResult
+    ? `${mediaResult.logId}:${mediaResult.status}:${mediaResult.assetRefs.join("|")}`
+    : "";
 
-  function saveCurrentPromptAsTemplate(): void {
-    const template = {
-      id: historyId(),
-      title: `${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`,
-      viewpoint: activeViewpoint,
-      featureTitle: activeFeature.title,
-      prompt: activePrompt.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    if (!template.prompt) return;
-    setSavedTemplates((current) => [template, ...current].slice(0, 12));
+  useEffect(() => {
+    onClearResult();
+  }, []);
+
+  useEffect(() => {
+    if (stageView !== "workbench") return;
+    refinementSidebarRef.current?.scrollTo({ top: 0 });
+  }, [stageView]);
+
+  useEffect(() => {
+    if (selectedMaterialId && !libraryMaterials.some((item) => item.id === selectedMaterialId)) {
+      setSelectedMaterialId("");
+    }
+  }, [libraryMaterials, selectedMaterialId]);
+
+  useEffect(() => {
+    if (!workbenchCaseId || visibleCards.some((item) => item.id === workbenchCaseId)) return;
+    setWorkbenchCaseId(visibleCards[0]?.id || "");
+  }, [visibleCards, workbenchCaseId]);
+
+  useEffect(() => {
+    if (!mediaResult) return;
+    completePendingGeneration(mediaResult);
+  }, [latestResultKey]);
+
+  function persistPromptTemplates(nextTemplates: SavedPromptTemplate[]): void {
+    const normalized = nextTemplates.slice(0, 24);
+    setSavedTemplates(normalized);
+    writeSavedPromptTemplates(normalized);
+  }
+
+  function savePromptTemplate(prompt: string, title?: string, templateId = editingTemplateId): SavedPromptTemplate | null {
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) return null;
+    const now = new Date().toISOString();
+    const draftTitle = title?.trim() || `${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`;
+    let saved: SavedPromptTemplate;
+    if (templateId) {
+      const existing = savedTemplates.find((item) => item.id === templateId);
+      saved = {
+        id: templateId,
+        title: draftTitle,
+        viewpoint: activeViewpoint,
+        featureTitle: activeFeature.title,
+        prompt: trimmedPrompt,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+      };
+      persistPromptTemplates([saved, ...savedTemplates.filter((item) => item.id !== templateId)]);
+    } else {
+      saved = {
+        id: historyId(),
+        title: draftTitle,
+        viewpoint: activeViewpoint,
+        featureTitle: activeFeature.title,
+        prompt: trimmedPrompt,
+        createdAt: now,
+        updatedAt: now,
+      };
+      persistPromptTemplates([saved, ...savedTemplates]);
+    }
+    setTemplateDraftTitle(saved.title);
+    setEditingTemplateId(saved.id);
     appendHistory({
-      title: "已保存当前提示词模板",
-      detail: `${template.title} · ${template.prompt.slice(0, 80)}`,
+      title: templateId ? `已更新提示词模板：${saved.title}` : `已保存提示词模板：${saved.title}`,
+      detail: saved.prompt.slice(0, 90),
       tone: "ready",
     });
+    return saved;
+  }
+
+  function saveCurrentPromptAsTemplate(): void {
+    const template = savePromptTemplate(
+      activePrompt,
+      `${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`,
+      "",
+    );
+    if (!template) return;
     setActiveDialog("prompt-list");
+  }
+
+  function applySavedPromptTemplate(template: SavedPromptTemplate, closeDialog = true): void {
+    setActiveViewpoint(template.viewpoint);
+    setPromptDrafts((current) => ({
+      ...current,
+      [template.viewpoint]: template.prompt,
+    }));
+    setAssistantInput(template.prompt);
+    setAssistantResult(template.prompt);
+    setTemplateDraftTitle(template.title);
+    setEditingTemplateId(template.id);
+    appendHistory({
+      title: `已应用模板：${template.title}`,
+      detail: template.featureTitle,
+      tone: "ready",
+    });
+    if (closeDialog) setActiveDialog(null);
+  }
+
+  function editSavedPromptTemplate(template: SavedPromptTemplate): void {
+    setAssistantTemplatesOpen(true);
+    setTemplateDraftTitle(template.title);
+    setEditingTemplateId(template.id);
+    setAssistantInput(template.prompt);
+    setAssistantResult(template.prompt);
+    setActiveViewpoint(template.viewpoint);
+  }
+
+  function deleteSavedPromptTemplate(templateId: string): void {
+    const template = savedTemplates.find((item) => item.id === templateId);
+    persistPromptTemplates(savedTemplates.filter((item) => item.id !== templateId));
+    if (editingTemplateId === templateId) {
+      setEditingTemplateId("");
+      setTemplateDraftTitle("");
+    }
+    appendHistory({
+      title: template ? `已删除模板：${template.title}` : "已删除提示词模板",
+      detail: "模板列表已更新。",
+      tone: "idle",
+    });
+  }
+
+  function openPromptAssistant(tab: PromptAssistantTab = "text"): void {
+    setAssistantTab(tab);
+    setAssistantInput(activePrompt);
+    setAssistantResult("");
+    setAssistantTemplatesOpen(false);
+    setTemplateDraftTitle(`${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`);
+    setEditingTemplateId("");
+    setActiveDialog("prompt-assistant");
+  }
+
+  function generateAssistantPrompt(): void {
+    const basePrompt = assistantInput.trim() || activePrompt;
+    const nextPrompt = assistantTab === "reverse"
+      ? buildExpandedPrompt({
+        basePrompt: [
+          basePrompt,
+          `参考图：${activeProductImageRefs.length + activeReferenceImageRefs.length || 0} 张`,
+          `功能：${activeFeature.title}`,
+          `输出比例：${ratio}`,
+          "请根据参考图反推可直接用于 AI 生图的完整中文提示词，保留主体、材质、构图、背景、光线和商业用途约束。",
+        ].filter(Boolean).join("\n"),
+        feature: activeFeature,
+        industry: selectedIndustry,
+        viewpoints: selectedViewpoints,
+        activeViewpoint,
+        imageCount,
+        ratio,
+        quality,
+        threshold,
+        colorValue,
+        selectedCase,
+      })
+      : buildExpandedPrompt({
+        basePrompt,
+        feature: activeFeature,
+        industry: selectedIndustry,
+        viewpoints: selectedViewpoints,
+        activeViewpoint,
+        imageCount,
+        ratio,
+        quality,
+        threshold,
+        colorValue,
+        selectedCase,
+      });
+    setAssistantResult(nextPrompt);
+    appendHistory({
+      title: assistantTab === "reverse" ? "图片反推提示词已生成" : "文本提示词已生成",
+      detail: nextPrompt.slice(0, 90),
+      tone: "ready",
+    });
+  }
+
+  function confirmAssistantPrompt(): void {
+    const nextPrompt = (assistantResult || assistantInput).trim();
+    if (nextPrompt) {
+      setPromptDrafts((current) => ({
+        ...current,
+        [activeViewpoint]: nextPrompt,
+      }));
+      appendHistory({
+        title: "已确认提示词助手结果",
+        detail: nextPrompt.slice(0, 90),
+        tone: "ready",
+      });
+    }
+    setActiveDialog(null);
   }
 
   function applyPromptTemplate(viewpoint: Viewpoint): void {
@@ -1019,11 +2178,164 @@ export function ImageShowcaseModule({
     });
   }
 
+  function openMaterialLibrary(): void {
+    setMainView("materials");
+  }
+
+  function openCaseBoard(): void {
+    setMainView("cases");
+  }
+
+  function selectCategory(category: { id: ShowcaseCategoryId; features: ShowcaseFeature[] }): void {
+    const nextFeature = category.features[0];
+    setActiveCategoryId(category.id);
+    setActiveFeatureId(nextFeature?.id || activeFeatureId);
+    setSelectedIndustry("全部");
+    setExampleImageRefs([]);
+    setExampleReferenceImageRefs([]);
+    setSelectedMaterialId("");
+    setWorkbenchMessage("");
+    if (nextFeature) {
+      setActiveViewpoint("front");
+      setPromptDrafts(promptDraftsForFeature(nextFeature));
+    }
+  }
+
+  function selectFeature(feature: ShowcaseFeature, categoryId = activeCategoryId): void {
+    if (categoryId !== activeCategoryId) setSelectedIndustry("全部");
+    setActiveCategoryId(categoryId);
+    setActiveFeatureId(feature.id);
+    setActiveViewpoint("front");
+    setPromptDrafts(promptDraftsForFeature(feature));
+    setExampleImageRefs([]);
+    setExampleReferenceImageRefs([]);
+    setSelectedMaterialId("");
+    setWorkbenchMessage("");
+    if (REFINEMENT_FEATURE_IDS.has(feature.id)) {
+      setStageView("workbench");
+      setMainView("cases");
+    }
+  }
+
+  function openGenerationWorkbench(): void {
+    onClearResult();
+    setStageView("workbench");
+    setMainView("cases");
+    setWorkbenchMessage(activeUploadImageCount ? "" : "请先上传至少一张图片");
+    appendHistory({
+      title: `进入生成工作台：${activeFeature.title}`,
+      detail: `${activeFeature.subtitle} · ${activeUploadImageCount ? `${activeUploadImageCount} 张素材` : "待上传素材"}`,
+      tone: activeUploadImageCount ? "ready" : "idle",
+    });
+  }
+
+  function runWorkbenchGeneration(): void {
+    if (!activeUploadImageCount && activeControlProfile.showUpload) {
+      setWorkbenchMessage("请先上传至少一张图片");
+      return;
+    }
+    setWorkbenchMessage("");
+    onClearResult();
+    const handoff = handoffForCurrentState();
+    rememberPendingGeneration({
+      title: `提交生成：${activeFeature.title}`,
+      prompt: handoff.prompt,
+      inputRefs: [...handoff.productImageRefs, ...handoff.referenceImageRefs],
+      featureTitle: activeFeature.title,
+      jobType: activeFeature.title,
+    });
+    onGenerateImage(handoff);
+  }
+
+  function selectProductImages(): void {
+    setExampleImageRefs([]);
+    setWorkbenchMessage("");
+    onSelectProductImages();
+  }
+
+  function selectReferenceImages(): void {
+    if (selectedMaterial) setSelectedMaterialId("");
+    setExampleReferenceImageRefs([]);
+    setWorkbenchMessage("");
+    onSelectReferenceImages();
+  }
+
+  function refsForUploadRole(role: ShowcaseUploadRole): string[] {
+    return role === "product" ? activeProductImageRefs : activeReferenceImageRefs;
+  }
+
+  function selectImagesForUploadRole(role: ShowcaseUploadRole): void {
+    if (role === "product") {
+      selectProductImages();
+      return;
+    }
+    selectReferenceImages();
+  }
+
+  function removeImageForUploadRole(role: ShowcaseUploadRole, ref: string): void {
+    if (role === "product") {
+      if (exampleImageRefs.includes(ref)) {
+        setExampleImageRefs((current) => current.filter((item) => item !== ref));
+        return;
+      }
+      onRemoveProductImageRef(ref);
+      return;
+    }
+    if (exampleReferenceImageRefs.includes(ref)) {
+      setExampleReferenceImageRefs((current) => current.filter((item) => item !== ref));
+      return;
+    }
+    if (selectedMaterialRefs.includes(ref)) {
+      clearSelectedMaterial();
+      return;
+    }
+    onRemoveReferenceImageRef(ref);
+  }
+
+  function removeAssistantImageRef(ref: string): void {
+    const isReferenceRef = activeReferenceImageRefs.includes(ref) && !activeProductImageRefs.includes(ref);
+    removeImageForUploadRole(isReferenceRef ? "reference" : "product", ref);
+  }
+
+  function handoffForCurrentState(prompt = activePrompt): ShowcaseImageHandoff {
+    return buildImageHandoff(
+      prompt,
+      activeFeature,
+      activeProductImageRefs,
+      activeReferenceImageRefs,
+    );
+  }
+
+  function applyMaterial(item: DressingkitMaterialItem): void {
+    setSelectedMaterialId(item.id);
+    appendHistory({
+      title: `已选择素材：${item.name}`,
+      detail: `${item.source} · ${item.gender} · ${item.ageGroup} · ${item.region}`,
+      tone: "ready",
+    });
+  }
+
+  function clearSelectedMaterial(): void {
+    if (!selectedMaterial) return;
+    appendHistory({
+      title: `已移除素材：${selectedMaterial.name}`,
+      detail: "生成时不再带入该素材作为参考图。",
+      tone: "idle",
+    });
+    setSelectedMaterialId("");
+  }
+
   function applyCase(item: LocalShowcaseCase): void {
     setActiveCategoryId(findFeatureCategoryId(item.featureId));
     setActiveFeatureId(item.featureId);
-    setSelectedIndustry(item.industry);
-    const nextPrompt = item.prompt?.trim() || `${DEFAULT_PROMPTS.front}\n\n参考案例：${item.title}。生成方向：${item.summary}。`;
+    const nextPrompt = promptForShowcaseCase(item, activePrompt);
+    const caseInputRefs = urlsForRole(item, "input");
+    const caseOutputRefs = urlsForRole(item, "output");
+    const caseFeature = featureById(item.featureId) || activeFeature;
+    const { productRefs: caseProductRefs, referenceRefs: caseReferenceRefs } = splitCaseInputRefsForFeature(caseInputRefs, caseFeature);
+    setSelectedMaterialId("");
+    setExampleImageRefs(caseProductRefs);
+    setExampleReferenceImageRefs(caseReferenceRefs);
     setPromptDrafts((current) => {
       const next = { ...current };
       for (const viewpoint of Object.keys(current) as Viewpoint[]) {
@@ -1031,11 +2343,474 @@ export function ImageShowcaseModule({
       }
       return next;
     });
-    appendHistory({
+    appendGenerationHistory({
       title: `已套用案例：${item.title}`,
       detail: `${item.industry} · ${item.summary}`,
       tone: "ready",
+      featureTitle: caseFeature.title,
+      jobType: caseFeature.title,
+      statusText: "生成完成",
+      inputRefs: caseInputRefs,
+      outputRefs: caseOutputRefs,
+      prompt: nextPrompt,
     });
+    onUsePromptInImage(buildImageHandoff(
+      nextPrompt,
+      caseFeature,
+      caseProductRefs,
+      caseReferenceRefs,
+    ));
+  }
+
+  if (stageView === "workbench") {
+    return (
+      <div className="ai-refinement-shell">
+        <aside className="ai-refinement-sidebar" ref={refinementSidebarRef}>
+          <section className="ai-refinement-case-panel">
+            <header>
+              <strong>案例库</strong>
+              <button type="button" aria-label="返回首页" onClick={() => setStageView("home")}>›</button>
+            </header>
+            {workbenchCase ? (
+              <button
+                type="button"
+                className="ai-refinement-case-card"
+                onClick={() => applyCase(workbenchCase)}
+              >
+                <div className="ai-refinement-case-images">
+                  <span>
+                    {urlsForRole(workbenchCase, "input")[0] ? (
+                      <img src={imageAssetSource(urlsForRole(workbenchCase, "input")[0])} alt={`${workbenchCase.title} 输入图`} loading="lazy" />
+                    ) : null}
+                    <em>输入图</em>
+                  </span>
+                  <span>
+                    {urlsForRole(workbenchCase, "output")[0] ? (
+                      <img src={imageAssetSource(urlsForRole(workbenchCase, "output")[0])} alt={`${workbenchCase.title} 输出图`} loading="lazy" />
+                    ) : null}
+                    <em>输出图</em>
+                  </span>
+                </div>
+                <strong>{workbenchCase.title || "案例名称"}</strong>
+              </button>
+            ) : (
+              <div className="ai-refinement-empty-card">暂无案例</div>
+            )}
+          </section>
+
+          {activeControlProfile.showUpload ? (
+            <section className="ai-refinement-upload">
+              <h3>{workbenchUploadTitle}</h3>
+              <div className={isSplitUpload ? "ai-refinement-upload-grid is-split" : "ai-refinement-upload-grid"}>
+                {isSplitUpload ? (
+                  activeControlProfile.uploadSlots.map((slot) => {
+                    const refs = refsForUploadRole(slot.role);
+                    const previewRef = refs[0];
+                    return (
+                      <div key={slot.id} className="ai-refinement-upload-item">
+                        <button type="button" onClick={() => selectImagesForUploadRole(slot.role)}>
+                          {previewRef ? (
+                            <img src={imageAssetSource(previewRef)} alt={slot.assetLabel} loading="lazy" />
+                          ) : (
+                            <span className="ai-refinement-placeholder" aria-hidden="true">
+                              <svg viewBox="0 0 24 24">
+                                <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z" />
+                                <path d="m6.5 16 4.2-5.2 3.2 4 1.8-2.1 1.8 2.3" />
+                                <circle cx="16.5" cy="7.5" r="1.4" />
+                              </svg>
+                            </span>
+                          )}
+                        </button>
+                        {previewRef ? (
+                          <button
+                            type="button"
+                            className="ai-refinement-remove"
+                            aria-label={`删除${slot.assetLabel}`}
+                            onClick={() => removeImageForUploadRole(slot.role, previewRef)}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                        <strong>{previewRef ? slot.assetLabel : slot.uploadLabel}</strong>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <>
+                    <div className="ai-refinement-upload-item">
+                      <button type="button" onClick={selectProductImages}>
+                        <span className="ai-refinement-placeholder" aria-hidden="true">
+                          <svg viewBox="0 0 24 24">
+                            <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z" />
+                            <path d="m6.5 16 4.2-5.2 3.2 4 1.8-2.1 1.8 2.3" />
+                            <circle cx="16.5" cy="7.5" r="1.4" />
+                          </svg>
+                        </span>
+                      </button>
+                      <strong>上传</strong>
+                    </div>
+                    {activeProductImageRefs.map((ref, index) => (
+                      <div key={`${ref}-${index}`} className="ai-refinement-upload-item has-image">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedImage({
+                            url: imageAssetSource(ref),
+                            title: `图${index + 1}`,
+                            label: "上传素材图片",
+                            alt: `上传素材图片 图${index + 1}`,
+                          })}
+                        >
+                          <img src={imageAssetSource(ref)} alt={`图${index + 1}`} loading="lazy" />
+                        </button>
+                        <button
+                          type="button"
+                          className="ai-refinement-remove"
+                          aria-label={`删除图${index + 1}`}
+                          onClick={() => removeImageForUploadRole("product", ref)}
+                        >
+                          ×
+                        </button>
+                        <strong>图{index + 1}</strong>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="ai-refinement-controls">
+            <div className="ai-refinement-control-line">
+              <strong>生图数量</strong>
+              <div className="ai-refinement-segment">
+                {[1, 2, 3].map((count) => (
+                  <button key={count} type="button" className={imageCount === count ? "active" : ""} onClick={() => setImageCount(count)}>
+                    {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="ai-refinement-control-line">
+              <strong>生图比例</strong>
+              <select value={ratio} onChange={(event) => setRatio(event.target.value)}>
+                {["1:1", "3:4", "4:3", "9:16", "16:9"].map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+            {activeControlProfile.showQuality ? (
+              <div className="ai-refinement-control-block">
+                <strong>图片质量 <em>请参考提示词模版，根据需求修改</em></strong>
+                <div className="ai-refinement-segment">
+                  {["1K_V2", "2K", "4K"].map((item) => (
+                    <button key={item} type="button" className={quality === item ? "active" : ""} onClick={() => setQuality(item)}>
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          {activeControlProfile.showPrompt ? (
+            <section className="ai-refinement-prompt">
+              <h3>提示词</h3>
+              <textarea
+                placeholder="请输入提示词。"
+                value={activePrompt}
+                onChange={(event) =>
+                  setPromptDrafts((current) => ({
+                    ...current,
+                    [activeViewpoint]: event.target.value,
+                  }))
+                }
+              />
+            </section>
+          ) : null}
+
+          <button
+            type="button"
+            className="ai-refinement-generate"
+            disabled={busy || !workspaceReady}
+            onClick={runWorkbenchGeneration}
+          >
+            {busy ? "生成中" : "生成"}
+          </button>
+        </aside>
+
+        <main className="ai-refinement-canvas">
+          <div className="ai-refinement-toolbar">
+            {REFINEMENT_TOOLS.map((tool) => (
+              <button
+                key={tool.id}
+                type="button"
+                className={workbenchTool === tool.id ? "active" : ""}
+                title={tool.label}
+                aria-label={tool.label}
+                onClick={() => setWorkbenchTool(tool.id)}
+              >
+                <span>{tool.icon}</span>
+                <em>{tool.label}</em>
+              </button>
+            ))}
+          </div>
+          <section className={canvasImageRefs.length ? "ai-refinement-board has-images" : "ai-refinement-board"}>
+            {canvasImageRefs.length ? (
+              <div className="ai-refinement-board-images">
+                {canvasImageRefs.map((ref, index) => (
+                  <button
+                    key={`${ref}-${index}`}
+                    type="button"
+                    onClick={() => setSelectedImage({
+                      url: imageAssetSource(ref),
+                      title: `生成图 ${index + 1}`,
+                      label: "生成结果",
+                      alt: `生成图 ${index + 1}`,
+                    })}
+                  >
+                    <img src={imageAssetSource(ref)} alt={`生成图 ${index + 1}`} loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p>{workbenchMessage || "请先上传至少一张图片"}</p>
+            )}
+            {mediaResult && mediaResult.status !== "succeeded" ? (
+              <div className={`ai-refinement-result-message ${mediaResult.status}`}>
+                {mediaResult.message}
+              </div>
+            ) : null}
+          </section>
+        </main>
+
+        <button type="button" className="ai-refinement-record" onClick={() => setActiveDialog("history")}>
+          <span>生成记录</span>
+        </button>
+
+        <button type="button" className="ai-prompt-assistant-fab" onClick={() => openPromptAssistant("text")}>
+          <span aria-hidden="true">AI</span>
+          <strong>提示词助手</strong>
+        </button>
+
+        {activeDialog === "history" ? (
+          <ImageHistoryDrawer
+            entries={historyEntries}
+            featureTitle={activeFeature.title}
+            backendCaseCount={backendCards.length}
+            backendAssetCount={backendAssets.length}
+            selectedFeatureCaseCount={selectedFeatureCaseCount}
+            uploadCount={activeUploadImageCount}
+            selectedMaterialName={selectedMaterial?.name}
+            mediaResult={mediaResult}
+            onOpenImage={setSelectedImage}
+            onClose={() => setActiveDialog(null)}
+          />
+        ) : null}
+
+        {activeDialog === "prompt-assistant" ? (
+          <div className="ai-assistant-overlay" role="presentation" onClick={() => setActiveDialog(null)}>
+            <section
+              className={assistantTemplatesOpen ? "ai-assistant-dialog has-templates" : "ai-assistant-dialog"}
+              role="dialog"
+              aria-modal="true"
+              aria-label="提示词助手"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <header className="ai-assistant-header">
+                <h2>提示词助手</h2>
+                <button type="button" aria-label="关闭提示词助手" onClick={() => setActiveDialog(null)}>×</button>
+              </header>
+              <div className="ai-assistant-content">
+                <div className="ai-assistant-main">
+                  <div className="ai-assistant-tabs" role="tablist" aria-label="提示词助手模式">
+                    <button
+                      type="button"
+                      className={assistantTab === "text" ? "active" : ""}
+                      onClick={() => setAssistantTab("text")}
+                    >
+                      文本生成
+                    </button>
+                    <button
+                      type="button"
+                      className={assistantTab === "reverse" ? "active" : ""}
+                      onClick={() => setAssistantTab("reverse")}
+                    >
+                      图片反推
+                    </button>
+                  </div>
+                  <div className="ai-assistant-toolbar">
+                    <button type="button" onClick={() => setAssistantTemplatesOpen((current) => !current)}>
+                      提示词模版
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => {
+                        const template = savePromptTemplate(
+                          assistantResult || assistantInput || activePrompt,
+                          templateDraftTitle,
+                          editingTemplateId,
+                        );
+                        if (template) setAssistantTemplatesOpen(true);
+                      }}
+                    >
+                      保存到模版
+                    </button>
+                  </div>
+                  <div className={assistantTab === "reverse" ? "ai-assistant-grid is-image-reverse" : "ai-assistant-grid is-text-generation"}>
+                    {assistantTab === "reverse" ? (
+                      <section className="ai-assistant-reverse-input">
+                        <div className="ai-assistant-upload-section">
+                          <div className="ai-assistant-section-title">上传图片</div>
+                          <div className="ai-assistant-upload-list">
+                            <button type="button" className="ai-assistant-upload-card is-upload" onClick={selectReferenceImages}>
+                              <span aria-hidden="true">+</span>
+                              <strong>上传</strong>
+                            </button>
+                            {assistantImageRefs.map((ref, index) => {
+                              const isReferenceRef = activeReferenceImageRefs.includes(ref) && !activeProductImageRefs.includes(ref);
+                              return (
+                                <div key={`${ref}-${index}`} className="ai-assistant-upload-card has-image">
+                                  <button
+                                    type="button"
+                                    className="ai-assistant-upload-image"
+                                    onClick={() => setSelectedImage({
+                                      url: imageAssetSource(ref),
+                                      title: `图片${index + 1}`,
+                                      label: isReferenceRef ? activeControlProfile.referenceLabel : activeControlProfile.productLabel,
+                                      alt: `提示词助手图片${index + 1}`,
+                                    })}
+                                  >
+                                    <img src={imageAssetSource(ref)} alt={`提示词助手图片${index + 1}`} loading="lazy" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="ai-assistant-upload-remove"
+                                    aria-label={`删除提示词助手图片${index + 1}`}
+                                    onClick={() => removeAssistantImageRef(ref)}
+                                  >
+                                    ×
+                                  </button>
+                                  <strong>{isReferenceRef ? activeControlProfile.referenceLabel : activeControlProfile.productLabel}</strong>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <label>输入提示词</label>
+                        <textarea
+                          value={assistantInput}
+                          onChange={(event) => setAssistantInput(event.target.value)}
+                          placeholder="描述参考图、主体、材质、背景或上传素材需要反推的重点。"
+                        />
+                      </section>
+                    ) : (
+                      <section>
+                        <label>输入提示词</label>
+                        <textarea
+                          value={assistantInput}
+                          onChange={(event) => setAssistantInput(event.target.value)}
+                          placeholder="请输入要扩写或优化的提示词。"
+                        />
+                      </section>
+                    )}
+                    <section>
+                      <label>生成结果</label>
+                      <textarea
+                        value={assistantResult}
+                        onChange={(event) => setAssistantResult(event.target.value)}
+                        placeholder="点击开始生成后，这里会出现可编辑结果。"
+                      />
+                    </section>
+                    <div className="ai-assistant-generate-row">
+                      <button type="button" onClick={generateAssistantPrompt}>开始生成</button>
+                    </div>
+                  </div>
+                </div>
+                {assistantTemplatesOpen ? (
+                  <aside className="ai-assistant-template-panel">
+                    <header>
+                      <strong>提示词模版</strong>
+                      <span>{savedTemplates.length} 个模板</span>
+                    </header>
+                    <label>
+                      模版名称
+                      <input
+                        value={templateDraftTitle}
+                        onChange={(event) => setTemplateDraftTitle(event.target.value)}
+                        placeholder={`${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`}
+                      />
+                    </label>
+                    <div className="ai-assistant-template-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingTemplateId("");
+                          setTemplateDraftTitle(`${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`);
+                          setAssistantResult("");
+                        }}
+                      >
+                        新建
+                      </button>
+                      <button
+                        type="button"
+                        className="primary"
+                        onClick={() => savePromptTemplate(assistantResult || assistantInput || activePrompt, templateDraftTitle, editingTemplateId)}
+                      >
+                        {editingTemplateId ? "更新" : "保存"}
+                      </button>
+                    </div>
+                    <div className="ai-assistant-template-list">
+                      {savedTemplates.length ? savedTemplates.map((template) => (
+                        <article key={template.id} className={editingTemplateId === template.id ? "active" : ""}>
+                          <div>
+                            <strong>{template.title}</strong>
+                            <span>{formatHistoryTime(template.updatedAt || template.createdAt)}</span>
+                          </div>
+                          <p>{template.prompt.slice(0, 120)}</p>
+                          <footer>
+                            <button type="button" onClick={() => applySavedPromptTemplate(template, false)}>应用</button>
+                            <button type="button" onClick={() => editSavedPromptTemplate(template)}>编辑</button>
+                            <button type="button" className="danger" onClick={() => deleteSavedPromptTemplate(template.id)}>删除</button>
+                          </footer>
+                        </article>
+                      )) : (
+                        <div className="ai-assistant-template-empty">暂无模版，保存当前结果后会出现在这里。</div>
+                      )}
+                    </div>
+                  </aside>
+                ) : null}
+              </div>
+              <footer className="ai-assistant-footer">
+                <button type="button" onClick={() => setActiveDialog(null)}>取消</button>
+                <button type="button" className="primary" onClick={confirmAssistantPrompt}>确定</button>
+              </footer>
+            </section>
+          </div>
+        ) : null}
+
+        {selectedImage ? (
+          <div
+            className="ai-image-preview-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={selectedImage.alt}
+            onClick={() => setSelectedImage(null)}
+          >
+            <button type="button" className="ai-image-preview-close" onClick={() => setSelectedImage(null)}>
+              关闭
+            </button>
+            <figure className="ai-image-preview-card" onClick={(event) => event.stopPropagation()}>
+              <img src={selectedImage.url} alt={selectedImage.alt} />
+              <figcaption>
+                <strong>{selectedImage.title}</strong>
+                <span>{selectedImage.label}</span>
+              </figcaption>
+            </figure>
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -1052,35 +2827,167 @@ export function ImageShowcaseModule({
           <p>{activeFeature.subtitle}</p>
         </section>
 
+        {activeControlProfile.showUpload ? (
         <section className="ai-panel">
           <div className="ai-section-title">
-            <span>上传素材</span>
-            <em>{productImageRefs.length ? `${productImageRefs.length} 张已选` : "未选择"}</em>
+            <span>{activeControlProfile.panelTitle}</span>
+            <em>{activeUploadImageCount ? `${activeUploadImageCount} 张已选` : "未选择"}</em>
           </div>
-          <div className="ai-upload-grid">
-            {(["front", "back", "side"] as Viewpoint[]).map((viewpoint) => (
-              <button
-                key={viewpoint}
-                type="button"
-                className="ai-upload-card"
-                onClick={onSelectProductImages}
+          <>
+              {activeControlProfile.showUploadTabs ? (
+                <div className="ai-upload-tabs">
+                  {(["front", "back", "side"] as Viewpoint[]).map((viewpoint) => (
+                    <button
+                      key={viewpoint}
+                      type="button"
+                      className={activeViewpoint === viewpoint ? "active" : ""}
+                      onClick={() => setActiveViewpoint(viewpoint)}
+                    >
+                      {VIEWPOINT_LABELS[viewpoint]}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <div
+                className={isSplitUpload ? "ai-upload-grid is-split" : "ai-upload-grid is-source-strip"}
+                data-count={isSplitUpload ? activeControlProfile.uploadSlots.length : Math.min(visibleSourceUploadRefs.length + 1, 4)}
               >
-                <strong>{VIEWPOINT_LABELS[viewpoint]}</strong>
-                <span>{productImageRefs.length ? "重新选择素材" : "上传图片"}</span>
-              </button>
-            ))}
-          </div>
+                {isSplitUpload ? (
+                  activeControlProfile.uploadSlots.map((slot) => {
+                    const refs = refsForUploadRole(slot.role);
+                    const previewRef = refs[0];
+                    return (
+                      <div key={slot.id} className={previewRef ? "ai-upload-slot-card has-image" : "ai-upload-slot-card"}>
+                        <button
+                          type="button"
+                          className="ai-upload-slot-main"
+                          onClick={() => selectImagesForUploadRole(slot.role)}
+                        >
+                          {previewRef ? (
+                            <img src={imageAssetSource(previewRef)} alt={slot.assetLabel} loading="lazy" />
+                          ) : (
+                            <span className="ai-upload-icon" aria-hidden="true">
+                              <svg viewBox="0 0 24 24">
+                                <path d="M12 5v14M5 12h14" />
+                              </svg>
+                            </span>
+                          )}
+                          <strong>{slot.uploadLabel}</strong>
+                        </button>
+                        {previewRef ? (
+                          <button
+                            type="button"
+                            className="ai-upload-remove"
+                            aria-label={`删除${slot.assetLabel}`}
+                            onClick={() => removeImageForUploadRole(slot.role, previewRef)}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                        <span className="ai-upload-caption">{slot.assetLabel}</span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="ai-upload-source-card is-upload"
+                      onClick={selectProductImages}
+                    >
+                      <span className="ai-upload-placeholder" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                          <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z" />
+                          <path d="m6.5 16 4.2-5.2 3.2 4 1.8-2.1 1.8 2.3" />
+                          <circle cx="16.5" cy="7.5" r="1.4" />
+                        </svg>
+                      </span>
+                      <strong>{activeControlProfile.uploadSlots[0]?.uploadLabel || "上传"}</strong>
+                    </button>
+                    {visibleSourceUploadRefs.map((ref, index) => {
+                      const isReferenceRef = activeReferenceImageRefs.includes(ref) && !activeProductImageRefs.includes(ref);
+                      return (
+                      <div key={`${ref}-${index}`} className="ai-upload-source-card has-image">
+                        <button
+                          type="button"
+                          className="ai-upload-image-button"
+                          onClick={() => setSelectedImage({
+                            url: imageAssetSource(ref),
+                            title: isReferenceRef
+                              ? `${activeControlProfile.referenceLabel}${index + 1}`
+                              : `${activeControlProfile.productLabel}${index + 1}`,
+                            label: "上传素材",
+                            alt: isReferenceRef
+                              ? `${activeControlProfile.referenceLabel}${index + 1}`
+                              : `${activeControlProfile.productLabel}${index + 1}`,
+                          })}
+                        >
+                          <img
+                            src={imageAssetSource(ref)}
+                            alt={isReferenceRef
+                              ? `${activeControlProfile.referenceLabel}${index + 1}`
+                              : `${activeControlProfile.productLabel}${index + 1}`}
+                            loading="lazy"
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          className="ai-upload-remove"
+                          aria-label={`删除图${index + 1}`}
+                          onClick={() => removeImageForUploadRole(isReferenceRef ? "reference" : "product", ref)}
+                        >
+                          ×
+                        </button>
+                        <strong>图{index + 1}</strong>
+                      </div>
+                    );
+                    })}
+                  </>
+                )}
+              </div>
+          </>
         </section>
+        ) : null}
 
+        {activeControlProfile.showMaterialLibrary ? (
         <section className="ai-panel">
           <div className="ai-section-title">
             <span>选择素材</span>
-            <button type="button" onClick={() => setActiveDialog("materials")}>素材库</button>
+            <button type="button" onClick={openMaterialLibrary}>素材库</button>
           </div>
-          <p className="ai-muted">配置您的个性化商拍方案</p>
+          <button type="button" className="ai-material-entry-card" onClick={openMaterialLibrary}>
+            {selectedMaterial ? (
+              <>
+                <img src={selectedMaterial.imageUrl} alt={selectedMaterial.name} loading="lazy" />
+                <span>
+                  <strong>{selectedMaterial.name}</strong>
+                  <em>{selectedMaterial.source} · {selectedMaterial.gender} · {selectedMaterial.ageGroup}</em>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="ai-material-entry-mosaic" aria-hidden="true">
+                  {libraryMaterials.slice(0, 4).map((item) => (
+                    <img key={item.id} src={item.imageUrl} alt="" loading="lazy" />
+                  ))}
+                </span>
+                <span>
+                  <strong>素材库</strong>
+                  <em>配置您的个性化商拍方案</em>
+                </span>
+              </>
+            )}
+          </button>
+          {selectedMaterial ? (
+            <button type="button" className="ai-selected-material-clear" onClick={clearSelectedMaterial}>
+              清理参考素材
+            </button>
+          ) : null}
         </section>
+        ) : null}
 
         <section className="ai-panel ai-control-stack">
+          {activeControlProfile.showViewpoints ? (
           <div className="ai-control-row">
             <span>视角</span>
             <div className="ai-chip-group">
@@ -1096,8 +3003,9 @@ export function ImageShowcaseModule({
               ))}
             </div>
           </div>
+          ) : null}
           <div className="ai-control-row">
-            <span>生图数量</span>
+            <span>{activeControlProfile.imageCountLabel}</span>
             <div className="ai-segment">
               {[1, 2, 3].map((count) => (
                 <button
@@ -1119,53 +3027,36 @@ export function ImageShowcaseModule({
               ))}
             </select>
           </div>
-          <div className="ai-control-row">
-            <span>图片质量</span>
-            <div className="ai-segment">
-              {["2K", "4K"].map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={quality === item ? "active" : ""}
-                  onClick={() => setQuality(item)}
-                >
-                  {item}
-                </button>
-              ))}
+          {activeControlProfile.showQuality ? (
+            <div className="ai-control-row">
+              <span>图片质量</span>
+              <div className="ai-segment">
+                {["2K", "4K"].map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={quality === item ? "active" : ""}
+                    onClick={() => setQuality(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-          {activeFeature.id === "change-background" ? (
-            <>
-              <label className="ai-slider-row">
-                <span>黑白阈值：{threshold}</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={threshold}
-                  onChange={(event) => setThreshold(Number(event.target.value))}
-                />
-              </label>
-              <label className="ai-color-row">
-                <span>选择色号</span>
-                <input
-                  type="color"
-                  value={colorValue}
-                  onChange={(event) => setColorValue(event.target.value)}
-                />
-                <em>{colorValue.toUpperCase()}</em>
-              </label>
-            </>
           ) : null}
         </section>
 
+        {activeControlProfile.showPrompt ? (
         <section className="ai-panel ai-prompt-panel">
-          <div className="ai-prompt-actions">
-            <button type="button" onClick={expandPromptWithCurrentContext}>智能扩写</button>
-            <button type="button" onClick={() => setActiveDialog("prompt-list")}>提示词列表</button>
-            <button type="button" onClick={saveCurrentPromptAsTemplate}>保存到模板</button>
-          </div>
-          <div className="ai-prompt-tabs">
+          {activeControlProfile.showPromptTools ? (
+            <div className="ai-prompt-actions">
+              <button type="button" onClick={expandPromptWithCurrentContext}>智能扩写</button>
+              <button type="button" onClick={() => setActiveDialog("prompt-list")}>提示词列表</button>
+              <button type="button" onClick={saveCurrentPromptAsTemplate}>保存到模板</button>
+            </div>
+          ) : null}
+          {activeControlProfile.showPromptTabs ? (
+            <div className="ai-prompt-tabs">
             {selectedViewpoints.map((viewpoint) => (
               <button
                 key={viewpoint}
@@ -1176,7 +3067,8 @@ export function ImageShowcaseModule({
                 {VIEWPOINT_LABELS[viewpoint]}
               </button>
             ))}
-          </div>
+            </div>
+          ) : null}
           <textarea
             value={activePrompt}
             onChange={(event) =>
@@ -1186,109 +3078,198 @@ export function ImageShowcaseModule({
               }))
             }
           />
-          <button
-            type="button"
-            className="ai-generate-button"
-            disabled={busy || !workspaceReady}
-            onClick={() => onUsePromptInImage(activePrompt)}
-          >
-            {busy ? "生成中" : "开始Ai生成"}
-          </button>
         </section>
+        ) : null}
+        <button
+          type="button"
+          className="ai-generate-button"
+          disabled={busy || !workspaceReady}
+          onClick={openGenerationWorkbench}
+        >
+          {busy ? "生成中" : "开始Ai生成"}
+        </button>
       </aside>
 
-      <main className="ai-showcase-main">
-        <section className="ai-function-board">
-          <div className="ai-category-tabs">
-            {CATEGORIES.map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                className={activeCategoryId === category.id ? "active" : ""}
-                onClick={() => setActiveCategoryId(category.id)}
-              >
-                {category.label}
-              </button>
-            ))}
-          </div>
-          <div className="ai-feature-grid">
-            {activeCategory.features.map((feature) => (
-              <button
-                key={feature.id}
-                type="button"
-                className={activeFeature.id === feature.id ? "ai-feature-button active" : "ai-feature-button"}
-                title={feature.subtitle}
-                onClick={() => setActiveFeatureId(feature.id)}
-              >
-                <FeatureButtonIcon
-                  iconKey={iconKeyForFeature(feature, featureUiById, featureUiByTitle)}
-                />
-                <strong>{feature.title}</strong>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="ai-case-board">
-          <div className="ai-case-heading">
-            <div>
-              <h2>优秀案例</h2>
-              <p>
-                {backendStatus === "ready"
-                  ? `后端素材 ${backendCards.length} 组 · ${backendAssets.length} 张资产`
-                  : backendStatus === "empty"
-                    ? "后端素材待导入"
-                    : backendStatus === "error"
-                      ? "后端素材读取失败"
-                      : "正在读取后端素材"}
-                {selectedFeatureCaseCount ? ` · 当前功能 ${selectedFeatureCaseCount} 组` : ""}
-              </p>
-              {backendMessage ? <p className="ai-muted">{backendMessage}</p> : null}
+      <main className={mainView === "materials" ? "ai-showcase-main is-materials" : "ai-showcase-main"}>
+        {mainView === "cases" ? (
+          <>
+          <section className="ai-function-board">
+            <div className="ai-category-tabs">
+              {CATEGORIES.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={activeCategoryId === category.id ? "active" : ""}
+                  onClick={() => selectCategory(category)}
+                >
+                  {category.label}
+                </button>
+              ))}
             </div>
-            <button type="button" className="ai-history-pill" onClick={() => setActiveDialog("history")}>历史记录</button>
-          </div>
-          <div className="ai-industry-filter">
-            {INDUSTRIES.map((industry) => (
-              <button
-                key={industry}
-                type="button"
-                className={selectedIndustry === industry ? "active" : ""}
-                onClick={() => setSelectedIndustry(industry)}
-              >
-                {industry}
-              </button>
-            ))}
-          </div>
-          <div className="ai-case-grid">
-            {visibleCards.length ? visibleCards.map((item) => (
-              <article key={item.id} className="ai-case-card">
-                <div className={urlsForRole(item, "input").length ? "ai-case-compare" : "ai-case-compare output-only"}>
-                  {urlsForRole(item, "input").length ? <ImageStack item={item} role="input" /> : null}
-                  <ImageStack item={item} role="output" />
-                </div>
-                <div className="ai-case-card-meta">
-                  <strong>{item.title}</strong>
-                  <span>{item.industry}</span>
-                </div>
-                <div className="ai-case-card-footer">
-                  <button type="button" onClick={() => setSelectedCase(item)}>预览</button>
-                  <button type="button" className="primary" onClick={() => applyCase(item)}>尝试示例</button>
-                </div>
-              </article>
-            )) : (
-              <div className="ai-case-empty">
-                当前功能暂无优秀案例
+            <div className="ai-feature-grid">
+              {activeCategory.features.map((feature) => (
+                <button
+                  key={feature.id}
+                  type="button"
+                  className={activeFeature.id === feature.id ? "ai-feature-button active" : "ai-feature-button"}
+                  title={feature.subtitle}
+                  onClick={() => selectFeature(feature)}
+                >
+                  <FeatureButtonIcon
+                    iconKey={iconKeyForFeature(feature, featureUiById, featureUiByTitle)}
+                  />
+                  <strong>{feature.title}</strong>
+                </button>
+              ))}
+            </div>
+          </section>
+          <section className="ai-case-board">
+            <div className="ai-case-heading">
+              <div>
+                <h2>优秀案例</h2>
+                <p>
+                  {backendStatus === "ready"
+                    ? `后端素材 ${backendCards.length} 组 · ${backendImageAssets.length} 张资产`
+                    : backendStatus === "empty"
+                      ? "后端素材待导入"
+                      : backendStatus === "error"
+                        ? "后端素材读取失败"
+                        : "正在读取后端素材"}
+                  {selectedFeatureCaseCount ? ` · 当前功能 ${selectedFeatureCaseCount} 组` : ""}
+                </p>
+                {backendMessage ? <p className="ai-muted">{backendMessage}</p> : null}
               </div>
-            )}
-          </div>
-        </section>
+            </div>
+            <div className="ai-industry-filter">
+              {INDUSTRIES.map((industry) => (
+                <button
+                  key={industry}
+                  type="button"
+                  className={selectedIndustry === industry ? "active" : ""}
+                  onClick={() => setSelectedIndustry(industry)}
+                >
+                  {industry}
+                </button>
+              ))}
+            </div>
+            <div className="ai-case-grid">
+              {visibleCards.length ? visibleCards.map((item) => (
+                <article key={item.id} className="ai-case-card">
+                  <div className={urlsForRole(item, "input").length ? "ai-case-compare" : "ai-case-compare output-only"}>
+                    {urlsForRole(item, "input").length ? (
+                      <ImageStack item={item} role="input" onOpenImage={setSelectedImage} />
+                    ) : null}
+                    <ImageStack item={item} role="output" onOpenImage={setSelectedImage} />
+                  </div>
+                  <div className="ai-case-card-meta">
+                    <strong>{item.title}</strong>
+                    <span>{item.industry}</span>
+                  </div>
+                  <div className="ai-case-card-footer">
+                    <button type="button" onClick={() => setSelectedCase(item)}>预览</button>
+                    <button type="button" className="primary" onClick={() => applyCase(item)}>尝试示例</button>
+                  </div>
+                </article>
+              )) : (
+                <div className="ai-case-empty">
+                  当前功能暂无优秀案例
+                </div>
+              )}
+            </div>
+          </section>
+          </>
+        ) : (
+          <section className="ai-material-library ai-source-material-library">
+            <div className="ai-material-library-top">
+              <button
+                type="button"
+                className="ai-material-back-button"
+                aria-label="返回案例"
+                onClick={openCaseBoard}
+              >
+                ‹
+              </button>
+              <p>系统模特为AI合成数字人，商用需用户自行判断（真人模特中模特图片已获得授权）</p>
+              <div className="ai-material-library-actions">
+                <button type="button">+ 添加我的模特</button>
+                <button type="button">我的收藏</button>
+              </div>
+            </div>
+            <div className="ai-material-tab-bar">
+              {([
+                ["model", "模特"],
+                ["pose", "姿势"],
+              ] as Array<[DressingkitMaterialTab, string]>).map(([tab, label]) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={materialTab === tab ? "active" : ""}
+                  onClick={() => setMaterialTab(tab)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="ai-material-filter-panel">
+              <MaterialFilterRow
+                label="模特"
+                value={selectedMaterialSource}
+                values={MATERIAL_SOURCE_FILTERS}
+                onChange={setSelectedMaterialSource}
+              />
+              <MaterialFilterRow
+                label="性别"
+                value={selectedMaterialGender}
+                values={MATERIAL_GENDER_FILTERS}
+                onChange={setSelectedMaterialGender}
+              />
+              <MaterialFilterRow
+                label="年龄"
+                value={selectedMaterialAge}
+                values={MATERIAL_AGE_FILTERS}
+                onChange={setSelectedMaterialAge}
+              />
+              <MaterialFilterRow
+                label="区域"
+                value={selectedMaterialRegion}
+                values={MATERIAL_REGION_FILTERS}
+                onChange={setSelectedMaterialRegion}
+              />
+            </div>
+            <div className="ai-source-material-grid">
+              {visibleMaterials.length ? visibleMaterials.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={selectedMaterialId === item.id ? "ai-source-material-card active" : "ai-source-material-card"}
+                  onClick={() => applyMaterial(item)}
+                >
+                  <span className="ai-source-material-thumb">
+                    <img src={item.imageUrl} alt={item.name} loading="lazy" />
+                    <span className={item.favorite ? "ai-material-favorite active" : "ai-material-favorite"} aria-hidden="true">
+                      ♥
+                    </span>
+                  </span>
+                  <strong>{item.name}</strong>
+                </button>
+              )) : (
+                <div className="ai-case-empty">
+                  当前筛选暂无可选素材
+                </div>
+              )}
+            </div>
+          </section>
+        )}
       </main>
 
-      <button type="button" className="ai-floating-history" onClick={() => setActiveDialog("history")}>历史记录</button>
-      <div className="ai-prompt-helper">
-        <strong>提示词助手</strong>
-        <span>{ratio} · {quality} · {imageCount} 张</span>
-      </div>
+      <button
+        type="button"
+        className="ai-floating-history"
+        aria-label="历史记录"
+        onClick={() => setActiveDialog("history")}
+      >
+        <span>历史记录</span>
+      </button>
 
       {activeDialog === "feature-picker" ? (
         <DetailDialog
@@ -1315,8 +3296,7 @@ export function ImageShowcaseModule({
                       type="button"
                       className={activeFeature.id === feature.id && activeCategoryId === category.id ? "active" : ""}
                       onClick={() => {
-                        setActiveCategoryId(category.id as ShowcaseCategoryId);
-                        setActiveFeatureId(feature.id);
+                        selectFeature(feature, category.id as ShowcaseCategoryId);
                         setActiveDialog(null);
                         appendHistory({
                           title: `切换功能：${feature.title}`,
@@ -1337,66 +3317,6 @@ export function ImageShowcaseModule({
                 </div>
               </section>
             ))}
-          </div>
-        </DetailDialog>
-      ) : null}
-
-      {activeDialog === "materials" ? (
-        <DetailDialog
-          className="ai-showcase-dialog"
-          bodyClassName="ai-showcase-dialog-body"
-          eyebrow="素材库"
-          title="选择素材"
-          description="上传素材和后端案例素材都可以在这里查看。"
-          onClose={() => setActiveDialog(null)}
-        >
-          <div className="ai-dialog-columns">
-            <section className="ai-dialog-section">
-              <header className="ai-dialog-section-header">
-                <div>
-                  <strong>当前上传素材</strong>
-                  <span>{productImageRefs.length} 张</span>
-                </div>
-                <button type="button" className="ghost small" onClick={onSelectProductImages}>继续上传</button>
-              </header>
-              <div className="ai-material-grid">
-                {productImageRefs.length ? (
-                  productImageRefs.map((ref) => (
-                    <figure key={ref} className="ai-material-card">
-                      <img src={localAssetUrl(ref)} alt={fileNameFromPath(ref)} loading="lazy" />
-                      <figcaption>{fileNameFromPath(ref)}</figcaption>
-                    </figure>
-                  ))
-                ) : (
-                  <div className="ai-dialog-empty">还没有选择上传素材。</div>
-                )}
-              </div>
-            </section>
-
-            <section className="ai-dialog-section">
-              <header className="ai-dialog-section-header">
-                <div>
-                  <strong>后端案例素材</strong>
-                  <span>{backendAssets.length} 张 · {backendCards.length} 组案例</span>
-                </div>
-              </header>
-              <div className="ai-material-grid">
-                {backendAssets.length ? (
-                  backendAssets.slice(0, 12).map((asset) => (
-                    <figure key={asset.id} className="ai-material-card">
-                      {asset.publicUrl ? (
-                        <img src={asset.publicUrl} alt={asset.caption || asset.id} loading="lazy" />
-                      ) : (
-                        <div className="ai-dialog-empty">无可预览链接</div>
-                      )}
-                      <figcaption>{asset.caption || asset.id}</figcaption>
-                    </figure>
-                  ))
-                ) : (
-                  <div className="ai-dialog-empty">后端还没有可展示的素材。</div>
-                )}
-              </div>
-            </section>
           </div>
         </DetailDialog>
       ) : null}
@@ -1462,25 +3382,32 @@ export function ImageShowcaseModule({
                         <span>{formatHistoryTime(template.createdAt)} · {template.featureTitle}</span>
                       </div>
                       <p>{template.prompt.slice(0, 140)}</p>
-                      <button
-                        type="button"
-                        className="ghost small"
-                        onClick={() => {
-                          setActiveViewpoint(template.viewpoint);
-                          setPromptDrafts((current) => ({
-                            ...current,
-                            [template.viewpoint]: template.prompt,
-                          }));
-                          appendHistory({
-                            title: `已应用模板：${template.title}`,
-                            detail: template.featureTitle,
-                            tone: "ready",
-                          });
-                          setActiveDialog(null);
-                        }}
-                      >
-                        应用
-                      </button>
+                      <footer>
+                        <button
+                          type="button"
+                          className="ghost small"
+                          onClick={() => applySavedPromptTemplate(template)}
+                        >
+                          应用
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost small"
+                          onClick={() => {
+                            editSavedPromptTemplate(template);
+                            setActiveDialog("prompt-assistant");
+                          }}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost small danger"
+                          onClick={() => deleteSavedPromptTemplate(template.id)}
+                        >
+                          删除
+                        </button>
+                      </footer>
                     </article>
                   ))
                 ) : (
@@ -1493,35 +3420,18 @@ export function ImageShowcaseModule({
       ) : null}
 
       {activeDialog === "history" ? (
-        <DetailDialog
-          className="ai-showcase-dialog"
-          bodyClassName="ai-showcase-dialog-body"
-          eyebrow="运行历史"
-          title="历史记录"
-          description="查看最近的素材加载、案例套用和提示词动作。"
+        <ImageHistoryDrawer
+          entries={historyEntries}
+          featureTitle={activeFeature.title}
+          backendCaseCount={backendCards.length}
+          backendAssetCount={backendAssets.length}
+          selectedFeatureCaseCount={selectedFeatureCaseCount}
+          uploadCount={activeUploadImageCount}
+          selectedMaterialName={selectedMaterial?.name}
+          mediaResult={mediaResult}
+          onOpenImage={setSelectedImage}
           onClose={() => setActiveDialog(null)}
-        >
-          <div className="ai-history-summary">
-            <span>后端案例 {backendCards.length} 组</span>
-            <span>后端资产 {backendAssets.length} 张</span>
-            <span>当前功能 {selectedFeatureCaseCount} 组</span>
-          </div>
-          <div className="ai-history-list">
-            {historyEntries.length ? (
-              historyEntries.map((entry) => (
-                <article key={entry.id} className={`ai-history-item tone-${entry.tone}`}>
-                  <div>
-                    <strong>{entry.title}</strong>
-                    <span>{formatHistoryTime(entry.createdAt)}</span>
-                  </div>
-                  <p>{entry.detail}</p>
-                </article>
-              ))
-            ) : (
-              <div className="ai-dialog-empty">还没有生成任何历史记录。</div>
-            )}
-          </div>
-        </DetailDialog>
+        />
       ) : null}
 
       {selectedCase ? (
@@ -1534,12 +3444,53 @@ export function ImageShowcaseModule({
               </div>
               <button type="button" onClick={() => setSelectedCase(null)}>关闭</button>
             </div>
-            <div className="ai-preview-compare">
-              {urlsForRole(selectedCase, "input").length ? <ImageStack item={selectedCase} role="input" variant="preview" /> : null}
-              <ImageStack item={selectedCase} role="output" variant="preview" />
+            <div className={urlsForRole(selectedCase, "input").length ? "ai-preview-compare" : "ai-preview-compare output-only"}>
+              {urlsForRole(selectedCase, "input").length ? (
+                <ImageStack item={selectedCase} role="input" variant="preview" onOpenImage={setSelectedImage} />
+              ) : null}
+              <ImageStack item={selectedCase} role="output" variant="preview" onOpenImage={setSelectedImage} />
             </div>
-            <p>{selectedCase.summary}</p>
+            <section className="ai-preview-prompt">
+              <header>
+                <span>提示词</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(selectedCasePrompt);
+                    appendHistory({
+                      title: `已复制案例提示词：${selectedCase.title}`,
+                      detail: selectedCasePrompt.slice(0, 90),
+                      tone: "ready",
+                    });
+                  }}
+                >
+                  复制
+                </button>
+              </header>
+              <textarea value={selectedCasePrompt} readOnly />
+            </section>
           </div>
+        </div>
+      ) : null}
+
+      {selectedImage ? (
+        <div
+          className="ai-image-preview-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={selectedImage.alt}
+          onClick={() => setSelectedImage(null)}
+        >
+          <button type="button" className="ai-image-preview-close" onClick={() => setSelectedImage(null)}>
+            关闭
+          </button>
+          <figure className="ai-image-preview-card" onClick={(event) => event.stopPropagation()}>
+            <img src={selectedImage.url} alt={selectedImage.alt} />
+            <figcaption>
+              <strong>{selectedImage.title}</strong>
+              <span>{selectedImage.label}</span>
+            </figcaption>
+          </figure>
         </div>
       ) : null}
     </div>

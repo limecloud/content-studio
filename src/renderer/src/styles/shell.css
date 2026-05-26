@@ -168,7 +168,11 @@
   padding-right: 0;
 }
 .stage:has(.detail-dialog-backdrop),
-.stage:has(.module-dialog-backdrop) {
+.stage:has(.module-dialog-backdrop),
+.stage:has(.ai-preview-modal),
+.stage:has(.ai-video-preview-modal),
+.stage:has(.ai-image-preview-modal),
+.stage:has(.image-fullscreen-backdrop) {
   z-index: 90;
 }
 
@@ -214,6 +218,90 @@
 .stage-module-surface > * {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.app-shell:has(.ai-refinement-shell) {
+  grid-template-columns: 245px minmax(0, 1fr);
+  gap: 20px;
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+  padding: 20px;
+  background: #ffffff;
+}
+
+.app-shell[data-sidebar="collapsed"]:has(.ai-refinement-shell) {
+  grid-template-columns: 40px minmax(0, 1fr);
+}
+
+.app-shell:has(.ai-refinement-shell) > .params-panel {
+  display: none;
+}
+
+.app-shell:has(.ai-refinement-shell) > .stage {
+  height: calc(100vh - 40px);
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.app-shell:has(.ai-refinement-shell) .stage-module-surface {
+  height: calc(100vh - 40px);
+}
+
+.app-shell:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) {
+  grid-template-columns: 245px minmax(0, 1fr);
+  gap: 20px;
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+  padding: 20px;
+  background: #f7f8fb;
+}
+
+.app-shell[data-sidebar="collapsed"]:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) {
+  grid-template-columns: 40px minmax(0, 1fr);
+}
+
+.app-shell:has(.showcase-page-frame) > .params-panel {
+  display: none;
+}
+
+.app-shell:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) > .stage {
+  height: auto;
+  min-height: calc(100vh - 40px);
+  gap: 0;
+  overflow: visible;
+  padding: 0;
+}
+
+.app-shell:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) .stage-module-surface {
+  height: auto;
+  min-height: calc(100vh - 40px);
+}
+
+.showcase-page-frame {
+  display: grid;
+  grid-template-rows: auto;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  min-height: calc(100vh - 40px);
+  overflow: visible;
+  background: #f7f8fb;
+}
+
+.showcase-page-body {
+  height: auto;
+  min-height: calc(100vh - 40px);
+  overflow: visible;
+}
+
+.showcase-page-frame:has(.ai-refinement-shell),
+.showcase-page-frame:has(.ai-refinement-shell) .showcase-page-body {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 布谷账号登录门禁 - 顶级艺术化重构 */
@@ -1287,7 +1375,6 @@ p {
 .sidebar.collapsed .brand-copy,
 .sidebar.collapsed .workspace-card,
 .sidebar.collapsed .account-meta,
-.sidebar.collapsed .account-card .settings-btn,
 .sidebar.collapsed .nav-group p,
 .sidebar.collapsed .nav-label,
 .sidebar.collapsed .nav-item em {
@@ -1335,12 +1422,20 @@ p {
   justify-content: center;
   padding: 7px 2px;
 }
+.sidebar.collapsed .account-card .avatar {
+  display: none;
+}
+.sidebar.collapsed .account-card .settings-btn {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
 
 @media (max-width: 1280px) {
   .sidebar:not(.collapsed) .brand-copy,
   .sidebar:not(.collapsed) .workspace-card,
   .sidebar:not(.collapsed) .account-meta,
-  .sidebar:not(.collapsed) .account-card .settings-btn,
   .sidebar:not(.collapsed) .nav-group p,
   .sidebar:not(.collapsed) .nav-label,
   .sidebar:not(.collapsed) .nav-item em {

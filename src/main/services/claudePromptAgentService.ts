@@ -408,6 +408,9 @@ export class ClaudePromptAgentService {
     const storedTextKey = view.textProtocol === 'claude-sdk' ? await this.modelConfig.getTextApiKey() : undefined;
     const apiKey = await this.settings.getAnthropicApiKey() || storedTextKey || process.env.ANTHROPIC_API_KEY;
     const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    if (!apiKey && !oauthToken && view.textApiKeyStatus === 'requires-reauthorization') {
+      throw new TextProviderBlockedError('文字 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存文字 API Key 后再启动会话。');
+    }
     if (!apiKey && !oauthToken && requiresExplicitTextKey()) {
       throw new TextProviderBlockedError('Claude SDK Agent 未配置：请先登录 Claude Code，或保存 Anthropic / Claude API Key。');
     }

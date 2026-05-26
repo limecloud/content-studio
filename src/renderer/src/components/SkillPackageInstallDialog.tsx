@@ -155,7 +155,7 @@ export function SkillPackageInstallDialog({
       void openPackage(packagePath);
     });
     window.contentStudio.notifySkillPackageOpenReady();
-    return unsubscribe;
+    return typeof unsubscribe === "function" ? unsubscribe : undefined;
   }, [workspacePath]);
 
   useEffect(() => {

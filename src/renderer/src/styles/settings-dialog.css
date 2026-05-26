@@ -352,9 +352,29 @@
   color: #92400e;
   background: #fffbeb;
 }
+.model-connection-summary span.reauthorize {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fef2f2;
+}
 .model-connection-summary span.muted {
   color: var(--muted);
   background: var(--panel-strong);
+}
+.model-auth-warning {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md);
+  background: #fef2f2;
+  padding: 12px 14px;
+  color: #991b1b;
+  font-size: 12px;
+}
+.model-auth-warning p {
+  margin: 0;
+  color: #7f1d1d;
+  line-height: 1.5;
 }
 .model-config-section {
   display: grid;

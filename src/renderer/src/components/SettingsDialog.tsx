@@ -4,6 +4,7 @@ import type {
   AutoUpdateState,
   BuguAuthState,
   ModelConfigView,
+  ModelSecretStatus,
   SkillFileAssociationResult,
   SkillFileAssociationState,
 } from '../../../shared/types';
@@ -72,6 +73,26 @@ function updateStatusText(updateState: AutoUpdateState) {
   return '开启后，正式安装包启动时会自动检查更新。';
 }
 
+function keyStatusTone(status: ModelSecretStatus | undefined, hasKey: boolean | undefined, optional = false): 'ready' | 'missing' | 'muted' | 'reauthorize' {
+  if (status === 'requires-reauthorization') return 'reauthorize';
+  if (status === 'available' || hasKey) return 'ready';
+  return optional ? 'muted' : 'missing';
+}
+
+function keyStatusLabel(status: ModelSecretStatus | undefined, hasKey: boolean | undefined, optional = false): string {
+  if (status === 'requires-reauthorization') return '需重新授权';
+  if (status === 'available' || hasKey) return '已授权';
+  return optional ? '可选' : '未配置';
+}
+
+function reauthorizationSummary(modelConfig: ModelConfigView | null): string | null {
+  const labels: string[] = [];
+  if (modelConfig?.textApiKeyStatus === 'requires-reauthorization') labels.push('文字');
+  if (modelConfig?.imageApiKeyStatus === 'requires-reauthorization') labels.push('图片');
+  if (modelConfig?.videoApiKeyStatus === 'requires-reauthorization') labels.push('视频');
+  return labels.length ? `${labels.join('、')} API Key 需要重新授权。` : null;
+}
+
 function resolveBrandName(authState?: BuguAuthState | null): string {
   return authState?.bootstrap?.branding?.shortName
     || authState?.bootstrap?.branding?.appName
@@ -132,6 +153,10 @@ export function SettingsDialog({
   const subscription = authState?.bootstrap?.subscription;
   const subscriptionText =
     subscription?.planName || subscription?.planKey || subscription?.status || '企业开通';
+  const textKeyTone = keyStatusTone(modelConfig?.textApiKeyStatus, modelConfig?.hasTextApiKey);
+  const imageKeyTone = keyStatusTone(modelConfig?.imageApiKeyStatus, modelConfig?.hasImageApiKey);
+  const videoKeyTone = keyStatusTone(modelConfig?.videoApiKeyStatus, modelConfig?.hasVideoApiKey, true);
+  const modelReauthorizationSummary = reauthorizationSummary(modelConfig);
   const [skillAssociation, setSkillAssociation] = useState<SkillFileAssociationState | null>(null);
   const [skillAssociationBusy, setSkillAssociationBusy] = useState(false);
   const [skillAssociationMessage, setSkillAssociationMessage] = useState<string | null>(null);
@@ -363,10 +388,17 @@ export function SettingsDialog({
                   </div>
 
                   <div className="model-connection-summary">
-                    <span className={modelConfig?.hasTextApiKey ? 'ready' : 'missing'}>文字 Key：{modelConfig?.hasTextApiKey ? '已保存' : '未配置'}</span>
-                    <span className={modelConfig?.hasImageApiKey ? 'ready' : 'missing'}>图片 Key：{modelConfig?.hasImageApiKey ? '已保存' : '未配置'}</span>
-                    <span className={modelConfig?.hasVideoApiKey ? 'ready' : 'muted'}>视频 Key：{modelConfig?.hasVideoApiKey ? '已保存' : '可选'}</span>
+                    <span className={textKeyTone}>文字 Key：{keyStatusLabel(modelConfig?.textApiKeyStatus, modelConfig?.hasTextApiKey)}</span>
+                    <span className={imageKeyTone}>图片 Key：{keyStatusLabel(modelConfig?.imageApiKeyStatus, modelConfig?.hasImageApiKey)}</span>
+                    <span className={videoKeyTone}>视频 Key：{keyStatusLabel(modelConfig?.videoApiKeyStatus, modelConfig?.hasVideoApiKey, true)}</span>
                   </div>
+
+                  {modelReauthorizationSummary ? (
+                    <div className="model-auth-warning">
+                      <strong>{modelReauthorizationSummary}</strong>
+                      <p>当前系统无法读取已保存的加密密钥。请在下面对应输入框重新填写并保存；如果不再使用该服务，直接保存会清理不可读密钥。</p>
+                    </div>
+                  ) : null}
 
                   <section className="model-config-section">
                     <header>
@@ -395,7 +427,7 @@ export function SettingsDialog({
                       </label>
                       <label className="wide">
                         <span>API Key</span>
-                        <input type="password" value={modelDraft.apiKey} onChange={(event) => setModelDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={modelConfig?.hasTextApiKey ? '留空保留现有文字 Key；更换服务商时请重新填写' : '输入当前文字协议对应的 API Key'} />
+                        <input type="password" value={modelDraft.apiKey} onChange={(event) => setModelDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={modelConfig?.textApiKeyStatus === 'requires-reauthorization' ? '当前文字 Key 需重新授权，请重新填写' : modelConfig?.hasTextApiKey ? '留空保留现有文字 Key；更换服务商时请重新填写' : '输入当前文字协议对应的 API Key'} />
                       </label>
                     </div>
                   </section>
@@ -426,7 +458,7 @@ export function SettingsDialog({
                       </label>
                       <label className="wide">
                         <span>API Key</span>
-                        <input type="password" value={modelDraft.imageApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, imageApiKey: event.target.value }))} placeholder={modelConfig?.hasImageApiKey ? '留空保留现有图片 Key；更换服务商时请重新填写' : '输入图片生成 API Key'} />
+                        <input type="password" value={modelDraft.imageApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, imageApiKey: event.target.value }))} placeholder={modelConfig?.imageApiKeyStatus === 'requires-reauthorization' ? '当前图片 Key 需重新授权，请重新填写' : modelConfig?.hasImageApiKey ? '留空保留现有图片 Key；更换服务商时请重新填写' : '输入图片生成 API Key'} />
                       </label>
                       <label className="wide subdued-field">
                         <span>图片提示词编排模型（可选）</span>
@@ -449,7 +481,7 @@ export function SettingsDialog({
                       </label>
                       <label>
                         <span>视频 API Key</span>
-                        <input type="password" value={modelDraft.videoApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, videoApiKey: event.target.value }))} placeholder={modelConfig?.hasVideoApiKey ? '留空保留现有视频 Key' : '未配置时视频保持待配置队列'} />
+                        <input type="password" value={modelDraft.videoApiKey} onChange={(event) => setModelDraft((current) => ({ ...current, videoApiKey: event.target.value }))} placeholder={modelConfig?.videoApiKeyStatus === 'requires-reauthorization' ? '当前视频 Key 需重新授权，请重新填写' : modelConfig?.hasVideoApiKey ? '留空保留现有视频 Key' : '未配置时视频保持待配置队列'} />
                       </label>
                       <label className="wide">
                         <span>视频端点</span>

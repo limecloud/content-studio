@@ -4,6 +4,7 @@ import type {
   ArticleGenerationRequest,
   AgentPromptSession,
   AppSettingsView,
+  AssetFileKind,
   AssetReworkSource,
   BrandKnowledgeBaseRecord,
   AssetReviewRecord,
@@ -126,6 +127,29 @@ type PreferredKnowledgeSource =
   | { kind: "brand"; id: string }
   | { kind: "ip"; id: string }
   | null;
+
+type ShowcaseImageHandoffInput = {
+  prompt: string;
+  productImageRefs?: string[];
+  referenceImageRefs?: string[];
+  productImageLabel?: string;
+  referenceImageLabel?: string;
+};
+
+type ShowcaseVideoHandoffInput = {
+  prompt: string;
+  imageAssetRefs?: string[];
+  videoAssetRefs?: string[];
+  audioAssetRefs?: string[];
+  featureId?: string;
+  featureTitle?: string;
+  durationSeconds?: number;
+  aspectRatio?: GlobalGenerationParams["aspectRatio"];
+  resolution?: string;
+  storyboardCount?: number;
+  quality?: string;
+  selectedCaseTitle?: string;
+};
 
 function cleanPathList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -330,7 +354,7 @@ export function useContentStudioApp() {
   const [shortcutActive, setShortcutActive] = useState(true);
   const [commandWhitelist, setCommandWhitelist] = useState(false);
 
-  const [activeModule, setActiveModule] = useState<ModuleKey>("image");
+  const [activeModule, setActiveModule] = useState<ModuleKey>("image-showcase");
   const [settings, setSettings] = useState<AppSettingsView | null>(null);
   const [authState, setAuthState] = useState<BuguAuthState | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
@@ -408,7 +432,10 @@ export function useContentStudioApp() {
   const [params, setParams] = useState<GlobalGenerationParams>(DEFAULT_PARAMS);
   const [productImageRefs, setProductImageRefs] = useState<string[]>([]);
   const [referenceImageRefs, setReferenceImageRefs] = useState<string[]>([]);
+  const [imageProductLabel, setImageProductLabel] = useState("产品图");
+  const [imageReferenceLabel, setImageReferenceLabel] = useState("参考图");
   const [videoAssetRefs, setVideoAssetRefs] = useState<string[]>([]);
+  const [audioAssetRefs, setAudioAssetRefs] = useState<string[]>([]);
   const [imagePromptDraft, setImagePromptDraft] = useState("");
   const [imagePromptMode, setImagePromptMode] =
     useState<ImageGenerationRequest["promptMode"]>("free");
@@ -783,15 +810,6 @@ export function useContentStudioApp() {
     setWorkflowRuns(nextWorkflowRuns);
     setActiveWorkflowDefinitionId((current) => current || nextWorkflowDefinitions[0]?.id || "");
     setActiveWorkflowRunId((current) => current || nextWorkflowRuns[0]?.id || "");
-    setMediaResult((current) => {
-      if (current) return current;
-      const lastImage = nextLogs.find(
-        (log) => log.kind === "image" && log.status === "succeeded" && (log.output as { assetRefs?: string[] })?.assetRefs?.length,
-      );
-      if (!lastImage) return null;
-      const output = lastImage.output as { assetRefs: string[] };
-      return { logId: lastImage.id, status: "succeeded", message: "", assetRefs: output.assetRefs };
-    });
     setActivePromptPackId((current) => current || nextPromptPacks[0]?.id || "");
     setSelectedSceneIds((current) => {
       const availableSceneIds = new Set(nextSceneCards.map((scene) => scene.id));
@@ -835,7 +853,7 @@ export function useContentStudioApp() {
     );
     return () => {
       alive = false;
-      unsubscribe();
+      if (typeof unsubscribe === "function") unsubscribe();
     };
   }, []);
 
@@ -947,12 +965,36 @@ export function useContentStudioApp() {
     setError("已取消当前本地任务；如果底层操作已完成，迟到结果会被忽略。");
   }
 
+  function dismissError(): void {
+    setError(null);
+  }
+
+  function clearMediaResult(): void {
+    setMediaResult(null);
+  }
+
   function requireWorkspace(): string {
     if (!workspacePath)
       throw new Error(
         "请先选择工作区，生成结果和配置会写入本地内容工厂目录。",
       );
     return workspacePath;
+  }
+
+  function requireModelKeyReadable(kind: "text" | "image" | "video"): void {
+    const status =
+      kind === "text"
+        ? modelConfig?.textApiKeyStatus
+        : kind === "image"
+          ? modelConfig?.imageApiKeyStatus
+          : modelConfig?.videoApiKeyStatus;
+    if (status !== "requires-reauthorization") return;
+    const label = kind === "text" ? "文字" : kind === "image" ? "图片" : "视频";
+    setSettingsTab("model");
+    setShowSettingsDialog(true);
+    throw new Error(
+      `${label} API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存 ${label} API Key 后再继续。`,
+    );
   }
 
   function openModelDialog(): void {
@@ -987,6 +1029,8 @@ export function useContentStudioApp() {
     const next = await window.contentStudio.saveModelConfig({
       textApiEndpoint: modelDraft.apiEndpoint,
       textApiKey: modelDraft.apiKey || undefined,
+      clearTextApiKey:
+        !modelDraft.apiKey && modelConfig?.textApiKeyStatus === "requires-reauthorization",
       textModel: modelDraft.textModel,
       textProtocol: modelDraft.textProtocol,
       imageProvider:
@@ -996,6 +1040,8 @@ export function useContentStudioApp() {
       imageProtocol: modelDraft.imageProtocol,
       imageApiEndpoint: modelDraft.imageApiEndpoint,
       imageApiKey: modelDraft.imageApiKey || undefined,
+      clearImageApiKey:
+        !modelDraft.imageApiKey && modelConfig?.imageApiKeyStatus === "requires-reauthorization",
       imageOuterModel: modelDraft.imageOuterModel,
       imageModels: modelDraft.imageModels
         .split(",")
@@ -1008,6 +1054,8 @@ export function useContentStudioApp() {
           : "disabled",
       videoApiEndpoint: modelDraft.videoApiEndpoint,
       videoApiKey: modelDraft.videoApiKey || undefined,
+      clearVideoApiKey:
+        !modelDraft.videoApiKey && modelConfig?.videoApiKeyStatus === "requires-reauthorization",
       videoModel: modelDraft.videoModel,
     });
     const catalog = await window.contentStudio.getModelCatalog();
@@ -1142,16 +1190,46 @@ export function useContentStudioApp() {
   }
 
   async function selectAssetFiles(
-    kind: "product-image" | "reference-image" | "video",
+    kind: "product-image" | "reference-image" | "video" | "audio",
   ): Promise<void> {
     const paths = await window.contentStudio.selectAssetFiles(kind);
-    if (paths.length === 0) return;
+    if (!paths?.length) return;
     if (kind === "product-image")
       setProductImageRefs((current) => [...current, ...paths].slice(0, 10));
     if (kind === "reference-image")
       setReferenceImageRefs((current) => [...current, ...paths].slice(0, 6));
     if (kind === "video")
       setVideoAssetRefs((current) => [...current, ...paths].slice(0, 3));
+    if (kind === "audio")
+      setAudioAssetRefs((current) => [...current, ...paths].slice(0, 1));
+  }
+
+  async function selectMaterialFiles(kind: AssetFileKind): Promise<string[]> {
+    return window.contentStudio.selectAssetFiles(kind);
+  }
+
+  function removeProductImageRef(ref: string): void {
+    setProductImageRefs((current) => current.filter((item) => item !== ref));
+  }
+
+  function removeReferenceImageRef(ref: string): void {
+    setReferenceImageRefs((current) => current.filter((item) => item !== ref));
+  }
+
+  function removeVideoAssetRef(ref: string): void {
+    setVideoAssetRefs((current) => current.filter((item) => item !== ref));
+  }
+
+  function removeAudioAssetRef(ref: string): void {
+    setAudioAssetRefs((current) => current.filter((item) => item !== ref));
+  }
+
+  function clearProductImageRefs(): void {
+    setProductImageRefs([]);
+  }
+
+  function clearReferenceImageRefs(): void {
+    setReferenceImageRefs([]);
   }
 
   async function installBuiltinKnowledgeBase(id: string): Promise<void> {
@@ -1514,9 +1592,65 @@ export function useContentStudioApp() {
   function useScenePromptInImage(prompt: string, sceneCardIds?: string[]): void {
     setSelectedSceneIds(sceneCardIds ?? []);
     setImageWorkflowRunId("");
+    setImageProductLabel("产品图");
+    setImageReferenceLabel("参考图");
     setImagePromptDraft(prompt);
     setImagePromptMode("free");
     setActiveModule("image");
+  }
+
+  function useShowcasePromptInImage(input: ShowcaseImageHandoffInput): void {
+    const nextProductRefs = cleanPathList(input.productImageRefs);
+    const nextReferenceRefs = cleanPathList(input.referenceImageRefs);
+    setSelectedSceneIds([]);
+    setImageWorkflowRunId("");
+    setImageProductLabel(input.productImageLabel?.trim() || "产品图");
+    setImageReferenceLabel(input.referenceImageLabel?.trim() || "参考图");
+    setProductImageRefs(nextProductRefs.slice(0, 10));
+    setReferenceImageRefs(nextReferenceRefs.slice(0, 6));
+    setImagePromptDraft(input.prompt);
+    setImagePromptMode("free");
+  }
+
+  async function generateShowcaseImage(
+    input: ShowcaseImageHandoffInput,
+    context?: ActionContext,
+  ): Promise<void> {
+    const workspace = requireWorkspace();
+    if (params.runMode !== "single")
+      throw new Error("批量 / 定时队列当前未启用，请先切回单次处理。");
+    requireModelKeyReadable("image");
+    const nextProductRefs = cleanPathList(input.productImageRefs).slice(0, 10);
+    const nextReferenceRefs = cleanPathList(input.referenceImageRefs).slice(0, 6);
+    setSelectedSceneIds([]);
+    setImageWorkflowRunId("");
+    setImageProductLabel(input.productImageLabel?.trim() || "产品图");
+    setImageReferenceLabel(input.referenceImageLabel?.trim() || "参考图");
+    setProductImageRefs(nextProductRefs);
+    setReferenceImageRefs(nextReferenceRefs);
+    setImagePromptDraft(input.prompt);
+    setImagePromptMode("free");
+    const result = await window.contentStudio.generateImage({
+      workspacePath: workspace,
+      productImageRefs: nextProductRefs,
+      referenceImageRefs: nextReferenceRefs,
+      prompt: input.prompt,
+      promptMode: "free",
+      generationMode: imageGenerationMode,
+      template: imageTemplate,
+      templateInputs: imageTemplateInputs,
+      watermark: imageWatermark,
+      promptPackId: activePromptPack?.id,
+      sceneCardIds: [],
+      citations: citationsForRequest,
+      selectedSkillSlugs:
+        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+      params,
+    });
+    context?.throwIfCancelled();
+    setMediaResult(result);
+    if (result.status === "succeeded") setImageReworkSource(null);
+    await refresh(workspace);
   }
 
   function useScenePromptInVideo(prompt: string, sceneCardIds?: string[]): void {
@@ -1525,6 +1659,25 @@ export function useContentStudioApp() {
     setVideoShotCount(5);
     setVideoDurationSeconds(18);
     setActiveModule("video");
+  }
+
+  function useShowcasePromptInVideo(input: ShowcaseVideoHandoffInput): void {
+    const nextImageRefs = cleanPathList(input.imageAssetRefs).slice(0, 7);
+    const nextVideoRefs = cleanPathList(input.videoAssetRefs).slice(0, 3);
+    const nextAudioRefs = cleanPathList(input.audioAssetRefs).slice(0, 1);
+    setSelectedSceneIds([]);
+    setProductImageRefs(nextImageRefs);
+    setReferenceImageRefs([]);
+    setVideoAssetRefs(nextVideoRefs);
+    setAudioAssetRefs(nextAudioRefs);
+    setVideoCustomRequirement(input.prompt);
+    setVideoDurationSeconds(input.durationSeconds ?? videoDurationSeconds);
+    if (input.featureTitle || input.selectedCaseTitle) {
+      setVideoProductName(input.selectedCaseTitle || input.featureTitle || videoProductName);
+    }
+    if (input.aspectRatio) {
+      setParams((current) => ({ ...current, aspectRatio: input.aspectRatio || current.aspectRatio }));
+    }
   }
 
   function usePromptDraftInVideo(draftId: string): void {
@@ -2943,6 +3096,7 @@ export function useContentStudioApp() {
     const workspace = requireWorkspace();
     if (params.runMode !== "single")
       throw new Error("批量 / 定时队列当前未启用，请先切回单次处理。");
+    requireModelKeyReadable("image");
     const workflowRun = imageWorkflowRunId
       ? workflowRuns.find((run) => run.id === imageWorkflowRunId)
       : imageReworkSource?.workflowRunId
@@ -2985,10 +3139,12 @@ export function useContentStudioApp() {
 
   async function generateVideo(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
+    requireModelKeyReadable("video");
     const result = await window.contentStudio.generateVideo({
       workspacePath: workspace,
       imageAssetRefs: [...productImageRefs, ...referenceImageRefs],
       videoAssetRefs,
+      audioAssetRefs,
       prompt: suggestedVideoPrompt,
       script: videoScript?.script || activeScenes[0]?.voiceoverDirection,
       promptPackId: activePromptPack?.id,
@@ -3007,11 +3163,69 @@ export function useContentStudioApp() {
     await refresh(workspace);
   }
 
+  async function generateShowcaseVideo(
+    input: ShowcaseVideoHandoffInput,
+    context?: ActionContext,
+  ): Promise<void> {
+    const workspace = requireWorkspace();
+    requireModelKeyReadable("video");
+    const nextImageRefs = cleanPathList(input.imageAssetRefs).slice(0, 7);
+    const nextVideoRefs = cleanPathList(input.videoAssetRefs).slice(0, 3);
+    const nextAudioRefs = cleanPathList(input.audioAssetRefs).slice(0, 1);
+    const nextPrompt = input.prompt.trim();
+    const nextDurationSeconds = input.durationSeconds ?? videoDurationSeconds;
+    const nextAspectRatio = input.aspectRatio ?? params.aspectRatio;
+    setSelectedSceneIds([]);
+    setProductImageRefs(nextImageRefs);
+    setReferenceImageRefs([]);
+    setVideoAssetRefs(nextVideoRefs);
+    setAudioAssetRefs(nextAudioRefs);
+    setVideoCustomRequirement(nextPrompt);
+    setVideoDurationSeconds(nextDurationSeconds);
+    if (input.featureTitle || input.selectedCaseTitle) {
+      setVideoProductName(input.selectedCaseTitle || input.featureTitle || videoProductName);
+    }
+    if (input.aspectRatio) {
+      setParams((current) => ({ ...current, aspectRatio: nextAspectRatio }));
+    }
+    const result = await window.contentStudio.generateVideo({
+      workspacePath: workspace,
+      imageAssetRefs: nextImageRefs,
+      videoAssetRefs: nextVideoRefs,
+      audioAssetRefs: nextAudioRefs,
+      prompt: [
+        nextPrompt,
+        "",
+        "## DressingKit AI 视频复刻参数",
+        `- 功能：${input.featureTitle || input.featureId || "AI 视频"}`,
+        input.selectedCaseTitle ? `- 示例：${input.selectedCaseTitle}` : "",
+        input.storyboardCount ? `- 生图数量：${input.storyboardCount}` : "",
+        input.resolution ? `- 分辨率/质量：${input.resolution}` : "",
+        input.quality ? `- 图片质量：${input.quality}` : "",
+      ].filter(Boolean).join("\n"),
+      script: nextPrompt,
+      promptPackId: activePromptPack?.id,
+      sceneCardIds: [],
+      citations: citationsForRequest,
+      selectedSkillSlugs:
+        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+      params: {
+        videoModel: params.videoModel,
+        aspectRatio: nextAspectRatio,
+        durationSeconds: nextDurationSeconds,
+      },
+    });
+    context?.throwIfCancelled();
+    setMediaResult(result);
+    await refresh(workspace);
+  }
+
   function buildVideoPromptHandoffContent(): string {
     const materialLines = [
       ...productImageRefs.map((ref) => `- 产品图：${fileNameFromPath(ref)}`),
       ...referenceImageRefs.map((ref) => `- 参考图：${fileNameFromPath(ref)}`),
       ...videoAssetRefs.map((ref) => `- 参考视频：${fileNameFromPath(ref)}`),
+      ...audioAssetRefs.map((ref) => `- 参考音频：${fileNameFromPath(ref)}`),
       videoUrl.trim() ? `- 参考视频链接：${videoUrl.trim()}` : "",
     ].filter(Boolean);
     const sceneLines = activeScenes.map((scene, index) => [
@@ -3356,7 +3570,10 @@ export function useContentStudioApp() {
     setParams,
     productImageRefs,
     referenceImageRefs,
+    imageProductLabel,
+    imageReferenceLabel,
     videoAssetRefs,
+    audioAssetRefs,
     imagePromptDraft,
     setImagePromptDraft,
     imagePromptMode,
@@ -3406,6 +3623,7 @@ export function useContentStudioApp() {
     articleExportPath,
     platformDrafts,
     mediaResult,
+    clearMediaResult,
     historyFilter,
     setHistoryFilter,
     copiedLogId,
@@ -3416,6 +3634,7 @@ export function useContentStudioApp() {
     busy,
     currentActionLabel,
     error,
+    dismissError,
     workspacePath,
     enabledSkillKeys,
     activePromptPack,
@@ -3451,6 +3670,13 @@ export function useContentStudioApp() {
     addKnowledgeSectionCitation,
     toggleVideoDimension,
     selectAssetFiles,
+    selectMaterialFiles,
+    removeProductImageRef,
+    removeReferenceImageRef,
+    removeVideoAssetRef,
+    removeAudioAssetRef,
+    clearProductImageRefs,
+    clearReferenceImageRefs,
     installBuiltinKnowledgeBase,
     importKnowledgeBase,
     importInputSource,
@@ -3475,7 +3701,11 @@ export function useContentStudioApp() {
     reworkAsset,
     distillAssetPrompt,
     useScenePromptInImage,
+    useShowcasePromptInImage,
+    generateShowcaseImage,
     useScenePromptInVideo,
+    useShowcasePromptInVideo,
+    generateShowcaseVideo,
     usePromptDraftInVideo,
     usePromptDraftInArticle,
     usePromptDraftInGreenScreen,

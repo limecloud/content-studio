@@ -4,6 +4,8 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type MouseEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type SetStateAction,
 } from "react";
 import type {
@@ -101,6 +103,8 @@ interface ImageModuleProps {
   runMode: GlobalGenerationParams["runMode"];
   productImageRefs: string[];
   referenceImageRefs: string[];
+  productImageLabel: string;
+  referenceImageLabel: string;
   imagePromptDraft: string;
   setImagePromptDraft: Dispatch<SetStateAction<string>>;
   imagePromptMode: ImageGenerationRequest["promptMode"];
@@ -126,6 +130,10 @@ interface ImageModuleProps {
   onExportAsset: (path: string) => void;
   onSelectProductImages: () => void;
   onSelectReferenceImages: () => void;
+  onRemoveProductImageRef: (ref: string) => void;
+  onRemoveReferenceImageRef: (ref: string) => void;
+  onClearProductImageRefs: () => void;
+  onClearReferenceImageRefs: () => void;
   onGenerateImage: () => void;
 }
 
@@ -136,6 +144,8 @@ export function ImageModule({
   runMode,
   productImageRefs,
   referenceImageRefs,
+  productImageLabel,
+  referenceImageLabel,
   imagePromptDraft,
   setImagePromptDraft,
   imagePromptMode,
@@ -155,6 +165,10 @@ export function ImageModule({
   onExportAsset,
   onSelectProductImages,
   onSelectReferenceImages,
+  onRemoveProductImageRef,
+  onRemoveReferenceImageRef,
+  onClearProductImageRefs,
+  onClearReferenceImageRefs,
   onGenerateImage,
 }: ImageModuleProps) {
   const [templateOverrides, setTemplateOverrides] = useState<
@@ -212,13 +226,13 @@ export function ImageModule({
   const assetMentions: ImageMention[] = [
     ...productImageRefs.map((ref, index) => ({
       ref,
-      label: `产品图 ${index + 1}`,
+      label: `${productImageLabel} ${index + 1}`,
       fileName: fileNameFromPath(ref),
       source: "product" as const,
     })),
     ...referenceImageRefs.map((ref, index) => ({
       ref,
-      label: `参考图 ${index + 1}`,
+      label: `${referenceImageLabel} ${index + 1}`,
       fileName: fileNameFromPath(ref),
       source: "reference" as const,
     })),
@@ -328,7 +342,7 @@ export function ImageModule({
 
   useEffect(() => {
     if (!fullscreenAssetRef) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") setFullscreenAssetRef(null);
     };
     window.addEventListener("keydown", onKeyDown);
@@ -715,51 +729,177 @@ export function ImageModule({
     );
   };
 
+  const renderUploadPanel = (input: {
+    className: "product" | "reference";
+    label: string;
+    refs: string[];
+    limit: number;
+    onClick: () => void;
+  }) => {
+    const removeRef =
+      input.className === "product"
+        ? onRemoveProductImageRef
+        : onRemoveReferenceImageRef;
+    const clearRefs =
+      input.className === "product"
+        ? onClearProductImageRefs
+        : onClearReferenceImageRefs;
+    const displayLabel =
+      input.className === "product" &&
+      input.refs.length === 0 &&
+      referenceImageRefs.length > 0
+        ? "主体图"
+        : input.label;
+    const previewLimit = input.className === "reference" ? input.limit : 4;
+    const previewRefs = input.refs.slice(0, previewLimit);
+    const shouldSummarizeFiles =
+      input.className === "reference" || input.refs.length > 3;
+    const openPreview = (
+      event: MouseEvent<HTMLElement>,
+      ref: string,
+    ) => {
+      event.stopPropagation();
+      setFullscreenAssetRef(ref);
+    };
+    const removePreview = (
+      event: MouseEvent<HTMLButtonElement>,
+      ref: string,
+    ) => {
+      event.stopPropagation();
+      removeRef(ref);
+    };
+    const clearPanel = (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      clearRefs();
+    };
+    const handlePanelKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      input.onClick();
+    };
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        className={`image-upload-panel ${input.className}`}
+        data-has-assets={input.refs.length ? "true" : "false"}
+        onClick={input.onClick}
+        onKeyDown={handlePanelKeyDown}
+      >
+        <header>
+          <strong>{displayLabel}</strong>
+          <span>
+            <em>{input.refs.length}/{input.limit}</em>
+            {input.refs.length ? (
+              <button
+                type="button"
+                className="image-upload-clear"
+                aria-label={`清空${displayLabel}`}
+                onClick={clearPanel}
+              >
+                清空
+              </button>
+            ) : null}
+          </span>
+        </header>
+        {previewRefs.length ? (
+          <div
+            className="image-upload-preview-grid"
+            data-count={previewRefs.length}
+          >
+            {previewRefs.map((ref, index) => (
+              <figure
+                key={ref}
+                className="image-upload-preview-item"
+                title={fileNameFromPath(ref)}
+              >
+                <button
+                  type="button"
+                  className="image-upload-preview-zoom"
+                  aria-label={`放大查看${displayLabel} ${index + 1}`}
+                  onClick={(event) => openPreview(event, ref)}
+                >
+                  <img
+                    src={imageAssetSource(ref)}
+                    alt={`${displayLabel} ${index + 1}`}
+                    loading="lazy"
+                    onError={() =>
+                      setBrokenAssetRefs((current) => {
+                        const next = new Set(current);
+                        next.add(ref);
+                        return next;
+                      })
+                    }
+                  />
+                </button>
+                <button
+                  type="button"
+                  className="image-upload-remove"
+                  aria-label={`移除${displayLabel} ${index + 1}`}
+                  title={`移除${displayLabel} ${index + 1}`}
+                  onClick={(event) => removePreview(event, ref)}
+                >
+                  ×
+                </button>
+              </figure>
+            ))}
+            {input.refs.length > previewRefs.length ? (
+              <span className="image-upload-more">
+                +{input.refs.length - previewRefs.length}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <div className="image-drop-zone">
+            <span>⇧</span>
+            <small>点击或拖拽上传</small>
+          </div>
+        )}
+        {input.refs.length ? (
+          <div
+            className={`image-upload-files ${
+              shouldSummarizeFiles ? "summary" : ""
+            }`}
+          >
+            {shouldSummarizeFiles ? (
+              <b>已带入 {input.refs.length} 张{displayLabel}</b>
+            ) : (
+              input.refs.slice(0, 3).map((ref) => (
+                <b key={ref}>{fileNameFromPath(ref)}</b>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <section className="image-workbench-layout">
       <aside className="image-input-rail" aria-label="素材输入栏">
-        <div className="image-upload-stack">
-          <button
-            className="image-upload-panel product"
-            onClick={onSelectProductImages}
-          >
-            <header>
-              <strong>产品图</strong>
-              <em>{productImageRefs.length}/10</em>
-            </header>
-            <div className="image-drop-zone">
-              <span>⇧</span>
-              <small>点击或拖拽上传</small>
-            </div>
-            {productImageRefs.length ? (
-              <div className="image-upload-files">
-                {productImageRefs.slice(0, 3).map((ref) => (
-                  <b key={ref}>{ref.split("/").pop()}</b>
-                ))}
-              </div>
-            ) : null}
-          </button>
-
-          <button
-            className="image-upload-panel reference"
-            onClick={onSelectReferenceImages}
-          >
-            <header>
-              <strong>参考图</strong>
-              <em>{referenceImageRefs.length}/6</em>
-            </header>
-            <div className="image-drop-zone">
-              <span>⇧</span>
-              <small>点击或拖拽上传</small>
-            </div>
-            {referenceImageRefs.length ? (
-              <div className="image-upload-files">
-                {referenceImageRefs.slice(0, 3).map((ref) => (
-                  <b key={ref}>{ref.split("/").pop()}</b>
-                ))}
-              </div>
-            ) : null}
-          </button>
+        <div
+          className="image-upload-stack"
+          data-product-empty={
+            productImageRefs.length === 0 && referenceImageRefs.length > 0
+              ? "true"
+              : undefined
+          }
+        >
+          {renderUploadPanel({
+            className: "product",
+            label: productImageLabel,
+            refs: productImageRefs,
+            limit: 10,
+            onClick: onSelectProductImages,
+          })}
+          {renderUploadPanel({
+            className: "reference",
+            label: referenceImageLabel,
+            refs: referenceImageRefs,
+            limit: 6,
+            onClick: onSelectReferenceImages,
+          })}
         </div>
 
         {isBatchShell ? (

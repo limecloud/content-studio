@@ -166,16 +166,23 @@ function normalizeFixtureFeatureFlagItems(
   }));
 }
 
+function normalizeFixtureStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+}
+
 function normalizeOemFixtureSiteConfig(raw: unknown, fixturePath: string): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const payload = raw as Record<string, unknown>;
   const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : payload;
   const cases = Array.isArray(data.cases) ? data.cases as Record<string, unknown>[] : [];
+  const materials = Array.isArray(data.materials) ? data.materials as Record<string, unknown>[] : [];
   const assets = Array.isArray(data.assets) ? data.assets as Record<string, unknown>[] : [];
   const featureFlags = normalizeFixtureFeatureFlags(data);
   const featureFlagItems = normalizeFixtureFeatureFlagItems(data, featureFlags);
 
-  if (!cases.length && !assets.length && !featureFlags && !featureFlagItems?.length) return raw;
+  if (!cases.length && !materials.length && !assets.length && !featureFlags && !featureFlagItems?.length) return raw;
 
   const rawAssets = [
     ...assets,
@@ -210,11 +217,20 @@ function normalizeOemFixtureSiteConfig(raw: unknown, fixturePath: string): unkno
     const id = typeof assetRecord.id === 'string' && assetRecord.id.trim()
       ? assetRecord.id.trim()
       : `asset-${index + 1}`;
+    const role = typeof assetRecord.role === 'string' && assetRecord.role.trim() ? assetRecord.role.trim() : undefined;
+    const group = typeof assetRecord.group === 'string' && assetRecord.group.trim() ? assetRecord.group.trim() : undefined;
+    const fileName = typeof assetRecord.fileName === 'string' && assetRecord.fileName.trim() ? assetRecord.fileName.trim() : undefined;
+    const caption = typeof assetRecord.caption === 'string' && assetRecord.caption.trim()
+      ? assetRecord.caption.trim()
+      : [group, role, fileName].filter(Boolean).join(' ') || undefined;
     return {
       id,
       kind: typeof assetRecord.kind === 'string' && assetRecord.kind.trim() ? assetRecord.kind.trim() : 'image',
       publicUrl,
-      caption: typeof assetRecord.caption === 'string' && assetRecord.caption.trim() ? assetRecord.caption.trim() : undefined,
+      caption,
+      role,
+      group,
+      fileName,
       width: typeof assetRecord.width === 'number' ? assetRecord.width : undefined,
       height: typeof assetRecord.height === 'number' ? assetRecord.height : undefined,
       mimeType: typeof assetRecord.mimeType === 'string' && assetRecord.mimeType.trim() ? assetRecord.mimeType.trim() : undefined,
@@ -223,28 +239,47 @@ function normalizeOemFixtureSiteConfig(raw: unknown, fixturePath: string): unkno
   const uniqueAssets = Array.from(new Map(normalizedAssets.map((asset) => [asset.id, asset])).values());
 
   const normalizedCases = cases.map((item, index) => {
-    const mediaRefs = Array.isArray(item.mediaRefs) && item.mediaRefs.length
-      ? item.mediaRefs.filter((ref): ref is string => typeof ref === 'string' && ref.trim().length > 0)
-      : [];
+    const mediaRefs = normalizeFixtureStringArray(item.mediaRefs);
+    const mediaRefsJson = normalizeFixtureStringArray(item.mediaRefsJson);
     const caseAssets = Array.isArray(item.assets) ? item.assets as Record<string, unknown>[] : [];
     const resolvedMediaRefs = mediaRefs.length
       ? mediaRefs
-      : caseAssets.map((asset, assetIndex) => {
-          if (typeof asset.id === 'string' && asset.id.trim()) return asset.id.trim();
-          return `asset-${typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `case-${index + 1}`}-${assetIndex + 1}`;
-        });
+      : mediaRefsJson.length
+        ? mediaRefsJson
+        : caseAssets.map((asset, assetIndex) => {
+            if (typeof asset.id === 'string' && asset.id.trim()) return asset.id.trim();
+            return `asset-${typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `case-${index + 1}`}-${assetIndex + 1}`;
+          });
     return {
       id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `case-${index + 1}`,
       title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : `案例 ${index + 1}`,
       industry: typeof item.industry === 'string' && item.industry.trim() ? item.industry.trim() : undefined,
       summary: typeof item.summary === 'string' && item.summary.trim() ? item.summary.trim() : undefined,
       prompt: typeof item.prompt === 'string' && item.prompt.trim() ? item.prompt.trim() : undefined,
-      tags: Array.isArray(item.tags)
-        ? item.tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
-        : undefined,
+      tags: normalizeFixtureStringArray(item.tags).length
+        ? normalizeFixtureStringArray(item.tags)
+        : normalizeFixtureStringArray(item.tagsJson),
       mediaRefs: resolvedMediaRefs,
     };
   });
+
+  const normalizedMaterials = materials.map((item, index) => ({
+    id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `material-${index + 1}`,
+    type: typeof item.type === 'string' && item.type.trim() ? item.type.trim() : undefined,
+    title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : `素材 ${index + 1}`,
+    description: typeof item.description === 'string' && item.description.trim() ? item.description.trim() : undefined,
+    previewRef: typeof item.previewRef === 'string' && item.previewRef.trim() ? item.previewRef.trim() : undefined,
+    assetRefs: normalizeFixtureStringArray(item.assetRefs).length
+      ? normalizeFixtureStringArray(item.assetRefs)
+      : normalizeFixtureStringArray(item.assetRefsJson),
+    sourceRefs: normalizeFixtureStringArray(item.sourceRefs).length
+      ? normalizeFixtureStringArray(item.sourceRefs)
+      : normalizeFixtureStringArray(item.sourceRefsJson),
+    tags: normalizeFixtureStringArray(item.tags).length
+      ? normalizeFixtureStringArray(item.tags)
+      : normalizeFixtureStringArray(item.tagsJson),
+    status: typeof item.status === 'string' && item.status.trim() ? item.status.trim() : undefined,
+  }));
 
   return {
     tenantId: typeof data.tenantId === 'string' && data.tenantId.trim() ? data.tenantId.trim() : undefined,
@@ -252,6 +287,7 @@ function normalizeOemFixtureSiteConfig(raw: unknown, fixturePath: string): unkno
     displayName: typeof data.displayName === 'string' && data.displayName.trim() ? data.displayName.trim() : undefined,
     primaryDomain: typeof data.primaryDomain === 'string' && data.primaryDomain.trim() ? data.primaryDomain.trim() : undefined,
     cases: normalizedCases,
+    materials: normalizedMaterials,
     assets: uniqueAssets,
     featureFlags,
     featureFlagItems,
@@ -523,9 +559,11 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     if (e2eSelection) return e2eSelection;
     const filters = kind === 'video'
       ? [{ name: '视频文件', extensions: ['mp4', 'mov', 'webm', 'm4v'] }]
-      : [{ name: '图片文件', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }];
+      : kind === 'audio'
+        ? [{ name: '音频文件', extensions: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'] }]
+        : [{ name: '图片文件', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }];
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: kind === 'video' ? '选择参考视频' : '选择图片素材',
+      title: kind === 'video' ? '选择参考视频' : kind === 'audio' ? '选择参考音频' : '选择图片素材',
       properties: ['openFile', 'multiSelections'],
       filters: [...filters, { name: '全部文件', extensions: ['*'] }],
     });

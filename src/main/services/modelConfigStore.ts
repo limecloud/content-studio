@@ -1,6 +1,6 @@
 import { app, safeStorage } from 'electron';
 import { join } from 'node:path';
-import { isImageGenerationProtocol, isTextGenerationProtocol, type ModelCatalogView, type ModelConfigView, type SaveModelConfigInput } from '../../shared/types';
+import { isImageGenerationProtocol, isTextGenerationProtocol, type ModelCatalogView, type ModelConfigView, type ModelSecretStatus, type SaveModelConfigInput } from '../../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 
 interface StoredModelConfig {
@@ -45,10 +45,38 @@ const DEFAULT_CONFIG = {
 
 type SecretPrefix = 'apiKey' | 'textApiKey' | 'imageApiKey' | 'videoApiKey';
 
+function decryptStoredSecret(encrypted: string): string | undefined {
+  if (!safeStorage.isEncryptionAvailable()) return undefined;
+  try {
+    return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
+  } catch {
+    return undefined;
+  }
+}
+
+function readSecretStatus(config: StoredModelConfig, prefix: SecretPrefix): ModelSecretStatus {
+  const source = config as Record<string, string | undefined>;
+  const encrypted = source[`${prefix}Encrypted`];
+  const plain = source[`${prefix}Plain`];
+  if (encrypted && decryptStoredSecret(encrypted)) return 'available';
+  if (plain) return 'available';
+  if (encrypted) return 'requires-reauthorization';
+  return 'missing';
+}
+
+function combineSecretStatus(statuses: ModelSecretStatus[]): ModelSecretStatus {
+  if (statuses.includes('available')) return 'available';
+  if (statuses.includes('requires-reauthorization')) return 'requires-reauthorization';
+  return 'missing';
+}
+
 function readSecret(config: StoredModelConfig, prefix: SecretPrefix): string | undefined {
   const source = config as Record<string, string | undefined>;
   const encrypted = source[`${prefix}Encrypted`];
-  if (encrypted) return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
+  if (encrypted) {
+    const decrypted = decryptStoredSecret(encrypted);
+    if (decrypted) return decrypted;
+  }
   return source[`${prefix}Plain`];
 }
 
@@ -81,30 +109,38 @@ export class ModelConfigStore {
   async readView(): Promise<ModelConfigView> {
     const config = await this.readRaw();
     const textApiEndpoint = config.textApiEndpoint ?? config.apiEndpoint ?? DEFAULT_CONFIG.textApiEndpoint;
-    const hasTextApiKey = Boolean(config.textApiKeyEncrypted || config.textApiKeyPlain || config.apiKeyEncrypted || config.apiKeyPlain);
-    const imageProvider = config.imageProvider ?? (config.imageApiKeyEncrypted || config.imageApiKeyPlain ? 'openai-responses' : DEFAULT_CONFIG.imageProvider);
     const textProtocol = isTextGenerationProtocol(config.textProtocol) ? config.textProtocol : DEFAULT_CONFIG.textProtocol;
     const imageProtocol = isImageGenerationProtocol(config.imageProtocol) ? config.imageProtocol : DEFAULT_CONFIG.imageProtocol;
-    const hasVideoApiKey = Boolean(config.videoApiKeyEncrypted || config.videoApiKeyPlain);
+    const textApiKeyStatus = combineSecretStatus([readSecretStatus(config, 'textApiKey'), readSecretStatus(config, 'apiKey')]);
+    const imageApiKeyStatus = readSecretStatus(config, 'imageApiKey');
+    const videoApiKeyStatus = readSecretStatus(config, 'videoApiKey');
+    const hasTextApiKey = textApiKeyStatus === 'available';
+    const hasImageApiKey = imageApiKeyStatus === 'available';
+    const hasVideoApiKey = videoApiKeyStatus === 'available';
+    const imageProvider = config.imageProvider ?? (hasImageApiKey ? 'openai-responses' : DEFAULT_CONFIG.imageProvider);
     const videoApiEndpoint = config.videoApiEndpoint ?? DEFAULT_CONFIG.videoApiEndpoint;
     const videoProvider = config.videoProvider ?? (hasVideoApiKey && videoApiEndpoint ? 'generic-http' : DEFAULT_CONFIG.videoProvider);
     return {
       apiEndpoint: textApiEndpoint,
       hasApiKey: hasTextApiKey,
+      safeStorageAvailable: safeStorage.isEncryptionAvailable(),
       textProvider: config.textProvider ?? DEFAULT_CONFIG.textProvider,
       textProtocol,
       textApiEndpoint,
       hasTextApiKey,
+      textApiKeyStatus,
       textModel: config.textModel ?? DEFAULT_CONFIG.textModel,
       imageProvider,
       imageProtocol,
       imageApiEndpoint: config.imageApiEndpoint ?? DEFAULT_CONFIG.imageApiEndpoint,
       imageOuterModel: config.imageOuterModel ?? DEFAULT_CONFIG.imageOuterModel,
-      hasImageApiKey: Boolean(config.imageApiKeyEncrypted || config.imageApiKeyPlain),
+      hasImageApiKey,
+      imageApiKeyStatus,
       imageModels: compactModels(config.imageModels, DEFAULT_CONFIG.imageModels),
       videoProvider,
       videoApiEndpoint,
       hasVideoApiKey,
+      videoApiKeyStatus,
       videoModel: config.videoModel ?? DEFAULT_CONFIG.videoModel,
       updatedAt: config.updatedAt,
     };

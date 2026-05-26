@@ -44,6 +44,9 @@ export class TextGenerationService {
     const storedKey = await this.modelConfig.getTextApiKey();
     const apiKey = storedKey || envTextApiKey(protocol);
     const oauthToken = protocol === 'claude-sdk' ? process.env.CLAUDE_CODE_OAUTH_TOKEN : undefined;
+    if (!apiKey && !oauthToken && view.textApiKeyStatus === 'requires-reauthorization') {
+      throw new TextProviderBlockedError('文字 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存文字 API Key 后再生成。');
+    }
     if (!apiKey && !oauthToken && requiresExplicitTextKey()) throw new TextProviderBlockedError();
     return {
       apiKey,

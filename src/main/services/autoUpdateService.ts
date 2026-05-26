@@ -5,8 +5,6 @@ import type { AutoUpdateAsset, AutoUpdateState, UpdateActionResult, UpdateCheckO
 import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { SettingsStore } from './settingsStore';
 
-const GITHUB_RELEASES_URL = 'https://github.com/limecloud/content-studio/releases/latest';
-const GITHUB_RELEASES_API_URL = 'https://api.github.com/repos/limecloud/content-studio/releases/latest';
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const STARTUP_CHECK_DELAY_MS = 5000;
 const REQUEST_TIMEOUT_MS = 15000;
@@ -56,20 +54,6 @@ interface DownloadSource {
   sourceLabel: string;
 }
 
-interface GitHubReleaseAsset {
-  name?: string;
-  size?: number;
-  browser_download_url?: string;
-}
-
-interface GitHubReleasePayload {
-  tag_name?: string;
-  name?: string;
-  html_url?: string;
-  published_at?: string;
-  assets?: GitHubReleaseAsset[];
-}
-
 function normalizeText(value: unknown): string {
   return String(value ?? '').trim();
 }
@@ -83,7 +67,7 @@ function getRuntimeApiBaseUrl(): string {
 }
 
 function getRuntimeDownloadBaseUrl(): string {
-  return normalizeText(getOemRuntimeConfig().downloadBaseUrl).replace(/\/+$/, '') || 'https://bugu.run';
+  return normalizeText(getOemRuntimeConfig().downloadBaseUrl).replace(/\/+$/, '') || 'https://downloads.bugu.run';
 }
 
 function getLatestApiUrl(): string {
@@ -104,10 +88,6 @@ function getLatestManifestUrl(): string {
   const brandId = getRuntimeBrandId();
   return process.env.CONTENT_STUDIO_UPDATE_MANIFEST_URL
     || `${getRuntimeDownloadBaseUrl()}/desktop/content-studio/${encodeURIComponent(brandId)}/${currentR2PlatformKey()}/latest.json`;
-}
-
-function getGitHubReleaseApiUrl(): string {
-  return process.env.CONTENT_STUDIO_GITHUB_RELEASE_API_URL || GITHUB_RELEASES_API_URL;
 }
 
 function getUpdateSourceLabel(): string {
@@ -154,6 +134,25 @@ function safeHttpUrl(value: unknown): string | undefined {
   }
 }
 
+function isGitHubUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === 'github.com'
+      || hostname.endsWith('.github.com')
+      || hostname === 'githubusercontent.com'
+      || hostname.endsWith('.githubusercontent.com')
+      || hostname === 'objects.githubusercontent.com';
+  } catch {
+    return false;
+  }
+}
+
+function safeDownloadUrl(value: unknown): string | undefined {
+  const url = safeHttpUrl(value);
+  return isGitHubUrl(url) ? undefined : url;
+}
+
 function sourceErrorMessage(label: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return `${label}: ${message}`;
@@ -184,7 +183,7 @@ function isInstallerFile(fileName: string): boolean {
 }
 
 function urlFromManifestFile(file: ReleaseManifestFile): string {
-  const url = safeHttpUrl(file.url);
+  const url = safeDownloadUrl(file.url);
   if (url) return url;
   const key = normalizeText(file.key) || normalizeText(file.r2Key);
   return key ? `${getRuntimeDownloadBaseUrl()}/${key.replace(/^\/+/, '')}` : '';
@@ -212,7 +211,6 @@ function sourceFromReleaseManifest(value: ReleaseManifestPayload, manifestUrl: s
   return {
     payload: {
       version: value.version || value.tag,
-      releasePageUrl: GITHUB_RELEASES_URL,
       assets,
     },
     manifestUrl,
@@ -235,7 +233,7 @@ function kindPreference(): string[] {
 }
 
 function toAsset(asset: RemoteDownloadAsset): AutoUpdateAsset | null {
-  const url = safeHttpUrl(asset.url);
+  const url = safeDownloadUrl(asset.url);
   if (!url) return null;
   const platform = normalizeText(asset.platform);
   const kind = normalizeText(asset.kind);
@@ -274,51 +272,14 @@ function sourceFromJson(value: unknown, manifestUrl: string, sourceLabel: string
   return { payload, manifestUrl, sourceLabel };
 }
 
-function assetMatchesRuntimeBrand(fileName: string): boolean {
-  const brandId = getRuntimeBrandId().toLowerCase();
-  return Boolean(brandId) && fileName.toLowerCase().startsWith(`${brandId}-`);
-}
-
-function sourceFromGitHubRelease(value: unknown): DownloadSource {
-  const payload = value && typeof value === 'object' ? value as GitHubReleasePayload : {};
-  const releasePageUrl = safeHttpUrl(payload.html_url) || GITHUB_RELEASES_URL;
-  const releaseAssets = (payload.assets ?? [])
-    .map((asset) => ({
-      name: normalizeText(asset.name),
-      size: asset.size,
-      url: safeHttpUrl(asset.browser_download_url),
-    }))
-    .filter((asset) => asset.name && asset.url && isInstallerFile(asset.name));
-  const selectedAssets = releaseAssets.filter((asset) => assetMatchesRuntimeBrand(asset.name));
-
-  return {
-    payload: {
-      version: payload.tag_name || payload.name,
-      publishedAt: payload.published_at,
-      releasePageUrl,
-      releaseNotesUrl: releasePageUrl,
-      assets: selectedAssets.map((asset) => {
-        const platform = platformFromManifest(asset.name, undefined);
-        const kind = kindFromFileName(asset.name);
-        return {
-          platform,
-          kind,
-          label: asset.name,
-          fileName: asset.name,
-          url: asset.url,
-          size: asset.size,
-          primary: platform === currentPlatformKey() && kind === kindPreference()[0],
-        };
-      }),
-    },
-    manifestUrl: getGitHubReleaseApiUrl(),
-    sourceLabel: 'GitHub Release',
-  };
-}
-
 function ensureUsableSource(source: DownloadSource): DownloadSource {
   if (!normalizeVersion(source.payload.version)) {
     throw new Error('更新清单缺少版本号。');
+  }
+  const assets = (source.payload.assets ?? []).map(toAsset).filter((asset): asset is AutoUpdateAsset => Boolean(asset));
+  const packageUrl = safeDownloadUrl(source.payload.packageUrl);
+  if (assets.length === 0 && !packageUrl) {
+    throw new Error('更新清单缺少可用下载链接。');
   }
   return source;
 }
@@ -354,20 +315,9 @@ async function loadLatestSource(): Promise<DownloadSource> {
 
   try {
     const json = await fetchJson(latestManifestUrl);
-    const source = ensureUsableSource(sourceFromJson(json, latestManifestUrl, '发布清单'));
-    if (!source.payload.releaseNotesUrl && !source.payload.releasePageUrl) {
-      source.payload.releasePageUrl = GITHUB_RELEASES_URL;
-    }
-    return source;
+    return ensureUsableSource(sourceFromJson(json, latestManifestUrl, '发布清单'));
   } catch (error) {
     errors.push(sourceErrorMessage('发布清单', error));
-  }
-
-  try {
-    const json = await fetchJson(getGitHubReleaseApiUrl());
-    return ensureUsableSource(sourceFromGitHubRelease(json));
-  } catch (error) {
-    errors.push(sourceErrorMessage('GitHub Release', error));
   }
 
   throw new Error(`无法读取更新清单：${errors.join('；')}`);
@@ -427,12 +377,14 @@ export class AutoUpdateService {
   }
 
   async openDownload(): Promise<UpdateActionResult> {
-    const url = this.state.downloadUrl || this.state.releaseNotesUrl || GITHUB_RELEASES_URL;
-    return this.openExternalUrl(url);
+    if (!this.state.downloadUrl) {
+      return { ok: false, error: '当前更新清单缺少当前设备的下载链接。' };
+    }
+    return this.openExternalUrl(this.state.downloadUrl);
   }
 
   async openReleaseNotes(): Promise<UpdateActionResult> {
-    const url = this.state.releaseNotesUrl || GITHUB_RELEASES_URL;
+    const url = this.state.releaseNotesUrl || this.state.manifestUrl;
     return this.openExternalUrl(url);
   }
 
@@ -490,13 +442,12 @@ export class AutoUpdateService {
 
       const assets = (source.payload.assets ?? []).map(toAsset).filter((asset): asset is AutoUpdateAsset => Boolean(asset));
       const platformAsset = selectCurrentAsset(assets);
-      const releaseNotesUrl = safeHttpUrl(source.payload.releaseNotesUrl)
-        || safeHttpUrl(source.payload.releasePageUrl)
-        || GITHUB_RELEASES_URL;
+      const releaseNotesUrl = safeDownloadUrl(source.payload.releaseNotesUrl)
+        || safeDownloadUrl(source.payload.releasePageUrl)
+        || safeHttpUrl(source.manifestUrl);
       const hasUpdate = isNewerVersion(latestVersion, app.getVersion());
       const downloadUrl = platformAsset?.url
-        || (assets.length === 0 ? safeHttpUrl(source.payload.packageUrl) : undefined)
-        || releaseNotesUrl;
+        || (assets.length === 0 ? safeDownloadUrl(source.payload.packageUrl) : undefined);
 
       await this.settings.setLastUpdateCheckAt(checkedAt);
       this.state = {

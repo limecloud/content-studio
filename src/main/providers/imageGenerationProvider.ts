@@ -75,12 +75,98 @@ function resolveGeminiGenerateContentEndpoint(
 }
 
 function imageMimeType(path: string): string | null {
-  const ext = extname(path).toLowerCase();
+  const trimmed = path.trim();
+  const dataMatch = /^data:(image\/[^;,]+);base64,/i.exec(trimmed);
+  if (dataMatch?.[1]) return dataMatch[1].toLowerCase();
+  let pathname = localAssetFilePath(trimmed) ?? trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      pathname = new URL(trimmed).pathname;
+    } catch {
+      pathname = trimmed;
+    }
+  }
+  const ext = extname(pathname).toLowerCase();
   if (ext === ".png") return "image/png";
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
   if (ext === ".webp") return "image/webp";
   if (ext === ".gif") return "image/gif";
   return null;
+}
+
+function localAssetFilePath(ref: string): string | null {
+  if (!/^local-asset:/i.test(ref)) return null;
+  try {
+    const pathname = decodeURIComponent(new URL(ref).pathname);
+    if (/^\/[A-Za-z]:\//.test(pathname)) return pathname.slice(1);
+    return pathname;
+  } catch {
+    return null;
+  }
+}
+
+function imageMimeTypeFromContentType(contentType: string | null): string | null {
+  const mimeType = contentType?.split(";")[0]?.trim().toLowerCase();
+  if (!mimeType?.startsWith("image/")) return null;
+  if (mimeType === "image/jpg") return "image/jpeg";
+  return mimeType;
+}
+
+function imageReferenceFileName(ref: string): string {
+  const trimmed = ref.trim();
+  if (/^data:image\//i.test(trimmed)) return "inline-image";
+  const localFilePath = localAssetFilePath(trimmed);
+  if (localFilePath) return basename(localFilePath);
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const fileName = url.pathname.split("/").filter(Boolean).pop();
+      return fileName ? decodeURIComponent(fileName) : url.hostname;
+    } catch {
+      return basename(trimmed);
+    }
+  }
+  return basename(trimmed);
+}
+
+async function readImageReference(ref: string): Promise<{
+  mimeType: string;
+  data: string;
+} | null> {
+  const trimmed = ref.trim();
+  const dataMatch = /^data:(image\/[^;,]+);base64,(.+)$/is.exec(trimmed);
+  if (dataMatch?.[1] && dataMatch?.[2]) {
+    return {
+      mimeType: dataMatch[1].toLowerCase(),
+      data: dataMatch[2].replace(/\s+/g, ""),
+    };
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    const response = await fetch(trimmed);
+    if (!response.ok) {
+      throw new Error(`远程参考图下载失败 ${response.status}`);
+    }
+    const mimeType =
+      imageMimeTypeFromContentType(response.headers.get("content-type")) ??
+      imageMimeType(trimmed);
+    if (!mimeType) return null;
+    const payload = await response.arrayBuffer();
+    return {
+      mimeType,
+      data: Buffer.from(payload).toString("base64"),
+    };
+  }
+
+  const localFilePath = localAssetFilePath(trimmed);
+  const filePath = localFilePath ?? trimmed;
+  const mimeType = imageMimeType(filePath);
+  if (!mimeType) return null;
+  const payload = await readFile(filePath);
+  return {
+    mimeType,
+    data: payload.toString("base64"),
+  };
 }
 
 function imageExtensionFromPayload(image: string): string {
@@ -102,12 +188,12 @@ function imageReferenceRows(input: ImageGenerationRequest): Array<{
     ...input.productImageRefs.map((ref, index) => ({
       ref,
       label: `产品图 ${index + 1}`,
-      fileName: basename(ref),
+      fileName: imageReferenceFileName(ref),
     })),
     ...input.referenceImageRefs.map((ref, index) => ({
       ref,
       label: `参考图 ${index + 1}`,
-      fileName: basename(ref),
+      fileName: imageReferenceFileName(ref),
     })),
   ].map((item) => {
     const fileName = item.fileName.toLowerCase();
@@ -178,21 +264,23 @@ async function buildResponsesContent(
   );
   const referenceRows = imageReferenceRows(input);
   for (const ref of refs) {
-    const mimeType = imageMimeType(ref);
-    if (!mimeType) continue;
     const row = referenceRows.find((item) => item.ref === ref);
     try {
-      const payload = await readFile(ref);
+      const payload = await readImageReference(ref);
+      if (!payload) continue;
       blocks.push({
         type: "input_text",
-        text: `${row?.label ?? "输入图片"}：${row?.fileName ?? basename(ref)}${row?.mentioned ? "。用户在提示词中 @ 点名这张图片，请优先参考。" : "。"} `,
+        text: `${row?.label ?? "输入图片"}：${row?.fileName ?? imageReferenceFileName(ref)}${row?.mentioned ? "。用户在提示词中 @ 点名这张图片，请优先参考。" : "。"} `,
       });
       blocks.push({
         type: "input_image",
-        image_url: `data:${mimeType};base64,${payload.toString("base64")}`,
+        image_url: `data:${payload.mimeType};base64,${payload.data}`,
       });
-    } catch {
-      blocks.push({ type: "input_text", text: `本地参考图读取失败：${ref}` });
+    } catch (error) {
+      blocks.push({
+        type: "input_text",
+        text: `参考图读取失败：${imageReferenceFileName(ref)}（${error instanceof Error ? error.message : "未知错误"}）`,
+      });
     }
   }
   return blocks.length > 1
@@ -212,23 +300,25 @@ async function buildChatContent(
   );
   const referenceRows = imageReferenceRows(input);
   for (const ref of refs) {
-    const mimeType = imageMimeType(ref);
-    if (!mimeType) continue;
     const row = referenceRows.find((item) => item.ref === ref);
     try {
-      const payload = await readFile(ref);
+      const payload = await readImageReference(ref);
+      if (!payload) continue;
       blocks.push({
         type: "text",
-        text: `${row?.label ?? "输入图片"}：${row?.fileName ?? basename(ref)}${row?.mentioned ? "。用户在提示词中 @ 点名这张图片，请优先参考。" : "。"} `,
+        text: `${row?.label ?? "输入图片"}：${row?.fileName ?? imageReferenceFileName(ref)}${row?.mentioned ? "。用户在提示词中 @ 点名这张图片，请优先参考。" : "。"} `,
       });
       blocks.push({
         type: "image_url",
         image_url: {
-          url: `data:${mimeType};base64,${payload.toString("base64")}`,
+          url: `data:${payload.mimeType};base64,${payload.data}`,
         },
       });
-    } catch {
-      blocks.push({ type: "text", text: `本地参考图读取失败：${ref}` });
+    } catch (error) {
+      blocks.push({
+        type: "text",
+        text: `参考图读取失败：${imageReferenceFileName(ref)}（${error instanceof Error ? error.message : "未知错误"}）`,
+      });
     }
   }
   return blocks.length > 1 ? blocks : buildImagePrompt(input);
@@ -246,19 +336,20 @@ async function buildGeminiParts(
   );
   const referenceRows = imageReferenceRows(input);
   for (const ref of refs) {
-    const mimeType = imageMimeType(ref);
-    if (!mimeType) continue;
     const row = referenceRows.find((item) => item.ref === ref);
     try {
-      const payload = await readFile(ref);
+      const payload = await readImageReference(ref);
+      if (!payload) continue;
       parts.push({
-        text: `${row?.label ?? "输入图片"}：${row?.fileName ?? basename(ref)}${row?.mentioned ? "。用户在提示词中 @ 点名这张图片，请优先参考。" : "。"} `,
+        text: `${row?.label ?? "输入图片"}：${row?.fileName ?? imageReferenceFileName(ref)}${row?.mentioned ? "。用户在提示词中 @ 点名这张图片，请优先参考。" : "。"} `,
       });
       parts.push({
-        inlineData: { mimeType, data: payload.toString("base64") },
+        inlineData: { mimeType: payload.mimeType, data: payload.data },
       });
-    } catch {
-      parts.push({ text: `本地参考图读取失败：${ref}` });
+    } catch (error) {
+      parts.push({
+        text: `参考图读取失败：${imageReferenceFileName(ref)}（${error instanceof Error ? error.message : "未知错误"}）`,
+      });
     }
   }
   return parts;

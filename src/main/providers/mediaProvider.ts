@@ -146,6 +146,7 @@ async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: st
     script: input.script,
     imageAssetRefs: input.imageAssetRefs,
     videoAssetRefs: input.videoAssetRefs,
+    audioAssetRefs: input.audioAssetRefs ?? [],
     selectedSkillSlugs: input.selectedSkillSlugs,
     citations: input.citations,
     createdAt: new Date().toISOString(),
@@ -164,6 +165,7 @@ async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: st
     `- 内部 API 成本估算：${formatVideoCost(costEstimate)}`,
     `- 图片素材：${input.imageAssetRefs.length} 个`,
     `- 参考视频：${input.videoAssetRefs.length} 个`,
+    `- 参考音频：${input.audioAssetRefs?.length ?? 0} 个`,
     `- 内容能力：${input.selectedSkillSlugs.join(', ') || '未选择'}`,
     '',
     '## 视频提示词',
@@ -246,6 +248,7 @@ async function postGenericVideo(input: {
       duration_seconds: input.request.params.durationSeconds,
       image_asset_refs: input.request.imageAssetRefs,
       video_asset_refs: input.request.videoAssetRefs,
+      audio_asset_refs: input.request.audioAssetRefs ?? [],
       prompt_pack_id: input.request.promptPackId,
       scene_card_ids: input.request.sceneCardIds,
       selected_skill_slugs: input.request.selectedSkillSlugs,
@@ -269,6 +272,33 @@ export class MediaProvider {
     const model = input.params.imageModel || config.imageModels[0];
     const protocol = protocolOverride(process.env.CONTENT_STUDIO_IMAGE_PROTOCOL, config.imageProtocol);
     const apiKey = await this.modelConfig.getImageApiKey() || envImageApiKey(protocol);
+
+    if (!apiKey && config.imageApiKeyStatus === 'requires-reauthorization') {
+      const message = '图片 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存图片 API Key 后再生成。';
+      const log = await this.logs.append({
+        workspacePath: input.workspacePath,
+        kind: 'image',
+        status: 'blocked',
+        title: '图片生成需要重新授权',
+        summary: message,
+        model,
+        workflowRunId: input.workflowRunId,
+        reworkSource: input.reworkSource,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        output: { assetRefs: [] },
+        error: 'IMAGE_API_KEY_REAUTH_REQUIRED',
+        durationMs: Date.now() - startedAt,
+      });
+      return {
+        logId: log.id,
+        status: 'blocked',
+        message,
+        assetRefs: [],
+      };
+    }
 
     const imageProviderEnabled = config.imageProvider === 'openai-responses' || Boolean(apiKey);
     if (!imageProviderEnabled || !apiKey) {
@@ -359,6 +389,31 @@ export class MediaProvider {
     const model = input.params.videoModel || config.videoModel;
     const apiKey = await this.modelConfig.getVideoApiKey() || process.env.CONTENT_STUDIO_VIDEO_API_KEY || process.env.VIDEO_API_KEY;
     const endpoint = resolveGenericEndpoint(process.env.CONTENT_STUDIO_VIDEO_ENDPOINT || config.videoApiEndpoint);
+
+    if (!apiKey && config.videoApiKeyStatus === 'requires-reauthorization') {
+      const message = '视频 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存视频 API Key 后再生成。';
+      const log = await this.logs.append({
+        workspacePath: input.workspacePath,
+        kind: 'video',
+        status: 'blocked',
+        title: '视频生成需要重新授权',
+        summary: message,
+        model,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        output: { assetRefs: [] },
+        error: 'VIDEO_API_KEY_REAUTH_REQUIRED',
+        durationMs: Date.now() - startedAt,
+      });
+      return {
+        logId: log.id,
+        status: 'blocked',
+        message,
+        assetRefs: [],
+      };
+    }
 
     if (config.videoProvider === 'generic-http' && apiKey && endpoint) {
       try {

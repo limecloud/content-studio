@@ -57,7 +57,7 @@ export function getOemRuntimeConfig(): OemRuntimeConfig {
     supportUrl: normalizeText(raw?.supportUrl),
     apiBaseUrl: normalizeText(process.env.CONTENT_STUDIO_API_BASE_URL) ?? normalizeText(process.env.BUGU_API_BASE_URL) ?? normalizeText(raw?.apiBaseUrl) ?? DEFAULT_API_BASE_URL,
     oemPublicApiBaseUrl: normalizeText(process.env.CONTENT_STUDIO_OEM_PUBLIC_API_BASE_URL) ?? normalizeText(process.env.BUGU_OEM_PUBLIC_API_BASE_URL) ?? normalizeText(raw?.oemPublicApiBaseUrl) ?? DEFAULT_OEM_PUBLIC_API_BASE_URL,
-    downloadBaseUrl: normalizeText(process.env.CONTENT_STUDIO_DOWNLOAD_BASE_URL) ?? normalizeText(raw?.downloadBaseUrl) ?? 'https://bugu.run',
+    downloadBaseUrl: normalizeText(process.env.CONTENT_STUDIO_DOWNLOAD_BASE_URL) ?? normalizeText(raw?.downloadBaseUrl) ?? 'https://downloads.bugu.run',
   };
 }
 

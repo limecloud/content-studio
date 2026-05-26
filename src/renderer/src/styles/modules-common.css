@@ -1055,6 +1055,70 @@ label span,
   font-size: 13px;
   font-weight: 500;
 }
+.app-error-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 12px;
+  align-items: center;
+}
+.app-error-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.app-error-close {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: #991b1b;
+  background: color-mix(in srgb, #991b1b 8%, transparent);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  transition: var(--transition-fast);
+}
+.app-error-close:hover,
+.app-error-close:focus-visible {
+  color: #7f1d1d;
+  background: color-mix(in srgb, #991b1b 14%, transparent);
+}
+.model-reauthorization-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #fbbf24;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  color: #92400e;
+  background: #fffbeb;
+  box-shadow: var(--shadow-sm);
+}
+.model-reauthorization-banner div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.model-reauthorization-banner strong {
+  color: #78350f;
+  font-size: 13px;
+}
+.model-reauthorization-banner span {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.model-reauthorization-banner button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  color: #78350f;
+  background: #fef3c7;
+  font-size: 12px;
+  font-weight: 800;
+}
 .helper-text {
   margin: -4px 0 0;
   color: var(--text-secondary);

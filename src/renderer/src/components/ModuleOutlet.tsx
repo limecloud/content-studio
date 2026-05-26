@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { ContentStudioAppController } from '../app/useContentStudioApp';
 import { ArticleModule } from './modules/ArticleModule';
 import { AssetsModule } from './modules/AssetsModule';
@@ -32,6 +33,14 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
     || app.authState?.bootstrap?.tenant?.name
     || '布谷AI';
 
+  const renderShowcaseFrame = (content: ReactNode) => (
+    <div className="showcase-page-frame">
+      <div className="showcase-page-body">
+        {content}
+      </div>
+    </div>
+  );
+
   const renderAssetsModule = (variant: 'library' | 'compliance' | 'retouch' = 'library') => (
     <AssetsModule
       variant={variant}
@@ -64,6 +73,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         runMode={app.params.runMode}
         productImageRefs={app.productImageRefs}
         referenceImageRefs={app.referenceImageRefs}
+        productImageLabel={app.imageProductLabel}
+        referenceImageLabel={app.imageReferenceLabel}
         imagePromptDraft={app.imagePromptDraft}
         setImagePromptDraft={app.setImagePromptDraft}
         imagePromptMode={app.imagePromptMode}
@@ -83,35 +94,55 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onExportAsset={(path) => app.runAction(() => app.exportAsset(path))}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
+        onRemoveProductImageRef={app.removeProductImageRef}
+        onRemoveReferenceImageRef={app.removeReferenceImageRef}
+        onClearProductImageRefs={app.clearProductImageRefs}
+        onClearReferenceImageRefs={app.clearReferenceImageRefs}
         onGenerateImage={() => app.runAction(app.generateImage)}
       />
     );
   }
 
   if (app.activeModule === 'image-showcase') {
-    return (
+    return renderShowcaseFrame(
       <ImageShowcaseModule
         busy={app.busy}
         workspaceReady={Boolean(app.workspacePath)}
         productImageRefs={app.productImageRefs}
+        referenceImageRefs={app.referenceImageRefs}
+        mediaResult={app.mediaResult}
         authState={app.authState}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
-        onUsePromptInImage={app.useScenePromptInImage}
+        onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
+        onRemoveProductImageRef={app.removeProductImageRef}
+        onRemoveReferenceImageRef={app.removeReferenceImageRef}
+        onUsePromptInImage={app.useShowcasePromptInImage}
+        onClearResult={app.clearMediaResult}
+        onGenerateImage={(input) => app.runAction((context) => app.generateShowcaseImage(input, context))}
       />
     );
   }
 
   if (app.activeModule === 'video-showcase') {
-    return (
+    return renderShowcaseFrame(
       <VideoShowcaseModule
         busy={app.busy}
         workspaceReady={Boolean(app.workspacePath)}
         productImageRefs={app.productImageRefs}
         videoAssetRefs={app.videoAssetRefs}
+        audioAssetRefs={app.audioAssetRefs}
+        mediaResult={app.mediaResult}
         authState={app.authState}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectVideo={() => app.runAction(() => app.selectAssetFiles('video'))}
-        onUsePromptInVideo={app.useScenePromptInVideo}
+        onSelectAudio={() => app.runAction(() => app.selectAssetFiles('audio'))}
+        onSelectMaterialFiles={app.selectMaterialFiles}
+        onRemoveProductImageRef={app.removeProductImageRef}
+        onRemoveVideoAssetRef={app.removeVideoAssetRef}
+        onRemoveAudioAssetRef={app.removeAudioAssetRef}
+        onUsePromptInVideo={app.useShowcasePromptInVideo}
+        onClearResult={app.clearMediaResult}
+        onGenerateVideo={(input) => app.runAction((context) => app.generateShowcaseVideo(input, context))}
       />
     );
   }

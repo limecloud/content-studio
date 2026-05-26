@@ -92,7 +92,11 @@ export class SettingsStore {
     const settings = await this.readRaw();
     if (settings.anthropicApiKeyEncrypted) {
       const payload = Buffer.from(settings.anthropicApiKeyEncrypted, 'base64');
-      return safeStorage.decryptString(payload);
+      try {
+        return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(payload) : undefined;
+      } catch {
+        return undefined;
+      }
     }
     return settings.anthropicApiKeyPlain;
   }

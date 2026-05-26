@@ -1,0 +1,4005 @@
+{
+  "schemaVersion": 1,
+  "source": "dressingkit-ai-video-shared-r2",
+  "generatedAt": "2026-05-26T00:33:11.503Z",
+  "tenantId": "__shared__",
+  "cases": [
+    {
+      "id": "case-dressingkit-video-90-225",
+      "title": "分镜图",
+      "industry": "服饰类",
+      "summary": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "生成图片的6宫格分镜图，服装视觉大片，4K，相机拍摄真实风格。包含特写与局部，远景与近景。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-225",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-90-225-input-1",
+        "asset-case-dressingkit-video-90-225-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-90-247",
+      "title": "沙发",
+      "industry": "家居类",
+      "summary": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "我要分镜图5张。真人版，真实，细节。我需要一个女生，在不同场景下，穿着睡衣侧躺在上面睡觉、穿着出门的衣服在沙发上坐着化妆、穿着休闲的衣服在沙发上葛优躺、穿着短裤曲着腿在沙发上看书、带着花瓶坐在沙发上。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-247",
+        "industry:home"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-90-247-input-1",
+        "asset-case-dressingkit-video-90-247-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-90-248",
+      "title": "耳环",
+      "industry": "珠宝首饰类",
+      "summary": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "请参照我上传的产品图耳环 [图1 ]，保持产品一致性。我需要制作15s的抖音视频，请帮我出分镜图。\n情境：女生准备出门聚会 → 翻柜子纠结搭配 → 一眼看到这款新耳环超惊喜 → 拿起产品展示 → 上身穿戴打理造型 → 出门自信氛围感拉满。\n风格：电影质感，暖光。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-248",
+        "industry:jewelry"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-90-248-input-1",
+        "asset-case-dressingkit-video-90-248-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-90-254",
+      "title": "羽毛球拍",
+      "industry": "运动户外类",
+      "summary": "分镜图 · 2 个输入文件 / 1 个输出文件",
+      "prompt": "帮我生成分镜图：分镜 1（0-1.5 秒）：光影破晓・品牌觉醒画面：全黑画面中，一道锐利的侧逆光如刀锋般扫过，瞬间点亮战戟 8000 拍柄底部的李宁 LOGO。光斑在背景中如星尘般虚化，LOGO 金属质感在光影中若隐若现，随后光线骤然稳定，LOGO 清晰定格。运镜：从黑暗中推近至特写，光线扫过瞬间定格，干净利落。音效：一声清脆的羽毛球落地声（如玻璃碎裂般的清响），配合低频鼓点从弱到强的渐入，营造“破晓”氛围。分镜 2（1.5-4 秒）：细节巡礼・质感沉浸画面：镜头从 LOGO 处匀速上移，柔光如丝绸般包裹拍柄。防滑白手胶的颗粒纹理在光线下纤毫毕现，锥盖钢号的金属冷光一闪而过，蓝粉撞色的拍框轮廓在背景光晕中逐渐舒展，每一处细节都被柔光赋予高级感。运镜：缓慢匀速上推，速度平稳，让观众有足够时间品味细节。音效：低频鼓点持续铺底，加入轻微的“沙沙”声（模拟手胶摩擦质感），烘托沉浸式体验。分镜 3（4-6.5 秒）：工艺解构・精密之舞画面：低机位贴近球网，绿色地胶与纯白球网构成极简背景。镜头平稳横移，扫过拍框线孔的精密排列（每个线孔边缘的倒角清晰可见），碳纤维纹理在光线下呈现独特的编织光泽，蓝粉渐变涂装在移动中展现色彩过渡的细腻。运镜：慢速横移，如显微镜般细致，避免模糊，突出“精密制造”。音效：丝滑的“唰”声（镜头移动声）与鼓点微微提速同步，加入碳纤维材质的轻微“嗡鸣”（模拟材料张力）。分镜 4（6.5-8.5 秒）：实战起势・人拍合一画面：近景特写真人手握球拍，手腕自然弯曲，手指贴合手胶的弧度（手胶的防滑纹理与手指的压痕清晰可见）。身体微微侧倾，重心下沉，球拍如蓄势待发的利剑，眼神聚焦前方（不露脸，突出动作张力）。运镜：轻微跟手小幅晃动，模拟真实握拍的呼吸感，贴合人体工学节奏。音效：手指轻捏手胶的“吱”声，配合鼓点节奏稳步上扬，加入轻微的心跳声（铺垫紧张感）。分镜 5（8.5-10.5 秒）：攻防瞬转・节奏爆发画面：自然切镜至对手视角（仅拍手臂与球拍局部），对手手腕发力，球拍如鞭子般挥出，羽毛球带着残影向网前袭来（球速通过动态模糊体现）。镜头快速切回我方，球拍已从预备姿势转为迎球姿态，动作衔接流畅如流水。运镜：快速切镜（0.3 秒内完成），模拟实战中的攻防转换，镜头略带轻微晃动（增强临场感）。音效：短促扎实的扣杀击球声（“砰！”），鼓点骤然加快，加入羽毛球的“呼啸”声（体现球速）。分镜 6（10.5-13.5 秒）：升格定格・掌控瞬间画面：升格慢动作（120 帧），羽毛球触拍瞬间被“定格”：球体微微凹陷，拍框蓝粉渐变涂装在顶光下折射出金属光泽，碳纤维纹理在受力瞬间的细微形变清晰可见（突出拍框的抗扭稳定性）。球拍与球的接触点如磁石般吸附，没有丝毫晃动。运镜：固定特写锁死击球点，慢放中镜头微微推进，聚焦球与拍的接触细节。音效：慢放同步放大击球闷响（“咚——”），鼓点进入高潮（重低音轰炸），加入球体形变的“弹性”音效（体现控球精准度）。分镜 7（13.5-15 秒）：光影收官・品牌宣言画面：纯白背景中，球拍直立居中，柔光从左至右缓缓扫过拍身，HALBERTEC 标识与蓝粉渐变全配色在光影中完整呈现。画面从中心向外缓缓暗角，李宁品牌 LOGO 与“战戟 8000”字样浮现，下方小字“攻守皆稳，控场由我”。运镜：固定静态镜头，光影流动如呼吸，结尾柔和渐暗。音效：鼓点缓缓收弱，低沉旁白（男声，磁性）：“战戟 8000，攻守皆稳，控场由我。” 收尾以一声短促的“咔”（如相机快门声），干净利落。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-254",
+        "industry:outdoor"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-90-254-input-1",
+        "asset-case-dressingkit-video-90-254-input-2",
+        "asset-case-dressingkit-video-90-254-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-90-255",
+      "title": "香水",
+      "industry": "美妆护肤类",
+      "summary": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "帮我生成分镜图，主题是海洋，我需要香水广告。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-255",
+        "industry:beauty"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-90-255-input-1",
+        "asset-case-dressingkit-video-90-255-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-90-256",
+      "title": "miumiu",
+      "industry": "服饰类",
+      "summary": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "帮我生成分镜图：\n分镜1（0-1.6秒）：清晨的衣橱\n画面：俯拍视角，阳光透过百叶窗洒在浅灰色衣柜前。一只手（佩戴银色细手链）拉开衣柜门，露出挂了意见Miu Miu条纹针织Polo衫、灰色百褶裙的衣架，镜头快速扫过衣物纹理（特写Polo衫的橙色条纹与领口黑色标签）。\n音效：衣柜门“咔哒”声。\n字幕：无。\n分镜2（1.6-3.2秒）：细节特写\n画面：特写棕色皮质腰带扣（金属扣头反光），手指将腰带穿过灰色百褶裙的腰袢，镜头跟随腰带滑动，露出裙身的褶皱细节（慢动作0.5秒）。\n音效：皮带摩擦布料的“沙沙”声+钢琴旋律渐强。\n字幕：无。\n分镜3（3.2-4.8秒）：镜前定格\n画面：中景，模特（短发，戴细框眼镜）站在全身镜前，穿着条纹Polo衫+灰色百褶裙，双手叉腰，对着镜子歪头微笑。镜中反射出她脚上的棕色乐福鞋（鞋头有Miu Miu金属标）。\n音效：轻笑声。\n字幕：无。\n分镜4（4.8-6.4秒）：手袋亮相\n画面：特写Miu Miu Beau手提包（巧克力色小牛皮，白色撞色手柄），手从画面外伸入，握住手柄轻轻晃动，包身“MIU MIU”压纹清晰可见（镜头从包身底部向上摇）。\n音效：皮革摩擦的“吱呀”声。\n字幕：无。\n分镜5（6.4-8秒）：街头行走\n画面：跟拍镜头，模特背着Beau手提包走在梧桐树下的街道，阳光透过树叶在她身上投下斑驳光影。她突然停下，转身看向镜头，风吹起裙摆（慢动作0.3秒）。\n音效：脚步声+风吹树叶的“沙沙”声+鼓点节奏加快。\n字幕：无。\n分镜6（8-9.6秒）：咖啡店偶遇\n画面：中景，模特走进咖啡店，将Beau手提包放在木质桌面上，包身与桌面碰撞发出轻响。她解开Polo衫最上面的纽扣，露出锁骨（特写颈部线条）。\n音效：咖啡杯碰撞声。\n字幕：无。\n分镜7（9.6-11.2秒）：细节特写\n画面：特写模特的手腕，银色手链与Polo衫的橙色条纹形成色彩对比。手指轻轻转动咖啡杯，杯壁上倒映出她的脸（模糊处理）。\n音效：咖啡搅拌声。\n字幕：无。\n分镜8（11.2-12.8秒）：街头回眸\n画面：全景，模特走出咖啡店，站在街边回眸一笑。背景是模糊的城市街景，她的条纹Polo衫与灰色百褶裙在人群中格外醒目。\n音效：汽车鸣笛声。\n字幕：无。\n分镜9（12.8-15秒）：品牌定格\n画面：特写Miu Miu的Logo（白色字体，黑色背景），Logo下方是模特的侧脸剪影（穿着条纹Polo衫，戴着细框眼镜）。\n音效：旋律渐弱，最后以一个清脆的“叮”声结束。\n字幕：MIU MIU 2025春夏系列。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-256",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-90-256-input-1",
+        "asset-case-dressingkit-video-90-256-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-90-287",
+      "title": "手表",
+      "industry": "电子产品类",
+      "summary": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "粉盘日志·心动15秒\n分镜1\n时长：0:00-0:02\n画面：柔光下，一只纤细的手轻轻拂过丝绒礼盒表面，礼盒呈粉嫩色调，边缘镶有细闪金边。\n文案/旁白：“她的心动，藏在每一处细节里。”\n分镜2\n时长：0:02-0:04\n画面：镜头推近，礼盒缓缓开启，内衬为淡粉色天鹅绒，中央静静躺着手表，表盘反射出柔和粉光。\n文案/旁白：“当经典邂逅温柔，时光也有了颜色。”\n分镜3\n时长：0:04-0:06\n画面：手表特写，镜头环绕表盘，突出粉色表盘上的条形刻度与日历窗，金属表带泛着细腻光泽。\n文案/旁白：“31毫米的精巧尺寸，为腕间添一抹优雅。”\n分镜4\n时长：0:06-0:08\n画面：慢镜头，一滴水珠落在表盘上，瞬间滑落，凸显蚝式表壳的防水性能与表镜的通透质感。\n文案/旁白：“无惧时光流转，始终澄澈如初。”\n分镜5\n时长：0:08-0:10\n画面：女性手腕佩戴手表，搭配浅粉色连衣裙，抬手轻抚发丝，背景为春日樱花树下，花瓣飘落。\n文案/旁白：“在每一个重要时刻，与你共赴浪漫。”\n分镜6\n时长：0:10-0:12\n画面：镜头切换至都市街景，女性自信行走，手表在自然光下闪耀，与周围建筑的冷色调形成温柔对比。\n文案/旁白：“无论静谧或喧嚣，皆是焦点。”\n分镜7\n时长：0:12-0:14\n画面：特写表冠旋入动作，伴随清脆“咔嗒”声，象征精准与可靠，背景虚化为暖粉光晕。\n文案/旁白：“每一秒，都值得被精准铭记。”\n分镜8\n时长：0:14-0:15\n画面：手表与礼盒并列，镜头拉远，背景渐变为纯粉嫩色，品牌标志缓缓浮现。\n文案/旁白：“ROLEX日志型，为爱定格永恒。”\n分镜9\n时长：0:15\n画面：黑屏，浮现品牌标语与官网信息，字体为优雅衬线体，颜色为香槟金。\n文案/旁白：“探索更多，尽在ROLEX官方。”",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-287",
+        "industry:electronics"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-90-287-input-1",
+        "asset-case-dressingkit-video-90-287-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-90-288",
+      "title": "漫剧大片",
+      "industry": "文创 IP 类",
+      "summary": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "生成图片的9宫格分镜图，古风 3D 写实人像漫剧大片，4K，相机拍摄真实风格。一个故事片段。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-288",
+        "industry:ip"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-90-288-input-1",
+        "asset-case-dressingkit-video-90-288-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-90-294",
+      "title": "孩子-真人漫剧",
+      "industry": "服饰类",
+      "summary": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "帮我生成分镜图：\n真人实景，超写实，无动漫 / 卡通 / 手绘 / 二次元元素，索尼 A7S3 搭配 50mm f/1.4 定焦镜头拍摄，电影级自然光，8K 超清，4:2:2 10bit 色彩，ProRes 422 HQ 编码，浅景深，胶片质感，自然光通透，真实皮肤肌理，无美颜无磨皮，无夸张滤镜，无 AI 塑料感。\n镜头分镜提示：\n0-3s：镜头从宝宝背后开始跟拍，她穿着可爱的小裙子，慢悠悠走在午后老巷街头，暖金色阳光洒在发顶和衣服上，背景虚化，街道、绿植、老建筑的细节真实自然，轻微手持跟拍的真实感，无抖动，画面稳定。\n3-6s：镜头微微前推，宝宝停下脚步，蹲下身，视线被路边的小奶狗吸引，小狗抬头看向她，发出一声软乎乎的 “汪呜～” 轻叫，镜头捕捉宝宝好奇的侧脸，浅景深虚化背景，突出人物与小狗。\n6-11s：镜头切到侧前方，特写宝宝的小手轻轻摸向小狗的脑袋，她另一只手举着糖油串串，奶声奶气地说：“小狗狗，你要吃一口吗？”，镜头缓慢推进，捕捉宝宝温柔的眼神和小狗软乎乎的神态，背景虚化，光影柔和，皮肤纹理、发丝、衣服布料、小狗毛发、串串油光细节极致真实。\n11-15s：镜头拉远，定格宝宝蹲在路边摸小狗、举着串串的温馨画面，暖光把两人的影子拉得软软的，背景是柔和虚化的老巷街景，画面自然收尾，无特效，无跳帧，无违和感。\n负面提示词（必加）：\n动漫，二次元，卡通，手绘，AI 风格，CG，动画渲染，畸形肢体，五官崩坏，塑料质感，过度美颜，磨皮过重，滤镜夸张，画面过曝，色彩艳俗，模糊低清，水印，文字，镜头抖动，跳帧卡顿，穿帮元素，恐怖小狗，油腻串串，违和光影，卡通特效。\n小孩一直拿着串串的。别穿帮了。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-294",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-90-294-input-1",
+        "asset-case-dressingkit-video-90-294-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-199",
+      "title": "带货视频",
+      "industry": "服饰类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "帮我生成图1的动态视频，人物在直播带货。真实自然。口播文案如下：“姐妹们！这条高腰喇叭裤，秒拉超模大长腿！胯宽腿粗全遮住，小个子也能穿出三七分！想要的直接冲小黄车 1 号！”",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-199",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-199-input-1",
+        "asset-case-dressingkit-video-130-199-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-233",
+      "title": "保健品带货视频",
+      "industry": "食品饮料类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "图片1是数字人，图片2是产品，帮我生成一篇视频带货的15S视频，真实相机拍摄，人物自然，背景是带货直播间，参考下面几个分镜的带货视频分镜 1（0-3s） 画面：真实相机拍摄，人物站在带货直播间背景前，手持 FKOOO 水蛭素纳豆胶囊，微笑看向镜头，背景可见直播间货架与灯光。口播：“家人们！今天给大家带个好东西！” 分镜 2（3-8s） 画面：镜头拉近至产品特写，人物轻晃胶囊瓶，展示瓶身文字。口播：“这款水蛭素纳豆胶囊，天然植物提取，好吸收！” 分镜 3（8-13s） 画面：镜头拉回人物全身，人物比出 “2” 的手势，表情活泼。口播：“每天两粒，给身体添活力！60 粒装超划算！” 分镜 4（13-15s） 画面：人物将产品递向镜头，背景弹出 “限时福利” 字样。口播：“想要的赶紧冲！”",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-233",
+        "industry:food"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-233-input-1",
+        "asset-case-dressingkit-video-130-233-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-234",
+      "title": "Hello Kitty便携风扇",
+      "industry": "电子产品类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "帮我生成视频，女主播在推销手中的风扇，轻松自然。口播文案如下：“Hey girlies, summer’s here and you need this!\nHello Kitty portable fan, cute, powerful, keeps you cool all day.\nNo more sticky, sweaty moments.\nLink below — grab yours now!”",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-234",
+        "industry:electronics"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-234-input-1",
+        "asset-case-dressingkit-video-130-234-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-235",
+      "title": "耳环",
+      "industry": "珠宝首饰类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "参考分镜图，生成氛围感饰品短视频，暖调柔光、电影质感、治愈松弛风。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-235",
+        "industry:jewelry"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-235-input-1",
+        "asset-case-dressingkit-video-130-235-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-236",
+      "title": "男士香薰",
+      "industry": "美妆护肤类",
+      "summary": "智能视频 · 0 个输入文件 / 1 个输出文件",
+      "prompt": "为男士香薰制作 6 格分镜， 15s竖版 9:16。香薰静置悬浮极简暗调空间→柔和冷调光线沿香薰缓缓流淌→微光缓缓渗入香薰肌理，香韵氛围感慢慢氤氲→香薰纹路渐次亮起柔光，氛围感向外弥散绽放→香薰近距离特写→画面唯美定格。风格：冷光高级氛围感，哑光金属磨砂质感。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-236",
+        "industry:beauty"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-236-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-241",
+      "title": "沙发",
+      "industry": "家居类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "根据分镜图图1，帮我生成转场卡点视频。最后图2定点结束。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-241",
+        "industry:home"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-241-input-1",
+        "asset-case-dressingkit-video-130-241-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-242",
+      "title": "对镜自拍",
+      "industry": "服饰类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "图1女生在对镜自拍，展示穿搭。带货的是上衣。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-242",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-242-input-1",
+        "asset-case-dressingkit-video-130-242-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-243",
+      "title": "包包",
+      "industry": "服饰类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "0-3s，画面：特写包包怼脸，奶白色光泽 + 粉色挂饰晃动感。台词：“谁懂啊！这个奶白法棍包，也太会了吧！”\n3-8s，画面：腋下背然后手拎，搭配不同穿搭快速切镜。\n8-12s，画面：翻包，掏出手机、口红、粉饼。台词：“看着小，却超能装，自重还轻到离谱！”\n12-15s，画面：对着镜头展示包包。台词：“今天这个价格，不冲真的会后悔！”\n不要字幕",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-243",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-243-input-1",
+        "asset-case-dressingkit-video-130-243-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-244",
+      "title": "漱口杯带货",
+      "industry": "家居类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "我想生成带货视频，口播文案是：漱口杯不是防霉的我不用，不好看的我不买，关键到手才几块钱一个，超级划算，一整个都是304不锈钢内胆，不管用多久都不用担心藏污纳垢，杯身厚的很抗造，刷一下都不怕，每个还印着不一样的可爱图案，平常拿来当个水杯也很不错，要是你家漱口杯也超三个月没换了，听我的直接冲。语速可以快一点适应时长。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-244",
+        "industry:home"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-244-input-1",
+        "asset-case-dressingkit-video-130-244-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-245",
+      "title": "腮红带货",
+      "industry": "美妆护肤类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "口播文案：橘朵这颗腮红真的是伪素颜天菜！\n奶 fufu 的蜜桃裸粉色，上脸就是妈生好气色～\n软糯的粉质，轻轻一扫就晕开，自带的花朵压纹超精致！喜欢这种温柔挂的姐妹，这波闭眼入不亏！",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-245",
+        "industry:beauty"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-245-input-1",
+        "asset-case-dressingkit-video-130-245-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-249",
+      "title": "香水",
+      "industry": "美妆护肤类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "镜头 1（0-3s：海面漂浮开场）\n8K 商业产品摄影，日出时分的近海海面，冷调清冷自然光，海面有细碎波光，远处是朦胧的海平面。TIME STARCCU 香水瓶漂浮在海面上，一半浸入澄澈浅蓝海水中，另一半露出水面，海浪轻轻拍打瓶身，瓶身蓝色液体与海水颜色呼应，瓶身玻璃通透，大理石纹理瓶盖细节清晰，柔和侧逆光勾勒瓶身边缘，浅景深效果，背景朦胧，无噪点，无反光瑕疵，极简构图。\n镜头 2（3-6s：水下悬浮）\n8K 水下摄影质感，冷调浅海水中，海水清澈透亮，背景是模糊的沙质海底与零星细碎海藻，阳光透过水面形成丁达尔光效。TIME STARCCU 香水瓶缓慢沉入水中，周围有细小气泡缓缓上升，瓶身蓝色液体在水下光影中呈现流动感，瓶身在水中无畸变，光影随水流变化自然，气泡颗粒清晰，无颗粒噪点，无镜头畸变。\n镜头 3（6-9s：水下喷雾特写）\n8K 慢动作水下特写，冷调浅海水中，背景是模糊的蓝色海水。TIME STARCCU 香水瓶瓶盖取下，随水流缓慢飘向右侧，喷头正对镜头，喷出的淡蓝色香雾与海水融为一体，雾滴扩散成细微蓝色水纹，瓶身周围泛起轻微涟漪，喷头金属光泽真实，大理石瓶盖纹理在水中清晰可辨，光影柔和，无摩尔纹，无颗粒噪点。\n镜头 4（9-12s：沙滩搁浅）\n8K 电影级冷调画面，海边沙滩场景，浅灰色鹅卵石，背景是翻涌的白色浪花与澄澈蓝色海面，冷调清新自然光。TIME STARCCU 香水瓶斜靠在鹅卵石上，瓶身蓝色液体与背景色调呼应，瓶身边缘清晰，沙滩与鹅卵石纹理真实，浪花在瓶身周围缓慢涌动，浅景深效果，背景浪花虚化自然，无多余元素，无噪点。\n镜头 5（12-15s：全景收尾）\n8K 商业广告收尾镜头，海边沙滩与海面交界场景，背景是辽阔的蓝色海面与朦胧天空，冷调自然光。TIME STARCCU 香水瓶居中定格，正面朝向镜头，液体、瓶身、瓶盖细节完整呈现，画面右下角出现淡白色 “TIME STARCCU” 品牌标识，海浪在瓶身周围轻轻拍动，整体画面干净通透，光影均匀，品牌标识清晰不突兀，无多余元素，无噪点，高级质感。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-249",
+        "industry:beauty"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-249-input-1",
+        "asset-case-dressingkit-video-130-249-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-250",
+      "title": "羽毛球拍",
+      "industry": "运动户外类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "分镜 1（0-1.5 秒）：光影破晓・品牌觉醒\n画面：全黑画面中，一道锐利的侧逆光如刀锋般扫过，瞬间点亮战戟 8000 拍柄底部的李宁 LOGO。光斑在背景中如星尘般虚化，LOGO 金属质感在光影中若隐若现，随后光线骤然稳定，LOGO 清晰定格。\n运镜：从黑暗中推近至特写，光线扫过瞬间定格，干净利落。\n音效：一声清脆的羽毛球落地声（如玻璃碎裂般的清响），配合低频鼓点从弱到强的渐入，营造“破晓”氛围。\n分镜 2（1.5-4 秒）：细节巡礼・质感沉浸\n画面：镜头从 LOGO 处匀速上移，柔光如丝绸般包裹拍柄。防滑白手胶的颗粒纹理在光线下纤毫毕现，锥盖钢号的金属冷光一闪而过，蓝粉撞色的拍框轮廓在背景光晕中逐渐舒展，每一处细节都被柔光赋予高级感。\n运镜：缓慢匀速上推，速度平稳，让观众有足够时间品味细节。\n音效：低频鼓点持续铺底，加入轻微的“沙沙”声（模拟手胶摩擦质感），烘托沉浸式体验。\n分镜 3（4-6.5 秒）：工艺解构・精密之舞\n画面：低机位贴近球网，绿色地胶与纯白球网构成极简背景。镜头平稳横移，扫过拍框线孔的精密排列（每个线孔边缘的倒角清晰可见），碳纤维纹理在光线下呈现独特的编织光泽，蓝粉渐变涂装在移动中展现色彩过渡的细腻。\n运镜：慢速横移，如显微镜般细致，避免模糊，突出“精密制造”。\n音效：丝滑的“唰”声（镜头移动声）与鼓点微微提速同步，加入碳纤维材质的轻微“嗡鸣”（模拟材料张力）。\n分镜 4（6.5-8.5 秒）：实战起势・人拍合一\n画面：近景特写真人手握球拍，手腕自然弯曲，手指贴合手胶的弧度（手胶的防滑纹理与手指的压痕清晰可见）。身体微微侧倾，重心下沉，球拍如蓄势待发的利剑，眼神聚焦前方（不露脸，突出动作张力）。\n运镜：轻微跟手小幅晃动，模拟真实握拍的呼吸感，贴合人体工学节奏。\n音效：手指轻捏手胶的“吱”声，配合鼓点节奏稳步上扬，加入轻微的心跳声（铺垫紧张感）。\n分镜 5（8.5-10.5 秒）：攻防瞬转・节奏爆发\n画面：自然切镜至对手视角（仅拍手臂与球拍局部），对手手腕发力，球拍如鞭子般挥出，羽毛球带着残影向网前袭来（球速通过动态模糊体现）。镜头快速切回我方，球拍已从预备姿势转为迎球姿态，动作衔接流畅如流水。\n运镜：快速切镜（0.3 秒内完成），模拟实战中的攻防转换，镜头略带轻微晃动（增强临场感）。\n音效：短促扎实的扣杀击球声（“砰！”），鼓点骤然加快，加入羽毛球的“呼啸”声（体现球速）。\n分镜 6（10.5-13.5 秒）：升格定格・掌控瞬间\n画面：升格慢动作（120 帧），羽毛球触拍瞬间被“定格”：球体微微凹陷，拍框蓝粉渐变涂装在顶光下折射出金属光泽，碳纤维纹理在受力瞬间的细微形变清晰可见（突出拍框的抗扭稳定性）。球拍与球的接触点如磁石般吸附，没有丝毫晃动。\n运镜：固定特写锁死击球点，慢放中镜头微微推进，聚焦球与拍的接触细节。\n音效：慢放同步放大击球闷响（“咚——”），鼓点进入高潮（重低音轰炸），加入球体形变的“弹性”音效（体现控球精准度）。\n分镜 7（13.5-15 秒）：光影收官・品牌宣言\n画面：纯白背景中，球拍直立居中，柔光从左至右缓缓扫过拍身，HALBERTEC 标识与蓝粉渐变全配色在光影中完整呈现。画面从中心向外缓缓暗角，李宁品牌 LOGO 与“战戟 8000”字样浮现，下方小字“攻守皆稳，控场由我”。\n运镜：固定静态镜头，光影流动如呼吸，结尾柔和渐暗。\n音效：鼓点缓缓收弱，低沉旁白（男声，磁性）：“战戟 8000，攻守皆稳，控场由我。” 收尾以一声短促的“咔”（如相机快门声），干净利落。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-250",
+        "industry:outdoor"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-250-input-1",
+        "asset-case-dressingkit-video-130-250-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-251",
+      "title": "手表",
+      "industry": "电子产品类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "粉盘日志·心动15秒\n分镜1\n时长：0:00-0:02\n画面：柔光下，一只纤细的手轻轻拂过丝绒礼盒表面，礼盒呈粉嫩色调，边缘镶有细闪金边。\n分镜2\n时长：0:02-0:04\n画面：镜头推近，礼盒缓缓开启，内衬为淡粉色天鹅绒，中央静静躺着手表，表盘反射出柔和粉光。\n分镜3\n时长：0:04-0:06\n画面：手表特写，镜头环绕表盘，突出粉色表盘上的条形刻度与日历窗，金属表带泛着细腻光泽。\n分镜4\n时长：0:06-0:08\n画面：慢镜头，一滴水珠落在表盘上，瞬间滑落，凸显蚝式表壳的防水性能与表镜的通透质感。\n分镜5\n时长：0:08-0:10\n画面：女性手腕佩戴手表，搭配浅粉色连衣裙，抬手轻抚发丝，背景为春日樱花树下，花瓣飘落。\n分镜6\n时长：0:10-0:12\n画面：镜头切换至都市街景，女性自信行走，手表在自然光下闪耀，与周围建筑的冷色调形成温柔对比。\n分镜7\n时长：0:12-0:14\n画面：特写表冠旋入动作，伴随清脆“咔嗒”声，象征精准与可靠，背景虚化为暖粉光晕。\n分镜8\n时长：0:14-0:15\n画面：手表与礼盒并列，镜头拉远，背景渐变为纯粉嫩色，品牌标志缓缓浮现。\n分镜9\n时长：0:15\n画面：黑屏，浮现品牌标语与官网信息，字体为优雅衬线体，颜色为香槟金。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-251",
+        "industry:electronics"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-251-input-1",
+        "asset-case-dressingkit-video-130-251-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-252",
+      "title": "miumiu服装广告大片",
+      "industry": "服饰类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "根据分镜图，生成miumiu广告视频",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-252",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-252-input-1",
+        "asset-case-dressingkit-video-130-252-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-253",
+      "title": "微醺",
+      "industry": "食品饮料类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "以图1产品为全局视觉参考。\n整体色调为柔雾白桃粉 + 奶雾浅杏色，搭配清透冷调柔光，高氛围感侧逆光，低饱和高级莫兰迪色系。\n色调 (Color Palette)：柔雾白桃粉、白兰地浅琥珀色、奶白哑光罐身，清透冷调侧逆光，氛围感暗调柔焦。\n质感 (Texture)：强调物理细节爆发。易拉罐拉环开启瞬间绵密白雾、杯中白桃气泡酒液流动肌理、表层细腻蜜桃气泡颗粒、碰杯时飞溅的晶莹酒珠、果肉感白桃雾面通透质感。\n节奏 (Rhythm)：采用 “快 - 慢 - 快” 剪辑手法。开场极快，中间倒酒镜头延时慢放凸显酒体质感，碰杯后高频快剪，最后产品品牌定格收尾。\n转场 (Transitions)：包含动作匹配（Match Cut）、柔化遮罩转场（Mask Transition）和快速甩镜头（Whip Pan），视觉流畅清新有少女氛围感。\n0-2 秒 [快剪 - 开场]：极近距离微距镜头对准 RIO 白桃白兰地罐装顶部拉环。手指快速扣开拉环，瞬间氤氲出蜜桃奶白色薄雾在暗调干净背景中缓缓散开。\n动态：轻微快速推镜。\n音效：清脆 “咔哒” 开罐声，紧接着轻柔细碎 “滋滋” 气泡排气声。\n2-5 秒 [慢动作 - 流体]：白桃粉调夹杂白兰地浅琥珀光晕的酒液，以流线弧度倾倒入高脚玻璃杯。高帧率慢动作呈现酒体清透丝滑感，侧逆光勾勒酒液边缘通透柔光金边。\n动态：镜头平滑跟随酒液流动追踪。\n音效：轻柔治愈的液体流淌灌注声。\n5-7 秒 [特写 - 泡沫气泡]：表层绵密细腻的蜜桃气泡在杯顶缓缓浮起聚拢，微距下可见微小气泡缓缓升腾、轻轻破裂。\n动态：极微距静止定格观察。\n音效：细碎温柔的气泡沙沙破裂声。\n7-12 秒 [快剪 - 社交]：快速甩镜头（Whip Pan）切入清新轻奢休闲场景，闺蜜氛围感出镜，暖柔氛围灯下浅笑互动。特写小口抿饮时的松弛神态，脸颊衬着白桃酒感粉嫩气色，柔光勾勒人物轮廓。\n动态：柔和快速切镜。\n音效：清新慵懒氛围感轻音乐起，伴随轻柔笑语声。\n12-14 秒 [碰杯名场面]：两只装有白桃白兰地 RIO 的酒杯在画面中心轻碰相触。酒液撞击瞬间慢动作飞溅，晶莹桃色酒珠散落，光影温柔交错，氛围感拉满。\n音效：清脆通透的玻璃轻撞声（Clink）。\n14-15 秒 [品牌定格]：镜头缓缓拉回，RIO 白桃白兰地罐装静置在清润浅石质感台面上，背景柔光虚化、氛围温柔雅致，尽显清甜松弛感。\n音效：轻柔重音收尾，背景轻音乐缓缓渐隐。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-253",
+        "industry:food"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-253-input-1",
+        "asset-case-dressingkit-video-130-253-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-257",
+      "title": "汽车",
+      "industry": "汽车交通类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "电影级实拍镜头。夜晚，东京街头，下着大雨，地面湿滑，反射着霓虹灯光。一辆哑光亮黄色的日产GTR R35停在隧道入口，车灯开启，照亮了前方的雨雾。一位身穿黑色皮夹克的亚洲男性（30岁，英俊，坚毅眼神）从阴影中走向汽车，手轻轻抚摸着车身湿润的金属表面。特写镜头聚焦在他的手和车身上的“GT-R”金属徽标上，徽标上挂着真实的雨滴。8k分辨率，高对比度，电影布光，景深浅。\n高质感实拍，动作电影风格。车内特写：一只男性的手猛踩油门踏板。仪表盘特写：转速表指针物理性地急速扫向红线区。车外中景：GTR从隧道冲出，排气管喷出真实的蓝色火焰（回火）。车轮特写：轮胎高速旋转，碾压路面积水，溅起真实的水花和雾气。背景中的城市灯光因高速运动产生自然的光轨。IMAX画质，快门速度极快，充满力量感。\n写实风格，车载摄影。第一视角（GoPro风格）：驾驶员双手紧握方向盘，眼神专注，挡风玻璃上反射着仪表盘的红光。\n航拍视角（无人机跟随超真实超真实）：GTR在盘山公路上高速漂移过弯。车身表面反射着周围环境的真实光影。4k，高帧率，动作捕捉感。\n电影终镜，史诗感。清晨，山顶观景台。金色的阳光（黄金时刻）穿过云层，洒在黄色的GTR车身上，勾勒出车身线条。男主角背对镜头，双手插兜眺望远方的城市云海。\n色彩分级具有电影质感，自然光，宁静而充满力量。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-257",
+        "industry:auto"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-257-input-1",
+        "asset-case-dressingkit-video-130-257-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-258",
+      "title": "床-影视",
+      "industry": "家居类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "参考分镜图，但主要看下面提示词，帮我生成视频，真实拍摄：\n镜头一【0-3 秒】：清晨暖调柔光里，特写卧室床头柜上的闹钟准时响起，镜头带过同框的轻奢台灯，背景是图中同款软包大床与落地窗，晨光透过窗纱漫进房间。音频：清脆的闹钟响铃、清晨窗外的鸟鸣、舒缓治愈的钢琴纯音乐起。\n镜头二【3-6 秒】：镜头切至床面，盖着这款亲肤被子的独居女生，穿着柔软睡衣睡眼惺忪，伸手按掉床头的闹钟，指尖划过被子细腻的面料，半开的落地窗纱帘被风轻轻吹动。女生（睡眼惺忪，轻声嘟囔）：嗯… 又到点啦。音效：闹钟声骤停，女生轻缓的呼吸声、布料摩擦的轻响，背景乐持续。\n镜头三【6-9 秒】：慢镜头捕捉清风从落地窗涌入，拂动纱帘与被子的边角，晨光落在被子上，清晰凸显面料的柔软肌理与垂坠感，女生惬意地往被子里缩了缩，眉眼舒展。音频：轻柔的风声、窗外的树叶轻响，背景乐转得更温柔舒缓。\n镜头四【9-12 秒】：银渐层小猫轻巧跳上床，踩着蓬松的被子缓步走到女生身侧，用脑袋轻轻蹭着被子和女生的手腕，女生笑着抬手揉了揉小猫的脑袋。女生（温柔轻笑，软声说）：醒啦小宝贝，早呀。音效：小猫软绵的喵叫声、爪子踩过床品的轻响、女生温柔的轻笑，背景乐变得灵动柔和。\n镜头五【12-15 秒】：镜头缓缓推近定格，完整展示这款被子的全貌，晨光均匀铺在面料上，凸显高级质感与柔软蓬松的形态，和卧室整体风格完美融合，画面干净治愈。音频：钢琴乐达到温柔高潮后干净收尾，轻柔的环境音收束。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-258",
+        "industry:home"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-258-input-1",
+        "asset-case-dressingkit-video-130-258-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-259",
+      "title": "洗衣液",
+      "industry": "家居类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "帮我生成视频，要真实摄影：\n镜头一【0-3 秒】：春日暖阳下，嫩绿树枝上挂着清透的玻璃风铃，风拂过风铃轻轻晃动，阳光折射出柔和光斑，背景是虚化的春日白花。音频：清脆风铃声、轻柔风声、舒缓春日纯音乐起。\n镜头二【3-6 秒】：镜头顺着风铃垂绳匀速向下摇镜，无缝转场至海边城市观景桥，画面严格对齐海平面，蓝天碧海搭配白色桥体，晴空万里。音效：风声持续，音乐节奏微扬，混入远处轻海浪声。\n镜头三【6-9 秒】：穿浅蓝色连衣裙的女生迎着风，骑自行车从画面左侧入镜，车篮里装满和瓶身同款的蓝白色鲜花，裙摆、发丝随风飘动，画面清新灵动。音效：自行车链条轻响、女生轻快笑声，音乐节奏更明快。\n镜头四【9-12 秒】：慢镜头特写，车篮里一朵蓝白色鲜花被风吹落，镜头全程跟拍空中缓缓飘落的花朵，画面柔和干净。音效：音乐节奏放缓，风铃声轻响，混入花瓣飘落的轻音效。\n镜头五【12-15 秒】：飘落的花朵在空中旋转，花瓣舒展融合，无缝幻化成带晶莹水珠的蓝花款洗衣液，瓶身放在洒满阳光的窗边，背景是同款春日白花，产品清晰定格，logo 完整呈现。音效：音乐达到温柔高潮后收尾，清脆品牌提示音，干净收束。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-259",
+        "industry:home"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-259-input-1",
+        "asset-case-dressingkit-video-130-259-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-260",
+      "title": "饺子",
+      "industry": "食品饮料类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "请根据分镜图和提示词，帮我生成视频，注意画面符合客观逻辑：\n镜头一【0-3 秒】：新年客厅全景，贴春联、挂红灯笼，年味拉满。两个小朋友在客厅嬉笑追逐打闹，是两个小朋友！沙发上的爷爷奶奶笑着看向孩子。音频：轻快新年背景乐、孩子嬉笑声、轻柔鞭炮背景音。镜头二【3-6 秒】：同样是上面的两个小朋友！打闹特写，拿着玩具互相追逐，撞歪沙发靠垫，闹得更欢。音效：嬉笑声放大，轻微碰撞声，背景乐持续。镜头三【6-8 秒】：厨房门打开，暖光溢出，妈妈端着一盘冒着热气的湾仔码头玉米蔬菜猪肉水饺走出，特写饺子饱满透亮、汁水充盈的样子。音效：厨房门轻响，嬉笑声瞬间收弱，背景乐转温柔。镜头三【8-11 秒】：这里出现了另一个孩子，打闹的孩子瞬间定住，眼睛直勾勾盯着饺子，立刻停下追逐，一起扒着餐桌边，眼巴巴看着盘子。音效：轻快脚步声，孩子齐声惊喜喊：哇！湾仔码头饺子！背景乐转明快。镜头四【11-13 秒】：特写孩子夹起饺子咬开，汁水饱满，一脸满足；一家人围坐餐桌，其乐融融。音效：家人温和的笑声。镜头五【13-15 秒】：画面渐亮，湾仔码头品牌 logo 全屏弹出，搭配 slogan「皮薄，馅大，汁多」定格。音效：收尾新年祝福轻响。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-260",
+        "industry:food"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-260-input-1",
+        "asset-case-dressingkit-video-130-260-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-261",
+      "title": "敦煌-动画",
+      "industry": "文创 IP 类",
+      "summary": "智能视频 · 0 个输入文件 / 1 个输出文件",
+      "prompt": "根据下面脚本，帮我生成超高清超真实3D动漫：\n镜头1（0-3秒）：西域商队出城，时空穿越开场远景：黄沙漫天中，驼铃悠扬，一支满载丝绸、瓷器的商队从地平线出现，向敦煌城楼行出。\n特效转场：镜头突然推近，商队马蹄踏过地面时，扬起黄沙化为金色粒子，露出“敦煌”城楼匾额（鎏金字体）。\n镜头2（3-5秒）：市井全景俯冲，多线叙事画面（AI+实景合成）：无人机视角俯冲：敦煌城市场景，商铺林立（悬挂西域织物、瓷器摊位特写），人群熙攘（穿插不同服饰的中原、波斯、粟特商人）。动态元素：超真实飞天壁画人物从空中飘过，撒下花瓣，与市井烟火交织。\n镜头3（5-8秒）：细节特写，文化碰撞画面（蒙太奇快切）：a. 波斯商人手持宝石与唐朝掌柜议价（手部特写，宝石反光）。b. 胡姬在酒肆跳舞（旋转裙摆露出西域纹饰，AI增强裙摆流光效果）。c. 孩童追逐九色鹿壁画。\n镜头4（8-12秒）：壁画活现，艺术震撼画面：镜头切到莫高窟洞窟，壁画上的飞天突然“活过来”：飞天飘出墙壁，人转身向镜头微笑。\n镜头5（12-15秒）：结尾悬念+互动引导画面：全景：敦煌城夜景，万家灯火与星空相连，飞天群环绕城楼。镜头聚焦至一点：一只现代手机屏幕亮起（显示“扫码探索敦煌秘境”）。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-261",
+        "industry:ip"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-261-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-262",
+      "title": "北京-文旅宣传片",
+      "industry": "文创 IP 类",
+      "summary": "智能视频 · 0 个输入文件 / 1 个输出文件",
+      "prompt": "镜头一【0-3 秒】：清晨 6:30 金色晨光里，无人机超低空贴地掠过故宫太和殿的金色琉璃瓦顶，清晰可见瓦当的纹路与阳光折射的光斑，远处宫墙下有零星晨练的老人走过。音频：大气沉稳的中国风交响乐起、风吹琉璃瓦的轻响、远处的鸟鸣声。\n镜头二【3-6 秒】：无人机平滑拉升，以 45 度角环绕天坛祈年殿飞行，完整展示三层圆形攒尖顶的榫卯结构细节，古柏的影子在汉白玉台基上缓缓移动。音效：交响乐节奏微扬、悠远的古钟余响、风声持续。\n镜头三【6-9 秒】：无人机水平匀速推进，从鸟巢交错的钢结构间隙中穿过，无缝切至水立方蓝色气泡外立面，水面反射着建筑的光影，有真实的波\n光晃动。音效：交响乐转明亮、轻微的城市车流背景音。\n镜头四【9-12 秒】：无人机垂直向上拉升，从国贸 CBD 建筑群的峡谷中穿过，聚焦中国尊的玻璃幕墙，清晰可见幕墙反射的蓝天白云与周边建筑。音效：交响乐达到高潮、城市脉搏般的低频环境音。\n镜头五【12-15 秒】：无人机拉远至高空大全景，呈现故宫紫禁城全貌，夕阳为所有建筑镀上金边，最后浮现 \"北京\" 二字定格。音效：交响乐恢弘收尾、一声清脆的鸽哨声。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-262",
+        "industry:ip"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-262-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-267",
+      "title": "带货视频-上衣",
+      "industry": "服饰类",
+      "summary": "智能视频 · 2 个输入文件 / 1 个输出文件",
+      "prompt": "竖版9:16，15秒夏季网红温柔种草视频，固定图 2 模特不变、背景全程不变，去掉包包项链所有多余配饰，镜头从常规中景缓慢向前慢慢推近，渐变成上半身近景，氛围温柔松弛，轻声日常分享，没有主播叫卖感。\n0-4秒：模特手持图1 粉色波点一字肩上衣，温柔看向镜头轻声说话：大家好呀，给你们分享一件我夏天很喜欢的上衣。\n4-15秒：镜头继续缓慢往前拉近定格上半身近景，模特身穿图2 同款上衣，搭配高腰浅色牛仔裤，小幅度侧身、轻微转身优雅展示版型面料，边展示边温柔轻声讲述：面料软糯透气，上身特别舒服，一字肩气质很温柔，日常穿简约又有氛围感。\n柔和自然光，8K高清，面料纹理真实，表情温婉松弛，动作优雅，无脸崩无变形，网红温柔种草电影感画质。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-267",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-267-input-1",
+        "asset-case-dressingkit-video-130-267-input-2",
+        "asset-case-dressingkit-video-130-267-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-268",
+      "title": "带货视频-防晒衣",
+      "industry": "服饰类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "竖版 9:16，15 秒夏季防晒衣温柔种草短视频，固定图中模特人物与户外草坪背景不变，镜头从全景缓慢向前推近至上半身近景，全程近景 + 中景切换，动作自然舒展，口播温柔日常，无生硬带货感。\n0-3 秒（开场引入）：镜头全景，图1模特站在草坪上，抬手展示防晒衣的连帽设计，温柔开口：“夏天怕晒的姐妹，这件防晒衣真的救大命！”\n3-8 秒（细节展示 1）：镜头推近至近景，模特侧身展示连帽 + 面罩一体设计，用手轻扯面料，继续说：“这种连帽面罩一体的，脖子和脸都能遮住。”\n8-12 秒（细节展示 2）：模特抬手露出带指套的袖口，转身展示宽松版型，语气轻快：“袖口还有指套设计，面料冰冰凉凉的。”\n12-15 秒（收尾种草）：镜头拉回中景，模特对着镜头微笑，轻提衣摆说：“日常穿或者运动穿都合适”\n画面户外自然光，8K 高清画质，面料纹理清晰真实，表情松弛温柔，动作流畅自然，无脸崩无变形，网红日常种草质感。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-268",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-268-input-1",
+        "asset-case-dressingkit-video-130-268-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-269",
+      "title": "跳舞卡点换装",
+      "industry": "服饰类",
+      "summary": "智能视频 · 5 个输入文件 / 1 个输出文件",
+      "prompt": "竖版 9:16 抖音爆款视频，元气甜妹风，全程固定使用图 5 的模特、发型、妆容，以及图 5 的原木风室内背景（木质窗框、白色纱帘、窗边绿植、浅木色书架，全程不改动）。\n模特跟着节奏感强的甜酷音乐跳舞，动作连贯流畅，全程保持中景镜头（上半身到大腿位置），不跑焦、不晃动。\n卡点时无缝切换服装，不打断舞蹈动作，节奏精准对应鼓点：\n第 1 段：穿着图 1的服装 —— 粉色竖条纹短袖衬衫 + 白色百褶裙，搭配黑色十字架项链；\n第 2 个卡点：无缝切换为图 2的服装 —— 浅蓝色针织短袖 + 白色百褶裙，搭配蓝白条纹披肩；\n第 3 个卡点：无缝切换为图 3的服装 —— 卡其色针织短袖 + 棕色高腰半身裙，搭配同色系皮带；\n第 4 个卡点：无缝切换为图 4的服装 —— 白色扭结短袖 + 格纹半身裙；\n第 5 个卡点：无缝切换为图 5的服装 —— 香槟色亮片吊带裙。\n室内暖调柔光，服装细节清晰还原原图面料纹理，无穿模、无变形、无脸崩、无动作卡顿，人物与背景全程锁定不变，仅服装随音乐卡点无缝切换，短视频爆款质感，8K 超清画质。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-269",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-269-input-1",
+        "asset-case-dressingkit-video-130-269-input-2",
+        "asset-case-dressingkit-video-130-269-input-3",
+        "asset-case-dressingkit-video-130-269-input-4",
+        "asset-case-dressingkit-video-130-269-input-5",
+        "asset-case-dressingkit-video-130-269-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-270",
+      "title": "服装大片1",
+      "industry": "服饰类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "电影感全景推镜，超模站在沿海悬崖的高秆金黄草中，深棕色亚麻连体裤被风吹起，远处是海面与岩石，阴天柔和自然光，慢动作，电影颗粒质感，8K画质。\n360度环绕运镜，镜头缓慢围绕站立的模特移动，模特双手插在裤袋，风拂过发丝与高草，重点突出连体裤的面料纹理与整体廓形，柔和漫射自然光，电影质感。\n镜头切至蹲姿中景，模特靠在灰白色岩石上，手肘搭在膝盖上，姿态松弛，眼神平静看向镜头，高秆金黄草在前景虚化，阴天漫射光，低饱和大地色调，电影级质感。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-270",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-270-input-1",
+        "asset-case-dressingkit-video-130-270-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-271",
+      "title": "服装大片2",
+      "industry": "服饰类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "根据分镜图，帮我生成服装大片。高冷松弛氛围感，杂志硬照质感，8K 超清，极致细节，服装面料纹理清晰，精致妆容，侧逆光柔光，电影级光影，低饱和莫兰迪色调，全身构图，站姿优雅，无多余杂物，高级时尚审美，单反人像画质。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-271",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-271-input-1",
+        "asset-case-dressingkit-video-130-271-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-273",
+      "title": "影视-小孩与小狗",
+      "industry": "文创 IP 类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "根据分镜图和下面提示词，帮我生成视频：\n真人实景，超写实，无动漫 / 卡通 / 手绘 / 二次元元素，索尼 A7S3 搭配 50mm f/1.4 定焦镜头拍摄，电影级自然光，8K 超清，4:2:2 10bit 色彩，ProRes 422 HQ 编码，浅景深，胶片质感，自然光通透，真实皮肤肌理，无美颜无磨皮，无夸张滤镜，无 AI 塑料感。\n镜头分镜提示：\n【0-3s】：镜头从宝宝背后开始跟拍，她穿着可爱的衣服，慢悠悠走在午后老巷街头，暖金色阳光洒在发顶和衣服上，背景虚化，街道、绿植、老建筑的细节真实自然，轻微手持跟拍的真实感，无抖动，画面稳定。\n【3-6s】：镜头微微前推，宝宝停下脚步，蹲下身，视线被路边的小奶狗吸引，小狗抬头看向她，发出一声软乎乎的 “汪呜～” 轻叫，镜头捕捉宝宝好奇的侧脸，浅景深虚化背景，突出人物与小狗。\n【6-11s】：镜头切到侧前方，特写宝宝的小手轻轻摸向小狗的脑袋，她另一只手举着糖油串串，奶声奶气地说：“小狗狗，你要吃一口吗？”，镜头缓慢推进，捕捉宝宝温柔的眼神和小狗软乎乎的神态，背景虚化，光影柔和，皮肤纹理、发丝、衣服布料、小狗毛发、串串油光细节极致真实。\n【11-15s】：镜头拉远，定格宝宝蹲在路边摸小狗、举着串串的温馨画面，暖光把两人的影子拉得软软的，背景是柔和虚化的老巷街景，画面自然收尾，无特效，无跳帧，无违和感。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-273",
+        "industry:ip"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-273-input-1",
+        "asset-case-dressingkit-video-130-273-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-274",
+      "title": "影视-闺房心事",
+      "industry": "文创 IP 类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "根据分镜图和下面提示词，帮我生成视频： 8K 超高清，真人实景写实风格，电影级柔光质感，暖调午后光影，胶片质感，自然光通透，浅景深，实景拍摄既视感，质感高级写实； \n镜头连贯运镜：从中式闺房木门外全景切入，镜头缓慢推进，绕开室内木质雕花屏风走入闺房，暖光透过木格窗棂斜洒进屋，光束漂浮细微尘埃，檀木妆台、素色纱帘、古籍书卷陈设古色雅致；\n镜头推进到梨花木窗边，温婉古典女子身着素雅汉服静坐，专注手拿银线绣针细绣牡丹绣绷，特写指尖捻线、穿针刺绣手部细节；镜头缓缓上移给到女子面部特写，女子神情柔和专注，开口念台词：“银烛微光映绣床，轻针慢线理春光。牡丹未绣人先瘦，半幅相思半幅妆。”；\n随后镜头拉回中景，女子抬手缓缓推开木格窗，镜头从女子肩后视角望向窗外，春日庭院粉白桃花随风缓缓飘落，青瓦白墙映衬，氛围静谧温柔，全程画面细节真实，木纹、布料、发丝、花瓣肌理清晰，无美颜过度、无动漫卡通、无畸形崩坏、无多余文字水印。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-274",
+        "industry:ip"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-274-input-1",
+        "asset-case-dressingkit-video-130-274-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-275",
+      "title": "书卷",
+      "industry": "文创 IP 类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "8K 超高清，3D 写实真人实景拍摄，索尼 FX3 + 24-70mm F2.8 镜头，电影级日落逆光，暖调橙金色光影，10bit 4:2:2 色彩，ProRes 422 HQ 编码，浅景深，空气透视，胶片颗粒质感，无动漫 / 二次元 / 手绘 / 卡通元素，皮肤肌理、发丝、衣料、山川纹理细节极致真实，实景拍摄既视感，无过度美颜、无塑料感。\n\n【0-2s】：广角远景，古装女子身着淡粉色汉服立于山崖边，面向橙金色日落，层叠远山雾霭朦胧，逆光勾勒发丝衣摆轮廓，镜头缓慢推进。\n\n【2-4s】：特写女子闭眼侧脸，暖光落在脸上，睫毛投下柔和阴影，带出手中古卷一角。\n\n【4-6s】：中近景，女子展开泛黄古卷，镜头聚焦卷上毛笔字迹，风轻吹卷边，背景虚化山景，光影流动。\n\n【6-8s】：特写女子睁眼，泪珠滑落脸颊，她凝视卷上文字，神情哀伤温柔，捕捉泪痕细节。\n\n【8-11s】：中景，女子抬手任由古卷被风吹起，轻声开口怅然道：“往事随风吧。”，镜头跟拍古卷升空轨迹，背景日落远山。\n\n【11-13s】：特写古卷随风舒展，毛笔字若隐若现，镜头拉回女子指尖轻抬，眼神追随卷纸。\n\n【13-15s】：远景拉远，女子身影与山峦日落融为一体，古卷消失在雾霭中，定格橙金色山巅日落，画面渐暗收尾。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-275",
+        "industry:ip"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-275-input-1",
+        "asset-case-dressingkit-video-130-275-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-276",
+      "title": "凤凰神女",
+      "industry": "文创 IP 类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "图片1：头戴繁复的赤金凤冠，流苏垂至眼角，眉心一抹烈焰花钿。眼妆是极其华丽的金红截断式。 服饰细节 身着高定版霓裳羽衣，由液态流动的黄金丝线编织而成。\n\n六幕分镜叙事 \n\n第一镜（超微距 / 绝世容颜） 画面：神女微闭双目，睫毛上挂着细碎的金粉。随着她缓缓睁眼，瞳孔瞬间点燃成金色的火焰竖瞳。\n\n 第二镜（中景 / 唯美起势） 画面：神女双手在胸前结出 “莲花印”。指尖划过的轨迹，并非空气，而是凭空生出了一朵朵燃烧的微型金莲。 \n\n第三镜（全景 / 火凤阵法）画面：神女双臂大开，身后虚空瞬间炸裂，形成一个覆盖天地的赤金火焰法阵。法阵中央，一只由亿万真实羽毛构成的火凤虚影发出一声清啸，双翼展开遮蔽苍穹。 \n\n第四镜（动态 / 美学暴击） 画面：神女单指一点。背后的火凤化作一道极细的赤金激光射向地面。地面上的妖魔大军在接触这道光的瞬间，没有血腥爆炸，而是瞬间碳化并崩解成漫天飞舞的火星绽放。 \n\n第五镜（特写 / 余烬吹散）画面：神女轻轻吹一口气，指尖残留的一点火星熄灭。背景中，巨大的战场已经化作一片燃烧的金色花海，残酷却美得惊心动魄。 \n\n第六镜（半身定格 / 神性回归） 画面：神女恢复平静，赤金凤冠在夕阳下闪耀。她微微抬起下巴，眼神高贵冷漠，身后是漫天飘落的黑色余烬雪，形成了极致的红黑金对比。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-276",
+        "industry:ip"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-276-input-1",
+        "asset-case-dressingkit-video-130-276-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-277",
+      "title": "漫剧-对话",
+      "industry": "文创 IP 类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "0-3s：远景切入，仙侠秘境云雾缭绕，青石小径旁古松挺拔，男生（清玄派）负手而立，衣袂随微风轻动，神色清冷，周身萦绕淡青仙气；女生（赤焰派）纵身跃至他面前，落地时轻扬下巴，眉眼带笑却藏傲气，衣摆划出利落弧度。\n\n3-7s：中景，两人对立而站，女生微微歪头，指尖轻点男生衣袖，语气俏皮又傲气：“清玄派的人，怎么独独敢闯我赤焰派的地界？” 男生垂眸，轻轻拂开她的手，神色未变，语气清冷：“路过而已。”\n\n7-12s：近景交替特写，女生挑眉，眼底闪过狡黠，语气带挑衅：“路过？我看你是想偷学我赤焰派的术法吧？” 男生抬眸，眼神清冷如霜，语气平淡却有力度：“赤焰派术法，还入不了我的眼。”\n\n12-15s：双人中景定格，女生气鼓鼓地叉腰，却难掩俏皮神色；男生负手转身，衣袂翩跹，留给她一个清冷背影，云雾在两人间流转，画面渐暗收尾。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-277",
+        "industry:ip"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-277-input-1",
+        "asset-case-dressingkit-video-130-277-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-280",
+      "title": "多功能拖把-TVC广告",
+      "industry": "家居类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "15秒 无人物 无配音 黑色背景 高科技质感TVC广告，\n4K 60fps，8K超清，电影级光影，极简高级风，音效高级\n全程展示图1中的白色多功能拖把，产品细节100%还原，\n镜头语言干净利落，配合产品动作设计音效，\n无AI塑料感、无穿模、无多余元素干扰。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-280",
+        "industry:home"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-280-input-1",
+        "asset-case-dressingkit-video-130-280-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-281",
+      "title": "拖把-UGC种草",
+      "industry": "家居类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "图1商品卖点：\n一器多用，干湿全能：既是地板拖把，也是浴室刮水器，干拖去浮毛、湿拖去污渍，还能刮玻璃 / 墙面水渍，全屋清洁一次搞定。\n懒人友好，清洁无死角：长杆设计不弯腰，刷头贴合地面缝隙，桌底、床底、墙角都能轻松够到，懒人也能轻松完成全屋清洁。\n耐用材质，易清洁不发霉：刮条 / 拖布材质耐造，冲一冲就干净，不易滋生细菌和异味，用久了也不发黄发霉。\n\n口播文案：\n“给大家实测一下我家的清洁神器！\n它既是拖把也是刮水器，干拖去毛、湿拖去污，还能刮玻璃！懒人清洁神器，有它打扫卫生都变快乐了！”\n\n第三人称视角，真实拍摄场景，室内场景，视频需要保证人物一致，场景一致，产品一致。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-281",
+        "industry:home"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-281-input-1",
+        "asset-case-dressingkit-video-130-281-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-282",
+      "title": "加入模特-商品广告",
+      "industry": "家居类",
+      "summary": "智能视频 · 2 个输入文件 / 1 个输出文件",
+      "prompt": "专业商业TVC广告，15秒，暖调家居风，高级电影感，4K 60fps，8K超清，自然光打光，柔和光影，画面干净无杂物，色调统一，真实生活化场景，无AI塑料感，无穿模。\n\n镜头1（0-5s）：晨光洒进客厅，浅棕色木地板，女生弯腰擦地，表情疲惫，镜头慢推，背景是温馨的浅色系沙发，氛围真实居家。\n镜头2（5-10s）：女生拿起图1中的白色多功能拖把，轻量长杆，无弯腰拖地，刷头顺滑划过地板，特写刷头无死角清洁床底灰尘，动作流畅自然。\n镜头4（10-13s）：女生坐在沙发上，微笑看向干净的房间，拖把靠在墙角，不占空间，背景温馨治愈，镜头拉远展现全屋整洁。\n镜头5（13-15s）：产品特写，白色拖把主体，画面简洁高级。\n\n负面词：模糊、低画质、塑料感、穿模、人物表情僵硬、场景杂乱、光线刺眼、画面过曝、色调不统一、动作卡顿。\n\n女声旁白：“你多久没有好好休息过了？\n别再让家务消耗你的热情。\n把打扫的时间，还给生活。\n轻松清洁，也能拥有干净温暖的家。”\n\n人物始终统一，场景始终统一，无穿帮镜头，产品始终保持一致，细节一致。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-282",
+        "industry:home"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-282-input-1",
+        "asset-case-dressingkit-video-130-282-input-2",
+        "asset-case-dressingkit-video-130-282-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-283",
+      "title": "用户口播种草-鼠标",
+      "industry": "电子产品类",
+      "summary": "智能视频 · 2 个输入文件 / 1 个输出文件",
+      "prompt": "主提示词\n真人出镜口播种草短视频，15 秒，竖屏 9:16，风格活泼亲切，日常玩家自用分享风，画质高清通透，氛围轻松接地气\n【人物设定】\n【图2】二十岁左右女生游戏博主，黑长直素颜淡妆，笑容自然随性，说话语气轻松像朋友分享，穿搭简约休闲，坐在电竞椅上，居家温馨电竞房间，暖光氛围感，桌面摆放电竞外设，日常居家实拍场景\n【分镜节奏】\n0-3 秒：直面镜头轻松开场，桌面摆放【图1】电竞游戏鼠标，顺手拿起产品\n3-9 秒：镜头近距离特写鼠标，镜头清晰呈现鼠标精致电竞设计细节，流畅弧形机甲风机身，细腻防滑侧裙纹理，侧边自定义功能按键，灵敏金属滚轮，透光品牌 logo 标识，整体电竞潮流外观质感尽数展现，上手握持试用，滑动操作展示手感\n9-15 秒：放下鼠标对着镜头真诚安利，伸手做出推荐指引手势，自然亲切收尾\n【口播文案（人物对口型自然说出）】\n平时打游戏必备的好用鼠标来啦，颜值超高，握着手感特别舒服，反应也特别灵敏，玩游戏操作超顺手，真心觉得好用推荐给大家\n【画面要求】\n超写实真人实拍感，完美还原参考图鼠标外观造型配色，细节清晰真实，动作自然流畅，肢体五官正常，光影柔和自然，生活化种草氛围，无生硬带货感\n负面提示词\n卡通，动漫，3D 建模，AI 塑料脸，表情僵硬，五官扭曲，手脚畸形，产品变形，色差严重，画面昏暗，杂乱背景，水印，多余文字，专业带货腔调，生硬死板，画质模糊",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-283",
+        "industry:electronics"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-283-input-1",
+        "asset-case-dressingkit-video-130-283-input-2",
+        "asset-case-dressingkit-video-130-283-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-284",
+      "title": "产品广告大片-无人机",
+      "industry": "电子产品类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "产品广告大片，15秒，竖屏9:16，整体风格简洁科技感，画质高清通透，色调偏冷调工业风，节奏明快专业。\n\n【分镜节奏】\n0-3秒：科技感开场，暗调深灰背景，画面主体为【图1】DJI Avata 360无人机正面特写：哑光灰色机身，四轴全包围保护圈，黑色螺旋桨带橙色标识，机身上印有DJI标志、AVATA 360字样与安全警示贴纸，镜头叠加短视频平台白色三角形播放按钮标识。一道冷白色光束扫过机身，模拟设备通电启动效果，突出科技质感。\n\n3-7秒：核心部件特写，镜头推近聚焦无人机的光学镜头，清晰呈现镜头模组的精密结构；随后镜头平移展示机身细节：一体化保护圈的流畅线条、防滑纹理的电池模块、机身上的白色标识与警示贴纸，直观呈现产品做工质感与安全防护设计。\n\n7-12秒：室内飞行场景演示，无人机平稳从桌面缓慢升空，全包围保护圈在飞行中清晰可见，螺旋桨平稳转动直至到空中悬停，无磕碰风险，完整展示机身稳定性、悬停效果与灵活操控性。\n\n12-15秒：场景收尾，无人机缓缓降回桌面，画面定格在产品全貌上。\n\n【画面要求】\n全程超写实产品实拍质感，光线柔和均匀，无人机细节100%还原（哑光灰机身、保护圈、螺旋桨、标识贴纸），无穿模无变形，背景干净不抢镜，重点突出无人机的设计细节与室内飞行稳定性，镜头运镜流畅自然，无AI塑料感，高清8K画质。\n\n# 负面提示词\n卡通，动漫，3D渲染，AI塑料质感，画面变形，无人机细节模糊，配色错误，保护圈变形，螺旋桨扭曲，机身标识消失，飞行姿态不稳，碰撞家具，背景杂乱，低画质，过曝，暗部死黑，水印，多余文字，动作卡顿。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-284",
+        "industry:electronics"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-284-input-1",
+        "asset-case-dressingkit-video-130-284-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-296",
+      "title": "产品大片",
+      "industry": "服饰类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "15秒电影感服装大片，真人实拍质感，超高级英伦学院风穿搭展示视频，6个镜头连贯运镜，全程自然光、电影级调色，8K 60fps，ProRes 422 HQ，索尼FX3拍摄，搭配蔡司35mm f/1.4定焦镜头，浅景深虚化背景，画面干净通透，氛围感拉满，拒绝过度磨皮和AI塑料感。\n分镜脚本：\n0-2s：全景慢推，英国伦敦街头，阳光斜洒，穿着学院风套装的女生迎面走来，镜头从她的上半身缓缓推向脸部，捕捉她自信的微笑，背景虚化的复古街景，画面有轻微的电影胶片颗粒感。\n2-5s：胸部特写+环绕运镜，聚焦白色Polo领针织上衣，特写领口的波浪黑边、胸前酒红色刺绣和坑条针织纹理，镜头轻微环绕，捕捉阳光打在面料上的柔和光泽，展现衣服的质感与版型。\n5-8s：腰部特写+慢移镜头，镜头从上衣下摆缓缓下移，扫过黑色腰带的金属扣、格纹百褶裙的压褶细节，捕捉格纹的肌理和裙子的垂坠感，光影随着镜头移动自然变化。\n8-11s：中景跟拍，女生双手插在裙兜，在街头人行道上缓步前行，镜头从侧后方跟拍，捕捉她走路时裙摆的动态，背景是虚化的咖啡馆和行人，营造慵懒松弛的氛围感。\n11-13s：脚部特写，镜头从下往上缓慢抬升，捕捉女生的乐福鞋、白袜和百褶裙的裙摆，阳光透过树影在地面形成斑驳光影，脚步轻踏石板路，动态自然流畅。\n13-15s：近景收尾，镜头拉回上半身，女生停下脚步，侧身回头看向镜头，阳光在她的卷发上形成金色轮廓光，画面定格在她自信的表情和完整的穿搭上，结尾轻微淡出。\n画面风格：\n色调：暖调英伦风，低对比度，电影级暖黄调色，高光柔和不刺眼，阴影干净不发灰\n光影：侧逆光+漫反射自然光，打造发丝光和服装面料的层次质感\n细节：保留皮肤纹理和服装面料肌理，轻微胶片颗粒感，无过度美颜，无AI生成的畸形手部/五官，人物动作自然流畅\n氛围：高级、松弛、贵气，无廉价网红感，突出服装的质感和版型",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-296",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-296-input-1",
+        "asset-case-dressingkit-video-130-296-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-297",
+      "title": "产品广告",
+      "industry": "美妆护肤类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "【0-3 秒】拍摄手法：面部特写（Close-up） 画面：身着职业装的女性坐在办公桌前，指尖轻触脸颊，眉头微蹙，面露皮肤紧绷干燥的不适感 口播：“职场久坐脸干到紧绷？” \n【3-7 秒】拍摄手法：产品特写 + 慢转展示 画面：手部拿起补水喷雾，缓慢旋转瓶身，清晰呈现瓶身字样及产品信息 口播：“试试这款补水喷雾” \n【7-11 秒】拍摄手法：侧机位慢镜头（Slow Motion） 画面：女性闭眼，手持喷雾距面部 20cm 左右喷洒，细密水雾均匀覆盖面部肌肤 口播：“妆后可用，随时随地补出水光感” \n【11-15 秒】拍摄手法：近景特写+镜头推近 画面：女性睁眼，指尖轻拍脸颊后露出惊喜笑容，举起喷雾对准镜头展示 口播：“水润感立刻拉满！”",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-297",
+        "industry:beauty"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-297-input-1",
+        "asset-case-dressingkit-video-130-297-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-130-298",
+      "title": "动画片",
+      "industry": "文创 IP 类",
+      "summary": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "参考分镜图和下面脚本内容，帮我生成视频。全程严格沿用图1的人物主体形象、整体画风与色调风格，保持画面统一连贯。\n\n【画面风格要求】\n- 100%还原3D潮玩手办质感：圆润可爱的卡通IP形象、哑光/半哑光树脂材质、柔和的环境光、轻微的高光与阴影塑造立体感，拒绝平涂平面卡通画风\n- 保留图1中小狗的苹果造型服饰、帽子上的小绿虫、小猪抱着青苹果、小猪的造型服饰等标志性细节\n- 色彩风格延续原图的暖色调、低饱和度，保持治愈可爱的氛围\n\n# 15秒可爱搞怪短视频脚本分镜\n| 时长 | 画面 | 声音/台词 |\n| ---- | ---- | ---- |\n| 0-3s | 【3D潮玩质感】苹果树下，戴着苹果帽的小狗蹲在地上，小爪子刨着土，帽子上的小绿虫随着动作晃来晃去，背景是挂满红苹果的果树和青草地，整体为柔和的3D手办场景 | 沙沙的刨土声+小虫细微的晃动感音效 |\n| 3-7s | 切镜，抱着青苹果的小猪晃悠着走来，嘴里还咬着苹果，小狗立刻停下刨土，抬头看向小猪；小猪眯起眼睛，放慢脚步和小狗对视，保持3D手办的圆润质感与光影效果 | 小猪走路的哒哒声+啃苹果的咔嚓声 |\n| 7-15s | 小猪歪头，嘴角沾着苹果渣，小狗也歪头盯着小猪，画面停顿半秒后，小猪用蜡笔小新的腔调开口：「你在干什么？」，角色动作和表情延续图1的搞怪可爱风格，保持3D质感统一 | （蜡笔小新式奶凶语调）轻量可爱背景音 |",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-298",
+        "industry:ip"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-130-298-input-1",
+        "asset-case-dressingkit-video-130-298-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-134-278",
+      "title": "爆款复刻-拖把",
+      "industry": "家居类",
+      "summary": "全能视频 · 3 个输入文件 / 1 个输出文件",
+      "prompt": "帮我复刻【视频1】，动作、运镜、背景、背景音乐1:1完全匹配参考【视频1】，背景全程不改动、不偏移、不穿模，动作节奏与原视频完全一致。\n将视频中的拖把【图1】替换为【图2】中的拖把，保留拖把的完整外观、配色、材质细节和手柄造型，替换后拖把的大小、位置、握持角度与原视频拖把完全匹配，人物握持拖把的动作不变，不改变人物手部姿态和肢体动作。\n画面整体质感与原视频保持一致，光影、色彩、清晰度和原视频无差异，重点突出拖把替换后的真实感，无违和感，不出现穿模、变形、扭曲、错位等问题。\n负面提示词：拖把变形、拖把颜色错误、拖把材质丢失、手柄扭曲、拖把位置偏移、人物手部穿模、动作走形、背景改动、背景穿模、运镜偏移、画面卡顿、AI塑料感、低画质、模糊、过曝、水印、多余文字。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:omni-video",
+        "feature-title:全能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-134",
+        "dressingkit-case-278",
+        "industry:home"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-134-278-input-1",
+        "asset-case-dressingkit-video-134-278-input-2",
+        "asset-case-dressingkit-video-134-278-input-3",
+        "asset-case-dressingkit-video-134-278-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-134-279",
+      "title": "爆款复刻-换模特与服装",
+      "industry": "服饰类",
+      "summary": "全能视频 · 3 个输入文件 / 1 个输出文件",
+      "prompt": "【主提示词】\n视频复刻，动作和运镜1:1匹配参考视频1，背景保持与参考视频1完全一致，不做任何修改。\n将视频中的人物替换为参考图2中的女性，保留她的面部特征、发型和五官，同时将她身上的服装、包包全部替换为：米白色挂脖上衣（带打结镂空设计）+白色高腰亚麻阔腿裤+白色厚底一字带凉鞋。\n人物动作、节奏、姿态参考原视频，人物全程不开口说话，无唇语，表情自然柔和。\n画面保持暖调自然光，光影与原视频完全贴合，超写实人像，真实布料纹理，8K高清，无变形，无穿模，背景不偏移。\n\n【负面提示词】\n卡通，动漫，3D渲染，AI塑料感，脸变形，五官扭曲，肢体畸形，身材比例失调，服装穿模，背景改动，背景穿模，动作走形，运镜偏移，字幕，水印，文字，低画质，模糊，过曝。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:omni-video",
+        "feature-title:全能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-134",
+        "dressingkit-case-279",
+        "industry:clothing"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-134-279-input-1",
+        "asset-case-dressingkit-video-134-279-input-2",
+        "asset-case-dressingkit-video-134-279-input-3",
+        "asset-case-dressingkit-video-134-279-output-1"
+      ]
+    },
+    {
+      "id": "case-dressingkit-video-134-299",
+      "title": "吃播",
+      "industry": "食品饮料类",
+      "summary": "全能视频 · 1 个输入文件 / 1 个输出文件",
+      "prompt": "【主提示词】\n视频复刻，动作和运镜1:1匹配参考视频1，背景保持与参考视频1完全一致，不做任何修改。\n将视频中的图1食物全部替换为参考图2中的食物（灌汤包、火鸡面、鸡排）。换成灌汤包、火鸡面、鸡排。之前的食物不要了，图1的食物全部换掉。！！！\n人物动作、节奏、姿态参考原视频，人物全程不开口说话，无唇语，表情自然柔和。\n画面保持暖调自然光，光影与原视频完全贴合，超写实人像，真实布料纹理，8K高清，无变形，无穿模，背景不偏移。\n\n【负面提示词】\n卡通，动漫，3D渲染，AI塑料感，脸变形，五官扭曲，肢体畸形，身材比例失调，服装穿模，背景改动，背景穿模，动作走形，运镜偏移，字幕，水印，文字，低画质，模糊，过曝。",
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:omni-video",
+        "feature-title:全能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-134",
+        "dressingkit-case-299",
+        "industry:food"
+      ],
+      "mediaRefs": [
+        "asset-case-dressingkit-video-134-299-input-1",
+        "asset-case-dressingkit-video-134-299-output-1"
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "id": "material-case-dressingkit-video-90-225",
+      "type": "video",
+      "title": "分镜图",
+      "description": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-90-225-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-90-225-input-1",
+        "asset-case-dressingkit-video-90-225-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-90-225"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-225",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-90-247",
+      "type": "video",
+      "title": "沙发",
+      "description": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-90-247-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-90-247-input-1",
+        "asset-case-dressingkit-video-90-247-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-90-247"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-247",
+        "industry:home"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-90-248",
+      "type": "video",
+      "title": "耳环",
+      "description": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-90-248-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-90-248-input-1",
+        "asset-case-dressingkit-video-90-248-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-90-248"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-248",
+        "industry:jewelry"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-90-254",
+      "type": "video",
+      "title": "羽毛球拍",
+      "description": "分镜图 · 2 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-90-254-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-90-254-input-1",
+        "asset-case-dressingkit-video-90-254-input-2",
+        "asset-case-dressingkit-video-90-254-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-90-254"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-254",
+        "industry:outdoor"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-90-255",
+      "type": "video",
+      "title": "香水",
+      "description": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-90-255-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-90-255-input-1",
+        "asset-case-dressingkit-video-90-255-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-90-255"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-255",
+        "industry:beauty"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-90-256",
+      "type": "video",
+      "title": "miumiu",
+      "description": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-90-256-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-90-256-input-1",
+        "asset-case-dressingkit-video-90-256-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-90-256"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-256",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-90-287",
+      "type": "video",
+      "title": "手表",
+      "description": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-90-287-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-90-287-input-1",
+        "asset-case-dressingkit-video-90-287-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-90-287"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-287",
+        "industry:electronics"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-90-288",
+      "type": "video",
+      "title": "漫剧大片",
+      "description": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-90-288-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-90-288-input-1",
+        "asset-case-dressingkit-video-90-288-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-90-288"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-288",
+        "industry:ip"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-90-294",
+      "type": "video",
+      "title": "孩子-真人漫剧",
+      "description": "分镜图 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-90-294-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-90-294-input-1",
+        "asset-case-dressingkit-video-90-294-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-90-294"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:storyboard",
+        "feature-title:分镜图",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-90",
+        "dressingkit-case-294",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-199",
+      "type": "video",
+      "title": "带货视频",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-199-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-199-input-1",
+        "asset-case-dressingkit-video-130-199-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-199"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-199",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-233",
+      "type": "video",
+      "title": "保健品带货视频",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-233-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-233-input-1",
+        "asset-case-dressingkit-video-130-233-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-233"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-233",
+        "industry:food"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-234",
+      "type": "video",
+      "title": "Hello Kitty便携风扇",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-234-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-234-input-1",
+        "asset-case-dressingkit-video-130-234-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-234"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-234",
+        "industry:electronics"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-235",
+      "type": "video",
+      "title": "耳环",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-235-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-235-input-1",
+        "asset-case-dressingkit-video-130-235-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-235"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-235",
+        "industry:jewelry"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-236",
+      "type": "video",
+      "title": "男士香薰",
+      "description": "智能视频 · 0 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-236-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-236-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-236"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-236",
+        "industry:beauty"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-241",
+      "type": "video",
+      "title": "沙发",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-241-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-241-input-1",
+        "asset-case-dressingkit-video-130-241-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-241"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-241",
+        "industry:home"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-242",
+      "type": "video",
+      "title": "对镜自拍",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-242-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-242-input-1",
+        "asset-case-dressingkit-video-130-242-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-242"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-242",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-243",
+      "type": "video",
+      "title": "包包",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-243-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-243-input-1",
+        "asset-case-dressingkit-video-130-243-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-243"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-243",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-244",
+      "type": "video",
+      "title": "漱口杯带货",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-244-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-244-input-1",
+        "asset-case-dressingkit-video-130-244-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-244"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-244",
+        "industry:home"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-245",
+      "type": "video",
+      "title": "腮红带货",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-245-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-245-input-1",
+        "asset-case-dressingkit-video-130-245-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-245"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-245",
+        "industry:beauty"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-249",
+      "type": "video",
+      "title": "香水",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-249-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-249-input-1",
+        "asset-case-dressingkit-video-130-249-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-249"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-249",
+        "industry:beauty"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-250",
+      "type": "video",
+      "title": "羽毛球拍",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-250-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-250-input-1",
+        "asset-case-dressingkit-video-130-250-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-250"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-250",
+        "industry:outdoor"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-251",
+      "type": "video",
+      "title": "手表",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-251-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-251-input-1",
+        "asset-case-dressingkit-video-130-251-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-251"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-251",
+        "industry:electronics"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-252",
+      "type": "video",
+      "title": "miumiu服装广告大片",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-252-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-252-input-1",
+        "asset-case-dressingkit-video-130-252-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-252"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-252",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-253",
+      "type": "video",
+      "title": "微醺",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-253-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-253-input-1",
+        "asset-case-dressingkit-video-130-253-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-253"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-253",
+        "industry:food"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-257",
+      "type": "video",
+      "title": "汽车",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-257-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-257-input-1",
+        "asset-case-dressingkit-video-130-257-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-257"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-257",
+        "industry:auto"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-258",
+      "type": "video",
+      "title": "床-影视",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-258-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-258-input-1",
+        "asset-case-dressingkit-video-130-258-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-258"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-258",
+        "industry:home"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-259",
+      "type": "video",
+      "title": "洗衣液",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-259-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-259-input-1",
+        "asset-case-dressingkit-video-130-259-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-259"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-259",
+        "industry:home"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-260",
+      "type": "video",
+      "title": "饺子",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-260-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-260-input-1",
+        "asset-case-dressingkit-video-130-260-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-260"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-260",
+        "industry:food"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-261",
+      "type": "video",
+      "title": "敦煌-动画",
+      "description": "智能视频 · 0 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-261-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-261-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-261"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-261",
+        "industry:ip"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-262",
+      "type": "video",
+      "title": "北京-文旅宣传片",
+      "description": "智能视频 · 0 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-262-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-262-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-262"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-262",
+        "industry:ip"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-267",
+      "type": "video",
+      "title": "带货视频-上衣",
+      "description": "智能视频 · 2 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-267-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-267-input-1",
+        "asset-case-dressingkit-video-130-267-input-2",
+        "asset-case-dressingkit-video-130-267-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-267"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-267",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-268",
+      "type": "video",
+      "title": "带货视频-防晒衣",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-268-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-268-input-1",
+        "asset-case-dressingkit-video-130-268-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-268"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-268",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-269",
+      "type": "video",
+      "title": "跳舞卡点换装",
+      "description": "智能视频 · 5 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-269-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-269-input-1",
+        "asset-case-dressingkit-video-130-269-input-2",
+        "asset-case-dressingkit-video-130-269-input-3",
+        "asset-case-dressingkit-video-130-269-input-4",
+        "asset-case-dressingkit-video-130-269-input-5",
+        "asset-case-dressingkit-video-130-269-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-269"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-269",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-270",
+      "type": "video",
+      "title": "服装大片1",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-270-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-270-input-1",
+        "asset-case-dressingkit-video-130-270-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-270"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-270",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-271",
+      "type": "video",
+      "title": "服装大片2",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-271-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-271-input-1",
+        "asset-case-dressingkit-video-130-271-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-271"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-271",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-273",
+      "type": "video",
+      "title": "影视-小孩与小狗",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-273-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-273-input-1",
+        "asset-case-dressingkit-video-130-273-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-273"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-273",
+        "industry:ip"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-274",
+      "type": "video",
+      "title": "影视-闺房心事",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-274-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-274-input-1",
+        "asset-case-dressingkit-video-130-274-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-274"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-274",
+        "industry:ip"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-275",
+      "type": "video",
+      "title": "书卷",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-275-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-275-input-1",
+        "asset-case-dressingkit-video-130-275-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-275"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-275",
+        "industry:ip"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-276",
+      "type": "video",
+      "title": "凤凰神女",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-276-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-276-input-1",
+        "asset-case-dressingkit-video-130-276-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-276"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-276",
+        "industry:ip"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-277",
+      "type": "video",
+      "title": "漫剧-对话",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-277-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-277-input-1",
+        "asset-case-dressingkit-video-130-277-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-277"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-277",
+        "industry:ip"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-280",
+      "type": "video",
+      "title": "多功能拖把-TVC广告",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-280-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-280-input-1",
+        "asset-case-dressingkit-video-130-280-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-280"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-280",
+        "industry:home"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-281",
+      "type": "video",
+      "title": "拖把-UGC种草",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-281-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-281-input-1",
+        "asset-case-dressingkit-video-130-281-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-281"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-281",
+        "industry:home"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-282",
+      "type": "video",
+      "title": "加入模特-商品广告",
+      "description": "智能视频 · 2 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-282-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-282-input-1",
+        "asset-case-dressingkit-video-130-282-input-2",
+        "asset-case-dressingkit-video-130-282-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-282"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-282",
+        "industry:home"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-283",
+      "type": "video",
+      "title": "用户口播种草-鼠标",
+      "description": "智能视频 · 2 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-283-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-283-input-1",
+        "asset-case-dressingkit-video-130-283-input-2",
+        "asset-case-dressingkit-video-130-283-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-283"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-283",
+        "industry:electronics"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-284",
+      "type": "video",
+      "title": "产品广告大片-无人机",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-284-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-284-input-1",
+        "asset-case-dressingkit-video-130-284-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-284"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-284",
+        "industry:electronics"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-296",
+      "type": "video",
+      "title": "产品大片",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-296-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-296-input-1",
+        "asset-case-dressingkit-video-130-296-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-296"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-296",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-297",
+      "type": "video",
+      "title": "产品广告",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-297-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-297-input-1",
+        "asset-case-dressingkit-video-130-297-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-297"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-297",
+        "industry:beauty"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-130-298",
+      "type": "video",
+      "title": "动画片",
+      "description": "智能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-130-298-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-130-298-input-1",
+        "asset-case-dressingkit-video-130-298-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-130-298"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:smart-video",
+        "feature-title:智能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-130",
+        "dressingkit-case-298",
+        "industry:ip"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-134-278",
+      "type": "video",
+      "title": "爆款复刻-拖把",
+      "description": "全能视频 · 3 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-134-278-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-134-278-input-1",
+        "asset-case-dressingkit-video-134-278-input-2",
+        "asset-case-dressingkit-video-134-278-input-3",
+        "asset-case-dressingkit-video-134-278-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-134-278"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:omni-video",
+        "feature-title:全能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-134",
+        "dressingkit-case-278",
+        "industry:home"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-134-279",
+      "type": "video",
+      "title": "爆款复刻-换模特与服装",
+      "description": "全能视频 · 3 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-134-279-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-134-279-input-1",
+        "asset-case-dressingkit-video-134-279-input-2",
+        "asset-case-dressingkit-video-134-279-input-3",
+        "asset-case-dressingkit-video-134-279-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-134-279"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:omni-video",
+        "feature-title:全能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-134",
+        "dressingkit-case-279",
+        "industry:clothing"
+      ],
+      "status": "published"
+    },
+    {
+      "id": "material-case-dressingkit-video-134-299",
+      "type": "video",
+      "title": "吃播",
+      "description": "全能视频 · 1 个输入文件 / 1 个输出文件",
+      "previewRef": "asset-case-dressingkit-video-134-299-output-1",
+      "assetRefs": [
+        "asset-case-dressingkit-video-134-299-input-1",
+        "asset-case-dressingkit-video-134-299-output-1"
+      ],
+      "sourceRefs": [
+        "case-dressingkit-video-134-299"
+      ],
+      "tags": [
+        "ai-video-showcase",
+        "dressingkit-video-migration",
+        "dressingkit-source-v1",
+        "case-type:video",
+        "feature:omni-video",
+        "feature-title:全能视频",
+        "category:video",
+        "category-title:AI视频",
+        "dressingkit-business-134",
+        "dressingkit-case-299",
+        "industry:food"
+      ],
+      "status": "published"
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-case-dressingkit-video-90-225-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-225/input-1-204987749686156083408c97f7514d740a68a4f07ee89f53c1c.png",
+      "caption": "分镜图 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-225-output-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-225/output-1-2049877513731051521f6bfb888345a4f6e9dd177915a8bacd6.png",
+      "caption": "分镜图 输出图 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-247-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-247/input-1-2052665321839398913c4fd25e327424a4b8544005a3b92108a.jpg",
+      "caption": "沙发 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-247-output-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-247/output-1-2052665338935382017166c6a475d874a00afab9c158afd1ee8.png",
+      "caption": "沙发 输出图 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-248-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-248/input-1-2052666135517597697b891ecb8844a4760b5ce7367405acaf1.jpg",
+      "caption": "耳环 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-248-output-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-248/output-1-20526661561451847698500c8b7a1b54cfb8e98f5d1730efd67.png",
+      "caption": "耳环 输出图 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-254-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-254/input-1-20527057917098106906046d6b042b247ae9b3e5c834c0c2e4c.jpg",
+      "caption": "羽毛球拍 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-254-input-2",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-254/input-2-20527058053832417293eb1c59aa0034950af44869c21e13293.jpg",
+      "caption": "羽毛球拍 输入文件 2",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-254-output-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-254/output-1-205270582241211596907eebecf33244d67b802d6979d4a8d01.png",
+      "caption": "羽毛球拍 输出图 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-255-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-255/input-1-205294112716567756965b4b91e4b4742a48b9c9a469cf85ae2.png",
+      "caption": "香水 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-255-output-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-255/output-1-20529411422903377937220f60fd624420e94782579c5114dce.png",
+      "caption": "香水 输出图 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-256-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-256/input-1-2052944656437612545d478ccce17c34c639d20730de018e318.jpg",
+      "caption": "miumiu 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-256-output-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-256/output-1-2052944412400422913254439b1c7bc47d5b5389eff4048785e.png",
+      "caption": "miumiu 输出图 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-287-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-287/input-1-2057331782134534146119bead325864d608f59f608449fee0b.jpg",
+      "caption": "手表 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-287-output-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-287/output-1-2057332279528656897b2df7ee94ada42fe84e56831626eab6c.png",
+      "caption": "手表 输出图 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-288-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-288/input-1-2057332761307385857b4895738980a4a9ab580f74eb3f214f0.png",
+      "caption": "漫剧大片 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-288-output-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-288/output-1-2057332850495066113197cd67011824b228d0e3dc26a6876d2.png",
+      "caption": "漫剧大片 输出图 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-294-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-294/input-1-205738818918574080102cf8d1f12984870b7674804e0c72855.png",
+      "caption": "孩子-真人漫剧 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-90-294-output-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-294/output-1-20573880613601320975d4c766cfefa4059abe8948eb8f2fca5.png",
+      "caption": "孩子-真人漫剧 输出图 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-199-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-199/input-1-204984427194247168174eed60bacd542e488406f6c1ebad060.png",
+      "caption": "带货视频 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-199-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-199/output-1-204984429296851763350d000c28a8e418b9bfa21a5e9b8a728.mp4",
+      "caption": "带货视频 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-233-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-233/input-1-205007599493238374657892dd2a20f4d8b9ca4d910b2999087.png",
+      "caption": "保健品带货视频 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-233-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-233/output-1-20500760229000028183b32990ce595417ab89c50b54ac2d67f.mp4",
+      "caption": "保健品带货视频 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-234-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-234/input-1-205187034764437504216d3817909474aa3a00ef2bda762b164.png",
+      "caption": "Hello Kitty便携风扇 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-234-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-234/output-1-20518703744627548185a58dfb8f13146b1b1fb3e528f12855a.mp4",
+      "caption": "Hello Kitty便携风扇 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-235-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-235/input-1-2051871308714610689e509e854019a48c5a22f8ed905938984.png",
+      "caption": "耳环 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-235-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-235/output-1-20518713193303941147e970fcaaef44e49a8b939a70e529364.mp4",
+      "caption": "耳环 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-236-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-236/output-1-2051872255276748801d456e00b9a294a2a87eacb1612fd3bb1.mp4",
+      "caption": "男士香薰 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-241-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-241/input-1-2052608550257037314ef84faa66daf4fa9b905f202644ab8c9.png",
+      "caption": "沙发 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-241-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-241/output-1-205260856390949683355e0755280a447b2b6538d6b8c3180e5.mp4",
+      "caption": "沙发 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-242-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-242/input-1-205260895494026444975b6cf80573c457997abf5e86af4b13c.jpg",
+      "caption": "对镜自拍 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-242-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-242/output-1-20526089703627202573adee0a4c51542b6bbfe9e1618d0ef85.mp4",
+      "caption": "对镜自拍 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-243-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-243/input-1-20526093569391370268d24ebc5fbcb43bf9886831976af0c3a.png",
+      "caption": "包包 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-243-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-243/output-1-205260937190441369879becbe69937424ab13ee69b3d8cb3a9.mp4",
+      "caption": "包包 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-244-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-244/input-1-205260966214605619446da990515c24b6088343d9df320b27e.png",
+      "caption": "漱口杯带货 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-244-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-244/output-1-2052609678600310785ed4f96694f2b413bb0cec946cc8369c0.mp4",
+      "caption": "漱口杯带货 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-245-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-245/input-1-20526099846964224028c34192ec2ab472c9e3ed15dcc175ec3.png",
+      "caption": "腮红带货 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-245-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-245/output-1-2052610000441839617f8ab33571c18431792a1f28e5168e89e.mp4",
+      "caption": "腮红带货 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-249-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-249/input-1-2052702026483109889b852e67a8fae4b94a613edd4d55a8c8a.png",
+      "caption": "香水 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-249-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-249/output-1-205270203817682944182b1915ea77b431393548a5349633dc9.mp4",
+      "caption": "香水 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-250-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-250/input-1-2052702614629388289b92a681f42684d1097bd3a8dea050905.png",
+      "caption": "羽毛球拍 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-250-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-250/output-1-2052703193510449153580fa99846a54d75aa811401b87f5fce.mp4",
+      "caption": "羽毛球拍 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-251-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-251/input-1-2052703927014526978c5e4ca626176496cb7bed8f0d49d7ad4.png",
+      "caption": "手表 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-251-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-251/output-1-2052705406756589569167d0ff0bc9c4ccbbb25c9307e8cbd32.mp4",
+      "caption": "手表 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-252-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-252/input-1-20527046031279431693470318cb97d415f87dc777924e17c3a.png",
+      "caption": "miumiu服装广告大片 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-252-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-252/output-1-20527046407089070091717798614d54473bdcea5adddf8f333.mp4",
+      "caption": "miumiu服装广告大片 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-253-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-253/input-1-20527048212317511709c897343483d4a5792ea94256cefc09c.png",
+      "caption": "微醺 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-253-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-253/output-1-2052704838050910210f030dafbf48043e8b515a79ab2ee2769.mp4",
+      "caption": "微醺 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-257-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-257/input-1-20530462239961948175535e91fc7604f2c87f41c11fc39b05f.jpg",
+      "caption": "汽车 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-257-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-257/output-1-205304626136324915329f84bba04ed46829459906791cc0e3b.mp4",
+      "caption": "汽车 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-258-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-258/input-1-20530466735291146269ce144b394e04938ad262f284d9ccca3.png",
+      "caption": "床-影视 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-258-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-258/output-1-20530466964845404183fc5e11cb7f944fdb251fb687154cdbe.mp4",
+      "caption": "床-影视 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-259-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-259/input-1-2053047143333105665e1f85905208446a98093be16877f5e8e.png",
+      "caption": "洗衣液 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-259-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-259/output-1-20530471639229440013ea070b3524d4a27bd1d2daa84525293.mp4",
+      "caption": "洗衣液 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-260-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-260/input-1-20530475474375188497de19e1b3dd9447dacd0615d069d1933.png",
+      "caption": "饺子 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-260-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-260/output-1-20530478417937735695f567e52f6364b4494f29c63a1d608f0.mp4",
+      "caption": "饺子 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-261-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-261/output-1-20530480613865594904885c0b937fc463a96b15b1f9322e87a.mp4",
+      "caption": "敦煌-动画 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-262-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-262/output-1-205309333937219584115b950379f4149ed9cba1bbf500f9ea2.mp4",
+      "caption": "北京-文旅宣传片 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-267-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-267/input-1-2054135386141102082c4548c390db1464fbc19ffb8c1ff4de3.png",
+      "caption": "带货视频-上衣 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-267-input-2",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-267/input-2-2054135406978404354771fd0094d104b4abc84b04caab01925.png",
+      "caption": "带货视频-上衣 输入文件 2",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-267-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-267/output-1-205413515377666048269230b377c5c4c27b830b612b98e7d93.mp4",
+      "caption": "带货视频-上衣 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-268-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-268/input-1-20541366729829294105d22adb6a4364082a2831d7d6ca0f9e0.png",
+      "caption": "带货视频-防晒衣 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-268-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-268/output-1-2054136691358175234eef26cc21b5d4f94b49f1e1265a839ab.mp4",
+      "caption": "带货视频-防晒衣 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-269-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-1-2054137283468070913909e3d7181fe4e8a88e560036af3ebba.png",
+      "caption": "跳舞卡点换装 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-269-input-2",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-2-2054137297854533633179ec0ee9f9c44599e262a471523c32e.png",
+      "caption": "跳舞卡点换装 输入文件 2",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-269-input-3",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-3-20541373205792727054485176a7b804628af402f25f86b228d.png",
+      "caption": "跳舞卡点换装 输入文件 3",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-269-input-4",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-4-2054137339017433089478180ae72c3483fa1473a09bd7daba9.png",
+      "caption": "跳舞卡点换装 输入文件 4",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-269-input-5",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-5-20541373607187619852124a92beffa4d7e91a4a1477fd1c96a.png",
+      "caption": "跳舞卡点换装 输入文件 5",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-269-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/output-1-205413704510996889759eed39281c749b4824feb869ab5c097.mp4",
+      "caption": "跳舞卡点换装 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-270-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-270/input-1-20541376896570531866ed65ce8c2184be49287fdc05741536e.png",
+      "caption": "服装大片1 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-270-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-270/output-1-2054137552905965569972c25f5051b4433b16998cbf044e6fb.mp4",
+      "caption": "服装大片1 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-271-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-271/input-1-205413836560269721751879edb0c5844bc8dc672a251a0f159.png",
+      "caption": "服装大片2 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-271-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-271/output-1-2054138198019280898f6e85c82c1c44674a305bb141b7e1ae0.mp4",
+      "caption": "服装大片2 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-273-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-273/input-1-2054875219167809538fb1e86cd6c904c0db077a0c98e7cf0a5.png",
+      "caption": "影视-小孩与小狗 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-273-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-273/output-1-2054875240541982722e16d85ae2e8f4a2eaad1061d8a67ad63.mp4",
+      "caption": "影视-小孩与小狗 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-274-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-274/input-1-2054875594893561857fb3c228b245540c9b8e3fb46bc6a4b55.jpg",
+      "caption": "影视-闺房心事 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-274-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-274/output-1-205487570156729549036efea35ea9f4233844b471e8aac407e.mp4",
+      "caption": "影视-闺房心事 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-275-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-275/input-1-2054876046016122881d31132002b614d70aa32cc0c6305902a.png",
+      "caption": "书卷 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-275-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-275/output-1-2054876076751982594fe18fe03439147f3b69acc198a52b942.mp4",
+      "caption": "书卷 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-276-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-276/input-1-20548764603546378256ec274cf22f64ec7b30264f057d9e0dd.png",
+      "caption": "凤凰神女 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-276-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-276/output-1-205487643164462694573c436ccdfcc41b6b77eea0ae423c627.mp4",
+      "caption": "凤凰神女 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-277-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-277/input-1-2054876787581652994643a8c3752c54ce1a35632a3e0d0207a.jpg",
+      "caption": "漫剧-对话 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-277-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-277/output-1-2054876893705932802f88707ea390040848f5d9ec65e8ce785.mp4",
+      "caption": "漫剧-对话 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-280-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-280/input-1-20562973502713405458f94b17183c6493c92aa914be2c136ef.jpg",
+      "caption": "多功能拖把-TVC广告 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-280-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-280/output-1-20562973735623106578defe159b5694500b7200c2606314947.mp4",
+      "caption": "多功能拖把-TVC广告 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-281-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-281/input-1-2056297760046452737052b63c2dc0147bf9fcda14bfe01701f.jpg",
+      "caption": "拖把-UGC种草 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-281-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-281/output-1-205629777976387584167b6cb3ec1814b44a90a502c3b0a5b10.mp4",
+      "caption": "拖把-UGC种草 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-282-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-282/input-1-205629816253186457773dc44684bd54631bc530a36f0aec436.jpg",
+      "caption": "加入模特-商品广告 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-282-input-2",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-282/input-2-2056299834691817473d03357897aa7410591e9d9702768466d.png",
+      "caption": "加入模特-商品广告 输入文件 2",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-282-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-282/output-1-2056298466455326721f84edac92638483c9ac6a52a472980f7.mp4",
+      "caption": "加入模特-商品广告 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-283-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-283/input-1-2056300497073082369408657986c9e46f0966b046c0311c011.jpg",
+      "caption": "用户口播种草-鼠标 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-283-input-2",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-283/input-2-2056300517058940930bf6d4d7245074396b577c8fe82f0cb77.jpg",
+      "caption": "用户口播种草-鼠标 输入文件 2",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-283-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-283/output-1-2056300475191398401f3adcb4919014252bdbf9c40753a7ebe.mp4",
+      "caption": "用户口播种草-鼠标 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-284-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-284/input-1-205630096812697600202db0064cc1849a19ec0e87791ba02dd.jpg",
+      "caption": "产品广告大片-无人机 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-284-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-284/output-1-205630098289931468926e3b3535c7346c28fabb8322ed4a0fa.mp4",
+      "caption": "产品广告大片-无人机 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-296-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-296/input-1-20577570697877954584fb0c999d41c44948517fcb8f55d2836.png",
+      "caption": "产品大片 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-296-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-296/output-1-20577570829830758415c97278c83ba4f059500089ee5d2c92f.mp4",
+      "caption": "产品大片 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-297-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-297/input-1-2057757357483495425e965287210994a94a15bfc3213a20dc2.png",
+      "caption": "产品广告 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-297-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-297/output-1-205775726866071961816fc950253064659ab97eff5eeaab6d1.mp4",
+      "caption": "产品广告 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-298-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-298/input-1-2057757669334192129b10b28d8921f415fa0d824821b3f3ab0.jpg",
+      "caption": "动画片 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-130-298-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-298/output-1-20577575056137297948b9989fe81004384b59306d54ac1b881.mp4",
+      "caption": "动画片 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-278-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-278/input-1-2056230214307942401c17fad70105e4ac7bc5e6c87500fe7ff.png",
+      "caption": "爆款复刻-拖把 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-278-input-2",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-278/input-2-20562302322092318737607a7d00b294165a98ed8e04b53cd40.jpg",
+      "caption": "爆款复刻-拖把 输入文件 2",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-278-input-3",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-278/input-3-2056230310114234370ba26d7af29cf41ec90f7ee8a95b22a79.mp4",
+      "caption": "爆款复刻-拖把 输入文件 3",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-278-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-278/output-1-2056230278321410049ae6f617a645e41feae66062631adeeaa.mp4",
+      "caption": "爆款复刻-拖把 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-279-input-1",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-279/input-1-2056230827766845442ee96d2b6b1ec4acaa32bfd057564377d.png",
+      "caption": "爆款复刻-换模特与服装 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/png"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-279-input-2",
+      "kind": "image",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-279/input-2-20562308741558476827f52969c26304161b1de9f7a7d889e77.jpg",
+      "caption": "爆款复刻-换模特与服装 输入文件 2",
+      "width": 0,
+      "height": 0,
+      "mimeType": "image/jpeg"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-279-input-3",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-279/input-3-20562324232758927384d46e9893dd746f4bef229b694b0d281.mp4",
+      "caption": "爆款复刻-换模特与服装 输入文件 3",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-279-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-279/output-1-2056231895452094466b23495ccd007401d9780a7d50d6d02f0.mp4",
+      "caption": "爆款复刻-换模特与服装 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-299-input-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-299/input-1-2057757798132879362ad78f47c99284f0fbda040a2857e14c1.mp4",
+      "caption": "吃播 输入文件 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    },
+    {
+      "id": "asset-case-dressingkit-video-134-299-output-1",
+      "kind": "video",
+      "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-299/output-1-20577578152372510746e31359e3f5b43a98ced8dd2aaf6ec52.mp4",
+      "caption": "吃播 输出视频 1",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4"
+    }
+  ],
+  "featureFlags": {
+    "ai-video-showcase-ui": {
+      "schemaVersion": 1,
+      "source": {
+        "name": "DressingKit",
+        "pageUrl": "https://www.dressingkit.com/#/pages-sub/video/video",
+        "apiBaseUrl": "https://www.dressingkit.com",
+        "capturedAt": "2026-05-25T15:42:35.039Z",
+        "method": "case/list 接口 + Playwright 点击核对",
+        "caseType": 2
+      },
+      "featureGroups": [
+        {
+          "id": "video",
+          "label": "AI视频",
+          "features": [
+            {
+              "id": "storyboard",
+              "title": "分镜图",
+              "businessFlag": 90,
+              "iconKey": "storyboard",
+              "sourceUi": {
+                "buttonRect": {
+                  "width": 130,
+                  "height": 120,
+                  "borderRadius": "16px",
+                  "padding": "14px 12px",
+                  "gap": "14px"
+                },
+                "iconWrapRect": {
+                  "width": 46,
+                  "height": 46,
+                  "borderRadius": "14px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "iconRect": {
+                  "width": 36,
+                  "height": 36,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "caseCardRect": {
+                  "width": 374,
+                  "height": 359,
+                  "borderRadius": "18px",
+                  "padding": "17px",
+                  "gap": "normal"
+                },
+                "wideCaseCardRect": {
+                  "width": 633.33,
+                  "height": 359,
+                  "borderRadius": "18px",
+                  "padding": "17px",
+                  "gap": "normal"
+                },
+                "mediaRect": {
+                  "width": 340,
+                  "height": 271,
+                  "borderRadius": "14px",
+                  "padding": "12px",
+                  "gap": "12px"
+                },
+                "wideMediaRect": {
+                  "width": 599.33,
+                  "height": 271,
+                  "borderRadius": "14px",
+                  "padding": "12px",
+                  "gap": "12px"
+                },
+                "inputRect": {
+                  "width": 152,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "outputRect": {
+                  "width": 152,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "wideInputRect": {
+                  "width": 281.66,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "wideOutputRect": {
+                  "width": 281.67,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "previewButtonRect": {
+                  "width": 62,
+                  "height": 32,
+                  "borderRadius": "8px",
+                  "padding": "0px 10px",
+                  "gap": "4px"
+                },
+                "tryButtonRect": {
+                  "width": 86,
+                  "height": 32,
+                  "borderRadius": "8px",
+                  "padding": "0px 10px",
+                  "gap": "4px"
+                },
+                "apiCaseCount": 9,
+                "caseCount": 9
+              }
+            },
+            {
+              "id": "smart-video",
+              "title": "智能视频",
+              "businessFlag": 130,
+              "iconKey": "smart-video",
+              "sourceUi": {
+                "buttonRect": {
+                  "width": 130,
+                  "height": 120,
+                  "borderRadius": "16px",
+                  "padding": "14px 12px",
+                  "gap": "14px"
+                },
+                "iconWrapRect": {
+                  "width": 46,
+                  "height": 46,
+                  "borderRadius": "14px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "iconRect": {
+                  "width": 36,
+                  "height": 36,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "caseCardRect": {
+                  "width": 374,
+                  "height": 359,
+                  "borderRadius": "18px",
+                  "padding": "17px",
+                  "gap": "normal"
+                },
+                "wideCaseCardRect": {
+                  "width": 633.33,
+                  "height": 359,
+                  "borderRadius": "18px",
+                  "padding": "17px",
+                  "gap": "normal"
+                },
+                "mediaRect": {
+                  "width": 340,
+                  "height": 271,
+                  "borderRadius": "14px",
+                  "padding": "12px",
+                  "gap": "12px"
+                },
+                "wideMediaRect": {
+                  "width": 599.33,
+                  "height": 271,
+                  "borderRadius": "14px",
+                  "padding": "12px",
+                  "gap": "12px"
+                },
+                "inputRect": {
+                  "width": 152,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "outputRect": {
+                  "width": 152,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "wideInputRect": {
+                  "width": 281.66,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "wideOutputRect": {
+                  "width": 281.67,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "previewButtonRect": {
+                  "width": 62,
+                  "height": 32,
+                  "borderRadius": "8px",
+                  "padding": "0px 10px",
+                  "gap": "4px"
+                },
+                "tryButtonRect": {
+                  "width": 86,
+                  "height": 32,
+                  "borderRadius": "8px",
+                  "padding": "0px 10px",
+                  "gap": "4px"
+                },
+                "apiCaseCount": 39,
+                "caseCount": 39
+              }
+            },
+            {
+              "id": "omni-video",
+              "title": "全能视频",
+              "businessFlag": 134,
+              "iconKey": "omni-video",
+              "sourceUi": {
+                "buttonRect": {
+                  "width": 130,
+                  "height": 120,
+                  "borderRadius": "16px",
+                  "padding": "14px 12px",
+                  "gap": "14px"
+                },
+                "iconWrapRect": {
+                  "width": 46,
+                  "height": 46,
+                  "borderRadius": "14px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "iconRect": {
+                  "width": 36,
+                  "height": 36,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "caseCardRect": {
+                  "width": 374,
+                  "height": 359,
+                  "borderRadius": "18px",
+                  "padding": "17px",
+                  "gap": "normal"
+                },
+                "wideCaseCardRect": {
+                  "width": 633.33,
+                  "height": 359,
+                  "borderRadius": "18px",
+                  "padding": "17px",
+                  "gap": "normal"
+                },
+                "mediaRect": {
+                  "width": 340,
+                  "height": 271,
+                  "borderRadius": "14px",
+                  "padding": "12px",
+                  "gap": "12px"
+                },
+                "wideMediaRect": {
+                  "width": 599.33,
+                  "height": 271,
+                  "borderRadius": "14px",
+                  "padding": "12px",
+                  "gap": "12px"
+                },
+                "inputRect": {
+                  "width": 152,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "outputRect": {
+                  "width": 152,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "wideInputRect": {
+                  "width": 281.66,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "wideOutputRect": {
+                  "width": 281.67,
+                  "height": 247,
+                  "borderRadius": "0px",
+                  "padding": "0px",
+                  "gap": "normal"
+                },
+                "previewButtonRect": {
+                  "width": 62,
+                  "height": 32,
+                  "borderRadius": "8px",
+                  "padding": "0px 10px",
+                  "gap": "4px"
+                },
+                "tryButtonRect": {
+                  "width": 86,
+                  "height": 32,
+                  "borderRadius": "8px",
+                  "padding": "0px 10px",
+                  "gap": "4px"
+                },
+                "apiCaseCount": 3,
+                "caseCount": 3
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

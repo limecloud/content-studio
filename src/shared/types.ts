@@ -6,6 +6,7 @@ export type KnowledgeBaseSource = 'builtin' | 'workspace';
 export type KnowledgeBaseType = 'product-kb' | 'personal-ip-kb';
 export type TextGenerationProtocol = 'claude-sdk' | 'anthropic-messages' | 'openai-chat' | 'gemini-generate-content';
 export type ImageGenerationProtocol = 'openai-responses' | 'openai-chat-data-uri' | 'gemini-generate-content';
+export type ModelSecretStatus = 'missing' | 'available' | 'requires-reauthorization';
 export const TEXT_GENERATION_PROTOCOLS: readonly TextGenerationProtocol[] = ['claude-sdk', 'anthropic-messages', 'openai-chat', 'gemini-generate-content'];
 export const IMAGE_GENERATION_PROTOCOLS: readonly ImageGenerationProtocol[] = ['openai-responses', 'openai-chat-data-uri', 'gemini-generate-content'];
 
@@ -122,6 +123,9 @@ export interface OemPublicAsset {
   kind?: string;
   publicUrl?: string;
   caption?: string;
+  role?: string;
+  group?: string;
+  fileName?: string;
   width?: number;
   height?: number;
   mimeType?: string;
@@ -135,6 +139,18 @@ export interface OemPublicCase {
   prompt?: string;
   tags?: string[];
   mediaRefs?: string[];
+}
+
+export interface OemPublicMaterial {
+  id: string;
+  type?: string;
+  title: string;
+  description?: string;
+  previewRef?: string;
+  assetRefs?: string[];
+  sourceRefs?: string[];
+  tags?: string[];
+  status?: string;
 }
 
 export interface OemFeatureFlagItem {
@@ -151,6 +167,7 @@ export interface OemPublicSiteConfig {
   displayName?: string;
   primaryDomain?: string;
   cases?: OemPublicCase[];
+  materials?: OemPublicMaterial[];
   assets?: OemPublicAsset[];
   featureFlags?: Record<string, unknown>;
   featureFlagItems?: OemFeatureFlagItem[];
@@ -242,20 +259,24 @@ export interface UpdateActionResult {
 export interface ModelConfigView {
   apiEndpoint: string;
   hasApiKey: boolean;
+  safeStorageAvailable: boolean;
   textProvider: 'anthropic-claude-sdk';
   textProtocol: TextGenerationProtocol;
   textApiEndpoint: string;
   hasTextApiKey: boolean;
+  textApiKeyStatus: ModelSecretStatus;
   textModel: string;
   imageProvider: 'openai-responses' | 'disabled';
   imageProtocol: ImageGenerationProtocol;
   imageApiEndpoint: string;
   imageOuterModel: string;
   hasImageApiKey: boolean;
+  imageApiKeyStatus: ModelSecretStatus;
   imageModels: string[];
   videoProvider: 'generic-http' | 'disabled';
   videoApiEndpoint: string;
   hasVideoApiKey: boolean;
+  videoApiKeyStatus: ModelSecretStatus;
   videoModel: string;
   updatedAt?: string;
 }
@@ -1227,6 +1248,7 @@ export interface VideoGenerationRequest {
   workspacePath: string;
   imageAssetRefs: string[];
   videoAssetRefs: string[];
+  audioAssetRefs?: string[];
   prompt: string;
   script?: string;
   promptPackId?: string;
@@ -1236,7 +1258,7 @@ export interface VideoGenerationRequest {
   params: Pick<GlobalGenerationParams, 'videoModel' | 'aspectRatio'> & { durationSeconds: number };
 }
 
-export type AssetFileKind = 'product-image' | 'reference-image' | 'video' | 'image-material';
+export type AssetFileKind = 'product-image' | 'reference-image' | 'video' | 'audio' | 'image-material';
 
 export interface ExportMarkdownInput {
   workspacePath: string;
