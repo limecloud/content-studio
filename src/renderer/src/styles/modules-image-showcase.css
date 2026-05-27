@@ -1566,6 +1566,18 @@
   block-size: min(370px, calc(100vh - 48px));
   max-height: min(430px, calc(100vh - 48px));
   border-radius: 8px;
+  animation: ai-prompt-list-dialog-in 0.18s ease-out forwards;
+}
+
+@keyframes ai-prompt-list-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .detail-dialog-card.ai-prompt-list-dialog .detail-dialog-header {
