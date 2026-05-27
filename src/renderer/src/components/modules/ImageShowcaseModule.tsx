@@ -1503,10 +1503,6 @@ function ImageHistoryDrawer({
             </main>
           ) : (
             <main className="ai-history-detail ai-history-empty-detail">
-              <div className="ai-history-operation-row">
-                <button type="button" disabled>发送到素材库</button>
-                <button type="button" disabled>局部精修</button>
-              </div>
               <section className="ai-history-section">
                 <h3>输入文件</h3>
                 <ImageHistoryAssetGrid

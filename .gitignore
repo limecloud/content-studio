@@ -22,3 +22,6 @@ docs/roadmap/v2/**/.DS_Store
 !docs/roadmap/v3/
 !docs/roadmap/v3/**
 docs/roadmap/v3/**/.DS_Store
+!docs/roadmap/ontology/
+!docs/roadmap/ontology/**
+docs/roadmap/ontology/**/.DS_Store

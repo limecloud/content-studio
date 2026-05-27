@@ -798,7 +798,7 @@
 
 .ai-video-case-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 374px);
+  grid-template-columns: repeat(auto-fill, 398px);
   gap: 16px;
   align-content: flex-start;
   min-height: 0;
@@ -1766,12 +1766,12 @@
 
 .ai-video-history-empty-detail {
   display: grid;
-  place-items: center;
-  align-content: center;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  justify-items: stretch;
   gap: 8px;
   min-height: 100%;
   color: var(--text-secondary);
-  text-align: center;
 }
 
 .ai-video-history-empty-detail strong {
@@ -2248,7 +2248,7 @@
 
   .ai-video-case-card,
   .ai-video-case-card.is-wide {
-    width: min(374px, 100%);
+    width: min(398px, 100%);
   }
 
   .ai-video-case-media,

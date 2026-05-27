@@ -669,6 +669,7 @@ export interface PromptDraft {
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+  selectedSkills?: SkillRef[];
   copyCount?: number;
   lastCopiedAt?: string;
   lastCopiedTarget?: string;
@@ -689,6 +690,8 @@ export interface GeneratePromptDraftInput {
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+  selectedSkills?: SkillRef[];
+  selectedSkillSlugs?: string[];
 }
 
 export interface CreatePromptDraftFromContentInput {
@@ -699,6 +702,7 @@ export interface CreatePromptDraftFromContentInput {
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+  selectedSkills?: SkillRef[];
   content: string;
   note?: string;
   model?: string;
@@ -758,6 +762,7 @@ export interface AgentPromptSession {
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+  selectedSkills?: SkillRef[];
   promptDraftIds: string[];
   sourceSnapshots: AgentPromptSourceSnapshot[];
   messages: AgentPromptMessage[];
@@ -775,6 +780,8 @@ export interface StartAgentPromptSessionInput {
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+  selectedSkills?: SkillRef[];
+  selectedSkillSlugs?: string[];
   textModel?: string;
 }
 
@@ -1116,6 +1123,9 @@ export interface ReferenceReverseRequest {
   referenceSourceIds: string[];
   productSourceIds: string[];
   userIntent: string;
+  platform?: string;
+  targetFormat?: GlobalGenerationParams['aspectRatio'];
+  outputUsage?: 'xiaohongshu-seeding' | 'ecommerce-detail' | 'social-post' | 'generic';
 }
 
 export interface ReferenceReverseAnalysis {
@@ -1123,7 +1133,13 @@ export interface ReferenceReverseAnalysis {
   lighting: string;
   textArea: string;
   style: string;
+  subjectLayout?: string;
+  background?: string;
+  camera?: string;
+  platformFit?: string;
   reusableElements: string[];
+  replacementRules?: string[];
+  generationControls?: string[];
   risks: string[];
   prompt: string;
   negativePrompt: string;

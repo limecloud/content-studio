@@ -5,10 +5,12 @@ import { buildClaudeSubprocessEnv, ensureClaudeConfig } from './claudeSdkRuntime
 import { ModelConfigStore } from './modelConfigStore';
 import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { SettingsStore } from './settingsStore';
+import { SkillManager } from './skillManager';
+import { buildSkillRuntimeContext } from './skillRuntimeContext';
 
 export type AgentEventSink = (event: AgentEvent) => void;
 
-const DEFAULT_ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'Bash', 'WebSearch', 'WebFetch', 'Skill'];
+const DEFAULT_ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'Bash', 'WebSearch', 'WebFetch'];
 
 function textFromContent(content: unknown): string {
   if (typeof content === 'string') return content;
@@ -45,7 +47,11 @@ function mapSdkMessage(taskId: string, message: unknown): AgentEvent | null {
 export class ClaudeAgentService {
   private readonly controllers = new Map<string, AbortController>();
 
-  constructor(private readonly settings: SettingsStore, private readonly modelConfig: ModelConfigStore) {}
+  constructor(
+    private readonly settings: SettingsStore,
+    private readonly modelConfig: ModelConfigStore,
+    private readonly skills = new SkillManager(),
+  ) {}
 
   async run(input: RunTaskInput, sink: AgentEventSink): Promise<string> {
     const taskId = randomUUID();
@@ -68,6 +74,9 @@ export class ClaudeAgentService {
       ensureClaudeConfig();
       const modelView = await this.modelConfig.readView();
       const apiKey = await this.settings.getAnthropicApiKey() || await this.modelConfig.getTextApiKey();
+      const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, {
+        selectedSkillSlugs: input.selectedSkillSlugs,
+      });
       sink({ type: 'status', taskId, message: '正在启动内容生产底座...' });
       const options = {
         cwd: input.workspacePath,
@@ -78,10 +87,14 @@ export class ClaudeAgentService {
         allowedTools: DEFAULT_ALLOWED_TOOLS,
         env: buildClaudeSubprocessEnv({ apiKey, baseUrl: modelView.textApiEndpoint }),
         settingSources: ['user', 'project'],
+        skills: skillContext.sdkSkillNames.length ? skillContext.sdkSkillNames : undefined,
+        additionalDirectories: skillContext.additionalDirectories.length ? skillContext.additionalDirectories : undefined,
         appendSystemPrompt: [
           `你是${getOemRuntimeConfig().productName}内容工厂里的内容生产助手。`,
           '优先使用当前工作区中的内容生成能力。',
           '输出要清晰标注：资料判断、内容策略、草稿、下一步确认。',
+          skillContext.promptText ? '本轮用户选择了 skills，你必须先学习并遵守这些执行规范。' : '',
+          skillContext.promptText,
         ].join('\n'),
       };
       for await (const message of query({ prompt: input.prompt, options } as any)) {

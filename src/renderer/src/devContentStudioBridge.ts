@@ -98,9 +98,9 @@ const modelCatalog: ModelCatalogView = {
 function generationResult(kind: "image" | "video", refs: string[]): MediaGenerationResult {
   return {
     logId: `browser-dev-${kind}-${Date.now()}`,
-    status: "succeeded",
-    message: "浏览器开发模式已模拟生成结果；Electron 正式运行时会调用真实主进程服务。",
-    assetRefs: refs,
+    status: "blocked",
+    message: "浏览器开发模式未连接 Electron 主进程，不能模拟生成成功。请在 Electron 应用中配置真实生成服务后重试。",
+    assetRefs: [],
   };
 }
 
@@ -111,9 +111,9 @@ function generationTask(input: SubmitGenerationTaskInput) {
     workspacePath: input.input.workspacePath,
     logId: `browser-dev-${input.kind}-${Date.now()}`,
     kind: input.kind,
-    status: "queued" as const,
+    status: "blocked" as const,
     title: `${input.kind} 浏览器开发任务`,
-    message: "浏览器开发模式已模拟提交后台生成任务。",
+    message: "浏览器开发模式未连接 Electron 主进程，后台生成任务未实际提交。",
     createdAt,
     updatedAt: createdAt,
   };
@@ -402,21 +402,9 @@ function createDevBridge(): ContentStudioApi {
       markdown: "",
       publishCheck: [],
     }),
-    reverseReferencePrompt: async (input) => ({
-      logId: "browser-dev-reference-reverse",
-      analysis: {
-        composition: "",
-        lighting: "",
-        textArea: "",
-        style: "",
-        reusableElements: [],
-        risks: [],
-        prompt: input.userIntent || "",
-        negativePrompt: "",
-        qualityChecklist: [],
-      },
-      promptDraft: promptDraft({ workspacePath: input.workspacePath, purpose: "image", userIntent: input.userIntent || "" }),
-    }),
+    reverseReferencePrompt: async () => {
+      throw new Error("浏览器开发模式未连接 Electron 主进程，不能模拟对标图反推结果。请在 Electron 应用中配置真实视觉理解服务。");
+    },
     analyzeVideo: async () => ({
       logId: "browser-dev-video-analysis",
       summary: "浏览器开发模式未启用视频拆解。",

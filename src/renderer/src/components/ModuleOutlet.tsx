@@ -9,6 +9,7 @@ import { InputSourcesModule } from './modules/InputSourcesModule';
 import { KnowledgeModule } from './modules/KnowledgeModule';
 import { GreenScreenModule } from './modules/GreenScreenModule';
 import { IpKnowledgeModule } from './modules/IpKnowledgeModule';
+import { MaterialBreakdownModule } from './modules/MaterialBreakdownModule';
 import { MixExportModule } from './modules/MixExportModule';
 import { PromptWorkbenchModule } from './modules/PromptWorkbenchModule';
 import { ReferenceReverseModule } from './modules/ReferenceReverseModule';
@@ -317,12 +318,50 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
   }
 
   if (isV2FeatureModule(app.activeModule)) {
+    if (app.activeModule === 'material-breakdown') {
+      return (
+        <MaterialBreakdownModule
+          workspaceReady={Boolean(app.workspacePath)}
+          busy={app.busy}
+          inputSources={app.inputSources}
+          productImageRefs={app.productImageRefs}
+          referenceImageRefs={app.referenceImageRefs}
+          mediaResult={app.mediaResult}
+          reverseResult={app.referenceReverseResult}
+          activePromptDraft={app.activePromptDraft}
+          onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
+          onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
+          onImportInputSource={(purpose) =>
+            app.runAction(() => app.importInputSource(purpose), '正在登记素材输入源')
+          }
+          onRegisterManualInputSource={(input) =>
+            app.runAction(() => app.registerManualInputSource(input), '正在登记产品资料')
+          }
+          onGenerateReversePrompt={(input) =>
+            app.runAction(() => app.generateReferenceReversePrompt(input), '正在拆解素材')
+          }
+          onUpdatePromptDraft={(input) =>
+            app.runAction(() => app.updatePromptDraft(input), '正在保存 Prompt 版本')
+          }
+          onUsePromptInImage={app.useReferenceReversePromptInImage}
+          onGenerateImage={(input) =>
+            app.runAction((context) => app.generateReferenceReverseImage(input, context), '正在生成图片')
+          }
+          onReviewAsset={(input) =>
+            app.runAction(() => app.reviewAsset(input), '正在记录素材审核')
+          }
+        />
+      );
+    }
+
     if (app.activeModule === 'image-reference-reverse') {
       return (
         <ReferenceReverseModule
           workspaceReady={Boolean(app.workspacePath)}
           busy={app.busy}
           inputSources={app.inputSources}
+          mediaResult={app.mediaResult}
+          reverseResult={app.referenceReverseResult}
           onImportInputSource={(purpose) =>
             app.runAction(() => app.importInputSource(purpose), '正在登记对标输入源')
           }
@@ -332,8 +371,16 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onGenerateReversePrompt={(input) =>
             app.runAction(() => app.generateReferenceReversePrompt(input), '正在反推图片 Prompt')
           }
-          onOpenPromptWorkbench={() => app.setActiveModule('assets-prompt-workbench')}
-          onSelectModule={app.setActiveModule}
+          onUpdatePromptDraft={(input) =>
+            app.runAction(() => app.updatePromptDraft(input), '正在保存 Prompt 版本')
+          }
+          onUsePromptInImage={app.useReferenceReversePromptInImage}
+          onGenerateImage={(input) =>
+            app.runAction((context) => app.generateReferenceReverseImage(input, context), '正在生成图片候选')
+          }
+          onReviewAsset={(input) =>
+            app.runAction(() => app.reviewAsset(input), '正在记录素材审核')
+          }
         />
       );
     }
@@ -388,11 +435,14 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           initialUserIntent={defaults.intent}
           workspaceReady={Boolean(app.workspacePath)}
           busy={app.busy}
+          currentActionLabel={app.currentActionLabel}
           inputSources={app.inputSources}
           promptDrafts={app.promptDrafts}
           platformDrafts={app.platformDrafts}
           copiedPlatformDraftId={app.copiedPlatformDraftId}
           agentPromptSessions={app.agentPromptSessions}
+          skills={app.skills}
+          enabledSkillKeys={app.enabledSkillKeys}
           textModel={app.params.textModel}
           textModels={app.modelCatalog?.textModels ?? []}
           activeDraftId={app.activePromptDraftId}

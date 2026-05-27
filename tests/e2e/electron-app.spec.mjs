@@ -1029,8 +1029,8 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
     await expect(page.locator('.ai-history-drawer')).toContainText('全部');
     await expect(page.locator('.ai-history-drawer')).toContainText('查询');
     await expect(page.locator('.ai-history-drawer')).toContainText('批量下载');
-    await expect(page.locator('.ai-history-drawer')).toContainText('发送到素材库');
-    await expect(page.locator('.ai-history-drawer')).toContainText('局部精修');
+    await expect(page.locator('.ai-history-drawer[data-empty="true"]')).not.toContainText('发送到素材库');
+    await expect(page.locator('.ai-history-drawer[data-empty="true"]')).not.toContainText('局部精修');
     await expect(page.locator('.ai-history-drawer')).toContainText('输入文件');
     await expect(page.locator('.ai-history-drawer')).toContainText('生成结果');
     await expect(page.locator('.ai-history-drawer')).toContainText('提示词');
@@ -1085,13 +1085,22 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
         .filter((top) => top === firstTop).length;
     });
     expect(firstRowCaseTops).toBeGreaterThanOrEqual(2);
-    await expectRectNear(page.locator('.ai-case-card'), { width: 296, height: 366 }, 4);
-    await expectRectNear(page.locator('.ai-case-compare'), { width: 258, height: 271 }, 4);
-    await expectRectNear(page.locator('.ai-case-compare > .ai-image-stack').first(), { width: 111, height: 247 }, 4);
+    await expectRectNear(page.locator('.ai-case-card'), { width: 279, height: 366 }, 4);
+    await expectRectNear(page.locator('.ai-case-compare'), { width: 241, height: 271 }, 4);
+    await expectRectNear(page.locator('.ai-case-compare > .ai-image-stack').first(), { width: 102, height: 247 }, 4);
+    const caseImageFit = await page.locator('.ai-case-card').first().evaluate((card) => {
+      const inputImage = card.querySelector('.ai-image-stack-grid[data-role="input"] img');
+      const outputImage = card.querySelector('.ai-image-stack-grid[data-role="output"] img');
+      return {
+        input: inputImage ? getComputedStyle(inputImage).objectFit : null,
+        output: outputImage ? getComputedStyle(outputImage).objectFit : null,
+      };
+    });
+    expect(caseImageFit).toEqual({ input: 'contain', output: 'cover' });
     await expect(page.locator('.ai-case-card-meta')).toHaveCount(0);
     await expect(page.locator('.ai-case-card').first().locator('.ai-case-card-name')).toHaveText('-');
     await expect(page.locator('.ai-case-card').nth(3).locator('.ai-case-card-name')).toHaveText('白色西装');
-    await expectRectNear(page.locator('.ai-case-card-footer').first(), { width: 258, height: 58 }, 3);
+    await expectRectNear(page.locator('.ai-case-card-footer').first(), { width: 241, height: 58 }, 3);
     await expectRectNear(page.locator('.ai-case-card-actions').first(), { width: 156, height: 32 }, 3);
     await expectRectNear(page.locator('.ai-case-action-icon').first(), { width: 12, height: 12 }, 2);
     await expectRectNear(page.locator('.ai-case-card-footer button').filter({ hasText: '预览' }), { width: 62, height: 32 }, 3);
@@ -1356,14 +1365,14 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expect(page.locator('.ai-video-case-card').first().locator('.ai-video-case-meta')).toHaveText('分镜图');
       await expect(page.locator('.ai-video-case-card').first().locator('.ai-video-case-meta')).not.toContainText('服饰类');
       await expect(page.locator('.ai-video-case-card').first().locator('.ai-video-case-meta')).not.toContainText('个素材');
-      await expectRectNear(page.locator('.ai-video-case-card'), { width: 374, height: 359 }, 4);
-      await expectRectNear(page.locator('.ai-video-case-media'), { width: 340, height: 271 }, 4);
-      await expectRectNear(page.locator('.ai-video-case-bottom').first(), { width: 340, height: 58 }, 3);
+      await expectRectNear(page.locator('.ai-video-case-card'), { width: 398, height: 359 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-media'), { width: 364, height: 271 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-bottom').first(), { width: 364, height: 58 }, 3);
       await expectRectNear(page.locator('.ai-video-case-meta strong').first(), { width: 42, height: 23 }, 3);
       await expectRectNear(page.locator('.ai-video-case-actions').first(), { width: 156, height: 32 }, 3);
       await expectRectNear(page.locator('.ai-video-case-action-icon').first(), { width: 12, height: 12 }, 2);
-      await expectRectNear(page.locator('.ai-video-case-media > .ai-video-media-stack').first(), { width: 152, height: 247 }, 4);
-      await expectRectNear(page.locator('.ai-video-input-files').first(), { width: 152, height: 220 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-media > .ai-video-media-stack').first(), { width: 164, height: 247 }, 4);
+      await expectRectNear(page.locator('.ai-video-input-files').first(), { width: 164, height: 220 }, 4);
       await expectRectNear(page.locator('.ai-video-input-thumb').first(), { width: 57, height: 78 }, 3);
       await expect(page.locator('.ai-video-case-card').first().locator('.ai-video-input-section-title')).toHaveText(['图片']);
       const mediaLabelOrder = await page.evaluate(() => {
@@ -1738,10 +1747,8 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expect(feedbackPanel).toContainText('人工复核');
     await expect(feedbackPanel.locator('button').filter({ hasText: '去标题生成' })).toBeEnabled();
 
-    await clickNavItem(page, '对标图反推');
-    await expect(page.locator('.reference-reverse-workbench')).toBeVisible();
-    await expectCommandCenter(page, '.reference-reverse-workbench > .module-command-center', 'compact');
-    await expect(page.locator('.reference-reverse-workbench > .v2-feature-hero')).toHaveCount(0);
+    await clickNavItem(page, '拆解素材');
+    await expect(page.locator('.ai-breakdown-shell')).toBeVisible();
     await expectNotStaticV2Page(page);
 
     await clickNavItem(page, 'Prompt 工作台');
@@ -2908,6 +2915,8 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
           textArea: '左上角留白适合标题，底部不放大段文字。',
           style: '小红书 UGC，真实手部动作，避免棚拍广告感。',
           reusableElements: ['三分法构图', '自然光', '真实手部动作'],
+          replacementRules: ['竞品包装替换为本方便携条包', '只使用产品资料里的便携场景和合规事实'],
+          generationControls: ['保持 4:5 竖版', '产品主体清晰但不夸张放大', '标题区留白稳定'],
           risks: ['不能复制竞品包装和可识别文案'],
           prompt: '图片 Prompt：早餐桌自然光，手拿便携条包，产品主体清晰，4:5，小红书 UGC 手机实拍，不出现疗效承诺。',
           negativePrompt: '不要竞品 Logo，不要医疗化承诺，不要夸张疗效。',
@@ -2938,8 +2947,8 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
   });
 
   try {
-    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-      const setup = await page.evaluate(async ({ workspacePath, endpoint }) => {
+    await withContentStudio(testInfo, async ({ page, workspaceDir, e2eProductAssetPath }) => {
+      const setup = await page.evaluate(async ({ workspacePath, endpoint, referenceImagePath }) => {
         const api = window.contentStudio;
         await api.saveSettings({ workspacePath });
         await api.saveModelConfig({
@@ -2952,12 +2961,13 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
         });
         const reference = await api.registerInputSource({
           workspacePath,
-          kind: 'manual-note',
+          kind: 'image',
           purpose: 'reference',
-          title: '小红书对标图描述',
+          title: '小红书对标图',
+          sourcePath: referenceImagePath,
           text: '参考图：早餐桌自然光，手拿条包，左上留白，手机实拍。',
           summary: '小红书对标图描述',
-          tags: ['参考图'],
+          tags: ['参考图', '测试图片'],
         });
         const product = await api.registerInputSource({
           workspacePath,
@@ -2983,7 +2993,7 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
           inputSourceIds: [reference.id, product.id],
         });
         return { runId: run.id, status: run.status, summary: run.summary };
-      }, { workspacePath: workspaceDir, endpoint: baseUrl });
+      }, { workspacePath: workspaceDir, endpoint: baseUrl, referenceImagePath: e2eProductAssetPath });
 
       expect(setup.status, JSON.stringify(setup)).toBe('queued');
       await page.reload();

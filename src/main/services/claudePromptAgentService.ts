@@ -11,6 +11,7 @@ import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { ModelConfigStore } from './modelConfigStore';
 import { SettingsStore } from './settingsStore';
 import { TextGenerationService } from './textGenerationService';
+import type { SkillRuntimeContext } from './skillRuntimeContext';
 
 const DEFAULT_CLAUDE_AGENT_MODEL = 'claude-sonnet-4-5';
 
@@ -138,7 +139,12 @@ function formatModelPromptContent(input: GeneratePromptDraftInput, output: Promp
   ].filter((line) => line !== '').join('\n');
 }
 
-function buildLocalPromptContent(input: GeneratePromptDraftInput, sources: InputSourceRecord[], reason?: string): string {
+function buildLocalPromptContent(
+  input: GeneratePromptDraftInput,
+  sources: InputSourceRecord[],
+  skillContext: SkillRuntimeContext,
+  reason?: string,
+): string {
   const sourceText = sourceDigest(sources);
   const purpose = purposeLabel(input.purpose);
   const sceneContext = input.sceneCardIds?.length
@@ -156,7 +162,11 @@ function buildLocalPromptContent(input: GeneratePromptDraftInput, sources: Input
     '可用输入源：',
     sourceText,
     '',
+    '本轮 skills：',
+    skillContext.summaryText,
+    '',
     '输出要求：',
+    skillContext.promptText ? '- 必须按本轮选择的 skill 执行规范组织输出；不适用时要说明原因。' : '',
     '- 只使用输入源和用户意图中能追溯的信息，不编造卖点、功效、背书或平台数据。',
     '- 先给主体、场景、动作、镜头 / 文案结构，再给风格和质量约束。',
     '- 如输入源包含 blocked 项，保留“需要人工确认 / 需要模型解析”的标记，不把 blocked 信息当成已解析事实。',
@@ -238,6 +248,7 @@ function fallbackRefinedContent(previousContent: string, adjustment: string, rea
 
 export interface GenerateAgentPromptDraftInput extends GeneratePromptDraftInput {
   selectedSources: InputSourceRecord[];
+  skillContext: SkillRuntimeContext;
   textModel?: string;
 }
 
@@ -256,6 +267,7 @@ export interface GenerateAgentPromptRefinementInput {
   adjustment: string;
   sourceSnapshots: AgentPromptSourceSnapshot[];
   messages: AgentPromptMessage[];
+  skillContext: SkillRuntimeContext;
   textModel?: string;
 }
 
@@ -287,6 +299,7 @@ export class ClaudePromptAgentService {
 
   async generatePromptDraft(input: GenerateAgentPromptDraftInput): Promise<GenerateAgentPromptDraftResult> {
     const blockedSources = input.selectedSources.filter((source) => source.status === 'blocked' || source.status === 'failed');
+    const skillContext = input.skillContext;
     try {
       const result = await this.generateJson<PromptDraftModelOutput>({
         workspacePath: input.workspacePath,
@@ -297,12 +310,16 @@ export class ClaudePromptAgentService {
           '必须把知识库当事实源：只使用输入源中可追溯的信息，不编造功效、背书、品牌数据或用户案例。',
           '如果资料缺失，要输出需要追问的问题；如果输入源被 blocked，要明确提醒人工确认。',
           '输出的 prompt 要可直接进入图片、视频 Prompt、文案、绿幕文案图、SOP 或 Skill 下游，但仍允许用户多轮调整。',
+          skillContext.promptText ? '本轮用户选择了 skills，你必须先学习并遵守这些执行规范。' : '',
         ].join('\n'),
         prompt: [
           `下游用途：${purposeLabel(input.purpose)}`,
           `用户意图：${input.userIntent.trim()}`,
           input.sceneCardIds?.length ? `场景卡：已选择 ${input.sceneCardIds.length} 张` : '未选择场景卡。',
           '',
+          skillContext.promptText ? '本轮 skill 执行规范：' : '',
+          skillContext.promptText,
+          skillContext.promptText ? '' : '',
           '本地输入源：',
           sourceMaterialForModel(input.selectedSources),
           '',
@@ -318,6 +335,7 @@ export class ClaudePromptAgentService {
         content: formatModelPromptContent(input, output),
         note: [
           `由 Claude SDK 生成：${result.model}`,
+          skillContext.skillRefs.length ? `已应用 ${skillContext.skillRefs.length} 个 skill：${skillContext.summaryText}` : '',
           blockedSources.length ? `包含 ${blockedSources.length} 个未解析输入源，已在提醒中保留人工确认。` : '',
         ].filter(Boolean).join('；'),
         model: result.model,
@@ -330,8 +348,11 @@ export class ClaudePromptAgentService {
           ? `文字模型生成失败：${error.message}`
           : `文字模型生成异常：${error instanceof Error ? error.message : String(error)}`;
       return {
-        content: buildLocalPromptContent(input, input.selectedSources, reason),
-        note: `文字模型未完成，已生成本地可追溯草稿：${reason}`,
+        content: buildLocalPromptContent(input, input.selectedSources, skillContext, reason),
+        note: [
+          `文字模型未完成，已生成本地可追溯草稿：${reason}`,
+          skillContext.skillRefs.length ? `已记录 ${skillContext.skillRefs.length} 个本轮 skill：${skillContext.summaryText}` : '',
+        ].filter(Boolean).join('；'),
         model: error instanceof TextProviderBlockedError ? 'blocked:text-provider' : 'fallback:local-rule',
         protocol: undefined,
       };
@@ -339,6 +360,7 @@ export class ClaudePromptAgentService {
   }
 
   async generateRefinedPrompt(input: GenerateAgentPromptRefinementInput): Promise<GenerateAgentPromptRefinementResult> {
+    const skillContext = input.skillContext;
     try {
       const result = await this.generateJson<RefinePromptOutput>({
         workspacePath: input.workspacePath,
@@ -348,10 +370,14 @@ export class ClaudePromptAgentService {
           '你必须基于会话输入源、已有 Prompt 草稿和用户本轮调整要求改写 Prompt。',
           '必须保留来源约束，不编造输入源没有的卖点、功效、背书或用户案例。',
           '如果调整要求缺少必要信息，要给出追问；如果来源存在 blocked，要提醒人工确认。',
+          skillContext.promptText ? '本轮会话绑定了 skills，你必须持续遵守这些执行规范。' : '',
         ].join('\n'),
         prompt: [
           `下游用途：${input.purpose}`,
           '',
+          skillContext.promptText ? '本轮 skill 执行规范：' : '',
+          skillContext.promptText,
+          skillContext.promptText ? '' : '',
           '输入源快照：',
           sourceSnapshotText(input.sourceSnapshots),
           '',
@@ -371,7 +397,10 @@ export class ClaudePromptAgentService {
       });
       return {
         content: formatRefinedContent(input.previousContent, input.adjustment, result.value),
-        note: `Agent 多轮调整：${result.model}`,
+        note: [
+          `Agent 多轮调整：${result.model}`,
+          skillContext.skillRefs.length ? `已应用 ${skillContext.skillRefs.length} 个 skill：${skillContext.summaryText}` : '',
+        ].filter(Boolean).join('；'),
         model: result.model,
         protocol: result.protocol,
       };

@@ -44,6 +44,7 @@ import type {
   PromptDraftPurpose,
   PromptPack,
   RecordMixPackageImportEvidenceInput,
+  ReferenceReverseResult,
   RecordWorkflowManualEventInput,
   ReviewAssetInput,
   SceneCard,
@@ -109,6 +110,8 @@ type PromptDraftCreateRequest = {
   userIntent: string;
   inputSourceIds: string[];
   sceneCardIds?: string[];
+  selectedSkills?: SkillRef[];
+  selectedSkillSlugs?: string[];
   textModel?: string;
   temporarySourceText?: string;
   temporarySourceTitle?: string;
@@ -140,6 +143,15 @@ type ShowcaseImageHandoffInput = {
   referenceImageLabel?: string;
   featureId?: string;
   featureTitle?: string;
+};
+
+type ReferenceReverseGenerateInput = {
+  referenceSourceIds: string[];
+  productSourceIds: string[];
+  userIntent: string;
+  platform?: string;
+  targetFormat?: GlobalGenerationParams["aspectRatio"];
+  outputUsage?: "xiaohongshu-seeding" | "ecommerce-detail" | "social-post" | "generic";
 };
 
 type ShowcaseVideoHandoffInput = {
@@ -476,6 +488,8 @@ export function useContentStudioApp() {
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunRecord[]>([]);
   const [activeWorkflowDefinitionId, setActiveWorkflowDefinitionId] = useState("");
   const [activeWorkflowRunId, setActiveWorkflowRunId] = useState("");
+  const [referenceReverseResult, setReferenceReverseResult] =
+    useState<ReferenceReverseResult | null>(null);
   const [params, setParams] = useState<GlobalGenerationParams>(DEFAULT_PARAMS);
   const [productImageRefs, setProductImageRefs] = useState<string[]>([]);
   const [referenceImageRefs, setReferenceImageRefs] = useState<string[]>([]);
@@ -1478,6 +1492,8 @@ export function useContentStudioApp() {
       userIntent: input.userIntent,
       inputSourceIds,
       sceneCardIds: input.sceneCardIds,
+      selectedSkills: input.selectedSkills,
+      selectedSkillSlugs: input.selectedSkillSlugs,
     });
     setPromptDrafts((current) => [draft, ...current]);
     setActivePromptDraftId(draft.id);
@@ -1499,6 +1515,8 @@ export function useContentStudioApp() {
       userIntent: input.userIntent,
       inputSourceIds: input.inputSourceIds,
       sceneCardIds: input.sceneCardIds,
+      selectedSkills: input.selectedSkills,
+      selectedSkillSlugs: input.selectedSkillSlugs,
       textModel: input.textModel ?? params.textModel,
     });
     setPromptDrafts((current) => [result.draft, ...current.filter((item) => item.id !== result.draft.id)]);
@@ -1652,22 +1670,18 @@ export function useContentStudioApp() {
     await refresh(workspace);
   }
 
-  async function generateReferenceReversePrompt(input: {
-    referenceSourceIds: string[];
-    productSourceIds: string[];
-    userIntent: string;
-  }): Promise<void> {
+  async function generateReferenceReversePrompt(input: ReferenceReverseGenerateInput): Promise<void> {
     const workspace = requireWorkspace();
     const result = await window.contentStudio.reverseReferencePrompt({
       workspacePath: workspace,
       ...input,
     });
+    setReferenceReverseResult(result);
     setPromptDrafts((current) => [
       result.promptDraft,
       ...current.filter((draft) => draft.id !== result.promptDraft.id),
     ]);
     setActivePromptDraftId(result.promptDraft.id);
-    setActiveModule(promptWorkbenchModuleForPurpose(result.promptDraft.purpose));
     await refresh(workspace);
   }
 
@@ -1832,6 +1846,19 @@ export function useContentStudioApp() {
     context?.throwIfCancelled();
     applyMediaGenerationSubmission(submission);
     await refresh(workspace);
+  }
+
+  function useReferenceReversePromptInImage(input: ShowcaseImageHandoffInput): void {
+    useShowcasePromptInImage(input);
+    setActiveModule("image");
+  }
+
+  async function generateReferenceReverseImage(
+    input: ShowcaseImageHandoffInput,
+    context?: ActionContext,
+  ): Promise<void> {
+    await generateShowcaseImage(input, context);
+    setActiveModule("material-breakdown");
   }
 
   function useScenePromptInVideo(prompt: string, sceneCardIds?: string[]): void {
@@ -2752,7 +2779,7 @@ export function useContentStudioApp() {
   function openWorkflowRunReferenceReverse(runId: string): void {
     const run = workflowRunById(runId);
     selectWorkflowRunContext(run);
-    setActiveModule("image-reference-reverse");
+    setActiveModule("material-breakdown");
   }
 
   function openWorkflowRunImageWorkbench(runId: string): void {
@@ -3741,6 +3768,7 @@ export function useContentStudioApp() {
     generationTasks,
     workflowDefinitions,
     workflowRuns,
+    referenceReverseResult,
     activeWorkflowDefinition,
     activeWorkflowDefinitionId,
     setActiveWorkflowDefinitionId,
@@ -3883,8 +3911,10 @@ export function useContentStudioApp() {
     distillAssetPrompt,
     useScenePromptInImage,
     useShowcasePromptInImage,
+    useReferenceReversePromptInImage,
     startShowcasePartialRetouch,
     generateShowcaseImage,
+    generateReferenceReverseImage,
     useScenePromptInVideo,
     useShowcasePromptInVideo,
     generateShowcaseVideo,

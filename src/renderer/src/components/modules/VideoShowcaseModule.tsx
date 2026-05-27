@@ -1031,10 +1031,23 @@ function VideoHistoryDrawer({
               </p>
             </main>
           ) : (
-            <div className="ai-video-history-empty-detail">
-              <strong>暂无历史记录</strong>
-              <span>完成一次生成后，这里会展示输入文件、生成结果和提示词。</span>
-            </div>
+            <main className="ai-video-history-detail ai-video-history-empty-detail">
+              <section className="ai-video-history-section">
+                <h3>输入文件</h3>
+                <VideoHistoryAssetGrid refs={[]} label="输入文件" onOpen={onOpenMedia} />
+              </section>
+              <section className="ai-video-history-section">
+                <h3>生成结果</h3>
+                <VideoHistoryAssetGrid refs={[]} label="生成结果" onOpen={onOpenMedia} showActions />
+              </section>
+              <section className="ai-video-history-section ai-video-history-prompt-section">
+                <header>
+                  <h3>提示词</h3>
+                  <button type="button" disabled>复制</button>
+                </header>
+                <textarea value="暂无历史记录。完成一次生成后，这里会展示输入文件、生成结果和提示词。" readOnly />
+              </section>
+            </main>
           )}
         </div>
       </section>

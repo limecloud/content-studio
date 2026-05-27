@@ -1,0 +1,556 @@
+/* Material Breakdown Module — 拆解素材 */
+
+.ai-breakdown-shell {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 24px;
+  height: 100%;
+  min-height: 0;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.ai-breakdown-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.ai-breakdown-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Upload zone */
+.ai-breakdown-upload-zone {
+  border: 2px dashed color-mix(in srgb, var(--cyan) 40%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--cyan) 4%, var(--panel));
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.ai-breakdown-upload-zone:hover {
+  border-color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 8%, var(--panel));
+}
+
+.ai-breakdown-upload-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 28px 16px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ai-breakdown-upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-breakdown-upload-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--cyan) 14%, var(--panel));
+  color: var(--cyan);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.ai-breakdown-upload-btn span {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ai-breakdown-upload-btn small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Thumbnail strip */
+.ai-breakdown-thumb-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.ai-breakdown-thumb {
+  margin: 0;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.ai-breakdown-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Sections */
+.ai-breakdown-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-breakdown-section h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ai-breakdown-upload-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* Brief and intent textareas */
+.ai-breakdown-brief,
+.ai-breakdown-intent {
+  width: 100%;
+  min-height: 64px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.ai-breakdown-brief:focus,
+.ai-breakdown-intent:focus {
+  border-color: var(--cyan);
+  outline: none;
+}
+
+/* Controls */
+.ai-breakdown-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-breakdown-select-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-breakdown-select-row span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.ai-breakdown-select-row select {
+  flex: 1;
+  max-width: 160px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Source list */
+.ai-breakdown-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-breakdown-source-list h4 small {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+.ai-breakdown-source-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.ai-breakdown-source-row:hover {
+  background: color-mix(in srgb, var(--cyan) 6%, var(--panel));
+}
+
+.ai-breakdown-source-row small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Buttons */
+.ai-breakdown-primary-btn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--cyan), color-mix(in srgb, var(--cyan) 80%, #1a8cff));
+  padding: 12px 20px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.ai-breakdown-primary-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.ai-breakdown-primary-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ai-breakdown-btn-ghost {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  padding: 8px 14px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ai-breakdown-btn-ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--cyan) 8%, var(--panel));
+}
+
+.ai-breakdown-btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ai-breakdown-btn-ghost.small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+/* Empty state */
+.ai-breakdown-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: 1;
+  min-height: 300px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--cyan) 6%, var(--panel)), var(--panel));
+  text-align: center;
+}
+
+.ai-breakdown-empty-icon {
+  font-size: 36px;
+  color: var(--cyan);
+  opacity: 0.7;
+}
+
+.ai-breakdown-empty-state h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ai-breakdown-empty-state p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Analysis section */
+.ai-breakdown-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ai-breakdown-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ai-breakdown-section-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ai-breakdown-badge {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--muted) 12%, var(--panel));
+  color: var(--muted);
+}
+
+.ai-breakdown-badge.ready {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+/* Card grid */
+.ai-breakdown-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.ai-breakdown-card {
+  display: flex;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+
+.ai-breakdown-card:hover {
+  border-color: color-mix(in srgb, var(--cyan) 40%, var(--line));
+}
+
+.ai-breakdown-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cyan) 10%, var(--panel));
+  color: var(--cyan);
+  font-size: 16px;
+}
+
+.ai-breakdown-card strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.ai-breakdown-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* Tags section */
+.ai-breakdown-tags-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.ai-breakdown-tag-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-breakdown-tag-group strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ai-breakdown-tag-group.warning strong {
+  color: #b45309;
+}
+
+.ai-breakdown-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-breakdown-tag {
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--cyan) 8%, var(--panel));
+  color: var(--text);
+  font-size: 12px;
+}
+
+.ai-breakdown-tag.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Prompt section */
+.ai-breakdown-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ai-breakdown-prompt-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ai-breakdown-prompt-textarea {
+  width: 100%;
+  min-height: 200px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 14px 16px;
+  color: var(--text);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.ai-breakdown-prompt-textarea:focus {
+  border-color: var(--cyan);
+  outline: none;
+}
+
+.ai-breakdown-prompt-footer {
+  display: flex;
+  gap: 10px;
+}
+
+.ai-breakdown-prompt-footer .ai-breakdown-primary-btn {
+  width: auto;
+  padding: 10px 24px;
+}
+
+/* Output section */
+.ai-breakdown-output {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ai-breakdown-output-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.ai-breakdown-output-card {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  transition: border-color 0.15s;
+}
+
+.ai-breakdown-output-card:hover {
+  border-color: color-mix(in srgb, var(--cyan) 40%, var(--line));
+}
+
+.ai-breakdown-output-card img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  display: block;
+}
+
+.ai-breakdown-output-actions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.ai-breakdown-output-card:hover .ai-breakdown-output-actions {
+  opacity: 1;
+}
+
+.ai-breakdown-output-actions button {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ai-breakdown-output-actions button.approve {
+  background: #22c55e;
+  color: #fff;
+}
+
+.ai-breakdown-output-actions button.reject {
+  background: rgba(255, 255, 255, 0.9);
+  color: #dc2626;
+}
+
+.ai-breakdown-output-name {
+  display: block;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Responsive */
+@media (max-width: 1080px) {
+  .ai-breakdown-shell {
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 16px;
+    padding: 14px;
+  }
+
+  .ai-breakdown-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .ai-breakdown-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .ai-breakdown-sidebar {
+    max-height: 40vh;
+  }
+}

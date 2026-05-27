@@ -169,6 +169,9 @@ export function ParamsPanel({
                   <p>{citation.excerpt}</p>
                 </article>
               ))}
+              {citations.length === 0 ? (
+                <div className="empty-state">当前模块未绑定知识引用。</div>
+              ) : null}
             </div>
           </section>
 

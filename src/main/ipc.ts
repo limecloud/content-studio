@@ -343,8 +343,8 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const claudePromptAgent = new ClaudePromptAgentService(settings, modelConfig, textGeneration);
   const imageSkills = new ImageSkillGenerationService(textGeneration);
   const inputSources = new InputSourceStore();
-  const promptDrafts = new PromptDraftStore(inputSources, textGeneration);
-  const agentPromptSessions = new AgentPromptSessionStore(inputSources, promptDrafts, textGeneration, claudePromptAgent);
+  const promptDrafts = new PromptDraftStore(inputSources, textGeneration, skills);
+  const agentPromptSessions = new AgentPromptSessionStore(inputSources, promptDrafts, textGeneration, claudePromptAgent, skills);
   const brandKnowledgeBases = new BrandKnowledgeBaseStore(textGeneration);
   const ipKnowledgeBases = new IpKnowledgeBaseStore(textGeneration);
   const overlayCards = new OverlayCardStore();
@@ -367,7 +367,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     referenceReverse,
     (event) => mainWindow.webContents.send('generationTasks:event', event),
   );
-  const agent = new ClaudeAgentService(settings, modelConfig);
+  const agent = new ClaudeAgentService(settings, modelConfig, skills);
   const workflows = new WorkflowStore();
   const workflowEngine = new WorkflowEngine(
     workflows,

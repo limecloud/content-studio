@@ -5,6 +5,7 @@ export type CoreModuleKey = 'image' | 'image-showcase' | 'video' | 'video-showca
 
 export type V2ModuleKey =
   | 'image-reference-reverse'
+  | 'material-breakdown'
   | 'image-scene-prompts'
   | 'image-green-screen'
   | 'image-compliance'

@@ -18,6 +18,8 @@ import { getWorkspaceDataDir } from './paths';
 import { InputSourceStore } from './inputSourceStore';
 import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { PromptDraftStore } from './promptDraftStore';
+import { SkillManager } from './skillManager';
+import { buildSkillRuntimeContext, type SkillRuntimeContext } from './skillRuntimeContext';
 import { TextGenerationService, TextProviderBlockedError, TextProviderFailedError } from './textGenerationService';
 import type {
   GenerateAgentPromptDraftInput,
@@ -146,6 +148,10 @@ function fallbackRefinedContent(previousContent: string, adjustment: string, rea
   ].join('\n');
 }
 
+function skillSummaryText(skillContext: SkillRuntimeContext): string {
+  return skillContext.skillRefs.length ? skillContext.summaryText : '未选择 skill。';
+}
+
 interface AgentPromptModelService {
   generatePromptDraft(input: GenerateAgentPromptDraftInput): Promise<GenerateAgentPromptDraftResult>;
   generateRefinedPrompt(input: GenerateAgentPromptRefinementInput): Promise<GenerateAgentPromptRefinementResult>;
@@ -157,6 +163,7 @@ export class AgentPromptSessionStore {
     private readonly promptDrafts: PromptDraftStore,
     private readonly textGeneration: TextGenerationService,
     private readonly promptAgent?: AgentPromptModelService,
+    private readonly skills = new SkillManager(),
   ) {}
 
   async list(workspacePath: string): Promise<AgentPromptSession[]> {
@@ -169,6 +176,7 @@ export class AgentPromptSessionStore {
     const allSources = await this.inputSources.list(input.workspacePath);
     const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id) && isReusablePromptInputSource(source));
     const inputSourceIds = selectedSources.map((source) => source.id);
+    const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, input);
     let draft: PromptDraft;
     if (this.promptAgent) {
       const generated = await this.promptAgent.generatePromptDraft({
@@ -179,7 +187,10 @@ export class AgentPromptSessionStore {
         userIntent: input.userIntent,
         inputSourceIds,
         sceneCardIds: input.sceneCardIds,
+        selectedSkills: skillContext.skillRefs,
+        selectedSkillSlugs: skillContext.skillRefs.map((skill) => skill.slug),
         selectedSources,
+        skillContext,
         textModel: input.textModel,
       });
       draft = await this.promptDrafts.createFromContent({
@@ -190,6 +201,7 @@ export class AgentPromptSessionStore {
         userIntent: input.userIntent.trim(),
         inputSourceIds,
         sceneCardIds: input.sceneCardIds ?? [],
+        selectedSkills: skillContext.skillRefs,
         content: generated.content,
         note: generated.note,
         model: generated.model,
@@ -204,6 +216,8 @@ export class AgentPromptSessionStore {
         userIntent: input.userIntent,
         inputSourceIds,
         sceneCardIds: input.sceneCardIds,
+        selectedSkills: skillContext.skillRefs,
+        selectedSkillSlugs: skillContext.skillRefs.map((skill) => skill.slug),
       });
     }
     const now = new Date().toISOString();
@@ -220,6 +234,9 @@ export class AgentPromptSessionStore {
           '',
           '输入源快照：',
           sourceSnapshotText(sourceSnapshots),
+          '',
+          '本轮 skills：',
+          skillSummaryText(skillContext),
         ].join('\n'),
         createdAt: now,
       },
@@ -243,6 +260,7 @@ export class AgentPromptSessionStore {
       userIntent: input.userIntent.trim(),
       inputSourceIds,
       sceneCardIds: input.sceneCardIds ?? [],
+      selectedSkills: skillContext.skillRefs,
       promptDraftIds: [draft.id],
       sourceSnapshots,
       messages,
@@ -267,6 +285,9 @@ export class AgentPromptSessionStore {
     if (!draft) throw new Error(`Agent 会话关联的 Prompt 草稿不存在: ${draftId}`);
 
     const previousContent = activeVersion(draft).content;
+    const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, {
+      selectedSkills: session.selectedSkills ?? draft.selectedSkills ?? [],
+    });
     const generated = this.promptAgent
       ? await this.promptAgent.generateRefinedPrompt({
         workspacePath: input.workspacePath,
@@ -275,9 +296,10 @@ export class AgentPromptSessionStore {
         adjustment,
         sourceSnapshots: session.sourceSnapshots,
         messages: session.messages,
+        skillContext,
         textModel: input.textModel ?? (isClaudeModelName(session.model) ? session.model : undefined),
       })
-      : await this.generateRefinedContent(session, previousContent, adjustment);
+      : await this.generateRefinedContent(session, previousContent, adjustment, skillContext);
     const updatedDraft = await this.promptDrafts.update({
       workspacePath: input.workspacePath,
       draftId: draft.id,
@@ -328,6 +350,7 @@ export class AgentPromptSessionStore {
     session: AgentPromptSession,
     previousContent: string,
     adjustment: string,
+    skillContext: SkillRuntimeContext,
   ): Promise<{ content: string; note: string; model: string; protocol?: AgentPromptSession['textProtocol'] }> {
     try {
       const result = await this.textGeneration.generateJson<RefinePromptOutput>({
@@ -337,10 +360,14 @@ export class AgentPromptSessionStore {
           '你必须基于会话输入源、已有 Prompt 草稿和用户本轮调整要求改写 Prompt。',
           '必须保留来源约束，不编造输入源没有的卖点、功效、背书或用户案例。',
           '如果调整要求缺少必要信息，要给出追问；如果来源存在 blocked，要提醒人工确认。',
+          skillContext.promptText ? '本轮会话绑定了 skills，你必须持续遵守这些执行规范。' : '',
         ].join('\n'),
         prompt: [
           `下游用途：${session.purpose}`,
           '',
+          skillContext.promptText ? '本轮 skill 执行规范：' : '',
+          skillContext.promptText,
+          skillContext.promptText ? '' : '',
           '输入源快照：',
           sourceSnapshotText(session.sourceSnapshots),
           '',
@@ -360,7 +387,10 @@ export class AgentPromptSessionStore {
       });
       return {
         content: formatRefinedContent(previousContent, adjustment, result.value),
-        note: `Agent 多轮调整：${result.model}`,
+        note: [
+          `Agent 多轮调整：${result.model}`,
+          skillContext.skillRefs.length ? `已应用 ${skillContext.skillRefs.length} 个 skill：${skillContext.summaryText}` : '',
+        ].filter(Boolean).join('；'),
         model: result.model,
         protocol: result.protocol,
       };

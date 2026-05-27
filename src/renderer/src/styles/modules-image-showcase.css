@@ -82,7 +82,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  width: 100%;
+  width: 376px;
   min-height: 96px;
   margin-top: 10px;
   border: 1px solid var(--line);
@@ -1077,6 +1077,10 @@
 
 .ai-case-compare img {
   object-fit: cover;
+}
+
+.ai-case-compare .ai-image-stack-grid[data-role="input"] img {
+  object-fit: contain;
 }
 
 .ai-preview-compare img {
@@ -2459,12 +2463,12 @@
 
 .ai-history-empty-detail {
   display: grid;
-  place-items: center;
-  align-content: center;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  justify-items: stretch;
   gap: 8px;
   min-height: 100%;
   color: var(--text-secondary);
-  text-align: center;
 }
 
 .ai-history-empty-detail strong {
@@ -3394,6 +3398,10 @@
 
   .ai-showcase-main {
     grid-template-rows: auto auto auto;
+  }
+
+  .ai-feature-entry-card {
+    width: 100%;
   }
 
   .ai-feature-grid {

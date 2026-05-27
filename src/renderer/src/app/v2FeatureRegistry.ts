@@ -18,6 +18,22 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     preview: '竖版 4:5，产品位于右下三分之一，早餐桌自然光，左上保留标题空间，手机实拍感，细节真实。',
     table: [['参考图 A', '已上传', '构图 / 光线', '可分析'], ['产品资料', '待补充', '规格 / 卖点', '人工补齐'], ['Prompt v1', '草稿', '可编辑', '发送图片生成']],
   },
+  'material-breakdown': {
+    eyebrow: '图片 / 素材拆解',
+    title: '拆解素材',
+    description: '上传参考素材，AI 拆解构图、光线、风格和留白，生成可编辑 Prompt 用于图片生成。',
+    scope: '参考素材 -> AI 拆解 -> Prompt 草稿 -> 图片生成',
+    status: '可运行入口',
+    primaryAction: '开始拆解',
+    secondaryAction: '发送到图片生成',
+    flow: ['上传素材', '关联产品', 'AI 拆解', 'Prompt 编辑', '生成图片'],
+    cards: [
+      { title: '拆解维度', text: '结构化输出构图、主体位置、光线、背景、文字区域、画幅和可复用风格。', items: ['构图与画幅', '光线与背景', '留白与风格'] },
+      { title: '合规边界', text: '只学习风格结构，不复制竞品可识别元素，不编造产品卖点。', items: ['去除竞品元素', '保留来源引用', 'Prompt 可追溯'] },
+    ],
+    preview: '竖版 4:5，产品位于右下三分之一，早餐桌自然光，左上保留标题空间，手机实拍感。',
+    table: [['参考素材', '已上传', '构图 / 光线', '可分析'], ['产品图', '已关联', '产品实物', '替换主体'], ['Prompt', '草稿', '可编辑', '生成图片']],
+  },
   'image-scene-prompts': {
     eyebrow: '图片 / 场景库',
     title: '场景提示词',
@@ -360,6 +376,9 @@ const V2_FEATURE_ACTION_TARGETS: Partial<
   Record<V2ModuleKey, Partial<Record<V2FeatureActionSlot, V2FeatureActionTarget>>>
 > = {
   'image-reference-reverse': {
+    secondary: { type: 'module', module: 'image' },
+  },
+  'material-breakdown': {
     secondary: { type: 'module', module: 'image' },
   },
   'image-scene-prompts': {

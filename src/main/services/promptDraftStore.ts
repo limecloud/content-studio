@@ -15,6 +15,8 @@ import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { InputSourceStore } from './inputSourceStore';
 import { getOemRuntimeConfig } from './oemRuntimeConfig';
+import { SkillManager } from './skillManager';
+import { buildSkillRuntimeContext, type SkillRuntimeContext } from './skillRuntimeContext';
 import { TextGenerationService, TextProviderBlockedError, TextProviderFailedError } from './textGenerationService';
 
 function promptDraftsFilePath(workspacePath: string): string {
@@ -88,25 +90,34 @@ function sourceMaterialForModel(sources: InputSourceRecord[]): string {
   }).join('\n\n');
 }
 
-function buildLocalPromptContent(input: GeneratePromptDraftInput, sources: InputSourceRecord[], reason?: string): string {
-    const sourceText = sourceDigest(sources);
-    const purpose = purposeLabel(input.purpose);
-    const sceneContext = input.sceneCardIds?.length
-      ? `已选择 ${input.sceneCardIds.length} 张场景卡`
-      : '未选择场景卡。';
-    return [
-      `任务：生成${purpose}可执行 Prompt。`,
-      '',
-      '用户意图：',
-      input.userIntent.trim(),
-      '',
-      '场景引用：',
-      sceneContext,
-      '',
-      '可用输入源：',
-      sourceText,
+function buildLocalPromptContent(
+  input: GeneratePromptDraftInput,
+  sources: InputSourceRecord[],
+  skillContext: SkillRuntimeContext,
+  reason?: string,
+): string {
+  const sourceText = sourceDigest(sources);
+  const purpose = purposeLabel(input.purpose);
+  const sceneContext = input.sceneCardIds?.length
+    ? `已选择 ${input.sceneCardIds.length} 张场景卡`
+    : '未选择场景卡。';
+  return [
+    `任务：生成${purpose}可执行 Prompt。`,
+    '',
+    '用户意图：',
+    input.userIntent.trim(),
+    '',
+    '场景引用：',
+    sceneContext,
+    '',
+    '可用输入源：',
+    sourceText,
+    '',
+    '本轮 skills：',
+    skillContext.summaryText,
     '',
     '输出要求：',
+    skillContext.promptText ? '- 必须按本轮选择的 skill 执行规范组织输出；不适用时要说明原因。' : '',
     '- 只使用输入源和用户意图中能追溯的信息，不编造卖点、功效、背书或平台数据。',
     '- 先给主体、场景、动作、镜头 / 文案结构，再给风格和质量约束。',
     '- 如输入源包含 blocked 项，保留“需要人工确认 / 需要模型解析”的标记，不把 blocked 信息当成已解析事实。',
@@ -179,6 +190,7 @@ export class PromptDraftStore {
   constructor(
     private readonly inputSources: InputSourceStore,
     private readonly textGeneration: TextGenerationService,
+    private readonly skills = new SkillManager(),
   ) {}
 
   async list(workspacePath: string): Promise<PromptDraft[]> {
@@ -191,8 +203,9 @@ export class PromptDraftStore {
     const allSources = await this.inputSources.list(input.workspacePath);
     const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id) && isReusablePromptInputSource(source));
     const inputSourceIds = selectedSources.map((source) => source.id);
+    const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, input);
     const now = new Date().toISOString();
-    const generated = await this.generateDraftContent(input, selectedSources);
+    const generated = await this.generateDraftContent(input, selectedSources, skillContext);
     const firstVersion: PromptDraftVersion = {
       id: randomUUID(),
       version: 1,
@@ -210,6 +223,7 @@ export class PromptDraftStore {
       userIntent: input.userIntent.trim(),
       inputSourceIds,
       sceneCardIds: input.sceneCardIds ?? [],
+      selectedSkills: skillContext.skillRefs,
       copyCount: 0,
       model: generated.model,
       textProtocol: generated.protocol,
@@ -244,6 +258,7 @@ export class PromptDraftStore {
       userIntent: input.userIntent.trim(),
       inputSourceIds: input.inputSourceIds,
       sceneCardIds: input.sceneCardIds ?? [],
+      selectedSkills: input.selectedSkills ?? [],
       copyCount: 0,
       model: input.model,
       textProtocol: input.textProtocol,
@@ -260,6 +275,7 @@ export class PromptDraftStore {
   private async generateDraftContent(
     input: GeneratePromptDraftInput,
     selectedSources: InputSourceRecord[],
+    skillContext: SkillRuntimeContext,
   ): Promise<{ title?: string; content: string; note: string; model: string; protocol?: PromptDraft['textProtocol'] }> {
     const blockedSources = selectedSources.filter((source) => source.status === 'blocked' || source.status === 'failed');
     try {
@@ -271,12 +287,16 @@ export class PromptDraftStore {
           '必须把知识库当事实源：只使用输入源中可追溯的信息，不编造功效、背书、品牌数据或用户案例。',
           '如果资料缺失，要输出需要追问的问题；如果输入源被 blocked，要明确提醒人工确认。',
           '输出的 prompt 要可直接进入图片、视频 Prompt、文案、绿幕文案图、SOP 或 Skill 下游，但仍允许用户多轮调整。',
+          skillContext.promptText ? '本轮用户选择了 skills，你必须先学习并遵守这些执行规范。' : '',
         ].join('\n'),
         prompt: [
           `下游用途：${purposeLabel(input.purpose)}`,
           `用户意图：${input.userIntent.trim()}`,
           input.sceneCardIds?.length ? `场景卡：已选择 ${input.sceneCardIds.length} 张` : '未选择场景卡。',
           '',
+          skillContext.promptText ? '本轮 skill 执行规范：' : '',
+          skillContext.promptText,
+          skillContext.promptText ? '' : '',
           '本地输入源：',
           sourceMaterialForModel(selectedSources),
           '',
@@ -292,6 +312,7 @@ export class PromptDraftStore {
         content: formatModelPromptContent(input, output),
         note: [
           `由文字模型生成：${result.model}`,
+          skillContext.skillRefs.length ? `已应用 ${skillContext.skillRefs.length} 个 skill：${skillContext.summaryText}` : '',
           blockedSources.length ? `包含 ${blockedSources.length} 个未解析输入源，已在提醒中保留人工确认。` : '',
         ].filter(Boolean).join('；'),
         model: result.model,
@@ -304,8 +325,11 @@ export class PromptDraftStore {
           ? `文字模型生成失败：${error.message}`
           : `文字模型生成异常：${error instanceof Error ? error.message : String(error)}`;
       return {
-        content: buildLocalPromptContent(input, selectedSources, reason),
-        note: `文字模型未完成，已生成本地可追溯草稿：${reason}`,
+        content: buildLocalPromptContent(input, selectedSources, skillContext, reason),
+        note: [
+          `文字模型未完成，已生成本地可追溯草稿：${reason}`,
+          skillContext.skillRefs.length ? `已记录 ${skillContext.skillRefs.length} 个本轮 skill：${skillContext.summaryText}` : '',
+        ].filter(Boolean).join('；'),
         model: error instanceof TextProviderBlockedError ? 'blocked:text-provider' : 'fallback:local-rule',
         protocol: undefined,
       };

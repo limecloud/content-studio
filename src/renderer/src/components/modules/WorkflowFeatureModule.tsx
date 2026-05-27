@@ -496,8 +496,8 @@ function nextImageSopAction(run: WorkflowRunRecord): WorkflowRunNextAction | nul
   if (!hasStepSucceeded(run, 'reference_reverse') && isStepPending(run, 'reference_reverse')) {
     return {
       action: 'open-reference-reverse',
-      title: '打开对标图反推',
-      description: '补参考图、产品资料或视觉理解配置，重新生成可追溯图片提示词。',
+      title: '打开拆解素材',
+      description: '补参考素材、产品资料或视觉理解配置，重新生成可追溯图片提示词。',
       primary: true,
     };
   }

@@ -352,6 +352,32 @@
   overflow: hidden;
 }
 
+.app-shell:has(.reference-sop-workbench) {
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell:has(.reference-sop-workbench) > .stage,
+.app-shell:has(.reference-sop-workbench) .stage-module-surface {
+  height: calc(100vh - 40px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell:has(.ai-breakdown-shell) {
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell:has(.ai-breakdown-shell) > .stage,
+.app-shell:has(.ai-breakdown-shell) .stage-module-surface {
+  height: calc(100vh - 40px);
+  min-height: 0;
+  overflow: hidden;
+}
+
 .app-shell[data-sidebar="collapsed"]:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) .sidebar-collapse-btn {
   display: none;
 }

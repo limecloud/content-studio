@@ -29,6 +29,7 @@ function formatVersion(version?: string) {
 const NAV_ICONS = new Map<string, string>([
   ["图片生成", "🖼️"],
   ["AI 生图", "AI"],
+  ["拆解素材", "✂️"],
   ["对标图反推", "🔎"],
   ["场景提示词", "🎯"],
   ["绿幕文案图", "字"],

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
 import type {
   InputSourceRecord,
   ReferenceReverseAnalysis,
@@ -19,30 +19,61 @@ interface ReferenceReverseProviderOutput {
   lighting?: string;
   textArea?: string;
   style?: string;
+  subjectLayout?: string;
+  background?: string;
+  camera?: string;
+  platformFit?: string;
   reusableElements?: string[];
+  replacementRules?: string[];
+  generationControls?: string[];
   risks?: string[];
   prompt?: string;
   negativePrompt?: string;
   qualityChecklist?: string[];
 }
 
-function compactText(value: unknown, fallback: string): string {
+function compactText(value: unknown): string {
   const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
-  return normalized || fallback;
+  return normalized;
 }
 
-function compactList(values: unknown, fallback: string[]): string[] {
+function compactList(values: unknown): string[] {
   const source = Array.isArray(values) ? values : [];
-  const normalized = source.map((item) => compactText(item, '')).filter(Boolean);
-  return (normalized.length ? normalized : fallback).slice(0, 10);
+  const normalized = source.map((item) => compactText(item)).filter(Boolean);
+  return normalized.slice(0, 10);
+}
+
+function requiredText(output: ReferenceReverseProviderOutput, key: keyof ReferenceReverseProviderOutput, label: string): string {
+  const value = compactText(output[key]);
+  if (!value) throw new Error(`视觉理解服务未返回 ${label}，已拒绝生成假结果。`);
+  return value;
+}
+
+function requiredList(output: ReferenceReverseProviderOutput, key: keyof ReferenceReverseProviderOutput, label: string): string[] {
+  const values = compactList(output[key]);
+  if (values.length === 0) throw new Error(`视觉理解服务未返回 ${label}，已拒绝生成假结果。`);
+  return values;
 }
 
 function sanitizeProviderError(value: string): string {
   return value.replace(/sk-[A-Za-z0-9_-]+/g, 'sk-***').replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer ***');
 }
 
-function sourcePayload(sources: InputSourceRecord[]): Array<Record<string, unknown>> {
-  return sources.map((source) => ({
+function imageMimeType(path: string): string | null {
+  const ext = extname(path).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.avif') return 'image/avif';
+  return null;
+}
+
+async function sourcePayload(
+  sources: InputSourceRecord[],
+  options: { includeImages?: boolean } = {},
+): Promise<Array<Record<string, unknown>>> {
+  return Promise.all(sources.map(async (source) => ({
     id: source.id,
     title: source.title,
     kind: source.kind,
@@ -54,22 +85,49 @@ function sourcePayload(sources: InputSourceRecord[]): Array<Record<string, unkno
     extractedText: source.extractedText?.slice(0, 4_000),
     blockedReason: source.blockedReason,
     tags: source.tags,
-  }));
+    ...(options.includeImages ? { images: await imagePayload(source) } : {}),
+  })));
+}
+
+async function imagePayload(source: InputSourceRecord): Promise<Array<Record<string, string>>> {
+  const refs = Array.from(new Set([source.sourcePath, ...source.artifactRefs].filter((ref): ref is string => Boolean(ref))));
+  const images: Array<Record<string, string>> = [];
+  for (const ref of refs) {
+    const mimeType = imageMimeType(ref);
+    if (!mimeType) continue;
+    const data = await readFile(ref).then((payload) => payload.toString('base64'));
+    images.push({
+      fileName: basename(ref),
+      mimeType,
+      dataUrl: `data:${mimeType};base64,${data}`,
+    });
+  }
+  return images.slice(0, 4);
+}
+
+async function countImagePayloads(sources: InputSourceRecord[]): Promise<number> {
+  const payloads = await Promise.all(sources.map(imagePayload));
+  return payloads.reduce((count, images) => count + images.length, 0);
 }
 
 function normalizeAnalysis(output: ReferenceReverseProviderOutput): ReferenceReverseAnalysis {
   const analysis: ReferenceReverseAnalysis = {
-    composition: compactText(output.composition, '视觉理解服务未返回构图说明。'),
-    lighting: compactText(output.lighting, '视觉理解服务未返回光线说明。'),
-    textArea: compactText(output.textArea, '视觉理解服务未返回文字留白区说明。'),
-    style: compactText(output.style, '视觉理解服务未返回风格说明。'),
-    reusableElements: compactList(output.reusableElements, ['构图、光线、镜头语言和真实感需要人工复核后复用。']),
-    risks: compactList(output.risks, ['需要人工复核竞品元素、Logo、包装、文案和素材授权风险。']),
-    prompt: compactText(output.prompt, ''),
-    negativePrompt: compactText(output.negativePrompt, '不要复制竞品 Logo、包装、可识别文案、医疗化承诺、绝对化表达。'),
-    qualityChecklist: compactList(output.qualityChecklist, ['主体一致', '来源可追溯', '无竞品可识别元素', '文字区域可读']),
+    composition: requiredText(output, 'composition', '构图说明'),
+    lighting: requiredText(output, 'lighting', '光线说明'),
+    textArea: requiredText(output, 'textArea', '文字留白区说明'),
+    style: requiredText(output, 'style', '风格说明'),
+    subjectLayout: compactText(output.subjectLayout),
+    background: compactText(output.background),
+    camera: compactText(output.camera),
+    platformFit: compactText(output.platformFit),
+    reusableElements: requiredList(output, 'reusableElements', '可复用元素'),
+    replacementRules: requiredList(output, 'replacementRules', '产品替换规则'),
+    generationControls: requiredList(output, 'generationControls', '生成建议'),
+    risks: requiredList(output, 'risks', '风险边界'),
+    prompt: requiredText(output, 'prompt', '可执行 Prompt'),
+    negativePrompt: requiredText(output, 'negativePrompt', '负面约束'),
+    qualityChecklist: requiredList(output, 'qualityChecklist', '质量检查项'),
   };
-  if (!analysis.prompt) throw new Error('视觉理解服务未返回可执行 Prompt。');
   return analysis;
 }
 
@@ -82,12 +140,22 @@ function formatPromptContent(input: ReferenceReverseRequest, analysis: Reference
     '',
     '视觉反推结果：',
     `- 构图：${analysis.composition}`,
+    analysis.subjectLayout ? `- 主体：${analysis.subjectLayout}` : '',
     `- 光线：${analysis.lighting}`,
+    analysis.background ? `- 背景：${analysis.background}` : '',
+    analysis.camera ? `- 镜头：${analysis.camera}` : '',
     `- 文字区域：${analysis.textArea}`,
     `- 风格：${analysis.style}`,
+    analysis.platformFit ? `- 平台适配：${analysis.platformFit}` : '',
     '',
     '可复用元素：',
     ...analysis.reusableElements.map((item) => `- ${item}`),
+    '',
+    '产品替换规则：',
+    ...(analysis.replacementRules ?? []).map((item) => `- ${item}`),
+    '',
+    '生成建议：',
+    ...(analysis.generationControls ?? []).map((item) => `- ${item}`),
     '',
     '风险与边界：',
     ...analysis.risks.map((item) => `- ${item}`),
@@ -100,7 +168,7 @@ function formatPromptContent(input: ReferenceReverseRequest, analysis: Reference
     '',
     '质量检查：',
     ...analysis.qualityChecklist.map((item) => `- ${item}`),
-  ].join('\n');
+  ].filter((line) => line !== '').join('\n');
 }
 
 async function writeAnalysisArtifact(input: ReferenceReverseRequest, analysis: ReferenceReverseAnalysis): Promise<string> {
@@ -121,6 +189,8 @@ async function postVisionReverse(input: {
 }): Promise<ReferenceReverseProviderOutput> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (input.apiKey) headers.authorization = `Bearer ${input.apiKey}`;
+  const referencePayload = await sourcePayload(input.referenceSources, { includeImages: true });
+  const productPayload = await sourcePayload(input.productSources, { includeImages: true });
   const response = await fetch(input.endpoint, {
     method: 'POST',
     headers,
@@ -128,11 +198,17 @@ async function postVisionReverse(input: {
       operation: 'reference-reverse',
       model: input.model,
       user_intent: input.request.userIntent,
-      reference_sources: sourcePayload(input.referenceSources),
-      product_sources: sourcePayload(input.productSources),
+      platform: input.request.platform,
+      target_format: input.request.targetFormat,
+      output_usage: input.request.outputUsage,
+      reference_sources: referencePayload,
+      product_sources: productPayload,
       requirements: [
         '必须真实分析参考图或参考视频，不要用模板补齐未看见的画面。',
+        '输出 composition、subjectLayout、lighting、background、camera、textArea、style、platformFit。',
         '只复用构图、光线、镜头、文字留白区、真实感和平台风格。',
+        '输出 replacementRules，说明哪些必须替换为本方产品事实。',
+        '输出 generationControls，给出画幅、清晰度、数量和风格强度建议。',
         '不得复制竞品 Logo、包装、文案、人物肖像或可识别品牌元素。',
         '必须输出 prompt、negativePrompt、risks 和 qualityChecklist。',
       ],
@@ -170,6 +246,9 @@ export class ReferenceReverseService {
     const referenceSources = allSources.filter((source) => input.referenceSourceIds.includes(source.id));
     const productSources = allSources.filter((source) => input.productSourceIds.includes(source.id));
     if (referenceSources.length === 0) throw new Error('未找到可用参考输入源。');
+    if (productSources.length === 0) throw new Error('对标图反推需要至少 1 个产品资料或产品图输入源。');
+    const referenceLogPayload = await sourcePayload(referenceSources);
+    const productLogPayload = await sourcePayload(productSources);
 
     const config = await this.modelConfig?.readView();
     const endpoint = (process.env.CONTENT_STUDIO_VISION_ENDPOINT || process.env.CONTENT_STUDIO_IMAGE_UNDERSTANDING_ENDPOINT || '').trim();
@@ -190,8 +269,8 @@ export class ReferenceReverseService {
         model,
         input: {
           ...input,
-          referenceSources: sourcePayload(referenceSources),
-          productSources: sourcePayload(productSources),
+          referenceSources: referenceLogPayload,
+          productSources: productLogPayload,
         },
         error: 'VISION_PROVIDER_NOT_CONFIGURED',
         durationMs: Date.now() - startedAt,
@@ -200,6 +279,10 @@ export class ReferenceReverseService {
     }
 
     try {
+      const referenceImageCount = await countImagePayloads(referenceSources);
+      const productContextCount = productSources.filter((source) => source.extractedText?.trim()).length + await countImagePayloads(productSources);
+      if (referenceImageCount === 0) throw new Error('参考输入源里没有可读取的图片文件，无法进行真实视觉反推。');
+      if (productContextCount === 0) throw new Error('产品输入源里没有可读取的图片或文本，无法替换为本方产品事实。');
       const providerOutput = await postVisionReverse({
         endpoint,
         apiKey,
@@ -233,8 +316,8 @@ export class ReferenceReverseService {
         artifactRefs: [artifactPath],
         input: {
           ...input,
-          referenceSources: sourcePayload(referenceSources),
-          productSources: sourcePayload(productSources),
+          referenceSources: referenceLogPayload,
+          productSources: productLogPayload,
         },
         output: {
           analysis,
@@ -256,8 +339,8 @@ export class ReferenceReverseService {
         model,
         input: {
           ...input,
-          referenceSources: sourcePayload(referenceSources),
-          productSources: sourcePayload(productSources),
+          referenceSources: referenceLogPayload,
+          productSources: productLogPayload,
         },
         error: message,
         durationMs: Date.now() - startedAt,

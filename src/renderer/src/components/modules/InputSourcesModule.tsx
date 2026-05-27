@@ -180,8 +180,8 @@ function ProductBriefStructurePanel({
         <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('assets-prompt-workbench')}>
           去 Prompt 工作台
         </button>
-        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('image-reference-reverse')}>
-          去对标图反推
+        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('material-breakdown')}>
+          去拆解素材
         </button>
         <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('image')}>
           去图片生成
@@ -367,7 +367,7 @@ export function InputSourcesModule({
         actions={[
           { label: '去品牌知识库', module: 'knowledge-brand', disabled: !workspaceReady },
           { label: '去 IP 知识库', module: 'knowledge-ip', disabled: !workspaceReady },
-          { label: '去对标图反推', module: 'image-reference-reverse', disabled: !workspaceReady },
+          { label: '去拆解素材', module: 'material-breakdown', disabled: !workspaceReady },
           { label: '去 Prompt 工作台', module: 'assets-prompt-workbench', disabled: !workspaceReady },
           { label: '去图片生成', module: 'image', disabled: !workspaceReady },
         ]}
