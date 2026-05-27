@@ -531,7 +531,11 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     purpose: InputSourcePurpose,
     options?: ImportInputSourceFromFileOptions,
   ) => {
-    const e2eSelection = purpose === 'successful-asset' ? readE2eAssetSelection('video') : null;
+    const e2eKind = purpose === 'successful-asset' ? 'video'
+      : purpose === 'reference' ? 'reference-image'
+      : purpose === 'product-brief' ? 'product-image'
+      : null;
+    const e2eSelection = e2eKind ? readE2eAssetSelection(e2eKind) : null;
     if (e2eSelection?.[0]) return inputSources.importFile(workspacePath, e2eSelection[0], purpose, options);
     const result = await dialog.showOpenDialog(mainWindow, {
       title: '登记输入源文件',

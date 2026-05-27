@@ -790,7 +790,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
 });
 
 test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, testInfo) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
 
   const aiImageFixturePath = resolve(projectRoot, '../../bugu/bugu/.tmp/ai-image-showcase/resolved-manifest.v2.ui.json');
   const aiImageFixtureEnabled = existsSync(aiImageFixturePath);

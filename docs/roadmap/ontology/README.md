@@ -112,6 +112,7 @@ Agent Knowledge v0.7.0 是 Ontology 发布和消费的标准边界，Content Stu
 | [`workflow-model.md`](./workflow-model.md) | LLM 构建 Ontology 的分步流程、五种方法流派、质检和人工审核。 |
 | [`implementation-plan.md`](./implementation-plan.md) | MVP、v1 和远景阶段计划、写集、验证方式和完成标准。 |
 | [`research-douyin-commerce-video-breakdown.md`](./research-douyin-commerce-video-breakdown.md) | 将 Ontology 方法论用于抖音带货爆款视频拆解的 research 文档。 |
+| [`research-geo-aeo-content-ontology.md`](./research-geo-aeo-content-ontology.md) | 将 Ontology 方法论用于 GEO / AEO 内容资产、答案引擎可见性和 AI 搜索监测的 research 文档。 |
 
 ## MVP 优先级
 
