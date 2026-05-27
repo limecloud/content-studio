@@ -1211,6 +1211,8 @@ export interface ImageGenerationRequest {
   watermark: boolean;
   promptPackId?: string;
   sceneCardIds?: string[];
+  featureId?: string;
+  featureTitle?: string;
   citations: KnowledgeCitation[];
   selectedSkillSlugs: string[];
   params: GlobalGenerationParams;
@@ -1233,6 +1235,46 @@ export interface MediaGenerationResult {
   message: string;
   assetRefs: string[];
   billing?: VideoCostEstimate;
+}
+
+export type GenerationTaskKind =
+  | 'image'
+  | 'video'
+  | 'article'
+  | 'video-script'
+  | 'video-breakdown'
+  | 'prompt-pack'
+  | 'scene-card'
+  | 'reference-reverse';
+
+export interface GenerationTaskRecord {
+  id: string;
+  workspacePath: string;
+  logId: string;
+  kind: GenerationTaskKind;
+  status: GenerationStatus;
+  title: string;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
+export type SubmitGenerationTaskInput =
+  | { kind: 'image'; input: ImageGenerationRequest }
+  | { kind: 'video'; input: VideoGenerationRequest }
+  | { kind: 'article'; input: ArticleGenerationRequest }
+  | { kind: 'video-script'; input: VideoScriptGenerationRequest }
+  | { kind: 'video-breakdown'; input: VideoBreakdownRequest }
+  | { kind: 'prompt-pack'; input: GeneratePromptPackInput }
+  | { kind: 'scene-card'; input: GenerateSceneCardsInput }
+  | { kind: 'reference-reverse'; input: ReferenceReverseRequest };
+
+export interface GenerationTaskEvent {
+  task: GenerationTaskRecord;
+  log: GenerationLogEntry;
 }
 
 export interface VideoCostEstimate {
@@ -1513,6 +1555,9 @@ export interface ContentStudioApi {
   generateImageSkill(input: GenerateImageSkillInput): Promise<GenerateImageSkillResult>;
   importImageSkillFromFile(): Promise<GenerateImageSkillResult | null>;
   generateVideo(input: VideoGenerationRequest): Promise<MediaGenerationResult>;
+  submitGenerationTask(input: SubmitGenerationTaskInput): Promise<GenerationTaskRecord>;
+  listGenerationTasks(workspacePath: string): Promise<GenerationTaskRecord[]>;
+  onGenerationTaskEvent(callback: (event: GenerationTaskEvent) => void): () => void;
   listGenerationLogs(workspacePath: string): Promise<GenerationLogEntry[]>;
 
   runTask(input: RunTaskInput): Promise<RunTaskResult>;

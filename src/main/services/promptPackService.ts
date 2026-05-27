@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { GeneratePromptPackInput, KnowledgeBaseType, KnowledgeCitation, PromptPack } from '../../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
-import { GenerationLogStore } from './generationLogStore';
+import { GenerationLogStore, type CreateLogInput } from './generationLogStore';
 import { TextGenerationService, TextProviderBlockedError } from './textGenerationService';
 
 interface PromptPackModelOutput {
@@ -67,6 +67,14 @@ const PROMPT_PACK_SCHEMA = {
 export class PromptPackService {
   constructor(private readonly logs: GenerationLogStore, private readonly text: TextGenerationService) {}
 
+  private async persistLog(workspacePath: string, logId: string | undefined, input: CreateLogInput) {
+    if (logId) {
+      const updated = await this.logs.update(workspacePath, logId, input);
+      if (updated) return updated;
+    }
+    return this.logs.append(input);
+  }
+
   async list(workspacePath: string): Promise<PromptPack[]> {
     const packs = await readJsonFile<PromptPack[]>(filePathFor(workspacePath), []);
     return packs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -84,7 +92,7 @@ export class PromptPackService {
     return updated;
   }
 
-  async generate(input: GeneratePromptPackInput): Promise<PromptPack> {
+  async generate(input: GeneratePromptPackInput, options?: { logId?: string }): Promise<PromptPack> {
     const startedAt = Date.now();
     if (input.citations.length === 0) throw new Error('生成提示词包至少需要 1 条知识引用');
     const now = new Date().toISOString();
@@ -127,7 +135,7 @@ export class PromptPackService {
       };
       const packs = await this.list(input.workspacePath);
       await writeJsonFile(filePathFor(input.workspacePath), [pack, ...packs].slice(0, 80));
-      await this.logs.append({
+      await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
         kind: 'prompt-pack',
@@ -143,7 +151,7 @@ export class PromptPackService {
       return pack;
     } catch (error) {
       const status = error instanceof TextProviderBlockedError ? 'blocked' : 'failed';
-      await this.logs.append({
+      await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
         kind: 'prompt-pack',

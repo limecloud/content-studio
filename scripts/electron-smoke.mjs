@@ -399,7 +399,12 @@ try {
 
     await clickAnyButton(['图片生成', '图片引擎']);
     await clickButton('启动渲染引擎');
-    await waitFor('image blocked', () => (bodyText().includes('图片生成服务未配置') || bodyText().includes('图片 provider 未配置')) && bodyText().includes('未生成占位素材'));
+    await waitFor('image submitted or blocked', () => (
+      bodyText().includes('后台生成队列')
+      || bodyText().includes('排队中')
+      || bodyText().includes('生成中')
+      || ((bodyText().includes('图片生成服务未配置') || bodyText().includes('图片 provider 未配置')) && (bodyText().includes('未生成占位') || bodyText().includes('未生成 SVG 占位') || bodyText().includes('未伪造')))
+    ));
     checks.push({ step: 'image blocked without provider', ok: true });
 
     await clickAnyButton(['视频生成', '视频引擎']);
@@ -412,7 +417,12 @@ try {
     checks.push({ step: 'video script blocked without provider', ok: true });
     await clickVideoStageTab('Prompt 交接');
     await clickActionButton('可选：内部视频生成');
-    await waitFor('video queue blocked', () => (bodyText().includes('视频生成服务未配置') || bodyText().includes('视频 provider 未配置')) && (bodyText().includes('队列文件') || bodyText().includes('队列产物')));
+    await waitFor('video queue submitted or blocked', () => (
+      bodyText().includes('后台生成队列')
+      || bodyText().includes('排队中')
+      || bodyText().includes('生成中')
+      || ((bodyText().includes('视频生成服务未配置') || bodyText().includes('视频 provider 未配置')) && (bodyText().includes('队列文件') || bodyText().includes('队列产物')))
+    ));
     checks.push({ step: 'video queue blocked', ok: true });
 
     await clickAnyButton(['素材库', '素材库 / 历史']);

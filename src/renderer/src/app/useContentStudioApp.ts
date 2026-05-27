@@ -14,6 +14,7 @@ import type {
   BuguEmailCodeVerifyInput,
   BuguPasswordLoginInput,
   GenerationLogEntry,
+  GenerationTaskRecord,
   GeneratePromptPackInput,
   GenerateSceneCardsInput,
   GlobalGenerationParams,
@@ -48,6 +49,8 @@ import type {
   SceneCard,
   SkillRef,
   SkillSelectionView,
+  SubmitGenerationTaskInput,
+  VideoCostEstimate,
   VideoBreakdownResult,
   VideoBreakdownRequest,
   VideoGenerationRequest,
@@ -70,6 +73,7 @@ import {
   isSameCitation,
   knowledgeBaseKey,
   skillKey,
+  statusLabel,
 } from "./formatters";
 import { buildScenePromptGroupContent } from "./scenePromptComposer";
 import type {
@@ -134,6 +138,8 @@ type ShowcaseImageHandoffInput = {
   referenceImageRefs?: string[];
   productImageLabel?: string;
   referenceImageLabel?: string;
+  featureId?: string;
+  featureTitle?: string;
 };
 
 type ShowcaseVideoHandoffInput = {
@@ -151,11 +157,51 @@ type ShowcaseVideoHandoffInput = {
   selectedCaseTitle?: string;
 };
 
+type MediaGenerationTaskInput =
+  | Extract<SubmitGenerationTaskInput, { kind: "image" }>
+  | Extract<SubmitGenerationTaskInput, { kind: "video" }>;
+
+type MediaGenerationSubmission =
+  | { type: "task"; task: GenerationTaskRecord }
+  | { type: "fallback"; result: MediaGenerationResult };
+
 function cleanPathList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     .map((item) => item.trim());
+}
+
+function isMissingGenerationTaskHandler(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("No handler registered for 'generationTasks:submit'") ||
+    message.includes('No handler registered for "generationTasks:submit"')
+  );
+}
+
+function videoCostEstimateFromOutput(output: Record<string, unknown>): VideoCostEstimate | undefined {
+  const value = output.costEstimate;
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.currency !== "string" ||
+    record.unit !== "second" ||
+    typeof record.durationSeconds !== "number" ||
+    typeof record.unitPrice !== "number" ||
+    typeof record.estimatedCost !== "number" ||
+    (record.source !== "provider-response" && record.source !== "env" && record.source !== "default-internal-api")
+  ) {
+    return undefined;
+  }
+  return {
+    currency: record.currency,
+    durationSeconds: record.durationSeconds,
+    unit: "second",
+    unitPrice: record.unitPrice,
+    estimatedCost: record.estimatedCost,
+    source: record.source,
+  };
 }
 
 function skillSlugFromTitle(title: string): string {
@@ -421,6 +467,7 @@ export function useContentStudioApp() {
     videoMaterialSuggestion: "",
   });
   const [logs, setLogs] = useState<GenerationLogEntry[]>([]);
+  const [generationTasks, setGenerationTasks] = useState<GenerationTaskRecord[]>([]);
   const [overlayCards, setOverlayCards] = useState<OverlayCardRecord[]>([]);
   const [assetReviews, setAssetReviews] = useState<AssetReviewRecord[]>([]);
   const [mixPackages, setMixPackages] = useState<MixPackageRecord[]>([]);
@@ -501,6 +548,8 @@ export function useContentStudioApp() {
   const [error, setError] = useState<string | null>(null);
   const actionRunIdRef = useRef(0);
   const cancelledRunIdsRef = useRef(new Set<number>());
+  const recordedImageTaskLogIdsRef = useRef(new Set<string>());
+  const workflowRunsRef = useRef<WorkflowRunRecord[]>([]);
 
   const workspacePath = settings?.workspacePath;
   const enabledSkillKeys = useMemo(
@@ -734,6 +783,7 @@ export function useContentStudioApp() {
       setPromptPacks([]);
       setSceneCards([]);
       setLogs([]);
+      setGenerationTasks([]);
       setInputSources([]);
       setPromptDrafts([]);
       setAgentPromptSessions([]);
@@ -760,6 +810,7 @@ export function useContentStudioApp() {
       nextPromptPacks,
       nextSceneCards,
       nextLogs,
+      nextGenerationTasks,
       nextInputSources,
       nextPromptDrafts,
       nextAgentPromptSessions,
@@ -777,6 +828,7 @@ export function useContentStudioApp() {
         window.contentStudio.listPromptPacks(workspace),
         window.contentStudio.listSceneCards(workspace),
         window.contentStudio.listGenerationLogs(workspace),
+        window.contentStudio.listGenerationTasks(workspace),
         window.contentStudio.listInputSources(workspace),
         window.contentStudio.listPromptDrafts(workspace),
         window.contentStudio.listAgentPromptSessions(workspace),
@@ -793,6 +845,7 @@ export function useContentStudioApp() {
     setPromptPacks(nextPromptPacks);
     setSceneCards(nextSceneCards);
     setLogs(nextLogs);
+    setGenerationTasks(nextGenerationTasks);
     setInputSources(nextInputSources);
     setPromptDrafts(nextPromptDrafts);
     setAgentPromptSessions(nextAgentPromptSessions);
@@ -820,6 +873,64 @@ export function useContentStudioApp() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    workflowRunsRef.current = workflowRuns;
+  }, [workflowRuns]);
+
+  useEffect(() => {
+    const unsubscribe = window.contentStudio.onGenerationTaskEvent((event) => {
+      if (workspacePath && event.task.workspacePath !== workspacePath) return;
+      setGenerationTasks((current) => [
+        event.task,
+        ...current.filter((task) => task.id !== event.task.id),
+      ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      setLogs((current) => [
+        event.log,
+        ...current.filter((log) => log.id !== event.log.id),
+      ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      const output = event.log.output && typeof event.log.output === "object"
+        ? event.log.output as Record<string, unknown>
+        : {};
+      const outputRefs = Array.isArray(output.assetRefs)
+        ? output.assetRefs.filter((item): item is string => typeof item === "string")
+        : [];
+      if ((event.log.kind === "image" || event.log.kind === "video") && event.log.status !== "running") {
+        setMediaResult({
+          logId: event.log.id,
+          status: event.log.status,
+          message: event.log.summary || event.log.error || event.task.message,
+          assetRefs: outputRefs.length ? outputRefs : event.log.artifactRefs ?? [],
+          billing: event.log.kind === "video" ? videoCostEstimateFromOutput(output) : undefined,
+        });
+      }
+      if (
+        event.log.kind === "image" &&
+        event.log.status === "succeeded" &&
+        event.log.workflowRunId &&
+        outputRefs.length > 0 &&
+        !recordedImageTaskLogIdsRef.current.has(event.log.id)
+      ) {
+        const run = workflowRunsRef.current.find((item) => item.id === event.log.workflowRunId);
+        if (run && isImageSopWorkflow(run)) {
+          recordedImageTaskLogIdsRef.current.add(event.log.id);
+          void recordWorkflowManualEvent({
+            workflowRunId: run.id,
+            event: "image-candidates-generated",
+            generationLogId: event.log.id,
+            assetRefs: outputRefs,
+            summary: `已从图片工作台提交后台生成并产出 ${outputRefs.length} 个候选图。`,
+          })
+            .catch((error) => {
+              recordedImageTaskLogIdsRef.current.delete(event.log.id);
+              setError(error instanceof Error ? error.message : String(error));
+            })
+            .then(() => refresh(event.task.workspacePath));
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [workspacePath]);
 
   useEffect(() => {
     let alive = true;
@@ -971,6 +1082,39 @@ export function useContentStudioApp() {
 
   function clearMediaResult(): void {
     setMediaResult(null);
+  }
+
+  function queueMediaResult(task: GenerationTaskRecord): void {
+    setGenerationTasks((current) => [task, ...current.filter((item) => item.id !== task.id)]);
+    setMediaResult({
+      logId: task.logId,
+      status: task.status,
+      message: task.message,
+      assetRefs: [],
+    });
+  }
+
+  async function submitMediaGeneration(input: MediaGenerationTaskInput): Promise<MediaGenerationSubmission> {
+    try {
+      const task = await window.contentStudio.submitGenerationTask(input);
+      return { type: "task", task };
+    } catch (error) {
+      if (!isMissingGenerationTaskHandler(error)) throw error;
+      const result =
+        input.kind === "image"
+          ? await window.contentStudio.generateImage(input.input)
+          : await window.contentStudio.generateVideo(input.input);
+      setError("当前运行中的主进程仍是旧版本，已临时使用兼容生成路径；请重启应用以启用后台异步任务。");
+      return { type: "fallback", result };
+    }
+  }
+
+  function applyMediaGenerationSubmission(submission: MediaGenerationSubmission): void {
+    if (submission.type === "task") {
+      queueMediaResult(submission.task);
+      return;
+    }
+    setMediaResult(submission.result);
   }
 
   function requireWorkspace(): string {
@@ -1612,6 +1756,39 @@ export function useContentStudioApp() {
     setImagePromptMode("free");
   }
 
+  function startShowcasePartialRetouch(
+    input: ShowcaseImageHandoffInput & {
+      outputRefs?: string[];
+      sourceLogId?: string;
+      sourceTitle?: string;
+    },
+  ): void {
+    const nextOutputRefs = cleanPathList(input.outputRefs ?? []);
+    const nextProductRefs = (nextOutputRefs.length
+      ? nextOutputRefs
+      : cleanPathList(input.productImageRefs)).slice(0, 10);
+    const nextReferenceRefs = cleanPathList(input.referenceImageRefs).slice(0, 6);
+    setSelectedSceneIds([]);
+    setImageWorkflowRunId("");
+    setImageProductLabel(input.productImageLabel?.trim() || input.sourceTitle?.trim() || "待精修图");
+    setImageReferenceLabel(input.referenceImageLabel?.trim() || "参考图");
+    setProductImageRefs(nextProductRefs);
+    setReferenceImageRefs(nextReferenceRefs);
+    setImagePromptDraft(input.prompt);
+    setImagePromptMode("free");
+    setImageGenerationMode("smart");
+    setImageReworkSource(input.sourceLogId
+      ? {
+          assetKey: input.sourceLogId,
+          kind: "image",
+          sourceType: "generation-log",
+          sourceId: input.sourceLogId,
+          path: nextProductRefs[0] || "",
+          title: input.sourceTitle || "历史生成图局部精修",
+        }
+      : null);
+  }
+
   async function generateShowcaseImage(
     input: ShowcaseImageHandoffInput,
     context?: ActionContext,
@@ -1630,26 +1807,30 @@ export function useContentStudioApp() {
     setReferenceImageRefs(nextReferenceRefs);
     setImagePromptDraft(input.prompt);
     setImagePromptMode("free");
-    const result = await window.contentStudio.generateImage({
-      workspacePath: workspace,
-      productImageRefs: nextProductRefs,
-      referenceImageRefs: nextReferenceRefs,
-      prompt: input.prompt,
-      promptMode: "free",
-      generationMode: imageGenerationMode,
-      template: imageTemplate,
-      templateInputs: imageTemplateInputs,
-      watermark: imageWatermark,
-      promptPackId: activePromptPack?.id,
-      sceneCardIds: [],
-      citations: citationsForRequest,
-      selectedSkillSlugs:
-        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
-      params,
+    const submission = await submitMediaGeneration({
+      kind: "image",
+      input: {
+        workspacePath: workspace,
+        productImageRefs: nextProductRefs,
+        referenceImageRefs: nextReferenceRefs,
+        prompt: input.prompt,
+        promptMode: "free",
+        generationMode: imageGenerationMode,
+        template: imageTemplate,
+        templateInputs: imageTemplateInputs,
+        watermark: imageWatermark,
+        promptPackId: activePromptPack?.id,
+        sceneCardIds: [],
+        featureId: input.featureId,
+        featureTitle: input.featureTitle,
+        citations: citationsForRequest,
+        selectedSkillSlugs:
+          skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+        params,
+      },
     });
     context?.throwIfCancelled();
-    setMediaResult(result);
-    if (result.status === "succeeded") setImageReworkSource(null);
+    applyMediaGenerationSubmission(submission);
     await refresh(workspace);
   }
 
@@ -3102,7 +3283,7 @@ export function useContentStudioApp() {
       : imageReworkSource?.workflowRunId
         ? workflowRuns.find((run) => run.id === imageReworkSource.workflowRunId)
       : undefined;
-    const result = await window.contentStudio.generateImage({
+    const generationInput: ImageGenerationRequest = {
       workspacePath: workspace,
       workflowRunId: workflowRun?.id,
       reworkSource: imageReworkSource ?? undefined,
@@ -3120,46 +3301,42 @@ export function useContentStudioApp() {
       selectedSkillSlugs:
         skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
       params,
+    };
+    const submission = await submitMediaGeneration({
+      kind: "image",
+      input: generationInput,
     });
     context?.throwIfCancelled();
-    setMediaResult(result);
-    if (workflowRun && isImageSopWorkflow(workflowRun) && result.status === "succeeded") {
-      await recordWorkflowManualEvent({
-        workflowRunId: workflowRun.id,
-        event: "image-candidates-generated",
-        generationLogId: result.logId,
-        assetRefs: result.assetRefs,
-        summary: `已从图片工作台生成 ${result.assetRefs.length || 1} 个候选图。`,
-      });
-      setImageWorkflowRunId("");
-    }
-    if (result.status === "succeeded") setImageReworkSource(null);
+    applyMediaGenerationSubmission(submission);
     await refresh(workspace);
   }
 
   async function generateVideo(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
     requireModelKeyReadable("video");
-    const result = await window.contentStudio.generateVideo({
-      workspacePath: workspace,
-      imageAssetRefs: [...productImageRefs, ...referenceImageRefs],
-      videoAssetRefs,
-      audioAssetRefs,
-      prompt: suggestedVideoPrompt,
-      script: videoScript?.script || activeScenes[0]?.voiceoverDirection,
-      promptPackId: activePromptPack?.id,
-      sceneCardIds: selectedSceneIdsForRequest,
-      citations: citationsForRequest,
-      selectedSkillSlugs:
-        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
-      params: {
-        videoModel: params.videoModel,
-        aspectRatio: params.aspectRatio,
-        durationSeconds: videoDurationSeconds,
+    const submission = await submitMediaGeneration({
+      kind: "video",
+      input: {
+        workspacePath: workspace,
+        imageAssetRefs: [...productImageRefs, ...referenceImageRefs],
+        videoAssetRefs,
+        audioAssetRefs,
+        prompt: suggestedVideoPrompt,
+        script: videoScript?.script || activeScenes[0]?.voiceoverDirection,
+        promptPackId: activePromptPack?.id,
+        sceneCardIds: selectedSceneIdsForRequest,
+        citations: citationsForRequest,
+        selectedSkillSlugs:
+          skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+        params: {
+          videoModel: params.videoModel,
+          aspectRatio: params.aspectRatio,
+          durationSeconds: videoDurationSeconds,
+        },
       },
     });
     context?.throwIfCancelled();
-    setMediaResult(result);
+    applyMediaGenerationSubmission(submission);
     await refresh(workspace);
   }
 
@@ -3188,35 +3365,38 @@ export function useContentStudioApp() {
     if (input.aspectRatio) {
       setParams((current) => ({ ...current, aspectRatio: nextAspectRatio }));
     }
-    const result = await window.contentStudio.generateVideo({
-      workspacePath: workspace,
-      imageAssetRefs: nextImageRefs,
-      videoAssetRefs: nextVideoRefs,
-      audioAssetRefs: nextAudioRefs,
-      prompt: [
-        nextPrompt,
-        "",
-        "## DressingKit AI 视频复刻参数",
-        `- 功能：${input.featureTitle || input.featureId || "AI 视频"}`,
-        input.selectedCaseTitle ? `- 示例：${input.selectedCaseTitle}` : "",
-        input.storyboardCount ? `- 生图数量：${input.storyboardCount}` : "",
-        input.resolution ? `- 分辨率/质量：${input.resolution}` : "",
-        input.quality ? `- 图片质量：${input.quality}` : "",
-      ].filter(Boolean).join("\n"),
-      script: nextPrompt,
-      promptPackId: activePromptPack?.id,
-      sceneCardIds: [],
-      citations: citationsForRequest,
-      selectedSkillSlugs:
-        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
-      params: {
-        videoModel: params.videoModel,
-        aspectRatio: nextAspectRatio,
-        durationSeconds: nextDurationSeconds,
+    const submission = await submitMediaGeneration({
+      kind: "video",
+      input: {
+        workspacePath: workspace,
+        imageAssetRefs: nextImageRefs,
+        videoAssetRefs: nextVideoRefs,
+        audioAssetRefs: nextAudioRefs,
+        prompt: [
+          nextPrompt,
+          "",
+          "## DressingKit AI 视频复刻参数",
+          `- 功能：${input.featureTitle || input.featureId || "AI 视频"}`,
+          input.selectedCaseTitle ? `- 示例：${input.selectedCaseTitle}` : "",
+          input.storyboardCount ? `- 生图数量：${input.storyboardCount}` : "",
+          input.resolution ? `- 分辨率/质量：${input.resolution}` : "",
+          input.quality ? `- 图片质量：${input.quality}` : "",
+        ].filter(Boolean).join("\n"),
+        script: nextPrompt,
+        promptPackId: activePromptPack?.id,
+        sceneCardIds: [],
+        citations: citationsForRequest,
+        selectedSkillSlugs:
+          skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+        params: {
+          videoModel: params.videoModel,
+          aspectRatio: nextAspectRatio,
+          durationSeconds: nextDurationSeconds,
+        },
       },
     });
     context?.throwIfCancelled();
-    setMediaResult(result);
+    applyMediaGenerationSubmission(submission);
     await refresh(workspace);
   }
 
@@ -3558,6 +3738,7 @@ export function useContentStudioApp() {
     sceneCardDraft,
     setSceneCardDraft,
     logs,
+    generationTasks,
     workflowDefinitions,
     workflowRuns,
     activeWorkflowDefinition,
@@ -3702,6 +3883,7 @@ export function useContentStudioApp() {
     distillAssetPrompt,
     useScenePromptInImage,
     useShowcasePromptInImage,
+    startShowcasePartialRetouch,
     generateShowcaseImage,
     useScenePromptInVideo,
     useShowcasePromptInVideo,

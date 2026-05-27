@@ -112,11 +112,13 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         referenceImageRefs={app.referenceImageRefs}
         mediaResult={app.mediaResult}
         authState={app.authState}
+        logs={app.logs}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
         onRemoveProductImageRef={app.removeProductImageRef}
         onRemoveReferenceImageRef={app.removeReferenceImageRef}
         onUsePromptInImage={app.useShowcasePromptInImage}
+        onStartPartialRetouch={app.startShowcasePartialRetouch}
         onClearResult={app.clearMediaResult}
         onGenerateImage={(input) => app.runAction((context) => app.generateShowcaseImage(input, context))}
       />

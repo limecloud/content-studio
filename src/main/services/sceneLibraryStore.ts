@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { GenerateSceneCardsInput, KnowledgeCitation, SceneCard } from '../../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
-import { GenerationLogStore } from './generationLogStore';
+import { GenerationLogStore, type CreateLogInput } from './generationLogStore';
 import { PromptPackService } from './promptPackService';
 import { TextGenerationService, TextProviderBlockedError } from './textGenerationService';
 
@@ -70,6 +70,14 @@ export class SceneLibraryStore {
     private readonly text: TextGenerationService,
   ) {}
 
+  private async persistLog(workspacePath: string, logId: string | undefined, input: CreateLogInput) {
+    if (logId) {
+      const updated = await this.logs.update(workspacePath, logId, input);
+      if (updated) return updated;
+    }
+    return this.logs.append(input);
+  }
+
   async list(workspacePath: string): Promise<SceneCard[]> {
     const cards = await readJsonFile<SceneCard[]>(filePathFor(workspacePath), []);
     return cards.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -83,7 +91,7 @@ export class SceneLibraryStore {
     return updated;
   }
 
-  async generate(input: GenerateSceneCardsInput): Promise<SceneCard[]> {
+  async generate(input: GenerateSceneCardsInput, options?: { logId?: string }): Promise<SceneCard[]> {
     const startedAt = Date.now();
     const promptPack = await this.promptPacks.find(input.workspacePath, input.promptPackId);
     if (!promptPack) throw new Error(`提示词包不存在: ${input.promptPackId}`);
@@ -143,7 +151,7 @@ export class SceneLibraryStore {
       }));
       const existing = await this.list(input.workspacePath);
       await writeJsonFile(filePathFor(input.workspacePath), [...cards, ...existing].slice(0, 120));
-      await this.logs.append({
+      await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
         kind: 'scene-card',
@@ -161,7 +169,7 @@ export class SceneLibraryStore {
       return cards;
     } catch (error) {
       const status = error instanceof TextProviderBlockedError ? 'blocked' : 'failed';
-      await this.logs.append({
+      await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
         kind: 'scene-card',

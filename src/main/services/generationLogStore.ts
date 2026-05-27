@@ -4,7 +4,7 @@ import type { AssetReworkSource, GenerationKind, GenerationLogEntry, GenerationS
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 
-interface CreateLogInput {
+export interface CreateLogInput {
   workspacePath: string;
   workflowRunId?: string;
   reworkSource?: AssetReworkSource;
@@ -22,6 +22,8 @@ interface CreateLogInput {
   error?: string;
   durationMs?: number;
 }
+
+export type UpdateLogInput = Partial<Omit<GenerationLogEntry, 'id' | 'workspacePath' | 'createdAt' | 'updatedAt'>>;
 
 function filePathFor(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'generation-logs.json');
@@ -70,5 +72,25 @@ export class GenerationLogStore {
     });
     await writeJsonFile(filePathFor(workspacePath), nextLogs);
     return nextLogs.find((log) => log.id === logId) ?? null;
+  }
+
+  async update(workspacePath: string, logId: string, input: UpdateLogInput): Promise<GenerationLogEntry | null> {
+    const logs = await this.list(workspacePath);
+    let updated: GenerationLogEntry | null = null;
+    const nextLogs = logs.map((log) => {
+      if (log.id !== logId) return log;
+      updated = {
+        ...log,
+        ...input,
+        id: log.id,
+        workspacePath: log.workspacePath,
+        createdAt: log.createdAt,
+        updatedAt: new Date().toISOString(),
+      };
+      return updated;
+    });
+    if (!updated) return null;
+    await writeJsonFile(filePathFor(workspacePath), nextLogs);
+    return updated;
   }
 }

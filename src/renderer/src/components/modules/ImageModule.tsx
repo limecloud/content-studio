@@ -752,6 +752,8 @@ export function ImageModule({
         : input.label;
     const previewLimit = input.className === "reference" ? input.limit : 4;
     const previewRefs = input.refs.slice(0, previewLimit);
+    const useHeaderRemove =
+      input.className === "product" && previewRefs.length === 1;
     const shouldSummarizeFiles =
       input.className === "reference" || input.refs.length > 3;
     const openPreview = (
@@ -788,7 +790,20 @@ export function ImageModule({
         onKeyDown={handlePanelKeyDown}
       >
         <header>
-          <strong>{displayLabel}</strong>
+          <span className="image-upload-title-bar">
+            <strong>{displayLabel}</strong>
+            {useHeaderRemove ? (
+              <button
+                type="button"
+                className="image-upload-title-remove"
+                aria-label={`移除${displayLabel} 1`}
+                title={`移除${displayLabel} 1`}
+                onClick={(event) => removePreview(event, previewRefs[0])}
+              >
+                ×
+              </button>
+            ) : null}
+          </span>
           <span>
             <em>{input.refs.length}/{input.limit}</em>
             {input.refs.length ? (
@@ -833,15 +848,17 @@ export function ImageModule({
                     }
                   />
                 </button>
-                <button
-                  type="button"
-                  className="image-upload-remove"
-                  aria-label={`移除${displayLabel} ${index + 1}`}
-                  title={`移除${displayLabel} ${index + 1}`}
-                  onClick={(event) => removePreview(event, ref)}
-                >
-                  ×
-                </button>
+                {!useHeaderRemove ? (
+                  <button
+                    type="button"
+                    className="image-upload-remove"
+                    aria-label={`移除${displayLabel} ${index + 1}`}
+                    title={`移除${displayLabel} ${index + 1}`}
+                    onClick={(event) => removePreview(event, ref)}
+                  >
+                    ×
+                  </button>
+                ) : null}
               </figure>
             ))}
             {input.refs.length > previewRefs.length ? (

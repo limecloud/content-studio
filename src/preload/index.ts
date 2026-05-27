@@ -55,6 +55,8 @@ import type {
   UpdateCheckOptions,
   StartWorkflowRunInput,
   StartAgentPromptSessionInput,
+  GenerationTaskEvent,
+  SubmitGenerationTaskInput,
   WorkflowDefinition,
 } from '../shared/types';
 
@@ -172,6 +174,13 @@ const api: ContentStudioApi = {
   generateImageSkill: (input: GenerateImageSkillInput) => ipcRenderer.invoke('imageSkills:generate', input),
   importImageSkillFromFile: () => ipcRenderer.invoke('imageSkills:importFromFile'),
   generateVideo: (input: VideoGenerationRequest) => ipcRenderer.invoke('video:generate', input),
+  submitGenerationTask: (input: SubmitGenerationTaskInput) => ipcRenderer.invoke('generationTasks:submit', input),
+  listGenerationTasks: (workspacePath: string) => ipcRenderer.invoke('generationTasks:list', workspacePath),
+  onGenerationTaskEvent: (callback: (event: GenerationTaskEvent) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: GenerationTaskEvent) => callback(payload);
+    ipcRenderer.on('generationTasks:event', listener);
+    return () => ipcRenderer.off('generationTasks:event', listener);
+  },
   listGenerationLogs: (workspacePath: string) => ipcRenderer.invoke('generationLogs:list', workspacePath),
 
   runTask: (input: RunTaskInput) => ipcRenderer.invoke('agent:run', input),

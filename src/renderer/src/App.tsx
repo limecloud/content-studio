@@ -40,9 +40,8 @@ export function App() {
     if (typeof window === "undefined") return;
 
     const mediaQuery = window.matchMedia(COMPACT_LAYOUT_QUERY);
-    const preserveSidebar = SHOWCASE_MODULES.has(app.activeModule);
     const syncCompactLayout = () => {
-      const shouldCollapse = mediaQuery.matches && !preserveSidebar;
+      const shouldCollapse = mediaQuery.matches || SHOWCASE_MODULES.has(app.activeModule);
       setSidebarCollapsed(shouldCollapse);
       setParamsPanelCollapsed(shouldCollapse);
     };

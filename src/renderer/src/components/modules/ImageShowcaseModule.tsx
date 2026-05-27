@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   BuguAuthState,
+  GenerationLogEntry,
   MediaGenerationResult,
   OemPublicAsset,
   OemPublicCase,
@@ -15,11 +16,13 @@ import { DetailDialog } from "../DetailDialog";
 
 type ShowcaseCategoryId = "marketing" | "product-design" | "production";
 type Viewpoint = "front" | "back" | "side";
-type ShowcaseDialog = "feature-picker" | "prompt-list" | "history" | "prompt-assistant" | null;
+type ShowcaseDialog = "prompt-list" | "history" | "prompt-assistant" | null;
 type ShowcaseMainView = "cases" | "materials";
 type ShowcaseStageView = "home" | "workbench";
 type RefinementTool = "select" | "pan" | "rotate" | "crop" | "brush" | "clear";
 type PromptAssistantTab = "text" | "reverse";
+type PromptListKind = "all" | "default" | "saved";
+type PromptListFormMode = "create" | "edit" | null;
 
 const PROMPT_TEMPLATE_STORAGE_KEY = "buguai:dressingkit-image-prompt-templates";
 
@@ -30,11 +33,13 @@ interface ImageShowcaseModuleProps {
   referenceImageRefs: string[];
   mediaResult: MediaGenerationResult | null;
   authState: BuguAuthState | null;
+  logs: GenerationLogEntry[];
   onSelectProductImages: () => void;
   onSelectReferenceImages: () => void;
   onRemoveProductImageRef: (ref: string) => void;
   onRemoveReferenceImageRef: (ref: string) => void;
   onUsePromptInImage: (input: ShowcaseImageHandoff) => void;
+  onStartPartialRetouch: (input: ShowcaseImageHandoff & { outputRefs: string[]; sourceLogId?: string; sourceTitle?: string }) => void;
   onClearResult: () => void;
   onGenerateImage: (input: ShowcaseImageHandoff) => void;
 }
@@ -45,6 +50,8 @@ export interface ShowcaseImageHandoff {
   referenceImageRefs: string[];
   productImageLabel: string;
   referenceImageLabel: string;
+  featureId?: string;
+  featureTitle?: string;
 }
 
 interface ShowcaseFeature {
@@ -95,6 +102,7 @@ interface SavedPromptTemplate {
   viewpoint: Viewpoint;
   featureTitle: string;
   prompt: string;
+  imageRefs?: string[];
   createdAt: string;
   updatedAt?: string;
 }
@@ -116,6 +124,12 @@ function readSavedPromptTemplates(): SavedPromptTemplate[] {
         typeof item.featureTitle === "string" &&
         typeof item.createdAt === "string",
       )
+      .map((item) => ({
+        ...item,
+        imageRefs: Array.isArray(item.imageRefs)
+          ? item.imageRefs.filter((ref): ref is string => typeof ref === "string").slice(0, 8)
+          : undefined,
+      }))
       .slice(0, 24);
   } catch {
     return [];
@@ -141,6 +155,7 @@ interface HistoryEntry {
   outputRefs?: string[];
   prompt?: string;
   logId?: string;
+  source?: "local" | "global";
 }
 
 type ShowcaseUploadRole = "product" | "reference";
@@ -164,6 +179,7 @@ interface ShowcaseControlProfile extends ShowcaseAssetLabels {
   showUploadTabs: boolean;
   showMaterialLibrary: boolean;
   showViewpoints: boolean;
+  showRatio: boolean;
   showQuality: boolean;
   showPrompt: boolean;
   showPromptTools: boolean;
@@ -730,10 +746,6 @@ const FEATURE_ID_BY_BUSINESS_FLAG = new Map(
 );
 const REFINEMENT_FEATURE_IDS = new Set([
   "partial-retouch",
-  "product-detail-page",
-  "product-copycat-design",
-  "image-replication",
-  "sketch-to-style",
 ]);
 const CASE_REFERENCE_FEATURE_IDS = new Set([
   "model-product-display",
@@ -915,21 +927,6 @@ function buildBackendCards(cases: OemPublicCase[], assets: OemPublicAsset[]): Ba
   });
 }
 
-function ensureMinimumVisibleCaseSlots(cards: BackendCaseCard[]): BackendCaseCard[] {
-  const watermarkCards = cards.filter((item) => item.featureId === "ai-watermark-removal");
-  if (watermarkCards.length !== 4) return cards;
-  const source = watermarkCards[watermarkCards.length - 1];
-  return [
-    ...cards,
-    {
-      ...source,
-      id: `${source.id}-ui-slot`,
-      title: "Ai去水印案例 88",
-      summary: `${source.summary} · UI 补充槽`,
-    },
-  ];
-}
-
 function imageAssetRefsFromCards(cards: BackendCaseCard[]): Set<string> {
   const refs = new Set<string>();
   for (const card of cards) {
@@ -1090,6 +1087,24 @@ function FeatureButtonIcon({ iconKey }: { iconKey: ShowcaseIconName }) {
   );
 }
 
+function CaseActionIcon({ name }: { name: "preview" | "try" }) {
+  return (
+    <svg className="ai-case-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+      {name === "preview" ? (
+        <>
+          <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      ) : (
+        <>
+          <path d="M5 12h10" />
+          <path d="m12 5 7 7-7 7" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function ImageStack({
   item,
   role,
@@ -1103,7 +1118,7 @@ function ImageStack({
 }) {
   const urls = urlsForRole(item, role);
   const label = role === "input" ? "输入图" : "输出图";
-  const cardLimit = role === "input" ? 3 : 1;
+  const cardLimit = role === "input" ? 3 : 4;
   const visibleUrls = variant === "preview" ? urls : urls.slice(0, cardLimit);
   const hiddenCount = variant === "card" ? Math.max(0, urls.length - visibleUrls.length) : 0;
   const className = [
@@ -1200,6 +1215,93 @@ function historyRecordRefs(entry: HistoryEntry): string[] {
   return entry.inputRefs?.filter(Boolean) || [];
 }
 
+function isGenerationHistoryEntry(entry: HistoryEntry): boolean {
+  const hasRefs = Boolean(entry.inputRefs?.length || entry.outputRefs?.length);
+  return Boolean(entry.logId || entry.status || hasRefs);
+}
+
+function stringArrayFromField(value: unknown, key: string): string[] {
+  if (!value || typeof value !== "object") return [];
+  const field = (value as Record<string, unknown>)[key];
+  return Array.isArray(field)
+    ? field.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function promptFromImageLog(log: GenerationLogEntry): string {
+  const inputPrompt = log.input && typeof log.input === "object"
+    ? (log.input as Record<string, unknown>).prompt
+    : undefined;
+  if (typeof inputPrompt === "string" && inputPrompt.trim()) return inputPrompt;
+  return log.summary || log.title;
+}
+
+function stringFromInputField(log: GenerationLogEntry, key: string): string {
+  if (!log.input || typeof log.input !== "object") return "";
+  const value = (log.input as Record<string, unknown>)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function historyEntryFromImageLog(log: GenerationLogEntry): HistoryEntry | null {
+  if (log.kind !== "image") return null;
+  const featureTitle = stringFromInputField(log, "featureTitle") || "AI 生图";
+  const jobType = stringFromInputField(log, "featureTitle") || log.title;
+  const inputRefs = [
+    ...stringArrayFromField(log.input, "productImageRefs"),
+    ...stringArrayFromField(log.input, "referenceImageRefs"),
+  ];
+  const outputRefs = [
+    ...stringArrayFromField(log.output, "assetRefs"),
+    ...(log.artifactRefs || []),
+  ];
+  const uniqueInputRefs = Array.from(new Set(inputRefs));
+  const uniqueOutputRefs = Array.from(new Set(outputRefs));
+  const hasOutput = uniqueOutputRefs.length > 0;
+  const normalizedStatus = log.status === "succeeded" && !hasOutput ? "failed" : log.status;
+  const statusTone: HistoryEntry["tone"] =
+    normalizedStatus === "succeeded" ? "ready" :
+    normalizedStatus === "failed" || normalizedStatus === "blocked" || normalizedStatus === "cancelled" ? "blocked" :
+    "warning";
+  const emptySuccessMessage = "生成服务未返回可展示图片，已按失败记录处理。";
+  return {
+    id: `log:${log.id}`,
+    title: log.title,
+    detail: log.status === "succeeded" && !hasOutput
+      ? emptySuccessMessage
+      : log.summary || log.error || promptFromImageLog(log),
+    tone: statusTone,
+    createdAt: log.createdAt,
+    featureTitle,
+    jobType,
+    status: normalizedStatus,
+    statusText: normalizedStatus === "succeeded" ? "生成完成" : statusLabel(normalizedStatus),
+    inputRefs: uniqueInputRefs,
+    outputRefs: uniqueOutputRefs,
+    prompt: promptFromImageLog(log),
+    logId: log.id,
+    source: "global",
+  };
+}
+
+function mergeHistoryEntries(localEntries: HistoryEntry[], logs: GenerationLogEntry[]): HistoryEntry[] {
+  const entriesByKey = new Map<string, HistoryEntry>();
+  for (const entry of localEntries) {
+    if (!isGenerationHistoryEntry(entry)) continue;
+    const key = entry.logId ? `log:${entry.logId}` : `local:${entry.id}`;
+    entriesByKey.set(key, { ...entry, source: entry.source || "local" });
+  }
+  for (const log of logs) {
+    const entry = historyEntryFromImageLog(log);
+    if (!entry) continue;
+    const key = `log:${log.id}`;
+    const local = entriesByKey.get(key);
+    entriesByKey.set(key, local ? { ...local, ...entry, id: local.id, source: local.source || entry.source } : entry);
+  }
+  return [...entriesByKey.values()]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 32);
+}
+
 function ImageHistoryThumbGrid({ refs }: { refs: string[] }) {
   const visibleRefs = refs.slice(0, 4);
   const hiddenCount = Math.max(0, refs.length - visibleRefs.length);
@@ -1217,10 +1319,12 @@ function ImageHistoryAssetGrid({
   refs,
   label,
   onOpenImage,
+  showActions = false,
 }: {
   refs: string[];
   label: string;
   onOpenImage: (preview: ImagePreviewState) => void;
+  showActions?: boolean;
 }) {
   if (!refs.length) {
     return <div className="ai-history-section-empty">暂无{label}</div>;
@@ -1230,15 +1334,27 @@ function ImageHistoryAssetGrid({
       {refs.map((ref, index) => {
         const source = imageAssetSource(ref);
         const title = `${label} ${index + 1}`;
+        const openPreview = () => onOpenImage({ url: source, title, label, alt: title });
         return (
-          <button
+          <figure
             key={`${ref}-${index}`}
-            type="button"
             className="ai-history-asset"
-            onClick={() => onOpenImage({ url: source, title, label, alt: title })}
           >
-            <img src={source} alt={title} loading="lazy" />
-          </button>
+            <button
+              type="button"
+              className="ai-history-asset-preview"
+              aria-label={`预览${title}`}
+              onClick={openPreview}
+            >
+              <img src={source} alt={title} loading="lazy" />
+            </button>
+            {showActions ? (
+              <figcaption className="ai-history-asset-actions">
+                <button type="button" onClick={openPreview}>预览</button>
+                <a href={source} download={`bugu-${title}.png`} onClick={(event) => event.stopPropagation()}>下载</a>
+              </figcaption>
+            ) : null}
+          </figure>
         );
       })}
     </div>
@@ -1255,6 +1371,7 @@ function ImageHistoryDrawer({
   selectedMaterialName,
   mediaResult,
   onOpenImage,
+  onPartialRetouch,
   onClose,
 }: {
   entries: HistoryEntry[];
@@ -1266,6 +1383,7 @@ function ImageHistoryDrawer({
   selectedMaterialName?: string;
   mediaResult: MediaGenerationResult | null;
   onOpenImage: (preview: ImagePreviewState) => void;
+  onPartialRetouch: (entry: HistoryEntry) => void;
   onClose: () => void;
 }) {
   const records = entries;
@@ -1288,15 +1406,15 @@ function ImageHistoryDrawer({
         className="ai-history-drawer"
         role="dialog"
         aria-modal="true"
-        aria-label="生成记录"
+        aria-label="历史记录"
         onClick={(event) => event.stopPropagation()}
         data-empty={selectedEntry ? "false" : "true"}
       >
         <header className="ai-history-modal-header">
-          <h2>生成记录</h2>
+          <h2>历史记录</h2>
           <div className="ai-history-modal-actions">
             <button type="button" aria-label="刷新历史记录">↻</button>
-            <button type="button" aria-label="关闭生成记录" onClick={onClose}>×</button>
+            <button type="button" aria-label="关闭历史记录" onClick={onClose}>×</button>
           </div>
         </header>
         <div className="ai-history-toolbar">
@@ -1323,8 +1441,6 @@ function ImageHistoryDrawer({
                   onClick={() => setSelectedId(entry.id)}
                 >
                   <ImageHistoryThumbGrid refs={historyRecordRefs(entry)} />
-                  <strong>{entry.title}</strong>
-                  <span>{formatHistoryTime(entry.createdAt)}</span>
                 </button>
               ))
             ) : (
@@ -1342,8 +1458,13 @@ function ImageHistoryDrawer({
               </div>
               <div className="ai-history-operation-row">
                 <button type="button">发送到素材库</button>
-                <button type="button">再次生成</button>
-                <button type="button">局部精修</button>
+                <button
+                  type="button"
+                  disabled={!selectedEntry.outputRefs?.length}
+                  onClick={() => onPartialRetouch(selectedEntry)}
+                >
+                  局部精修
+                </button>
               </div>
               <section className="ai-history-section">
                 <h3>输入文件</h3>
@@ -1359,6 +1480,7 @@ function ImageHistoryDrawer({
                   refs={selectedEntry.outputRefs || []}
                   label="生成结果"
                   onOpenImage={onOpenImage}
+                  showActions
                 />
               </section>
               <section className="ai-history-section ai-history-prompt-section">
@@ -1380,10 +1502,36 @@ function ImageHistoryDrawer({
               </p>
             </main>
           ) : (
-            <div className="ai-history-empty-detail">
-              <strong>暂无历史记录</strong>
-              <span>完成一次生成后，这里会展示输入文件、生成结果和提示词。</span>
-            </div>
+            <main className="ai-history-detail ai-history-empty-detail">
+              <div className="ai-history-operation-row">
+                <button type="button" disabled>发送到素材库</button>
+                <button type="button" disabled>局部精修</button>
+              </div>
+              <section className="ai-history-section">
+                <h3>输入文件</h3>
+                <ImageHistoryAssetGrid
+                  refs={[]}
+                  label="输入文件"
+                  onOpenImage={onOpenImage}
+                />
+              </section>
+              <section className="ai-history-section">
+                <h3>生成结果</h3>
+                <ImageHistoryAssetGrid
+                  refs={[]}
+                  label="生成结果"
+                  onOpenImage={onOpenImage}
+                  showActions
+                />
+              </section>
+              <section className="ai-history-section ai-history-prompt-section">
+                <header>
+                  <h3>提示词</h3>
+                  <button type="button" disabled>复制</button>
+                </header>
+                <textarea value="暂无历史记录。完成一次生成后，这里会展示输入文件、生成结果和提示词。" readOnly />
+              </section>
+            </main>
           )}
         </div>
       </section>
@@ -1415,7 +1563,7 @@ function buildExpandedPrompt(input: {
     `- 输出比例：${input.ratio}`,
     `- 图片质量：${input.quality}`,
     `- 参考色号：${input.colorValue.toUpperCase()}`,
-    input.feature.id === "change-background" ? `- 换背景黑白阈值：${input.threshold}` : "",
+    input.feature.id === "vector-generation" ? `- 黑白阈值：${input.threshold}` : "",
     input.selectedCase ? `- 参考案例：${input.selectedCase.title}，方向：${input.selectedCase.summary}` : "",
     "- 保持产品主体、版型、材质、文字、图案和可识别卖点一致，避免无来源改款。",
     "- 画面按电商商拍构图输出，主体清晰，背景干净，光线自然。",
@@ -1483,14 +1631,6 @@ function assetLabelsForFeature(feature: ShowcaseFeature): ShowcaseAssetLabels {
       uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "图", role: "product" }],
     };
   }
-  if (feature.id.includes("pattern") || feature.id === "image-replication") {
-    return {
-      panelTitle: "上传参考",
-      productLabel: "产品图",
-      referenceLabel: "参考图",
-      uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "图", role: "product" }],
-    };
-  }
   return {
     panelTitle: "上传素材",
     productLabel: "服装图",
@@ -1507,6 +1647,7 @@ function controlProfileForFeature(feature: ShowcaseFeature): ShowcaseControlProf
     showUploadTabs: false,
     showMaterialLibrary: false,
     showViewpoints: false,
+    showRatio: true,
     showQuality: true,
     showPrompt: true,
     showPromptTools: true,
@@ -1548,6 +1689,13 @@ function controlProfileForFeature(feature: ShowcaseFeature): ShowcaseControlProf
     };
   }
 
+  if (feature.id === "change-model") {
+    return {
+      ...base,
+      showMaterialLibrary: true,
+    };
+  }
+
   if (feature.id === "text-to-image") {
     return {
       ...base,
@@ -1561,6 +1709,19 @@ function controlProfileForFeature(feature: ShowcaseFeature): ShowcaseControlProf
       panelTitle: "上传素材图片",
       productLabel: "素材图片",
       uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "素材图片", role: "product" }],
+      showQuality: false,
+      showPrompt: false,
+      showPromptTools: false,
+    };
+  }
+
+  if (feature.id === "vector-generation") {
+    return {
+      ...base,
+      panelTitle: "上传素材图片",
+      productLabel: "素材图片",
+      uploadSlots: [{ id: "upload", uploadLabel: "上传", assetLabel: "素材图片", role: "product" }],
+      showRatio: false,
       showQuality: false,
       showPrompt: false,
       showPromptTools: false,
@@ -1587,6 +1748,8 @@ function buildImageHandoff(
     referenceImageRefs: Array.from(new Set(referenceImageRefs.filter(Boolean))),
     productImageLabel: labels.productLabel,
     referenceImageLabel: labels.referenceLabel,
+    featureId: feature.id,
+    featureTitle: feature.title,
   };
 }
 
@@ -1614,6 +1777,17 @@ function isDressingkitOssUrl(value: string): boolean {
 
 function featureTitleById(featureId: string): string {
   return featureById(featureId)?.title || "未分类功能";
+}
+
+function isGeneratedCaseTitle(item: LocalShowcaseCase): boolean {
+  const featureTitle = featureTitleById(item.featureId);
+  return item.title === `${featureTitle}案例 ${item.id.match(/-(\d+)$/)?.[1] || ""}`;
+}
+
+function displayCaseTitle(item: LocalShowcaseCase): string {
+  const title = item.title.trim();
+  if (!title || isGeneratedCaseTitle(item)) return "-";
+  return title;
 }
 
 function buildMaterialItems(cards: BackendCaseCard[]): ShowcaseMaterialItem[] {
@@ -1694,11 +1868,13 @@ export function ImageShowcaseModule({
   referenceImageRefs,
   mediaResult,
   authState,
+  logs,
   onSelectProductImages,
   onSelectReferenceImages,
   onRemoveProductImageRef,
   onRemoveReferenceImageRef,
   onUsePromptInImage,
+  onStartPartialRetouch,
   onClearResult,
   onGenerateImage,
 }: ImageShowcaseModuleProps) {
@@ -1713,7 +1889,7 @@ export function ImageShowcaseModule({
   const [ratio, setRatio] = useState("3:4");
   const [quality, setQuality] = useState("2K");
   const [threshold, setThreshold] = useState(65);
-  const [colorValue, setColorValue] = useState("#395745");
+  const [colorValue, setColorValue] = useState("#CD5C5C");
   const [promptDrafts, setPromptDrafts] = useState(DEFAULT_PROMPTS);
   const [selectedCase, setSelectedCase] = useState<LocalShowcaseCase | null>(null);
   const [selectedImage, setSelectedImage] = useState<ImagePreviewState | null>(null);
@@ -1739,12 +1915,22 @@ export function ImageShowcaseModule({
   const [workbenchTool, setWorkbenchTool] = useState<RefinementTool>("select");
   const [workbenchCaseId, setWorkbenchCaseId] = useState("");
   const [workbenchMessage, setWorkbenchMessage] = useState("");
+  const [generationValidationMessage, setGenerationValidationMessage] = useState("");
   const [assistantTab, setAssistantTab] = useState<PromptAssistantTab>("text");
   const [assistantInput, setAssistantInput] = useState("");
   const [assistantResult, setAssistantResult] = useState("");
   const [assistantTemplatesOpen, setAssistantTemplatesOpen] = useState(false);
   const [templateDraftTitle, setTemplateDraftTitle] = useState("");
   const [editingTemplateId, setEditingTemplateId] = useState("");
+  const [promptListKind, setPromptListKind] = useState<PromptListKind>("all");
+  const [promptListQuery, setPromptListQuery] = useState("");
+  const [promptListDraftTitle, setPromptListDraftTitle] = useState("");
+  const [promptListDraftPrompt, setPromptListDraftPrompt] = useState("");
+  const [promptListEditingId, setPromptListEditingId] = useState("");
+  const [promptListDefaultViewpoint, setPromptListDefaultViewpoint] = useState<Viewpoint | "">("");
+  const [promptListFormMode, setPromptListFormMode] = useState<PromptListFormMode>(null);
+  const [promptListDraftImageRefs, setPromptListDraftImageRefs] = useState<string[]>([]);
+  const [generationNotice, setGenerationNotice] = useState("");
   const pendingGenerationRef = useRef<HistoryEntry | null>(null);
   const refinementSidebarRef = useRef<HTMLElement | null>(null);
 
@@ -1805,6 +1991,13 @@ export function ImageShowcaseModule({
             }
           : entry,
       ),
+    );
+    setGenerationNotice(
+      result.status === "succeeded"
+        ? "后台生成已完成，结果已同步到历史记录。"
+        : result.status === "queued" || result.status === "running"
+          ? "任务已提交到后台生成队列，可以离开当前界面；完成后会同步到历史记录。"
+          : result.message || "后台生成未完成，请在历史记录中查看详情。",
     );
     pendingGenerationRef.current = null;
   }
@@ -1885,7 +2078,7 @@ export function ImageShowcaseModule({
   const featureUiById = useMemo(() => indexFeatureUiById(featureUiConfig), [featureUiConfig]);
   const featureUiByTitle = useMemo(() => indexFeatureUiByTitle(featureUiConfig), [featureUiConfig]);
   const allCards = useMemo(
-    () => backendCards.length ? ensureMinimumVisibleCaseSlots(backendCards) : LOCAL_CASES,
+    () => backendCards.length ? backendCards : LOCAL_CASES,
     [backendCards],
   );
   const visibleCards = allCards.filter(
@@ -1898,6 +2091,8 @@ export function ImageShowcaseModule({
   const selectedFeatureCaseCount = visibleCards.length;
   const selectedCasePrompt = selectedCase ? promptForShowcaseCase(selectedCase, activePrompt) : "";
   const activeControlProfile = useMemo(() => controlProfileForFeature(activeFeature), [activeFeature]);
+  const showColorPicker = activeFeature.id === "product-recolor";
+  const showThresholdControl = activeFeature.id === "vector-generation";
   const visibleMaterials = useMemo(
     () => libraryMaterials.filter((item) =>
       item.tab === materialTab &&
@@ -1931,12 +2126,38 @@ export function ImageShowcaseModule({
   const assistantImageRefs = Array.from(new Set([...activeProductImageRefs, ...activeReferenceImageRefs]));
   const generatedImageRefs = mediaResult?.status === "succeeded" ? mediaResult.assetRefs : [];
   const canvasImageRefs = generatedImageRefs.length ? generatedImageRefs : assistantImageRefs;
+  const assistantImageRefsKey = assistantImageRefs.join("|");
   const workbenchUploadTitle = activeControlProfile.panelTitle === "上传素材"
     ? "上传素材图片"
     : activeControlProfile.panelTitle;
   const latestResultKey = mediaResult
     ? `${mediaResult.logId}:${mediaResult.status}:${mediaResult.assetRefs.join("|")}`
     : "";
+  const promptListDefaultRows = useMemo(
+    () => (Object.entries(DEFAULT_PROMPTS) as Array<[Viewpoint, string]>)
+      .filter(([viewpoint, prompt]) => {
+        const query = promptListQuery.trim();
+        if (!query) return true;
+        return VIEWPOINT_LABELS[viewpoint].includes(query) || prompt.includes(query);
+      }),
+    [promptListQuery],
+  );
+  const promptListSavedRows = useMemo(
+    () => savedTemplates.filter((template) => {
+      const query = promptListQuery.trim();
+      if (!query) return true;
+      return template.title.includes(query) || template.featureTitle.includes(query) || template.prompt.includes(query);
+    }),
+    [promptListQuery, savedTemplates],
+  );
+  const selectedPromptListTemplate = savedTemplates.find((template) => template.id === promptListEditingId) || null;
+  const promptListVisibleRowCount =
+    (promptListKind !== "saved" ? promptListDefaultRows.length : 0) +
+    (promptListKind !== "default" ? promptListSavedRows.length : 0);
+  const visibleHistoryEntries = useMemo(
+    () => mergeHistoryEntries(historyEntries, logs),
+    [historyEntries, logs],
+  );
 
   useEffect(() => {
     onClearResult();
@@ -1963,17 +2184,30 @@ export function ImageShowcaseModule({
     completePendingGeneration(mediaResult);
   }, [latestResultKey]);
 
+  useEffect(() => {
+    if (activeDialog !== "prompt-list" || !promptListFormMode) return;
+    setPromptListDraftImageRefs((current) =>
+      Array.from(new Set([...current, ...assistantImageRefs])).slice(0, 8),
+    );
+  }, [activeDialog, assistantImageRefsKey, promptListFormMode]);
+
   function persistPromptTemplates(nextTemplates: SavedPromptTemplate[]): void {
     const normalized = nextTemplates.slice(0, 24);
     setSavedTemplates(normalized);
     writeSavedPromptTemplates(normalized);
   }
 
-  function savePromptTemplate(prompt: string, title?: string, templateId = editingTemplateId): SavedPromptTemplate | null {
+  function savePromptTemplate(
+    prompt: string,
+    title?: string,
+    templateId = editingTemplateId,
+    imageRefs?: string[],
+  ): SavedPromptTemplate | null {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) return null;
     const now = new Date().toISOString();
     const draftTitle = title?.trim() || `${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`;
+    const normalizedImageRefs = imageRefs?.filter(Boolean).slice(0, 8);
     let saved: SavedPromptTemplate;
     if (templateId) {
       const existing = savedTemplates.find((item) => item.id === templateId);
@@ -1983,6 +2217,11 @@ export function ImageShowcaseModule({
         viewpoint: activeViewpoint,
         featureTitle: activeFeature.title,
         prompt: trimmedPrompt,
+        imageRefs: imageRefs === undefined
+          ? existing?.imageRefs
+          : normalizedImageRefs?.length
+          ? normalizedImageRefs
+          : undefined,
         createdAt: existing?.createdAt || now,
         updatedAt: now,
       };
@@ -1994,6 +2233,7 @@ export function ImageShowcaseModule({
         viewpoint: activeViewpoint,
         featureTitle: activeFeature.title,
         prompt: trimmedPrompt,
+        imageRefs: normalizedImageRefs?.length ? normalizedImageRefs : undefined,
         createdAt: now,
         updatedAt: now,
       };
@@ -2016,6 +2256,12 @@ export function ImageShowcaseModule({
       "",
     );
     if (!template) return;
+    setPromptListDraftTitle(template.title);
+    setPromptListDraftPrompt(template.prompt);
+    setPromptListEditingId(template.id);
+    setPromptListDefaultViewpoint("");
+    setPromptListDraftImageRefs(template.imageRefs || []);
+    setPromptListKind("saved");
     setActiveDialog("prompt-list");
   }
 
@@ -2068,6 +2314,162 @@ export function ImageShowcaseModule({
     setTemplateDraftTitle(`${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`);
     setEditingTemplateId("");
     setActiveDialog("prompt-assistant");
+  }
+
+  function openPromptListDialog(): void {
+    setPromptListKind("all");
+    setPromptListQuery("");
+    setPromptListDraftTitle(`${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`);
+    setPromptListDraftPrompt(activePrompt);
+    setPromptListEditingId("");
+    setPromptListDefaultViewpoint(activeViewpoint);
+    setPromptListDraftImageRefs(assistantImageRefs);
+    setPromptListFormMode(null);
+    setActiveDialog("prompt-list");
+  }
+
+  function startPromptListCreate(): void {
+    setPromptListDraftTitle(`${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`);
+    setPromptListDraftPrompt(activePrompt);
+    setPromptListEditingId("");
+    setPromptListDefaultViewpoint("");
+    setPromptListDraftImageRefs(assistantImageRefs);
+    setPromptListFormMode("create");
+  }
+
+  function startPromptListEdit(template: SavedPromptTemplate): void {
+    setPromptListDraftTitle(template.title);
+    setPromptListDraftPrompt(template.prompt);
+    setPromptListEditingId(template.id);
+    setPromptListDefaultViewpoint("");
+    setPromptListDraftImageRefs(template.imageRefs || []);
+    setPromptListFormMode("edit");
+    setActiveViewpoint(template.viewpoint);
+  }
+
+  function selectPromptListDefault(viewpoint: Viewpoint, prompt: string): void {
+    setActiveViewpoint(viewpoint);
+    setPromptListDraftTitle(`默认提示词 · ${VIEWPOINT_LABELS[viewpoint]}`);
+    setPromptListDraftPrompt(prompt);
+    setPromptListEditingId("");
+    setPromptListDefaultViewpoint(viewpoint);
+    setPromptListDraftImageRefs([]);
+  }
+
+  function savePromptListDraft(): void {
+    const template = savePromptTemplate(
+      promptListDraftPrompt || activePrompt,
+      promptListDraftTitle || `${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`,
+      promptListEditingId,
+      promptListDraftImageRefs,
+    );
+    if (!template) return;
+    setPromptListDraftTitle(template.title);
+    setPromptListDraftPrompt(template.prompt);
+    setPromptListEditingId(template.id);
+    setPromptListDefaultViewpoint("");
+    setPromptListDraftImageRefs(template.imageRefs || []);
+    setPromptListKind("saved");
+    setPromptListFormMode(null);
+  }
+
+  function deletePromptListDraft(): void {
+    if (!promptListEditingId) return;
+    deleteSavedPromptTemplate(promptListEditingId);
+    setPromptListEditingId("");
+    setPromptListDraftTitle("");
+    setPromptListDraftPrompt(activePrompt);
+    setPromptListDraftImageRefs(assistantImageRefs);
+    setPromptListFormMode(null);
+  }
+
+  function queryPromptList(): void {
+    appendHistory({
+      title: "已查询提示词列表",
+      detail: promptListQuery.trim() || "全部模板",
+      tone: "idle",
+    });
+  }
+
+  function confirmPromptList(): void {
+    const nextPrompt = promptListDraftPrompt.trim();
+    if (nextPrompt) {
+      setPromptDrafts((current) => ({
+        ...current,
+        [activeViewpoint]: nextPrompt,
+      }));
+    }
+    if (promptListEditingId) {
+      savePromptListDraft();
+    } else if (!promptListDefaultViewpoint && nextPrompt && nextPrompt !== activePrompt.trim()) {
+      savePromptListDraft();
+    }
+    appendHistory({
+      title: promptListEditingId ? "已确认提示词模板" : "已确认提示词",
+      detail: nextPrompt.slice(0, 90),
+      tone: "ready",
+    });
+    setActiveDialog(null);
+  }
+
+  function startPartialRetouchFromHistory(entry: HistoryEntry): void {
+    const outputRefs = (entry.outputRefs || []).filter(Boolean);
+    if (!outputRefs.length) return;
+    const feature = featureById("partial-retouch") || activeFeature;
+    setActiveCategoryId(findFeatureCategoryId(feature.id));
+    setActiveFeatureId(feature.id);
+    setStageView("workbench");
+    setMainView("cases");
+    setActiveDialog(null);
+    setSelectedMaterialId("");
+    setSelectedCase(null);
+    setActiveViewpoint("front");
+    setExampleImageRefs(outputRefs.slice(0, 10));
+    setExampleReferenceImageRefs([]);
+    setPromptDrafts((current) => {
+      const next = promptDraftsForFeature(feature);
+      const prompt = (entry.prompt || entry.detail || current.front || next.front).trim();
+      return {
+        ...next,
+        front: prompt,
+        back: prompt,
+        side: prompt,
+      };
+    });
+    setWorkbenchMessage("已从历史记录带入生成结果，可继续局部精修。");
+    setGenerationNotice("已进入局部精修，并带入历史生成结果。");
+    onStartPartialRetouch({
+      prompt: entry.prompt || entry.detail,
+      productImageRefs: outputRefs,
+      referenceImageRefs: [],
+      productImageLabel: "待精修图",
+      referenceImageLabel: "参考图",
+      outputRefs,
+      sourceLogId: entry.logId,
+      sourceTitle: entry.title,
+    });
+  }
+
+  function cancelPromptListForm(): void {
+    setPromptListFormMode(null);
+    setPromptListEditingId("");
+    setPromptListDefaultViewpoint(activeViewpoint);
+    setPromptListDraftTitle(`${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`);
+    setPromptListDraftPrompt(activePrompt);
+    setPromptListDraftImageRefs(assistantImageRefs);
+  }
+
+  function selectPromptTemplateImages(): void {
+    selectReferenceImages();
+    appendHistory({
+      title: "已打开模板图片上传",
+      detail: "选择完成后会同步到提示词模板表单。",
+      tone: "idle",
+    });
+  }
+
+  function removePromptListImageRef(ref: string): void {
+    setPromptListDraftImageRefs((current) => current.filter((item) => item !== ref));
   }
 
   function generateAssistantPrompt(): void {
@@ -2195,6 +2597,7 @@ export function ImageShowcaseModule({
     setExampleReferenceImageRefs([]);
     setSelectedMaterialId("");
     setWorkbenchMessage("");
+    setGenerationValidationMessage("");
     if (nextFeature) {
       setActiveViewpoint("front");
       setPromptDrafts(promptDraftsForFeature(nextFeature));
@@ -2211,30 +2614,20 @@ export function ImageShowcaseModule({
     setExampleReferenceImageRefs([]);
     setSelectedMaterialId("");
     setWorkbenchMessage("");
+    setGenerationValidationMessage("");
     if (REFINEMENT_FEATURE_IDS.has(feature.id)) {
       setStageView("workbench");
       setMainView("cases");
     }
   }
 
-  function openGenerationWorkbench(): void {
-    onClearResult();
-    setStageView("workbench");
-    setMainView("cases");
-    setWorkbenchMessage(activeUploadImageCount ? "" : "请先上传至少一张图片");
-    appendHistory({
-      title: `进入生成工作台：${activeFeature.title}`,
-      detail: `${activeFeature.subtitle} · ${activeUploadImageCount ? `${activeUploadImageCount} 张素材` : "待上传素材"}`,
-      tone: activeUploadImageCount ? "ready" : "idle",
-    });
-  }
-
-  function runWorkbenchGeneration(): void {
+  function startHomeGeneration(): void {
     if (!activeUploadImageCount && activeControlProfile.showUpload) {
+      setGenerationValidationMessage("请先上传至少一张图片");
       setWorkbenchMessage("请先上传至少一张图片");
       return;
     }
-    setWorkbenchMessage("");
+    setGenerationValidationMessage("");
     onClearResult();
     const handoff = handoffForCurrentState();
     rememberPendingGeneration({
@@ -2244,12 +2637,35 @@ export function ImageShowcaseModule({
       featureTitle: activeFeature.title,
       jobType: activeFeature.title,
     });
+    setGenerationNotice("任务已提交到后台生成队列，可以离开当前界面；完成后会同步到历史记录。");
+    onGenerateImage(handoff);
+  }
+
+  function runWorkbenchGeneration(): void {
+    if (!activeUploadImageCount && activeControlProfile.showUpload) {
+      setWorkbenchMessage("请先上传至少一张图片");
+      setGenerationValidationMessage("请先上传至少一张图片");
+      return;
+    }
+    setWorkbenchMessage("");
+    setGenerationValidationMessage("");
+    onClearResult();
+    const handoff = handoffForCurrentState();
+    rememberPendingGeneration({
+      title: `提交生成：${activeFeature.title}`,
+      prompt: handoff.prompt,
+      inputRefs: [...handoff.productImageRefs, ...handoff.referenceImageRefs],
+      featureTitle: activeFeature.title,
+      jobType: activeFeature.title,
+    });
+    setGenerationNotice("任务已提交到后台生成队列，可以离开当前界面；完成后会同步到历史记录。");
     onGenerateImage(handoff);
   }
 
   function selectProductImages(): void {
     setExampleImageRefs([]);
     setWorkbenchMessage("");
+    setGenerationValidationMessage("");
     onSelectProductImages();
   }
 
@@ -2257,6 +2673,7 @@ export function ImageShowcaseModule({
     if (selectedMaterial) setSelectedMaterialId("");
     setExampleReferenceImageRefs([]);
     setWorkbenchMessage("");
+    setGenerationValidationMessage("");
     onSelectReferenceImages();
   }
 
@@ -2308,6 +2725,7 @@ export function ImageShowcaseModule({
 
   function applyMaterial(item: DressingkitMaterialItem): void {
     setSelectedMaterialId(item.id);
+    setGenerationValidationMessage("");
     appendHistory({
       title: `已选择素材：${item.name}`,
       detail: `${item.source} · ${item.gender} · ${item.ageGroup} · ${item.region}`,
@@ -2323,6 +2741,7 @@ export function ImageShowcaseModule({
       tone: "idle",
     });
     setSelectedMaterialId("");
+    setGenerationValidationMessage("");
   }
 
   function applyCase(item: LocalShowcaseCase): void {
@@ -2334,6 +2753,7 @@ export function ImageShowcaseModule({
     const caseFeature = featureById(item.featureId) || activeFeature;
     const { productRefs: caseProductRefs, referenceRefs: caseReferenceRefs } = splitCaseInputRefsForFeature(caseInputRefs, caseFeature);
     setSelectedMaterialId("");
+    setGenerationValidationMessage("");
     setExampleImageRefs(caseProductRefs);
     setExampleReferenceImageRefs(caseReferenceRefs);
     setPromptDrafts((current) => {
@@ -2500,7 +2920,7 @@ export function ImageShowcaseModule({
             </div>
             {activeControlProfile.showQuality ? (
               <div className="ai-refinement-control-block">
-                <strong>图片质量 <em>请参考提示词模版，根据需求修改</em></strong>
+                <strong>图片质量 <em>请参考提示词模板，根据需求修改</em></strong>
                 <div className="ai-refinement-segment">
                   {["1K_V2", "2K", "4K"].map((item) => (
                     <button key={item} type="button" className={quality === item ? "active" : ""} onClick={() => setQuality(item)}>
@@ -2536,6 +2956,9 @@ export function ImageShowcaseModule({
           >
             {busy ? "生成中" : "生成"}
           </button>
+          {generationNotice ? (
+            <p className="ai-generation-notice">{generationNotice}</p>
+          ) : null}
         </aside>
 
         <main className="ai-refinement-canvas">
@@ -2594,7 +3017,7 @@ export function ImageShowcaseModule({
 
         {activeDialog === "history" ? (
           <ImageHistoryDrawer
-            entries={historyEntries}
+            entries={visibleHistoryEntries}
             featureTitle={activeFeature.title}
             backendCaseCount={backendCards.length}
             backendAssetCount={backendAssets.length}
@@ -2603,6 +3026,7 @@ export function ImageShowcaseModule({
             selectedMaterialName={selectedMaterial?.name}
             mediaResult={mediaResult}
             onOpenImage={setSelectedImage}
+            onPartialRetouch={startPartialRetouchFromHistory}
             onClose={() => setActiveDialog(null)}
           />
         ) : null}
@@ -2640,7 +3064,7 @@ export function ImageShowcaseModule({
                   </div>
                   <div className="ai-assistant-toolbar">
                     <button type="button" onClick={() => setAssistantTemplatesOpen((current) => !current)}>
-                      提示词模版
+                      提示词模板
                     </button>
                     <button
                       type="button"
@@ -2654,7 +3078,7 @@ export function ImageShowcaseModule({
                         if (template) setAssistantTemplatesOpen(true);
                       }}
                     >
-                      保存到模版
+                      保存到模板
                     </button>
                   </div>
                   <div className={assistantTab === "reverse" ? "ai-assistant-grid is-image-reverse" : "ai-assistant-grid is-text-generation"}>
@@ -2730,11 +3154,11 @@ export function ImageShowcaseModule({
                 {assistantTemplatesOpen ? (
                   <aside className="ai-assistant-template-panel">
                     <header>
-                      <strong>提示词模版</strong>
+                      <strong>提示词模板</strong>
                       <span>{savedTemplates.length} 个模板</span>
                     </header>
                     <label>
-                      模版名称
+                      模板名称
                       <input
                         value={templateDraftTitle}
                         onChange={(event) => setTemplateDraftTitle(event.target.value)}
@@ -2775,7 +3199,7 @@ export function ImageShowcaseModule({
                           </footer>
                         </article>
                       )) : (
-                        <div className="ai-assistant-template-empty">暂无模版，保存当前结果后会出现在这里。</div>
+                        <div className="ai-assistant-template-empty">暂无模板，保存当前结果后会出现在这里。</div>
                       )}
                     </div>
                   </aside>
@@ -2817,26 +3241,34 @@ export function ImageShowcaseModule({
     <div className="ai-showcase-shell">
       <aside className="ai-showcase-left">
         <section className="ai-panel scene-panel">
-          <div className="ai-panel-heading">
-            <div>
-              <span>选择场景</span>
-              <h2>{activeFeature.title}</h2>
-            </div>
-            <button type="button" className="ai-link-button" onClick={() => setActiveDialog("feature-picker")}>选择功能</button>
+          <div className="ai-scene-heading">
+            <span className="ai-scene-title">
+              选择场景 <em>（{activeFeature.title}）</em>
+            </span>
           </div>
-          <p>{activeFeature.subtitle}</p>
+          <div className="ai-feature-entry-label">选择功能</div>
+          <button type="button" className="ai-feature-entry-card" onClick={openCaseBoard}>
+            <span className="ai-feature-entry-icon" aria-hidden="true">
+              <FeatureButtonIcon
+                iconKey={iconKeyForFeature(activeFeature, featureUiById, featureUiByTitle)}
+              />
+            </span>
+            <span className="ai-feature-entry-content">
+              <strong>选择功能</strong>
+            </span>
+            <span className="ai-feature-entry-arrow" aria-hidden="true">›</span>
+          </button>
         </section>
 
         {activeControlProfile.showUpload ? (
         <section className="ai-panel">
           <div className="ai-section-title">
             <span>{activeControlProfile.panelTitle}</span>
-            <em>{activeUploadImageCount ? `${activeUploadImageCount} 张已选` : "未选择"}</em>
           </div>
           <>
               {activeControlProfile.showUploadTabs ? (
                 <div className="ai-upload-tabs">
-                  {(["front", "back", "side"] as Viewpoint[]).map((viewpoint) => (
+                  {selectedViewpoints.map((viewpoint) => (
                     <button
                       key={viewpoint}
                       type="button"
@@ -2953,7 +3385,6 @@ export function ImageShowcaseModule({
         <section className="ai-panel">
           <div className="ai-section-title">
             <span>选择素材</span>
-            <button type="button" onClick={openMaterialLibrary}>素材库</button>
           </div>
           <button type="button" className="ai-material-entry-card" onClick={openMaterialLibrary}>
             {selectedMaterial ? (
@@ -2989,7 +3420,7 @@ export function ImageShowcaseModule({
         <section className="ai-panel ai-control-stack">
           {activeControlProfile.showViewpoints ? (
           <div className="ai-control-row">
-            <span>视角</span>
+            <span>视角 （多选）</span>
             <div className="ai-chip-group">
               {(["front", "back", "side"] as Viewpoint[]).map((viewpoint) => (
                 <button
@@ -3019,14 +3450,29 @@ export function ImageShowcaseModule({
               ))}
             </div>
           </div>
-          <div className="ai-control-row">
-            <span>生图比例</span>
-            <select value={ratio} onChange={(event) => setRatio(event.target.value)}>
-              {["1:1", "3:4", "4:3", "9:16", "16:9"].map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-          </div>
+          {activeControlProfile.showRatio ? (
+            <div className="ai-control-row">
+              <span>生图比例</span>
+              <select value={ratio} onChange={(event) => setRatio(event.target.value)}>
+                {["1:1", "3:4", "4:3", "9:16", "16:9"].map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {showThresholdControl ? (
+            <div className="ai-slider-row">
+              <span>黑白阈值：{threshold}</span>
+              <input
+                type="range"
+                aria-label="黑白阈值"
+                min="0"
+                max="100"
+                value={threshold}
+                onChange={(event) => setThreshold(Number(event.target.value))}
+              />
+            </div>
+          ) : null}
           {activeControlProfile.showQuality ? (
             <div className="ai-control-row">
               <span>图片质量</span>
@@ -3044,14 +3490,27 @@ export function ImageShowcaseModule({
               </div>
             </div>
           ) : null}
+          {showColorPicker ? (
+            <div className="ai-color-row">
+              <span>选择色号</span>
+              <input
+                type="color"
+                aria-label="选择色号"
+                value={colorValue}
+                onChange={(event) => setColorValue(event.target.value.toUpperCase())}
+              />
+              <em>{colorValue.toUpperCase()}</em>
+            </div>
+          ) : null}
         </section>
 
         {activeControlProfile.showPrompt ? (
         <section className="ai-panel ai-prompt-panel">
+          <h3>提示词</h3>
           {activeControlProfile.showPromptTools ? (
             <div className="ai-prompt-actions">
               <button type="button" onClick={expandPromptWithCurrentContext}>智能扩写</button>
-              <button type="button" onClick={() => setActiveDialog("prompt-list")}>提示词列表</button>
+              <button type="button" onClick={openPromptListDialog}>提示词列表</button>
               <button type="button" onClick={saveCurrentPromptAsTemplate}>保存到模板</button>
             </div>
           ) : null}
@@ -3084,10 +3543,16 @@ export function ImageShowcaseModule({
           type="button"
           className="ai-generate-button"
           disabled={busy || !workspaceReady}
-          onClick={openGenerationWorkbench}
+          onClick={startHomeGeneration}
         >
           {busy ? "生成中" : "开始Ai生成"}
         </button>
+        {generationValidationMessage ? (
+          <p className="ai-validation-message">{generationValidationMessage}</p>
+        ) : null}
+        {generationNotice ? (
+          <p className="ai-generation-notice">{generationNotice}</p>
+        ) : null}
       </aside>
 
       <main className={mainView === "materials" ? "ai-showcase-main is-materials" : "ai-showcase-main"}>
@@ -3161,18 +3626,23 @@ export function ImageShowcaseModule({
                     ) : null}
                     <ImageStack item={item} role="output" onOpenImage={setSelectedImage} />
                   </div>
-                  <div className="ai-case-card-meta">
-                    <strong>{item.title}</strong>
-                    <span>{item.industry}</span>
-                  </div>
                   <div className="ai-case-card-footer">
-                    <button type="button" onClick={() => setSelectedCase(item)}>预览</button>
-                    <button type="button" className="primary" onClick={() => applyCase(item)}>尝试示例</button>
+                    <strong className="ai-case-card-name">{displayCaseTitle(item)}</strong>
+                    <div className="ai-case-card-actions">
+                      <button type="button" onClick={() => setSelectedCase(item)}>
+                        <CaseActionIcon name="preview" />
+                        <span>预览</span>
+                      </button>
+                      <button type="button" className="primary" onClick={() => applyCase(item)}>
+                        <CaseActionIcon name="try" />
+                        <span>尝试示例</span>
+                      </button>
+                    </div>
                   </div>
                 </article>
               )) : (
                 <div className="ai-case-empty">
-                  当前功能暂无优秀案例
+                  暂无数据
                 </div>
               )}
             </div>
@@ -3181,14 +3651,6 @@ export function ImageShowcaseModule({
         ) : (
           <section className="ai-material-library ai-source-material-library">
             <div className="ai-material-library-top">
-              <button
-                type="button"
-                className="ai-material-back-button"
-                aria-label="返回案例"
-                onClick={openCaseBoard}
-              >
-                ‹
-              </button>
               <p>系统模特为AI合成数字人，商用需用户自行判断（真人模特中模特图片已获得授权）</p>
               <div className="ai-material-library-actions">
                 <button type="button">+ 添加我的模特</button>
@@ -3268,160 +3730,207 @@ export function ImageShowcaseModule({
         aria-label="历史记录"
         onClick={() => setActiveDialog("history")}
       >
+        <strong aria-hidden="true">«</strong>
         <span>历史记录</span>
       </button>
 
-      {activeDialog === "feature-picker" ? (
+      <button type="button" className="ai-prompt-assistant-fab" onClick={() => openPromptAssistant("text")}>
+        <span aria-hidden="true">AI</span>
+        <strong>提示词助手</strong>
+      </button>
+
+      {activeDialog === "prompt-list" ? (
         <DetailDialog
-          className="ai-showcase-dialog"
-          bodyClassName="ai-showcase-dialog-body"
-          eyebrow="场景选择"
-          title="选择功能"
-          description="按业务分类切换不同的 AI 生图能力，保持和原站一致的功能入口。"
+          className="ai-showcase-dialog ai-prompt-list-dialog"
+          bodyClassName="ai-showcase-dialog-body ai-prompt-list-dialog-body"
+          eyebrow="提示词"
+          title="提示词列表"
+          description="管理提示词模板，查询、选择、增删改后可确认应用到左侧提示词。"
           onClose={() => setActiveDialog(null)}
         >
-          <div className="ai-feature-picker">
-            {CATEGORIES.map((category) => (
-              <section key={category.id} className="ai-dialog-section">
-                <header className="ai-dialog-section-header">
-                  <div>
-                    <strong>{category.label}</strong>
-                    <span>{category.features.length} 个功能</span>
-                  </div>
-                </header>
-                <div className="ai-feature-picker-grid">
-                  {category.features.map((feature) => (
-                    <button
-                      key={feature.id}
-                      type="button"
-                      className={activeFeature.id === feature.id && activeCategoryId === category.id ? "active" : ""}
-                      onClick={() => {
-                        selectFeature(feature, category.id as ShowcaseCategoryId);
-                        setActiveDialog(null);
-                        appendHistory({
-                          title: `切换功能：${feature.title}`,
-                          detail: `${category.label} · ${feature.subtitle}`,
-                          tone: "ready",
-                        });
-                      }}
-                    >
-                      <span className="ai-feature-picker-title">
-                        <FeatureButtonIcon
-                          iconKey={iconKeyForFeature(feature, featureUiById, featureUiByTitle)}
-                        />
-                        <strong>{feature.title}</strong>
-                      </span>
-                      <span>{feature.subtitle}</span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            ))}
+          <div className="ai-prompt-list-toolbar">
+            <label>
+              请选择类型
+              <select
+                aria-label="提示词类型"
+                value={promptListKind}
+                onChange={(event) => setPromptListKind(event.target.value as PromptListKind)}
+              >
+                <option value="all">全部</option>
+                <option value="default">默认提示词</option>
+                <option value="saved">已保存模板</option>
+              </select>
+            </label>
+            <label>
+              关键词
+              <input
+                aria-label="提示词关键词"
+                value={promptListQuery}
+                onChange={(event) => setPromptListQuery(event.target.value)}
+                placeholder="请输入标题"
+              />
+            </label>
+            <button type="button" onClick={queryPromptList}>查询</button>
+            <button type="button" onClick={startPromptListCreate}>新增</button>
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedPromptListTemplate) {
+                  startPromptListEdit(selectedPromptListTemplate);
+                }
+              }}
+              disabled={!selectedPromptListTemplate}
+            >
+              编辑
+            </button>
+            <button type="button" className="danger" onClick={deletePromptListDraft} disabled={!promptListEditingId}>删除</button>
+          </div>
+          <div className="ai-prompt-list-table" role="list" aria-label="提示词列表结果">
+            {promptListKind !== "saved" ? (
+              promptListDefaultRows.map(([viewpoint, prompt]) => (
+                <button
+                  key={viewpoint}
+                  type="button"
+                  className={promptListDefaultViewpoint === viewpoint ? "ai-prompt-list-row active" : "ai-prompt-list-row"}
+                  onClick={() => selectPromptListDefault(viewpoint, prompt)}
+                >
+                  <span className="ai-prompt-list-row-type">默认</span>
+                  <strong>{VIEWPOINT_LABELS[viewpoint]}</strong>
+                  <span>{prompt}</span>
+                </button>
+              ))
+            ) : null}
+
+            {promptListKind !== "default" ? (
+              promptListSavedRows.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className={promptListEditingId === template.id ? "ai-prompt-list-row active" : "ai-prompt-list-row"}
+                  onClick={() => {
+                    setPromptListDraftTitle(template.title);
+                    setPromptListDraftPrompt(template.prompt);
+                    setPromptListEditingId(template.id);
+                    setPromptListDefaultViewpoint("");
+                    setPromptListDraftImageRefs(template.imageRefs || []);
+                    setActiveViewpoint(template.viewpoint);
+                  }}
+                >
+                  <span className="ai-prompt-list-row-type">模板</span>
+                  <strong>{template.title}</strong>
+                  <span>{template.prompt}</span>
+                  <em>{formatHistoryTime(template.updatedAt || template.createdAt)} · {template.featureTitle}</em>
+                </button>
+              ))
+            ) : null}
+
+            {!promptListVisibleRowCount ? (
+              <div className="ai-dialog-empty">暂无匹配数据</div>
+            ) : null}
+          </div>
+          <div className="ai-prompt-list-pagination" aria-label="提示词列表分页">
+            <button type="button" disabled aria-label="上一页">‹</button>
+            <span>1</span>
+            <button type="button" disabled aria-label="下一页">›</button>
+          </div>
+          <div className="ai-prompt-list-footer">
+            <button type="button" onClick={() => setActiveDialog(null)}>取消</button>
+            <button type="button" className="primary" onClick={confirmPromptList}>确定</button>
           </div>
         </DetailDialog>
       ) : null}
 
-      {activeDialog === "prompt-list" ? (
-        <DetailDialog
-          className="ai-showcase-dialog"
-          bodyClassName="ai-showcase-dialog-body"
-          eyebrow="提示词"
-          title="提示词列表"
-          description="快速切换默认提示词或保存当前方案。"
-          onClose={() => setActiveDialog(null)}
-        >
-          <div className="ai-dialog-columns">
-            <section className="ai-dialog-section">
-              <header className="ai-dialog-section-header">
-                <div>
-                  <strong>默认提示词</strong>
-                  <span>点击即可切换视角</span>
-                </div>
-              </header>
-              <div className="ai-prompt-bank">
-                {(Object.entries(DEFAULT_PROMPTS) as Array<[Viewpoint, string]>).map(([viewpoint, prompt]) => (
-                  <button
-                    key={viewpoint}
-                    type="button"
-                    className={activeViewpoint === viewpoint ? "active" : ""}
-                    onClick={() => applyPromptTemplate(viewpoint)}
-                  >
-                    <strong>{VIEWPOINT_LABELS[viewpoint]}</strong>
-                    <span>{prompt.slice(0, 110)}...</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="ai-dialog-section">
-              <header className="ai-dialog-section-header">
-                <div>
-                  <strong>当前模板</strong>
-                  <span>{savedTemplates.length} 个已保存模板</span>
-                </div>
-                <button type="button" className="ghost small" onClick={saveCurrentPromptAsTemplate}>保存当前</button>
-              </header>
-              <div className="ai-prompt-editor">
-                <textarea
-                  value={activePrompt}
-                  onChange={(event) =>
-                    setPromptDrafts((current) => ({
-                      ...current,
-                      [activeViewpoint]: event.target.value,
-                    }))
-                  }
+      {activeDialog === "prompt-list" && promptListFormMode ? (
+        <div className="ai-prompt-template-modal-backdrop" role="presentation" onClick={cancelPromptListForm}>
+          <section
+            className="ai-prompt-template-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={promptListFormMode === "create" ? "新增" : "编辑"}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="ai-prompt-template-modal-header">
+              <h2>{promptListFormMode === "create" ? "新增" : "编辑"}</h2>
+              <button type="button" aria-label="关闭提示词模板表单" onClick={cancelPromptListForm}>×</button>
+            </header>
+            <div className="ai-prompt-template-form">
+              <label>
+                标题
+                <input
+                  aria-label="模板名称"
+                  value={promptListDraftTitle}
+                  onChange={(event) => setPromptListDraftTitle(event.target.value)}
+                  placeholder="请输入标题"
                 />
-                <div className="ai-muted">当前：{activeFeature.title} · {ratio} · {quality}</div>
+              </label>
+              <label>
+                类型
+                <select
+                  aria-label="模板类型"
+                  value={activeViewpoint}
+                  onChange={(event) => setActiveViewpoint(event.target.value as Viewpoint)}
+                >
+                  {(Object.keys(VIEWPOINT_LABELS) as Viewpoint[]).map((viewpoint) => (
+                    <option key={viewpoint} value={viewpoint}>{VIEWPOINT_LABELS[viewpoint]}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="ai-prompt-template-upload">
+                <div className="ai-prompt-template-label">上传图片</div>
+                <div className="ai-prompt-template-upload-list">
+                  <button type="button" className="ai-prompt-template-upload-card" onClick={selectPromptTemplateImages}>
+                    <span aria-hidden="true">+</span>
+                  </button>
+                  {promptListDraftImageRefs.map((ref, index) => (
+                    <figure key={`${ref}-${index}`} className="ai-prompt-template-upload-card has-image">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedImage({
+                          url: imageAssetSource(ref),
+                          title: `模板图片 ${index + 1}`,
+                          label: "提示词模板图片",
+                          alt: `提示词模板图片${index + 1}`,
+                        })}
+                      >
+                        <img src={imageAssetSource(ref)} alt={`提示词模板图片${index + 1}`} loading="lazy" />
+                      </button>
+                      <button
+                        type="button"
+                        className="ai-prompt-template-remove"
+                        aria-label={`删除模板图片${index + 1}`}
+                        onClick={() => removePromptListImageRef(ref)}
+                      >
+                        ×
+                      </button>
+                    </figure>
+                  ))}
+                </div>
               </div>
-              <div className="ai-saved-template-list">
-                {savedTemplates.length ? (
-                  savedTemplates.map((template) => (
-                    <article key={template.id} className="ai-saved-template-card">
-                      <div>
-                        <strong>{template.title}</strong>
-                        <span>{formatHistoryTime(template.createdAt)} · {template.featureTitle}</span>
-                      </div>
-                      <p>{template.prompt.slice(0, 140)}</p>
-                      <footer>
-                        <button
-                          type="button"
-                          className="ghost small"
-                          onClick={() => applySavedPromptTemplate(template)}
-                        >
-                          应用
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost small"
-                          onClick={() => {
-                            editSavedPromptTemplate(template);
-                            setActiveDialog("prompt-assistant");
-                          }}
-                        >
-                          编辑
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost small danger"
-                          onClick={() => deleteSavedPromptTemplate(template.id)}
-                        >
-                          删除
-                        </button>
-                      </footer>
-                    </article>
-                  ))
-                ) : (
-                  <div className="ai-dialog-empty">还没有保存模板。</div>
-                )}
-              </div>
-            </section>
-          </div>
-        </DetailDialog>
+              <label>
+                提示词内容
+                <textarea
+                  aria-label="模板提示词"
+                  value={promptListDraftPrompt}
+                  onChange={(event) => {
+                    setPromptListDraftPrompt(event.target.value);
+                    setPromptListDefaultViewpoint("");
+                  }}
+                />
+              </label>
+            </div>
+            <footer className="ai-prompt-template-modal-footer">
+              <button type="button" onClick={cancelPromptListForm}>取消</button>
+              <button type="button" className="primary" onClick={savePromptListDraft} disabled={!promptListDraftPrompt.trim()}>
+                确定
+              </button>
+            </footer>
+          </section>
+        </div>
       ) : null}
 
       {activeDialog === "history" ? (
         <ImageHistoryDrawer
-          entries={historyEntries}
+          entries={visibleHistoryEntries}
           featureTitle={activeFeature.title}
           backendCaseCount={backendCards.length}
           backendAssetCount={backendAssets.length}
@@ -3430,17 +3939,201 @@ export function ImageShowcaseModule({
           selectedMaterialName={selectedMaterial?.name}
           mediaResult={mediaResult}
           onOpenImage={setSelectedImage}
+          onPartialRetouch={startPartialRetouchFromHistory}
           onClose={() => setActiveDialog(null)}
         />
       ) : null}
 
+      {activeDialog === "prompt-assistant" ? (
+        <div className="ai-assistant-overlay" role="presentation" onClick={() => setActiveDialog(null)}>
+          <section
+            className={assistantTemplatesOpen ? "ai-assistant-dialog has-templates" : "ai-assistant-dialog"}
+            role="dialog"
+            aria-modal="true"
+            aria-label="提示词助手"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="ai-assistant-header">
+              <h2>提示词助手</h2>
+              <button type="button" aria-label="关闭提示词助手" onClick={() => setActiveDialog(null)}>×</button>
+            </header>
+            <div className="ai-assistant-content">
+              <div className="ai-assistant-main">
+                <div className="ai-assistant-tabs" role="tablist" aria-label="提示词助手模式">
+                  <button
+                    type="button"
+                    className={assistantTab === "text" ? "active" : ""}
+                    onClick={() => setAssistantTab("text")}
+                  >
+                    文本生成
+                  </button>
+                  <button
+                    type="button"
+                    className={assistantTab === "reverse" ? "active" : ""}
+                    onClick={() => setAssistantTab("reverse")}
+                  >
+                    图片反推
+                  </button>
+                </div>
+                <div className="ai-assistant-toolbar">
+                  <button type="button" onClick={() => setAssistantTemplatesOpen((current) => !current)}>
+                    提示词模板
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => {
+                      const template = savePromptTemplate(
+                        assistantResult || assistantInput || activePrompt,
+                        templateDraftTitle,
+                        editingTemplateId,
+                      );
+                      if (template) setAssistantTemplatesOpen(true);
+                    }}
+                  >
+                    保存到模板
+                  </button>
+                </div>
+                <div className={assistantTab === "reverse" ? "ai-assistant-grid is-image-reverse" : "ai-assistant-grid is-text-generation"}>
+                  {assistantTab === "reverse" ? (
+                    <section className="ai-assistant-reverse-input">
+                      <div className="ai-assistant-upload-section">
+                        <div className="ai-assistant-section-title">上传图片</div>
+                        <div className="ai-assistant-upload-list">
+                          <button type="button" className="ai-assistant-upload-card is-upload" onClick={selectReferenceImages}>
+                            <span aria-hidden="true">+</span>
+                            <strong>上传</strong>
+                          </button>
+                          {assistantImageRefs.map((ref, index) => {
+                            const isReferenceRef = activeReferenceImageRefs.includes(ref) && !activeProductImageRefs.includes(ref);
+                            return (
+                              <div key={`${ref}-${index}`} className="ai-assistant-upload-card has-image">
+                                <button
+                                  type="button"
+                                  className="ai-assistant-upload-image"
+                                  onClick={() => setSelectedImage({
+                                    url: imageAssetSource(ref),
+                                    title: `图片${index + 1}`,
+                                    label: isReferenceRef ? activeControlProfile.referenceLabel : activeControlProfile.productLabel,
+                                    alt: `提示词助手图片${index + 1}`,
+                                  })}
+                                >
+                                  <img src={imageAssetSource(ref)} alt={`提示词助手图片${index + 1}`} loading="lazy" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ai-assistant-upload-remove"
+                                  aria-label={`删除提示词助手图片${index + 1}`}
+                                  onClick={() => removeAssistantImageRef(ref)}
+                                >
+                                  ×
+                                </button>
+                                <strong>{isReferenceRef ? activeControlProfile.referenceLabel : activeControlProfile.productLabel}</strong>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <label>输入提示词</label>
+                      <textarea
+                        value={assistantInput}
+                        onChange={(event) => setAssistantInput(event.target.value)}
+                        placeholder="描述参考图、主体、材质、背景或上传素材需要反推的重点。"
+                      />
+                    </section>
+                  ) : (
+                    <section>
+                      <label>输入提示词</label>
+                      <textarea
+                        value={assistantInput}
+                        onChange={(event) => setAssistantInput(event.target.value)}
+                        placeholder="请输入要扩写或优化的提示词。"
+                      />
+                    </section>
+                  )}
+                  <section>
+                    <label>生成结果</label>
+                    <textarea
+                      value={assistantResult}
+                      onChange={(event) => setAssistantResult(event.target.value)}
+                      placeholder="点击开始生成后，这里会出现可编辑结果。"
+                    />
+                  </section>
+                  <div className="ai-assistant-generate-row">
+                    <button type="button" onClick={generateAssistantPrompt}>开始生成</button>
+                  </div>
+                </div>
+              </div>
+              {assistantTemplatesOpen ? (
+                <aside className="ai-assistant-template-panel">
+                  <header>
+                    <strong>提示词模板</strong>
+                    <span>{savedTemplates.length} 个模板</span>
+                  </header>
+                  <label>
+                    模板名称
+                    <input
+                      value={templateDraftTitle}
+                      onChange={(event) => setTemplateDraftTitle(event.target.value)}
+                      placeholder={`${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`}
+                    />
+                  </label>
+                  <div className="ai-assistant-template-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTemplateId("");
+                        setTemplateDraftTitle(`${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`);
+                        setAssistantResult("");
+                      }}
+                    >
+                      新建
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => savePromptTemplate(assistantResult || assistantInput || activePrompt, templateDraftTitle, editingTemplateId)}
+                    >
+                      {editingTemplateId ? "更新" : "保存"}
+                    </button>
+                  </div>
+                  <div className="ai-assistant-template-list">
+                    {savedTemplates.length ? savedTemplates.map((template) => (
+                      <article key={template.id} className={editingTemplateId === template.id ? "active" : ""}>
+                        <div>
+                          <strong>{template.title}</strong>
+                          <span>{formatHistoryTime(template.updatedAt || template.createdAt)}</span>
+                        </div>
+                        <p>{template.prompt.slice(0, 120)}</p>
+                        <footer>
+                          <button type="button" onClick={() => applySavedPromptTemplate(template, false)}>应用</button>
+                          <button type="button" onClick={() => editSavedPromptTemplate(template)}>编辑</button>
+                          <button type="button" className="danger" onClick={() => deleteSavedPromptTemplate(template.id)}>删除</button>
+                        </footer>
+                      </article>
+                    )) : (
+                      <div className="ai-assistant-template-empty">暂无模板，保存当前结果后会出现在这里。</div>
+                    )}
+                  </div>
+                </aside>
+              ) : null}
+            </div>
+            <footer className="ai-assistant-footer">
+              <button type="button" onClick={() => setActiveDialog(null)}>取消</button>
+              <button type="button" className="primary" onClick={confirmAssistantPrompt}>确定</button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
       {selectedCase ? (
-        <div className="ai-preview-modal" role="dialog" aria-modal="true">
+        <div className="ai-preview-modal" role="dialog" aria-modal="true" aria-label="预览">
           <div className="ai-preview-card">
             <div className="ai-preview-head">
               <div>
                 <span>{selectedCase.industry}</span>
-                <h2>{selectedCase.title}</h2>
+                <h2>预览</h2>
+                <em>{selectedCase.title}</em>
               </div>
               <button type="button" onClick={() => setSelectedCase(null)}>关闭</button>
             </div>
@@ -3469,6 +4162,19 @@ export function ImageShowcaseModule({
               </header>
               <textarea value={selectedCasePrompt} readOnly />
             </section>
+            <footer className="ai-preview-footer">
+              <button type="button" onClick={() => setSelectedCase(null)}>取消</button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  applyCase(selectedCase);
+                  setSelectedCase(null);
+                }}
+              >
+                确定
+              </button>
+            </footer>
           </div>
         </div>
       ) : null}

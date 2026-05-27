@@ -53,6 +53,7 @@ import type {
   ReplaceSkillPackageInput,
   RegisterInputSourceInput,
   SkillWorkspaceInput,
+  SubmitGenerationTaskInput,
 } from '../shared/types';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, extname, join, dirname, isAbsolute, resolve } from 'node:path';
@@ -68,6 +69,7 @@ import { ClaudeAgentService } from './services/claudeAgentService';
 import { ClaudePromptAgentService } from './services/claudePromptAgentService';
 import { FileAssociationService } from './services/fileAssociationService';
 import { GenerationLogStore } from './services/generationLogStore';
+import { GenerationTaskService } from './services/generationTaskService';
 import { ImageSkillGenerationService } from './services/imageSkillGenerationService';
 import { InputSourceStore } from './services/inputSourceStore';
 import { KnowledgeBaseStore } from './services/knowledgeBaseStore';
@@ -355,6 +357,16 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const articles = new ArticleGenerationService(logs, textGeneration);
   const videoWorkflow = new VideoWorkflowService(logs, textGeneration, modelConfig);
   const media = new MediaProvider(modelConfig, logs);
+  const generationTasks = new GenerationTaskService(
+    logs,
+    media,
+    articles,
+    promptPacks,
+    sceneCards,
+    videoWorkflow,
+    referenceReverse,
+    (event) => mainWindow.webContents.send('generationTasks:event', event),
+  );
   const agent = new ClaudeAgentService(settings, modelConfig);
   const workflows = new WorkflowStore();
   const workflowEngine = new WorkflowEngine(
@@ -621,6 +633,8 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     return imageSkills.importFromFile(result.filePaths[0]);
   });
   ipcMain.handle('video:generate', (_event, input: VideoGenerationRequest) => media.generateVideo(input));
+  ipcMain.handle('generationTasks:submit', (_event, input: SubmitGenerationTaskInput) => generationTasks.submit(input));
+  ipcMain.handle('generationTasks:list', (_event, workspacePath: string) => generationTasks.list(workspacePath));
   ipcMain.handle('generationLogs:list', (_event, workspacePath: string) => logs.list(workspacePath));
 
   ipcMain.handle('agent:run', async (_event, input: RunTaskInput) => ({ taskId: await agent.run(input, publish) }));

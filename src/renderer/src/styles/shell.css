@@ -169,8 +169,13 @@
 }
 .stage:has(.detail-dialog-backdrop),
 .stage:has(.module-dialog-backdrop),
+.stage:has(.ai-assistant-overlay),
+.stage:has(.ai-history-layer),
 .stage:has(.ai-preview-modal),
+.stage:has(.ai-video-history-layer),
 .stage:has(.ai-video-preview-modal),
+.stage:has(.ai-video-media-preview-modal),
+.stage:has(.ai-video-material-upload-modal),
 .stage:has(.ai-image-preview-modal),
 .stage:has(.image-fullscreen-backdrop) {
   z-index: 90;
@@ -260,7 +265,8 @@
 }
 
 .app-shell[data-sidebar="collapsed"]:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) {
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  padding-left: 80px;
 }
 
 .app-shell:has(.showcase-page-frame) > .params-panel {
@@ -278,6 +284,18 @@
 .app-shell:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) .stage-module-surface {
   height: auto;
   min-height: calc(100vh - 40px);
+}
+
+.app-shell[data-sidebar="collapsed"]:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) > .sidebar {
+  position: fixed;
+  inset: 20px auto 20px 20px;
+  width: 40px;
+  height: calc(100vh - 40px);
+  max-height: calc(100vh - 40px);
+}
+
+.app-shell[data-sidebar="collapsed"]:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) .sidebar-collapse-btn {
+  left: 64px;
 }
 
 .showcase-page-frame {
@@ -302,6 +320,40 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.app-shell:has(.ai-showcase-shell):not(:has(.ai-refinement-shell)) {
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell:has(.ai-showcase-shell):not(:has(.ai-refinement-shell)) > .stage,
+.app-shell:has(.ai-showcase-shell):not(:has(.ai-refinement-shell)) .stage-module-surface,
+.showcase-page-frame:has(.ai-showcase-shell),
+.showcase-page-frame:has(.ai-showcase-shell) .showcase-page-body {
+  height: calc(100vh - 40px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell:has(.ai-video-showcase-shell):not(:has(.ai-refinement-shell)) {
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell:has(.ai-video-showcase-shell):not(:has(.ai-refinement-shell)) > .stage,
+.app-shell:has(.ai-video-showcase-shell):not(:has(.ai-refinement-shell)) .stage-module-surface,
+.showcase-page-frame:has(.ai-video-showcase-shell),
+.showcase-page-frame:has(.ai-video-showcase-shell) .showcase-page-body {
+  height: calc(100vh - 40px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell[data-sidebar="collapsed"]:has(.showcase-page-frame):not(:has(.ai-refinement-shell)) .sidebar-collapse-btn {
+  display: none;
 }
 
 /* 布谷账号登录门禁 - 顶级艺术化重构 */
@@ -1655,6 +1707,9 @@ p {
   background: rgba(17, 24, 39, 0.3);
   backdrop-filter: blur(12px);
   animation: dialog-backdrop-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.detail-dialog-backdrop:has(.ai-prompt-list-dialog) {
+  z-index: 1600;
 }
 .detail-dialog-card {
   display: grid;

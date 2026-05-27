@@ -90,6 +90,8 @@ interface VideoCaseAsset {
   role: VideoShowcaseAssetRole;
   kind: "image" | "video";
   caption?: string;
+  width?: number;
+  height?: number;
   mimeType?: string;
 }
 
@@ -184,6 +186,8 @@ const DEFAULT_PROMPTS: Record<VideoShowcaseFeatureId, string> = {
   "smart-video": "根据图中产品的卖点与特点，结合图中人物生成产品带货视频。语音与文字为中文环境。",
   "omni-video": "根据图中产品的卖点与特点，结合图中人物生成产品带货视频。语音与文字为中文环境。",
 };
+const DEFAULT_VIDEO_FEATURE_ID: VideoShowcaseFeatureId = "storyboard";
+const DEFAULT_PROMPT_VALUES = new Set(Object.values(DEFAULT_PROMPTS));
 const VIDEO_DURATIONS = ["5s", "10s", "15s"];
 const VIDEO_RESOLUTIONS = ["480P", "720P", "1080P"];
 const STORYBOARD_COUNTS = [1, 2, 3];
@@ -454,6 +458,8 @@ function buildBackendCards(cases: OemPublicCase[], assets: OemPublicAsset[]): Vi
         role: roleFromAsset(ref, asset),
         kind: kindFromAsset(asset, ref),
         caption: asset?.caption,
+        width: asset?.width,
+        height: asset?.height,
         mimeType: asset?.mimeType,
       });
     }
@@ -578,20 +584,63 @@ function FeatureButtonIcon({ iconKey }: { iconKey: VideoShowcaseIconName }) {
   );
 }
 
-function MediaAsset({ asset, title, label }: { asset: VideoCaseAsset; title: string; label: string }) {
+function VideoCaseActionIcon({ name }: { name: "preview" | "try" }) {
+  return (
+    <svg className="ai-video-case-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+      {name === "preview" ? (
+        <>
+          <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      ) : (
+        <>
+          <path d="M5 12h10" />
+          <path d="m12 5 7 7-7 7" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function MediaAsset({
+  asset,
+  title,
+  label,
+  controls = true,
+}: {
+  asset: VideoCaseAsset;
+  title: string;
+  label: string;
+  controls?: boolean;
+}) {
+  const style = asset.width && asset.height
+    ? ({ "--video-asset-ratio": `${asset.width} / ${asset.height}` } as React.CSSProperties)
+    : undefined;
+
   if (asset.kind === "video") {
     return (
       <video
         src={asset.url}
         aria-label={`${title} ${label}`}
-        controls
+        controls={controls}
         muted
         playsInline
         preload="metadata"
+        style={style}
       />
     );
   }
-  return <img src={asset.url} alt={`${title} ${label}`} loading="lazy" />;
+  return <img src={asset.url} alt={`${title} ${label}`} loading="lazy" style={style} />;
+}
+
+function videoCaseAssetKindLabel(kind: VideoCaseAsset["kind"]): string {
+  return kind === "video" ? "视频" : "图片";
+}
+
+function groupedInputAssets(assets: VideoCaseAsset[]): Array<{ kind: VideoCaseAsset["kind"]; assets: VideoCaseAsset[] }> {
+  return (["image", "video"] as const)
+    .map((kind) => ({ kind, assets: assets.filter((asset) => asset.kind === kind) }))
+    .filter((group) => group.assets.length > 0);
 }
 
 function MediaStack({
@@ -599,16 +648,71 @@ function MediaStack({
   role,
   wide,
   variant = "card",
+  onOpen,
 }: {
   item: VideoShowcaseCase;
   role: "input" | "output";
   wide: boolean;
   variant?: "card" | "preview";
+  onOpen?: (preview: VideoPreviewState) => void;
 }) {
   const assets = assetsForRole(item, role);
   const label = role === "input" ? "输入文件" : "输出图";
-  const visibleAssets = assets.slice(0, role === "input" && variant === "card" ? 4 : 1);
-  const hiddenCount = Math.max(0, assets.length - visibleAssets.length);
+  const useGroupedInput = role === "input" && variant === "card";
+  if (useGroupedInput) {
+    const groups = groupedInputAssets(assets);
+    return (
+      <div className="ai-video-media-stack" data-role={role}>
+        <span className="ai-video-media-label">{label}</span>
+        {groups.length ? (
+          <div className="ai-video-input-files">
+            <div className="ai-video-input-files-scroll">
+              {groups.map((group) => (
+                <section className="ai-video-input-section" key={group.kind}>
+                  <div className="ai-video-input-section-title">{videoCaseAssetKindLabel(group.kind)}</div>
+                  <div className="ai-video-input-thumb-grid" data-count={Math.min(group.assets.length, 4)}>
+                    {group.assets.map((asset, index) => (
+                      <div key={`${asset.id}-${index}`} className="ai-video-input-thumb">
+                        {!onOpen ? (
+                          <MediaAsset asset={asset} title={item.title} label={`${videoCaseAssetKindLabel(asset.kind)} ${index + 1}`} />
+                        ) : (
+                          <button
+                            type="button"
+                            className="ai-video-media-open"
+                            onClick={() => onOpen({
+                              url: asset.url,
+                              kind: asset.kind,
+                              title: item.title,
+                              label: `${videoCaseAssetKindLabel(asset.kind)} ${index + 1}`,
+                            })}
+                          >
+                            <MediaAsset
+                              asset={asset}
+                              title={item.title}
+                              label={`${videoCaseAssetKindLabel(asset.kind)} ${index + 1}`}
+                              controls={false}
+                            />
+                          </button>
+                        )}
+                        {asset.kind === "video" ? <span className="ai-video-kind-badge">视频</span> : null}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="ai-video-empty-media">
+            <span>{label}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+  const assetLimit = variant === "preview" ? 24 : role === "input" ? 4 : 1;
+  const visibleAssets = assets.slice(0, assetLimit);
+  const hiddenCount = variant === "preview" ? 0 : Math.max(0, assets.length - visibleAssets.length);
   return (
     <div className={`ai-video-media-stack ${variant === "preview" ? "is-preview" : ""}`} data-role={role}>
       <span className="ai-video-media-label">{label}</span>
@@ -621,7 +725,22 @@ function MediaStack({
         >
           {visibleAssets.map((asset, index) => (
             <div key={`${asset.id}-${index}`} className="ai-video-media-frame">
-              <MediaAsset asset={asset} title={item.title} label={`${label} ${index + 1}`} />
+              {!onOpen ? (
+                <MediaAsset asset={asset} title={item.title} label={`${label} ${index + 1}`} />
+              ) : (
+                <button
+                  type="button"
+                  className="ai-video-media-open"
+                  onClick={() => onOpen({
+                    url: asset.url,
+                    kind: asset.kind,
+                    title: item.title,
+                    label: `${label} ${index + 1}`,
+                  })}
+                >
+                  <MediaAsset asset={asset} title={item.title} label={`${label} ${index + 1}`} controls={false} />
+                </button>
+              )}
               {asset.kind === "video" ? <span className="ai-video-kind-badge">视频</span> : null}
               {hiddenCount && index === visibleAssets.length - 1 ? (
                 <span className="ai-video-more">+{hiddenCount}</span>
@@ -746,10 +865,12 @@ function VideoHistoryAssetGrid({
   refs,
   label,
   onOpen,
+  showActions = false,
 }: {
   refs: string[];
   label: string;
   onOpen: (preview: VideoPreviewState) => void;
+  showActions?: boolean;
 }) {
   if (!refs.length) {
     return <div className="ai-video-history-section-empty">暂无{label}</div>;
@@ -760,19 +881,31 @@ function VideoHistoryAssetGrid({
         const source = mediaAssetSource(ref);
         const kind = isVideoRef(ref) ? "video" : "image";
         const title = `${label} ${index + 1}`;
+        const openPreview = () => onOpen({ url: source, kind, title, label });
         return (
-          <button
+          <figure
             key={`${ref}-${index}`}
-            type="button"
             className="ai-video-history-asset"
-            onClick={() => onOpen({ url: source, kind, title, label })}
           >
-            {kind === "video" ? (
-              <video src={source} muted playsInline preload="metadata" />
-            ) : (
-              <img src={source} alt={title} loading="lazy" />
-            )}
-          </button>
+            <button
+              type="button"
+              className="ai-video-history-asset-preview"
+              aria-label={`预览${title}`}
+              onClick={openPreview}
+            >
+              {kind === "video" ? (
+                <video src={source} muted playsInline preload="metadata" />
+              ) : (
+                <img src={source} alt={title} loading="lazy" />
+              )}
+            </button>
+            {showActions ? (
+              <figcaption className="ai-video-history-asset-actions">
+                <button type="button" onClick={openPreview}>预览</button>
+                <a href={source} download={`bugu-${title}.${kind === "video" ? "mp4" : "png"}`} onClick={(event) => event.stopPropagation()}>下载</a>
+              </figcaption>
+            ) : null}
+          </figure>
         );
       })}
     </div>
@@ -852,7 +985,6 @@ function VideoHistoryDrawer({
                   onClick={() => setSelectedId(entry.id)}
                 >
                   <VideoHistoryThumbGrid refs={historyRecordRefs(entry)} />
-                  <span>{formatHistoryTime(entry.createdAt)}</span>
                 </button>
               ))
             ) : (
@@ -870,7 +1002,6 @@ function VideoHistoryDrawer({
               </div>
               <div className="ai-video-history-operation-row">
                 <button type="button">发送到素材库</button>
-                <button type="button">生成爆款视频</button>
                 <button type="button">局部精修</button>
               </div>
               <section className="ai-video-history-section">
@@ -879,7 +1010,7 @@ function VideoHistoryDrawer({
               </section>
               <section className="ai-video-history-section">
                 <h3>生成结果</h3>
-                <VideoHistoryAssetGrid refs={selectedEntry.outputRefs || []} label="生成结果" onOpen={onOpenMedia} />
+                <VideoHistoryAssetGrid refs={selectedEntry.outputRefs || []} label="生成结果" onOpen={onOpenMedia} showActions />
               </section>
               <section className="ai-video-history-section ai-video-history-prompt-section">
                 <header>
@@ -916,6 +1047,7 @@ function VideoMaterialLibrary({
   activeKind,
   activeActor,
   activeStatus,
+  onBack,
   onKindChange,
   onActorChange,
   onStatusChange,
@@ -929,6 +1061,7 @@ function VideoMaterialLibrary({
   activeKind: VideoMaterialKind;
   activeActor: VideoMaterialActor;
   activeStatus: VideoMaterialStatusFilter;
+  onBack: () => void;
   onKindChange: (kind: VideoMaterialKind) => void;
   onActorChange: (actor: VideoMaterialActor) => void;
   onStatusChange: (status: VideoMaterialStatusFilter) => void;
@@ -951,6 +1084,9 @@ function VideoMaterialLibrary({
       aria-label="视频素材库"
     >
       <header className="ai-video-material-header">
+        <button type="button" className="ai-video-material-back" aria-label="返回视频生成面板" onClick={onBack}>
+          ‹
+        </button>
         <h2>视频素材库</h2>
       </header>
 
@@ -995,28 +1131,32 @@ function VideoMaterialLibrary({
             </button>
           ))}
         </div>
-        <button type="button" className="ai-video-material-action" onClick={onRefresh}>刷新</button>
-        <button type="button" className="ai-video-material-action primary" onClick={onOpenUpload}>新增素材</button>
+        <div className="ai-video-material-actions">
+          <button type="button" className="ai-video-material-action" onClick={onRefresh}>刷新</button>
+          <button type="button" className="ai-video-material-action" onClick={onOpenUpload}>新增素材</button>
+        </div>
       </div>
 
-      {visibleEntries.length ? (
-        <div className="ai-video-material-grid">
-          {visibleEntries.map((entry) => (
-            <VideoMaterialCard
-              key={entry.id}
-              entry={entry}
-              onUse={onUse}
-              onRemove={onRemove}
-              onOpen={onOpen}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="ai-video-material-empty">
-          <span aria-hidden="true" />
-          <p>当前筛选下暂无素材</p>
-        </div>
-      )}
+      <div className="ai-video-material-body">
+        {visibleEntries.length ? (
+          <div className="ai-video-material-grid">
+            {visibleEntries.map((entry) => (
+              <VideoMaterialCard
+                key={entry.id}
+                entry={entry}
+                onUse={onUse}
+                onRemove={onRemove}
+                onOpen={onOpen}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="ai-video-material-empty">
+            <span aria-hidden="true" />
+            <p>当前筛选下暂无素材</p>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -1124,8 +1264,10 @@ function VideoMaterialUploadDialog({
             onDrop={handleDrop}
           >
             <span className="ai-video-material-upload-icon" aria-hidden="true" />
-            <strong>{materialDropText(draft.kind)}</strong>
-            <em>{materialUploadHint(draft.kind)}</em>
+            <div className="ai-video-material-upload-copy">
+              <strong>{materialDropText(draft.kind)}</strong>
+              {draft.kind !== "image" ? <em>{materialUploadHint(draft.kind)}</em> : null}
+            </div>
           </div>
 
           {draft.refs.length ? (
@@ -1169,11 +1311,13 @@ function VideoCaseCard({
   activeFeatureId,
   onPreview,
   onApply,
+  onOpenMedia,
 }: {
   item: VideoShowcaseCase;
   activeFeatureId: VideoShowcaseFeatureId;
   onPreview: (item: VideoShowcaseCase) => void;
   onApply: (item: VideoShowcaseCase) => void;
+  onOpenMedia: (preview: VideoPreviewState) => void;
 }) {
   const wide = activeFeatureId === "omni-video";
   const hasInputAssets = assetsForRole(item, "input").length > 0;
@@ -1184,17 +1328,22 @@ function VideoCaseCard({
         wide ? "is-wide" : "",
         hasInputAssets ? "" : "output-only",
       ].filter(Boolean).join(" ")}>
-        {hasInputAssets ? <MediaStack item={item} role="input" wide={wide} /> : null}
-        <MediaStack item={item} role="output" wide={wide} />
+        {hasInputAssets ? <MediaStack item={item} role="input" wide={wide} onOpen={onOpenMedia} /> : null}
+        <MediaStack item={item} role="output" wide={wide} onOpen={onOpenMedia} />
       </div>
       <div className="ai-video-case-bottom">
         <div className="ai-video-case-meta">
           <strong title={item.title}>{item.title}</strong>
-          <span>{item.industry} · {item.assets.length} 个素材</span>
         </div>
         <div className="ai-video-case-actions">
-          <button type="button" onClick={() => onPreview(item)}>预览</button>
-          <button type="button" className="primary" onClick={() => onApply(item)}>尝试示例</button>
+          <button type="button" onClick={() => onPreview(item)}>
+            <VideoCaseActionIcon name="preview" />
+            <span>预览</span>
+          </button>
+          <button type="button" className="primary" onClick={() => onApply(item)}>
+            <VideoCaseActionIcon name="try" />
+            <span>尝试示例</span>
+          </button>
         </div>
       </div>
     </article>
@@ -1220,10 +1369,10 @@ export function VideoShowcaseModule({
   onClearResult,
   onGenerateVideo,
 }: VideoShowcaseModuleProps) {
-  const [activeFeatureId, setActiveFeatureId] = useState<VideoShowcaseFeatureId>("storyboard");
+  const [activeFeatureId, setActiveFeatureId] = useState<VideoShowcaseFeatureId>(DEFAULT_VIDEO_FEATURE_ID);
   const [activeMainTab, setActiveMainTab] = useState<VideoShowcaseMainTab>("features");
   const [selectedIndustry, setSelectedIndustry] = useState("全部");
-  const [promptDraft, setPromptDraft] = useState(DEFAULT_PROMPTS.storyboard);
+  const [promptDraft, setPromptDraft] = useState(DEFAULT_PROMPTS[DEFAULT_VIDEO_FEATURE_ID]);
   const [storyboardCount, setStoryboardCount] = useState(1);
   const [storyboardRatio, setStoryboardRatio] = useState("3:4");
   const [storyboardQuality, setStoryboardQuality] = useState("2K");
@@ -1248,6 +1397,7 @@ export function VideoShowcaseModule({
   const [materialActor, setMaterialActor] = useState<VideoMaterialActor>("virtual");
   const [materialStatus, setMaterialStatus] = useState<VideoMaterialStatusFilter>("all");
   const [materialUploadDraft, setMaterialUploadDraft] = useState<VideoMaterialUploadDraft | null>(null);
+  const [generationValidationMessage, setGenerationValidationMessage] = useState("");
   const pendingGenerationRef = useRef<HistoryEntry | null>(null);
   const activeFeature = FEATURE_BY_ID.get(activeFeatureId) || VIDEO_FEATURES[0];
 
@@ -1406,8 +1556,14 @@ export function VideoShowcaseModule({
     setExampleVideoRefs(null);
     setExampleAudioRefs(null);
     setSelectedCase(null);
+    setGenerationValidationMessage("");
     const featurePrompt = DEFAULT_PROMPTS[feature.id];
-    setPromptDraft(featurePrompt);
+    setPromptDraft((currentPrompt) => {
+      const current = currentPrompt.trim();
+      if (!current) return featurePrompt;
+      if (DEFAULT_PROMPT_VALUES.has(current)) return featurePrompt;
+      return currentPrompt;
+    });
     appendHistory({
       title: `已切换功能：${feature.title}`,
       detail: featurePrompt.slice(0, 90),
@@ -1417,6 +1573,7 @@ export function VideoShowcaseModule({
 
   function applyCase(item: VideoShowcaseCase): void {
     onClearResult();
+    setGenerationValidationMessage("");
     setSelectedCase(item);
     setActiveFeatureId(item.featureId);
     setActiveMainTab("results");
@@ -1486,6 +1643,19 @@ export function VideoShowcaseModule({
   function startGenerate(): void {
     const prompt = promptDraft.trim();
     if (!prompt) return;
+    if (activeFeatureId === "storyboard" && !activeImageRefs.length) {
+      setGenerationValidationMessage("请先上传图片");
+      return;
+    }
+    if (activeFeatureId === "smart-video" && !activeImageRefs.length) {
+      setGenerationValidationMessage("请先上传图片");
+      return;
+    }
+    if (activeFeatureId === "omni-video" && !activeImageRefs.length && !featureVideoRefs.length) {
+      setGenerationValidationMessage("请先上传图片或视频");
+      return;
+    }
+    setGenerationValidationMessage("");
     onClearResult();
     setActiveMainTab("results");
     setSubmittedGeneration(true);
@@ -1500,16 +1670,19 @@ export function VideoShowcaseModule({
   }
 
   function selectImageUpload(): void {
+    setGenerationValidationMessage("");
     setExampleImageRefs(null);
     onSelectProductImages();
   }
 
   function selectVideoUpload(): void {
+    setGenerationValidationMessage("");
     setExampleVideoRefs(null);
     onSelectVideo();
   }
 
   function selectAudioUpload(): void {
+    setGenerationValidationMessage("");
     setExampleAudioRefs(null);
     onSelectAudio();
   }
@@ -1517,6 +1690,7 @@ export function VideoShowcaseModule({
   function removeImageRef(ref: string): void {
     if (exampleImageRefs !== null) {
       setExampleImageRefs((current) => (current ?? []).filter((item) => item !== ref));
+      onRemoveProductImageRef(ref);
       return;
     }
     onRemoveProductImageRef(ref);
@@ -1525,6 +1699,7 @@ export function VideoShowcaseModule({
   function removeVideoRef(ref: string): void {
     if (exampleVideoRefs !== null) {
       setExampleVideoRefs((current) => (current ?? []).filter((item) => item !== ref));
+      onRemoveVideoAssetRef(ref);
       return;
     }
     onRemoveVideoAssetRef(ref);
@@ -1533,6 +1708,7 @@ export function VideoShowcaseModule({
   function removeAudioRef(ref: string): void {
     if (exampleAudioRefs !== null) {
       setExampleAudioRefs((current) => (current ?? []).filter((item) => item !== ref));
+      onRemoveAudioAssetRef(ref);
       return;
     }
     onRemoveAudioAssetRef(ref);
@@ -1693,7 +1869,7 @@ export function VideoShowcaseModule({
   ].filter((item): item is { id: string; label: string; helper: string; onClick: () => void; enabled: boolean } => Boolean(item));
 
   return (
-    <div className="ai-video-showcase-shell">
+    <div className="ai-video-showcase-shell" data-feature={activeFeatureId}>
       <aside className="ai-video-left">
         <section className="ai-video-panel scene-panel">
           <div className="ai-video-scene-heading">
@@ -1714,7 +1890,7 @@ export function VideoShowcaseModule({
           </button>
         </section>
 
-        <section className="ai-video-panel">
+        <section className="ai-video-panel ai-video-upload-panel">
           <div className="ai-video-upload-grid">
             {uploadButtons.map((item) => (
               <button
@@ -1755,13 +1931,13 @@ export function VideoShowcaseModule({
               onRemove={removeAudioRef}
             />
           ) : null}
-          <p className={activeFeatureId === "storyboard" ? "ai-video-muted" : "ai-video-muted is-warning"}>
-            {activeFeatureId === "storyboard"
-              ? "图片可以上传 1-7 张。"
-              : activeFeatureId === "smart-video"
-                ? "图片可以上传 1-7 张，音频仅支持 1 条，音频控制在 15.1 秒以内。不能直接上传人脸照片，需要通过素材库审核去选择。"
-                : "图片可上传 1-7 张，视频可上传多个，音频仅支持 1 条，且视频音频都需控制在 15.1 秒内。不能直接上传人脸照片，需要通过素材库审核去选择。"}
-          </p>
+          {activeFeatureId !== "storyboard" ? (
+            <p className="ai-video-muted is-warning">
+              {activeFeatureId === "smart-video"
+                ? "图片可以上传 1-7 张，音频仅支持 1 条，音频控制在 15.1 秒以内。 不能直接上传人脸照片，需要通过素材库审核去选择。"
+                : "图片可上传 1-7 张，视频可上传多个，音频仅支持 1 条，且视频音频都需控制在 15.1 秒内。 不能直接上传人脸照片，需要通过素材库审核去选择。"}
+            </p>
+          ) : null}
         </section>
 
         <section className="ai-video-panel ai-video-control-stack">
@@ -1816,7 +1992,7 @@ export function VideoShowcaseModule({
                       <img key={`${url}-${index}`} src={url} alt="" loading="lazy" />
                     ))}
                   </span>
-                  使用素材库中的人脸素材进行报备
+                  上传视频中的人脸素材进行报备
                 </button>
               </div>
               <div className="ai-video-param-row">
@@ -1882,6 +2058,9 @@ export function VideoShowcaseModule({
           >
             开始Ai生成
           </button>
+          {generationValidationMessage ? (
+            <p className="ai-video-validation-message">{generationValidationMessage}</p>
+          ) : null}
           {selectedCase ? (
             <p className="ai-video-muted">当前示例：{selectedCase.title}</p>
           ) : null}
@@ -1895,6 +2074,7 @@ export function VideoShowcaseModule({
             activeKind={materialKind}
             activeActor={materialActor}
             activeStatus={materialStatus}
+            onBack={() => setActiveMainTab("features")}
             onKindChange={(kind) => {
               setMaterialKind(kind);
               setMaterialStatus("all");
@@ -1993,6 +2173,7 @@ export function VideoShowcaseModule({
                         setActiveDialog("preview");
                       }}
                       onApply={applyCase}
+                      onOpenMedia={setSelectedMedia}
                     />
                   ))}
                 </div>
@@ -2020,10 +2201,6 @@ export function VideoShowcaseModule({
                   </div>
                 ) : (
                   <div className="ai-video-empty-result">
-                    <div className="ai-video-empty-result-figure" aria-hidden="true">
-                      <span />
-                      <strong />
-                    </div>
                     <p>{busy && submittedGeneration ? "正在生成中..." : "无生成结果"}</p>
                     {resultMessage ? (
                       <div className={`ai-video-result-message ${mediaResult?.status || "blocked"}`}>
@@ -2094,22 +2271,46 @@ export function VideoShowcaseModule({
         <div className="ai-video-preview-modal" role="presentation" onClick={() => setActiveDialog(null)}>
           <section className="ai-video-preview-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="ai-video-preview-head">
-              <div>
-                <span>{selectedCase.industry}</span>
-                <h2>{selectedCase.title}</h2>
-              </div>
-              <button type="button" onClick={() => setActiveDialog(null)}>关闭</button>
+              <h2>预览</h2>
+              <button type="button" aria-label="关闭预览" onClick={() => setActiveDialog(null)}>×</button>
             </div>
             <div className={[
               "ai-video-preview-compare",
               assetsForRole(selectedCase, "input").length ? "" : "output-only",
             ].filter(Boolean).join(" ")}>
               {assetsForRole(selectedCase, "input").length ? (
-                <MediaStack item={selectedCase} role="input" wide variant="preview" />
+                <MediaStack item={selectedCase} role="input" wide variant="preview" onOpen={setSelectedMedia} />
               ) : null}
-              <MediaStack item={selectedCase} role="output" wide variant="preview" />
+              <MediaStack item={selectedCase} role="output" wide variant="preview" onOpen={setSelectedMedia} />
             </div>
-            <p>{selectedCase.prompt || selectedCase.summary}</p>
+            <section className="ai-video-preview-prompt">
+              <header>
+                <strong>提示词</strong>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(selectedCase.prompt || selectedCase.summary);
+                  }}
+                >
+                  复制
+                </button>
+              </header>
+              <textarea value={selectedCase.prompt || selectedCase.summary} readOnly />
+            </section>
+            <footer className="ai-video-preview-footer">
+              <button type="button" onClick={() => setActiveDialog(null)}>取消</button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  applyCase(selectedCase);
+                  setActiveDialog(null);
+                }}
+              >
+                尝试示例
+              </button>
+              <button type="button" className="primary" onClick={() => setActiveDialog(null)}>确定</button>
+            </footer>
           </section>
         </div>
       ) : null}

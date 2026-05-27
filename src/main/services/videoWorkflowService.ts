@@ -6,7 +6,7 @@ import type {
   VideoStoryboardShot,
 } from '../../shared/types';
 import { VIDEO_ANALYSIS_DIMENSIONS } from '../../shared/videoDimensions';
-import { GenerationLogStore } from './generationLogStore';
+import { GenerationLogStore, type CreateLogInput } from './generationLogStore';
 import { ModelConfigStore } from './modelConfigStore';
 import { TextGenerationService, TextProviderBlockedError } from './textGenerationService';
 
@@ -165,7 +165,15 @@ export class VideoWorkflowService {
     private readonly modelConfig?: ModelConfigStore,
   ) {}
 
-  async analyze(input: VideoBreakdownRequest): Promise<VideoBreakdownResult> {
+  private async persistLog(workspacePath: string, logId: string | undefined, input: CreateLogInput) {
+    if (logId) {
+      const updated = await this.logs.update(workspacePath, logId, input);
+      if (updated) return updated;
+    }
+    return this.logs.append(input);
+  }
+
+  async analyze(input: VideoBreakdownRequest, options?: { logId?: string }): Promise<VideoBreakdownResult> {
     const startedAt = Date.now();
     const dimensions = input.dimensions.length ? input.dimensions : DEFAULT_DIMENSIONS;
     const config = await this.modelConfig?.readView();
@@ -182,7 +190,7 @@ export class VideoWorkflowService {
           dimensions,
         });
         const result = normalizeBreakdownOutput(output, input, dimensions);
-        const log = await this.logs.append({
+        const log = await this.persistLog(input.workspacePath, options?.logId, {
           workspacePath: input.workspacePath,
           kind: 'video-breakdown',
           status: 'succeeded',
@@ -198,7 +206,7 @@ export class VideoWorkflowService {
         return { logId: log.id, ...result };
       } catch (error) {
         const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
-        await this.logs.append({
+        await this.persistLog(input.workspacePath, options?.logId, {
           workspacePath: input.workspacePath,
           kind: 'video-breakdown',
           status: 'failed',
@@ -216,7 +224,7 @@ export class VideoWorkflowService {
     }
 
     const message = '真实视频理解模型未配置：当前不会用模板伪造拆解结果。请先接入支持视频帧/转写分析的生成服务，或人工提供参考视频结构后再生成脚本。';
-    await this.logs.append({
+    await this.persistLog(input.workspacePath, options?.logId, {
       workspacePath: input.workspacePath,
       kind: 'video-breakdown',
       status: 'blocked',
@@ -232,7 +240,7 @@ export class VideoWorkflowService {
     throw new Error(message);
   }
 
-  async generateScript(input: VideoScriptGenerationRequest): Promise<VideoScriptGenerationResult> {
+  async generateScript(input: VideoScriptGenerationRequest, options?: { logId?: string }): Promise<VideoScriptGenerationResult> {
     const startedAt = Date.now();
     const shotCount = Math.min(Math.max(input.shotCount || 4, 3), 12);
     try {
@@ -290,7 +298,7 @@ export class VideoWorkflowService {
         videoPrompt,
         publishCheck: publishCheck.length ? publishCheck : [{ level: 'warning', message: '模型未返回发布检查，请人工复核知识引用和合规表达。' }],
       };
-      const log = await this.logs.append({
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'video-script',
         status: 'succeeded',
@@ -307,7 +315,7 @@ export class VideoWorkflowService {
       return { logId: log.id, ...result };
     } catch (error) {
       const status = error instanceof TextProviderBlockedError ? 'blocked' : 'failed';
-      await this.logs.append({
+      await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'video-script',
         status,

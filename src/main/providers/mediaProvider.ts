@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isImageGenerationProtocol, type ImageGenerationProtocol, type ImageGenerationRequest, type MediaGenerationResult, type VideoCostEstimate, type VideoGenerationRequest } from '../../shared/types';
 import { generateImageAssets } from './imageGenerationProvider';
-import { GenerationLogStore } from '../services/generationLogStore';
+import { GenerationLogStore, type CreateLogInput } from '../services/generationLogStore';
 import { ModelConfigStore } from '../services/modelConfigStore';
 import { getOemRuntimeConfig } from '../services/oemRuntimeConfig';
 import { getWorkspaceAssetDir } from '../services/paths';
@@ -266,7 +266,15 @@ async function postGenericVideo(input: {
 export class MediaProvider {
   constructor(private readonly modelConfig: ModelConfigStore, private readonly logs: GenerationLogStore) {}
 
-  async generateImage(input: ImageGenerationRequest): Promise<MediaGenerationResult> {
+  private async persistLog(workspacePath: string, logId: string | undefined, input: CreateLogInput) {
+    if (logId) {
+      const updated = await this.logs.update(workspacePath, logId, input);
+      if (updated) return updated;
+    }
+    return this.logs.append(input);
+  }
+
+  async generateImage(input: ImageGenerationRequest, options?: { logId?: string }): Promise<MediaGenerationResult> {
     const startedAt = Date.now();
     const config = await this.modelConfig.readView();
     const model = input.params.imageModel || config.imageModels[0];
@@ -275,7 +283,7 @@ export class MediaProvider {
 
     if (!apiKey && config.imageApiKeyStatus === 'requires-reauthorization') {
       const message = '图片 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存图片 API Key 后再生成。';
-      const log = await this.logs.append({
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'image',
         status: 'blocked',
@@ -302,7 +310,7 @@ export class MediaProvider {
 
     const imageProviderEnabled = config.imageProvider === 'openai-responses' || Boolean(apiKey);
     if (!imageProviderEnabled || !apiKey) {
-      const log = await this.logs.append({
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'image',
         status: 'blocked',
@@ -337,7 +345,7 @@ export class MediaProvider {
       });
       if (result.assetRefs.length === 0) throw new Error(`图片生成服务未按 ${protocol} 协议返回可用图片。`);
 
-      const log = await this.logs.append({
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'image',
         status: 'succeeded',
@@ -362,7 +370,7 @@ export class MediaProvider {
       };
     } catch (error) {
       const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
-      const log = await this.logs.append({
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'image',
         status: 'failed',
@@ -383,7 +391,7 @@ export class MediaProvider {
     }
   }
 
-  async generateVideo(input: VideoGenerationRequest): Promise<MediaGenerationResult> {
+  async generateVideo(input: VideoGenerationRequest, options?: { logId?: string }): Promise<MediaGenerationResult> {
     const startedAt = Date.now();
     const config = await this.modelConfig.readView();
     const model = input.params.videoModel || config.videoModel;
@@ -392,7 +400,7 @@ export class MediaProvider {
 
     if (!apiKey && config.videoApiKeyStatus === 'requires-reauthorization') {
       const message = '视频 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存视频 API Key 后再生成。';
-      const log = await this.logs.append({
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'video',
         status: 'blocked',
@@ -429,7 +437,7 @@ export class MediaProvider {
           if (/^https?:\/\//i.test(url)) assetRefs.push(await downloadVideoAsset(input, url, index));
         }
         if (assetRefs.length > 0) {
-          const log = await this.logs.append({
+          const log = await this.persistLog(input.workspacePath, options?.logId, {
             workspacePath: input.workspacePath,
             kind: 'video',
             status: 'succeeded',
@@ -454,7 +462,7 @@ export class MediaProvider {
         }
 
         const jobArtifact = await writeProviderJobArtifact(input, model, providerResponse);
-        const log = await this.logs.append({
+        const log = await this.persistLog(input.workspacePath, options?.logId, {
           workspacePath: input.workspacePath,
           kind: 'video',
           status: 'queued',
@@ -479,7 +487,7 @@ export class MediaProvider {
       } catch (error) {
         const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
         const meta = videoGenerationMeta(input, model, config.videoProvider);
-        const log = await this.logs.append({
+        const log = await this.persistLog(input.workspacePath, options?.logId, {
           workspacePath: input.workspacePath,
           kind: 'video',
           status: 'failed',
@@ -500,7 +508,7 @@ export class MediaProvider {
 
     const meta = videoGenerationMeta(input, model, config.videoProvider);
     const assetRefs = await writeVideoQueueArtifacts(input, model, meta.costEstimate);
-    const log = await this.logs.append({
+    const log = await this.persistLog(input.workspacePath, options?.logId, {
       workspacePath: input.workspacePath,
       kind: 'video',
       status: 'blocked',

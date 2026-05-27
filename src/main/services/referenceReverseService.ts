@@ -7,7 +7,7 @@ import type {
   ReferenceReverseRequest,
   ReferenceReverseResult,
 } from '../../shared/types';
-import { GenerationLogStore } from './generationLogStore';
+import { GenerationLogStore, type CreateLogInput } from './generationLogStore';
 import { InputSourceStore } from './inputSourceStore';
 import { ModelConfigStore } from './modelConfigStore';
 import { getWorkspaceAssetDir } from './paths';
@@ -153,7 +153,15 @@ export class ReferenceReverseService {
     private readonly modelConfig?: ModelConfigStore,
   ) {}
 
-  async generate(input: ReferenceReverseRequest): Promise<ReferenceReverseResult> {
+  private async persistLog(workspacePath: string, logId: string | undefined, input: CreateLogInput) {
+    if (logId) {
+      const updated = await this.logs.update(workspacePath, logId, input);
+      if (updated) return updated;
+    }
+    return this.logs.append(input);
+  }
+
+  async generate(input: ReferenceReverseRequest, options?: { logId?: string }): Promise<ReferenceReverseResult> {
     const startedAt = Date.now();
     if (!input.userIntent.trim()) throw new Error('对标图反推需要先填写用户意图。');
     if (input.referenceSourceIds.length === 0) throw new Error('对标图反推至少需要 1 个参考图 / 参考视频输入源。');
@@ -172,7 +180,7 @@ export class ReferenceReverseService {
 
     if (!endpoint) {
       const message = '真实视觉理解服务未配置：对标图反推不会用普通文字模板伪造结果。请配置 CONTENT_STUDIO_VISION_ENDPOINT 后重试。';
-      await this.logs.append({
+      await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
         kind: 'reference-reverse',
@@ -214,7 +222,7 @@ export class ReferenceReverseService {
         model,
         status: 'draft',
       });
-      const log = await this.logs.append({
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
         kind: 'reference-reverse',
@@ -238,7 +246,7 @@ export class ReferenceReverseService {
     } catch (error) {
       if (error instanceof TextProviderBlockedError) throw error;
       const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
-      await this.logs.append({
+      await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
         kind: 'reference-reverse',

@@ -1,5 +1,5 @@
 import type { ArticleGenerationRequest, ArticleGenerationResult } from '../../shared/types';
-import { GenerationLogStore } from './generationLogStore';
+import { GenerationLogStore, type CreateLogInput } from './generationLogStore';
 import { TextGenerationService, TextProviderBlockedError } from './textGenerationService';
 
 interface ArticleModelOutput {
@@ -73,7 +73,15 @@ const ARTICLE_SCHEMA = {
 export class ArticleGenerationService {
   constructor(private readonly logs: GenerationLogStore, private readonly text: TextGenerationService) {}
 
-  async generate(input: ArticleGenerationRequest): Promise<ArticleGenerationResult> {
+  private async persistLog(workspacePath: string, logId: string | undefined, input: CreateLogInput) {
+    if (logId) {
+      const updated = await this.logs.update(workspacePath, logId, input);
+      if (updated) return updated;
+    }
+    return this.logs.append(input);
+  }
+
+  async generate(input: ArticleGenerationRequest, options?: { logId?: string }): Promise<ArticleGenerationResult> {
     const startedAt = Date.now();
     const titleSeed = input.topic || '产品内容选题';
     try {
@@ -124,7 +132,7 @@ export class ArticleGenerationService {
         markdown,
         publishCheck: publishCheck.length ? publishCheck : [{ level: 'warning', message: '模型未返回发布检查，请人工复核知识引用和合规表达。' }],
       };
-      const log = await this.logs.append({
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'article',
         status: 'succeeded',
@@ -141,7 +149,7 @@ export class ArticleGenerationService {
       return { logId: log.id, ...result };
     } catch (error) {
       const status = error instanceof TextProviderBlockedError ? 'blocked' : 'failed';
-      await this.logs.append({
+      await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'article',
         status,

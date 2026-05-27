@@ -12,6 +12,7 @@ import type {
   SaveSettingsInput,
   SceneCard,
   SkillSelectionView,
+  SubmitGenerationTaskInput,
   VideoGenerationRequest,
 } from "../../shared/types";
 
@@ -57,7 +58,7 @@ const settings: AppSettingsView = {
 const updateState: AutoUpdateState = {
   enabled: false,
   status: "idle",
-  currentVersion: "0.12.0",
+  currentVersion: "0.14.0",
   hasUpdate: false,
 };
 
@@ -100,6 +101,21 @@ function generationResult(kind: "image" | "video", refs: string[]): MediaGenerat
     status: "succeeded",
     message: "浏览器开发模式已模拟生成结果；Electron 正式运行时会调用真实主进程服务。",
     assetRefs: refs,
+  };
+}
+
+function generationTask(input: SubmitGenerationTaskInput) {
+  const createdAt = new Date().toISOString();
+  return {
+    id: `browser-dev-task-${Date.now()}`,
+    workspacePath: input.input.workspacePath,
+    logId: `browser-dev-${input.kind}-${Date.now()}`,
+    kind: input.kind,
+    status: "queued" as const,
+    title: `${input.kind} 浏览器开发任务`,
+    message: "浏览器开发模式已模拟提交后台生成任务。",
+    createdAt,
+    updatedAt: createdAt,
   };
 }
 
@@ -436,6 +452,9 @@ function createDevBridge(): ContentStudioApi {
     importImageSkillFromFile: async () => null,
     generateVideo: async (input: VideoGenerationRequest) =>
       generationResult("video", [...(input.imageAssetRefs || []), ...(input.videoAssetRefs || [])]),
+    submitGenerationTask: async (input: SubmitGenerationTaskInput) => generationTask(input),
+    listGenerationTasks: async () => [],
+    onGenerationTaskEvent: () => () => undefined,
 
     runTask: async () => ({ taskId: `browser-dev-task-${Date.now()}` }),
     cancelTask: async () => true,

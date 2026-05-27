@@ -66,6 +66,10 @@
   gap: 6px;
 }
 
+.image-upload-panel header .image-upload-title-bar {
+  min-width: 0;
+}
+
 .image-upload-panel.product header strong {
   color: #be185d;
 }
@@ -103,9 +107,31 @@
   line-height: 1.2;
 }
 
+.image-upload-title-remove {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid color-mix(in srgb, var(--danger, #dc2626) 28%, var(--line));
+  border-radius: 999px;
+  color: #ffffff;
+  background: color-mix(in srgb, var(--danger, #dc2626) 88%, #111827);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.16);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .image-upload-clear:hover {
   border-color: color-mix(in srgb, var(--danger, #dc2626) 42%, var(--line));
   background: color-mix(in srgb, var(--danger, #dc2626) 8%, #ffffff);
+}
+
+.image-upload-title-remove:hover,
+.image-upload-title-remove:focus-visible {
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 58%, var(--line));
+  background: #dc2626;
 }
 
 .image-drop-zone {
@@ -164,6 +190,10 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.image-upload-panel.product .image-upload-preview-grid[data-count='1'] {
+  max-height: min(420px, 48vh);
+}
+
 .image-upload-preview-item {
   position: relative;
   min-width: 0;
@@ -202,6 +232,8 @@
 }
 
 .image-upload-preview-zoom {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   height: 100%;
@@ -225,25 +257,32 @@
 
 .image-upload-remove {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid rgba(220, 38, 38, 0.24);
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: 999px;
-  color: #dc2626;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
-  font-size: 16px;
+  color: #ffffff;
+  background: rgba(24, 24, 27, 0.76);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.2);
+  font-size: 18px;
   font-weight: 900;
   line-height: 1;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
 }
 
-.image-upload-remove:hover {
-  border-color: rgba(220, 38, 38, 0.5);
-  background: #fee2e2;
+.image-upload-remove:hover,
+.image-upload-remove:focus-visible {
+  border-color: rgba(255, 255, 255, 0.82);
+  background: #dc2626;
+  transform: translateY(-1px);
 }
 
 .image-upload-more {

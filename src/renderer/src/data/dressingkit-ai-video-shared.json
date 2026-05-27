@@ -2683,8 +2683,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-225/input-1-204987749686156083408c97f7514d740a68a4f07ee89f53c1c.png",
       "caption": "分镜图 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 515,
+      "height": 860,
       "mimeType": "image/png"
     },
     {
@@ -2692,8 +2692,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-225/output-1-2049877513731051521f6bfb888345a4f6e9dd177915a8bacd6.png",
       "caption": "分镜图 输出图 1",
-      "width": 0,
-      "height": 0,
+      "width": 690,
+      "height": 921,
       "mimeType": "image/png"
     },
     {
@@ -2701,8 +2701,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-247/input-1-2052665321839398913c4fd25e327424a4b8544005a3b92108a.jpg",
       "caption": "沙发 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1079,
+      "height": 1274,
       "mimeType": "image/jpeg"
     },
     {
@@ -2710,8 +2710,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-247/output-1-2052665338935382017166c6a475d874a00afab9c158afd1ee8.png",
       "caption": "沙发 输出图 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2719,8 +2719,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-248/input-1-2052666135517597697b891ecb8844a4760b5ce7367405acaf1.jpg",
       "caption": "耳环 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1079,
+      "height": 1218,
       "mimeType": "image/jpeg"
     },
     {
@@ -2728,8 +2728,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-248/output-1-20526661561451847698500c8b7a1b54cfb8e98f5d1730efd67.png",
       "caption": "耳环 输出图 1",
-      "width": 0,
-      "height": 0,
+      "width": 1536,
+      "height": 2752,
       "mimeType": "image/jpeg"
     },
     {
@@ -2737,8 +2737,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-254/input-1-20527057917098106906046d6b042b247ae9b3e5c834c0c2e4c.jpg",
       "caption": "羽毛球拍 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 810,
+      "height": 1084,
       "mimeType": "image/jpeg"
     },
     {
@@ -2746,8 +2746,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-254/input-2-20527058053832417293eb1c59aa0034950af44869c21e13293.jpg",
       "caption": "羽毛球拍 输入文件 2",
-      "width": 0,
-      "height": 0,
+      "width": 1079,
+      "height": 1368,
       "mimeType": "image/jpeg"
     },
     {
@@ -2755,8 +2755,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-254/output-1-205270582241211596907eebecf33244d67b802d6979d4a8d01.png",
       "caption": "羽毛球拍 输出图 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2764,8 +2764,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-255/input-1-205294112716567756965b4b91e4b4742a48b9c9a469cf85ae2.png",
       "caption": "香水 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 596,
+      "height": 1005,
       "mimeType": "image/png"
     },
     {
@@ -2773,8 +2773,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-255/output-1-20529411422903377937220f60fd624420e94782579c5114dce.png",
       "caption": "香水 输出图 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2782,8 +2782,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-256/input-1-2052944656437612545d478ccce17c34c639d20730de018e318.jpg",
       "caption": "miumiu 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 870,
+      "height": 1325,
       "mimeType": "image/jpeg"
     },
     {
@@ -2791,8 +2791,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-256/output-1-2052944412400422913254439b1c7bc47d5b5389eff4048785e.png",
       "caption": "miumiu 输出图 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2800,8 +2800,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-287/input-1-2057331782134534146119bead325864d608f59f608449fee0b.jpg",
       "caption": "手表 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1066,
+      "height": 1515,
       "mimeType": "image/jpeg"
     },
     {
@@ -2809,8 +2809,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-287/output-1-2057332279528656897b2df7ee94ada42fe84e56831626eab6c.png",
       "caption": "手表 输出图 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2818,8 +2818,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-288/input-1-2057332761307385857b4895738980a4a9ab580f74eb3f214f0.png",
       "caption": "漫剧大片 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/png"
     },
     {
@@ -2827,8 +2827,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-288/output-1-2057332850495066113197cd67011824b228d0e3dc26a6876d2.png",
       "caption": "漫剧大片 输出图 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2836,8 +2836,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-294/input-1-205738818918574080102cf8d1f12984870b7674804e0c72855.png",
       "caption": "孩子-真人漫剧 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/png"
     },
     {
@@ -2845,8 +2845,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-90-294/output-1-20573880613601320975d4c766cfefa4059abe8948eb8f2fca5.png",
       "caption": "孩子-真人漫剧 输出图 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2854,8 +2854,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-199/input-1-204984427194247168174eed60bacd542e488406f6c1ebad060.png",
       "caption": "带货视频 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2863,8 +2863,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-199/output-1-204984429296851763350d000c28a8e418b9bfa21a5e9b8a728.mp4",
       "caption": "带货视频 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -2872,8 +2872,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-233/input-1-205007599493238374657892dd2a20f4d8b9ca4d910b2999087.png",
       "caption": "保健品带货视频 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2881,8 +2881,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-233/output-1-20500760229000028183b32990ce595417ab89c50b54ac2d67f.mp4",
       "caption": "保健品带货视频 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 1080,
+      "height": 1920,
       "mimeType": "video/mp4"
     },
     {
@@ -2890,8 +2890,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-234/input-1-205187034764437504216d3817909474aa3a00ef2bda762b164.png",
       "caption": "Hello Kitty便携风扇 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2899,8 +2899,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-234/output-1-20518703744627548185a58dfb8f13146b1b1fb3e528f12855a.mp4",
       "caption": "Hello Kitty便携风扇 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -2908,8 +2908,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-235/input-1-2051871308714610689e509e854019a48c5a22f8ed905938984.png",
       "caption": "耳环 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1536,
+      "height": 2752,
       "mimeType": "image/jpeg"
     },
     {
@@ -2917,8 +2917,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-235/output-1-20518713193303941147e970fcaaef44e49a8b939a70e529364.mp4",
       "caption": "耳环 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -2926,8 +2926,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-236/output-1-2051872255276748801d456e00b9a294a2a87eacb1612fd3bb1.mp4",
       "caption": "男士香薰 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -2935,8 +2935,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-241/input-1-2052608550257037314ef84faa66daf4fa9b905f202644ab8c9.png",
       "caption": "沙发 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2944,8 +2944,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-241/output-1-205260856390949683355e0755280a447b2b6538d6b8c3180e5.mp4",
       "caption": "沙发 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -2953,8 +2953,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-242/input-1-205260895494026444975b6cf80573c457997abf5e86af4b13c.jpg",
       "caption": "对镜自拍 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1080,
+      "height": 1560,
       "mimeType": "image/jpeg"
     },
     {
@@ -2962,8 +2962,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-242/output-1-20526089703627202573adee0a4c51542b6bbfe9e1618d0ef85.mp4",
       "caption": "对镜自拍 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 960,
       "mimeType": "video/mp4"
     },
     {
@@ -2971,8 +2971,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-243/input-1-20526093569391370268d24ebc5fbcb43bf9886831976af0c3a.png",
       "caption": "包包 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2980,8 +2980,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-243/output-1-205260937190441369879becbe69937424ab13ee69b3d8cb3a9.mp4",
       "caption": "包包 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -2989,8 +2989,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-244/input-1-205260966214605619446da990515c24b6088343d9df320b27e.png",
       "caption": "漱口杯带货 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -2998,8 +2998,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-244/output-1-2052609678600310785ed4f96694f2b413bb0cec946cc8369c0.mp4",
       "caption": "漱口杯带货 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3007,8 +3007,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-245/input-1-20526099846964224028c34192ec2ab472c9e3ed15dcc175ec3.png",
       "caption": "腮红带货 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3016,8 +3016,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-245/output-1-2052610000441839617f8ab33571c18431792a1f28e5168e89e.mp4",
       "caption": "腮红带货 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3025,8 +3025,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-249/input-1-2052702026483109889b852e67a8fae4b94a613edd4d55a8c8a.png",
       "caption": "香水 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 596,
+      "height": 1005,
       "mimeType": "image/png"
     },
     {
@@ -3034,8 +3034,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-249/output-1-205270203817682944182b1915ea77b431393548a5349633dc9.mp4",
       "caption": "香水 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3043,8 +3043,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-250/input-1-2052702614629388289b92a681f42684d1097bd3a8dea050905.png",
       "caption": "羽毛球拍 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3052,8 +3052,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-250/output-1-2052703193510449153580fa99846a54d75aa811401b87f5fce.mp4",
       "caption": "羽毛球拍 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3061,8 +3061,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-251/input-1-2052703927014526978c5e4ca626176496cb7bed8f0d49d7ad4.png",
       "caption": "手表 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3070,8 +3070,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-251/output-1-2052705406756589569167d0ff0bc9c4ccbbb25c9307e8cbd32.mp4",
       "caption": "手表 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 960,
       "mimeType": "video/mp4"
     },
     {
@@ -3079,8 +3079,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-252/input-1-20527046031279431693470318cb97d415f87dc777924e17c3a.png",
       "caption": "miumiu服装广告大片 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3088,8 +3088,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-252/output-1-20527046407089070091717798614d54473bdcea5adddf8f333.mp4",
       "caption": "miumiu服装广告大片 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3097,8 +3097,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-253/input-1-20527048212317511709c897343483d4a5792ea94256cefc09c.png",
       "caption": "微醺 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3106,8 +3106,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-253/output-1-2052704838050910210f030dafbf48043e8b515a79ab2ee2769.mp4",
       "caption": "微醺 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3115,8 +3115,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-257/input-1-20530462239961948175535e91fc7604f2c87f41c11fc39b05f.jpg",
       "caption": "汽车 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1080,
+      "height": 723,
       "mimeType": "image/jpeg"
     },
     {
@@ -3124,8 +3124,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-257/output-1-205304626136324915329f84bba04ed46829459906791cc0e3b.mp4",
       "caption": "汽车 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 1280,
+      "height": 720,
       "mimeType": "video/mp4"
     },
     {
@@ -3133,8 +3133,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-258/input-1-20530466735291146269ce144b394e04938ad262f284d9ccca3.png",
       "caption": "床-影视 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 714,
+      "height": 765,
       "mimeType": "image/png"
     },
     {
@@ -3142,8 +3142,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-258/output-1-20530466964845404183fc5e11cb7f944fdb251fb687154cdbe.mp4",
       "caption": "床-影视 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 960,
+      "height": 960,
       "mimeType": "video/mp4"
     },
     {
@@ -3151,8 +3151,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-259/input-1-2053047143333105665e1f85905208446a98093be16877f5e8e.png",
       "caption": "洗衣液 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3160,8 +3160,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-259/output-1-20530471639229440013ea070b3524d4a27bd1d2daa84525293.mp4",
       "caption": "洗衣液 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3169,8 +3169,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-260/input-1-20530475474375188497de19e1b3dd9447dacd0615d069d1933.png",
       "caption": "饺子 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3178,8 +3178,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-260/output-1-20530478417937735695f567e52f6364b4494f29c63a1d608f0.mp4",
       "caption": "饺子 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3187,8 +3187,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-261/output-1-20530480613865594904885c0b937fc463a96b15b1f9322e87a.mp4",
       "caption": "敦煌-动画 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3196,8 +3196,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-262/output-1-205309333937219584115b950379f4149ed9cba1bbf500f9ea2.mp4",
       "caption": "北京-文旅宣传片 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 1280,
+      "height": 720,
       "mimeType": "video/mp4"
     },
     {
@@ -3205,8 +3205,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-267/input-1-2054135386141102082c4548c390db1464fbc19ffb8c1ff4de3.png",
       "caption": "带货视频-上衣 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 639,
+      "height": 769,
       "mimeType": "image/png"
     },
     {
@@ -3214,8 +3214,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-267/input-2-2054135406978404354771fd0094d104b4abc84b04caab01925.png",
       "caption": "带货视频-上衣 输入文件 2",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3223,8 +3223,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-267/output-1-205413515377666048269230b377c5c4c27b830b612b98e7d93.mp4",
       "caption": "带货视频-上衣 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 960,
       "mimeType": "video/mp4"
     },
     {
@@ -3232,8 +3232,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-268/input-1-20541366729829294105d22adb6a4364082a2831d7d6ca0f9e0.png",
       "caption": "带货视频-防晒衣 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 528,
+      "height": 722,
       "mimeType": "image/png"
     },
     {
@@ -3241,8 +3241,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-268/output-1-2054136691358175234eef26cc21b5d4f94b49f1e1265a839ab.mp4",
       "caption": "带货视频-防晒衣 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3250,8 +3250,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-1-2054137283468070913909e3d7181fe4e8a88e560036af3ebba.png",
       "caption": "跳舞卡点换装 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 341,
+      "height": 643,
       "mimeType": "image/png"
     },
     {
@@ -3259,8 +3259,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-2-2054137297854533633179ec0ee9f9c44599e262a471523c32e.png",
       "caption": "跳舞卡点换装 输入文件 2",
-      "width": 0,
-      "height": 0,
+      "width": 330,
+      "height": 494,
       "mimeType": "image/png"
     },
     {
@@ -3268,8 +3268,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-3-20541373205792727054485176a7b804628af402f25f86b228d.png",
       "caption": "跳舞卡点换装 输入文件 3",
-      "width": 0,
-      "height": 0,
+      "width": 338,
+      "height": 453,
       "mimeType": "image/png"
     },
     {
@@ -3277,8 +3277,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-4-2054137339017433089478180ae72c3483fa1473a09bd7daba9.png",
       "caption": "跳舞卡点换装 输入文件 4",
-      "width": 0,
-      "height": 0,
+      "width": 529,
+      "height": 687,
       "mimeType": "image/png"
     },
     {
@@ -3286,8 +3286,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/input-5-20541373607187619852124a92beffa4d7e91a4a1477fd1c96a.png",
       "caption": "跳舞卡点换装 输入文件 5",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3295,8 +3295,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-269/output-1-205413704510996889759eed39281c749b4824feb869ab5c097.mp4",
       "caption": "跳舞卡点换装 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3304,8 +3304,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-270/input-1-20541376896570531866ed65ce8c2184be49287fdc05741536e.png",
       "caption": "服装大片1 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3313,8 +3313,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-270/output-1-2054137552905965569972c25f5051b4433b16998cbf044e6fb.mp4",
       "caption": "服装大片1 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3322,8 +3322,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-271/input-1-205413836560269721751879edb0c5844bc8dc672a251a0f159.png",
       "caption": "服装大片2 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3331,8 +3331,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-271/output-1-2054138198019280898f6e85c82c1c44674a305bb141b7e1ae0.mp4",
       "caption": "服装大片2 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3340,8 +3340,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-273/input-1-2054875219167809538fb1e86cd6c904c0db077a0c98e7cf0a5.png",
       "caption": "影视-小孩与小狗 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3349,8 +3349,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-273/output-1-2054875240541982722e16d85ae2e8f4a2eaad1061d8a67ad63.mp4",
       "caption": "影视-小孩与小狗 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 1280,
+      "height": 720,
       "mimeType": "video/mp4"
     },
     {
@@ -3358,8 +3358,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-274/input-1-2054875594893561857fb3c228b245540c9b8e3fb46bc6a4b55.jpg",
       "caption": "影视-闺房心事 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1435,
+      "height": 1280,
       "mimeType": "image/jpeg"
     },
     {
@@ -3367,8 +3367,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-274/output-1-205487570156729549036efea35ea9f4233844b471e8aac407e.mp4",
       "caption": "影视-闺房心事 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 1280,
+      "height": 720,
       "mimeType": "video/mp4"
     },
     {
@@ -3376,8 +3376,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-275/input-1-2054876046016122881d31132002b614d70aa32cc0c6305902a.png",
       "caption": "书卷 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3385,8 +3385,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-275/output-1-2054876076751982594fe18fe03439147f3b69acc198a52b942.mp4",
       "caption": "书卷 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 1280,
+      "height": 720,
       "mimeType": "video/mp4"
     },
     {
@@ -3394,8 +3394,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-276/input-1-20548764603546378256ec274cf22f64ec7b30264f057d9e0dd.png",
       "caption": "凤凰神女 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3403,8 +3403,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-276/output-1-205487643164462694573c436ccdfcc41b6b77eea0ae423c627.mp4",
       "caption": "凤凰神女 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 834,
+      "height": 1112,
       "mimeType": "video/mp4"
     },
     {
@@ -3412,8 +3412,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-277/input-1-2054876787581652994643a8c3752c54ce1a35632a3e0d0207a.jpg",
       "caption": "漫剧-对话 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1416,
+      "height": 1280,
       "mimeType": "image/jpeg"
     },
     {
@@ -3421,8 +3421,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-277/output-1-2054876893705932802f88707ea390040848f5d9ec65e8ce785.mp4",
       "caption": "漫剧-对话 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 1280,
+      "height": 720,
       "mimeType": "video/mp4"
     },
     {
@@ -3430,8 +3430,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-280/input-1-20562973502713405458f94b17183c6493c92aa914be2c136ef.jpg",
       "caption": "多功能拖把-TVC广告 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1080,
+      "height": 1443,
       "mimeType": "image/jpeg"
     },
     {
@@ -3439,8 +3439,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-280/output-1-20562973735623106578defe159b5694500b7200c2606314947.mp4",
       "caption": "多功能拖把-TVC广告 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3448,8 +3448,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-281/input-1-2056297760046452737052b63c2dc0147bf9fcda14bfe01701f.jpg",
       "caption": "拖把-UGC种草 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1080,
+      "height": 1443,
       "mimeType": "image/jpeg"
     },
     {
@@ -3457,8 +3457,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-281/output-1-205629777976387584167b6cb3ec1814b44a90a502c3b0a5b10.mp4",
       "caption": "拖把-UGC种草 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3466,8 +3466,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-282/input-1-205629816253186457773dc44684bd54631bc530a36f0aec436.jpg",
       "caption": "加入模特-商品广告 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1080,
+      "height": 1443,
       "mimeType": "image/jpeg"
     },
     {
@@ -3475,8 +3475,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-282/input-2-2056299834691817473d03357897aa7410591e9d9702768466d.png",
       "caption": "加入模特-商品广告 输入文件 2",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3484,8 +3484,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-282/output-1-2056298466455326721f84edac92638483c9ac6a52a472980f7.mp4",
       "caption": "加入模特-商品广告 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3493,8 +3493,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-283/input-1-2056300497073082369408657986c9e46f0966b046c0311c011.jpg",
       "caption": "用户口播种草-鼠标 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1080,
+      "height": 1302,
       "mimeType": "image/jpeg"
     },
     {
@@ -3502,8 +3502,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-283/input-2-2056300517058940930bf6d4d7245074396b577c8fe82f0cb77.jpg",
       "caption": "用户口播种草-鼠标 输入文件 2",
-      "width": 0,
-      "height": 0,
+      "width": 1536,
+      "height": 2752,
       "mimeType": "image/jpeg"
     },
     {
@@ -3511,8 +3511,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-283/output-1-2056300475191398401f3adcb4919014252bdbf9c40753a7ebe.mp4",
       "caption": "用户口播种草-鼠标 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3520,8 +3520,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-284/input-1-205630096812697600202db0064cc1849a19ec0e87791ba02dd.jpg",
       "caption": "产品广告大片-无人机 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1079,
+      "height": 904,
       "mimeType": "image/jpeg"
     },
     {
@@ -3529,8 +3529,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-284/output-1-205630098289931468926e3b3535c7346c28fabb8322ed4a0fa.mp4",
       "caption": "产品广告大片-无人机 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3538,8 +3538,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-296/input-1-20577570697877954584fb0c999d41c44948517fcb8f55d2836.png",
       "caption": "产品大片 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/png"
     },
     {
@@ -3547,8 +3547,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-296/output-1-20577570829830758415c97278c83ba4f059500089ee5d2c92f.mp4",
       "caption": "产品大片 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3556,8 +3556,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-297/input-1-2057757357483495425e965287210994a94a15bfc3213a20dc2.png",
       "caption": "产品广告 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3565,8 +3565,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-297/output-1-205775726866071961816fc950253064659ab97eff5eeaab6d1.mp4",
       "caption": "产品广告 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3574,8 +3574,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-298/input-1-2057757669334192129b10b28d8921f415fa0d824821b3f3ab0.jpg",
       "caption": "动画片 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 1792,
+      "height": 2400,
       "mimeType": "image/jpeg"
     },
     {
@@ -3583,8 +3583,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-130-298/output-1-20577575056137297948b9989fe81004384b59306d54ac1b881.mp4",
       "caption": "动画片 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 1280,
+      "height": 720,
       "mimeType": "video/mp4"
     },
     {
@@ -3592,8 +3592,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-278/input-1-2056230214307942401c17fad70105e4ac7bc5e6c87500fe7ff.png",
       "caption": "爆款复刻-拖把 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 407,
+      "height": 537,
       "mimeType": "image/png"
     },
     {
@@ -3601,8 +3601,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-278/input-2-20562302322092318737607a7d00b294165a98ed8e04b53cd40.jpg",
       "caption": "爆款复刻-拖把 输入文件 2",
-      "width": 0,
-      "height": 0,
+      "width": 1080,
+      "height": 1443,
       "mimeType": "image/jpeg"
     },
     {
@@ -3610,8 +3610,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-278/input-3-2056230310114234370ba26d7af29cf41ec90f7ee8a95b22a79.mp4",
       "caption": "爆款复刻-拖把 输入文件 3",
-      "width": 0,
-      "height": 0,
+      "width": 576,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3619,8 +3619,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-278/output-1-2056230278321410049ae6f617a645e41feae66062631adeeaa.mp4",
       "caption": "爆款复刻-拖把 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3628,8 +3628,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-279/input-1-2056230827766845442ee96d2b6b1ec4acaa32bfd057564377d.png",
       "caption": "爆款复刻-换模特与服装 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 412,
+      "height": 659,
       "mimeType": "image/png"
     },
     {
@@ -3637,8 +3637,8 @@
       "kind": "image",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-279/input-2-20562308741558476827f52969c26304161b1de9f7a7d889e77.jpg",
       "caption": "爆款复刻-换模特与服装 输入文件 2",
-      "width": 0,
-      "height": 0,
+      "width": 1280,
+      "height": 1715,
       "mimeType": "image/jpeg"
     },
     {
@@ -3646,8 +3646,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-279/input-3-20562324232758927384d46e9893dd746f4bef229b694b0d281.mp4",
       "caption": "爆款复刻-换模特与服装 输入文件 3",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3655,8 +3655,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-279/output-1-2056231895452094466b23495ccd007401d9780a7d50d6d02f0.mp4",
       "caption": "爆款复刻-换模特与服装 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     },
     {
@@ -3664,8 +3664,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-299/input-1-2057757798132879362ad78f47c99284f0fbda040a2857e14c1.mp4",
       "caption": "吃播 输入文件 1",
-      "width": 0,
-      "height": 0,
+      "width": 876,
+      "height": 1920,
       "mimeType": "video/mp4"
     },
     {
@@ -3673,8 +3673,8 @@
       "kind": "video",
       "publicUrl": "https://assets.bugu.run/oem/shared/ai-video-showcase/case-dressingkit-video-134-299/output-1-20577578152372510746e31359e3f5b43a98ced8dd2aaf6ec52.mp4",
       "caption": "吃播 输出视频 1",
-      "width": 0,
-      "height": 0,
+      "width": 720,
+      "height": 1280,
       "mimeType": "video/mp4"
     }
   ],
