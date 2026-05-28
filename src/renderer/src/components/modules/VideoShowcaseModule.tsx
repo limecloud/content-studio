@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } 
 import type {
   AssetFileKind,
   BuguAuthState,
+  GenerationLogEntry,
   MediaGenerationResult,
   OemPublicAsset,
   OemPublicCase,
@@ -21,7 +22,7 @@ type VideoMaterialKind = "image" | "video" | "audio";
 type VideoMaterialActor = "virtual" | "real";
 type VideoMaterialStatus = "reported" | "reviewing" | "rejected";
 type VideoMaterialStatusFilter = "all" | VideoMaterialStatus;
-type VideoPreviewState = { url: string; kind: "image" | "video"; title: string; label: string };
+type VideoPreviewState = { url: string; kind: "image" | "video" | "artifact"; title: string; label: string };
 
 interface VideoShowcaseModuleProps {
   busy: boolean;
@@ -31,6 +32,7 @@ interface VideoShowcaseModuleProps {
   audioAssetRefs: string[];
   mediaResult: MediaGenerationResult | null;
   authState: BuguAuthState | null;
+  logs: GenerationLogEntry[];
   onSelectProductImages: () => void;
   onSelectVideo: () => void;
   onSelectAudio: () => void;
@@ -39,6 +41,18 @@ interface VideoShowcaseModuleProps {
   onRemoveVideoAssetRef: (ref: string) => void;
   onRemoveAudioAssetRef: (ref: string) => void;
   onUsePromptInVideo: (input: ShowcaseVideoHandoff) => void;
+  onStartPartialRetouch: (input: {
+    prompt: string;
+    productImageRefs: string[];
+    referenceImageRefs: string[];
+    productImageLabel: string;
+    referenceImageLabel: string;
+    featureId?: string;
+    featureTitle?: string;
+    outputRefs: string[];
+    sourceLogId?: string;
+    sourceTitle?: string;
+  }) => void;
   onClearResult: () => void;
   onGenerateVideo: (input: ShowcaseVideoHandoff) => void;
 }
@@ -119,6 +133,7 @@ interface HistoryEntry {
   outputRefs?: string[];
   prompt?: string;
   logId?: string;
+  source?: "local" | "global";
 }
 
 interface VideoMaterialEntry {
@@ -429,6 +444,21 @@ function isVideoRef(ref: string): boolean {
   return /\.(mp4|mov|webm|m4v)(?:$|[?#\s])/i.test(ref);
 }
 
+function isTraceArtifactRef(ref: string): boolean {
+  return /\.(json|md|txt|yaml|yml)(?:$|[?#\s])/i.test(ref);
+}
+
+function previewKindFromRef(ref: string): VideoPreviewState["kind"] {
+  if (isVideoRef(ref)) return "video";
+  if (isTraceArtifactRef(ref)) return "artifact";
+  return "image";
+}
+
+function artifactTypeLabel(ref: string): string {
+  const match = /\.([a-z0-9]+)(?:$|[?#\s])/i.exec(ref);
+  return match ? match[1].toUpperCase() : "FILE";
+}
+
 function aspectRatioFromVideoSize(value: string): ShowcaseVideoHandoff["aspectRatio"] | undefined {
   return value === "1:1" || value === "3:4" || value === "4:3" || value === "9:16" || value === "16:9"
     ? value
@@ -526,6 +556,96 @@ function historyRecordRefs(entry: HistoryEntry): string[] {
   const outputRefs = entry.outputRefs?.filter(Boolean) || [];
   if (outputRefs.length) return outputRefs;
   return entry.inputRefs?.filter(Boolean) || [];
+}
+
+function mediaRefsOnly(refs: string[]): string[] {
+  return refs.filter((ref) => previewKindFromRef(ref) !== "artifact");
+}
+
+function imageRefsOnly(refs: string[]): string[] {
+  return refs.filter((ref) => previewKindFromRef(ref) === "image");
+}
+
+function isGenerationHistoryEntry(entry: HistoryEntry): boolean {
+  const hasRefs = Boolean(entry.inputRefs?.length || entry.outputRefs?.length);
+  return Boolean(entry.logId || entry.status || hasRefs);
+}
+
+function stringArrayFromField(value: unknown, key: string): string[] {
+  if (!value || typeof value !== "object") return [];
+  const field = (value as Record<string, unknown>)[key];
+  return Array.isArray(field)
+    ? field.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function stringFromInputField(log: GenerationLogEntry, key: string): string {
+  if (!log.input || typeof log.input !== "object") return "";
+  const value = (log.input as Record<string, unknown>)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function promptFromVideoLog(log: GenerationLogEntry): string {
+  const script = stringFromInputField(log, "script");
+  if (script) return script;
+  const prompt = stringFromInputField(log, "prompt");
+  if (prompt) return prompt;
+  return log.summary || log.title;
+}
+
+function historyEntryFromVideoLog(log: GenerationLogEntry): HistoryEntry | null {
+  if (log.kind !== "video") return null;
+  const outputRefs = [
+    ...stringArrayFromField(log.output, "assetRefs"),
+    ...(log.artifactRefs || []),
+  ];
+  const uniqueOutputRefs = Array.from(new Set(outputRefs.filter(Boolean)));
+  const uniqueInputRefs = Array.from(new Set([
+    ...stringArrayFromField(log.input, "imageAssetRefs"),
+    ...stringArrayFromField(log.input, "videoAssetRefs"),
+    ...stringArrayFromField(log.input, "audioAssetRefs"),
+  ]));
+  const normalizedStatus = log.status === "succeeded" && !uniqueOutputRefs.length ? "failed" : log.status;
+  const tone: HistoryEntry["tone"] =
+    normalizedStatus === "succeeded" ? "ready" :
+    normalizedStatus === "queued" || normalizedStatus === "running" ? "warning" :
+    "blocked";
+  const featureTitle = stringFromInputField(log, "featureTitle") || "AI 视频";
+  return {
+    id: `log:${log.id}`,
+    title: log.title,
+    detail: log.summary || log.error || promptFromVideoLog(log),
+    tone,
+    createdAt: log.createdAt,
+    featureTitle,
+    jobType: stringFromInputField(log, "selectedCaseTitle") || featureTitle,
+    status: normalizedStatus,
+    statusText: normalizedStatus === "succeeded" ? "生成完成" : statusLabel(normalizedStatus),
+    inputRefs: uniqueInputRefs,
+    outputRefs: uniqueOutputRefs,
+    prompt: promptFromVideoLog(log),
+    logId: log.id,
+    source: "global",
+  };
+}
+
+function mergeVideoHistoryEntries(localEntries: HistoryEntry[], logs: GenerationLogEntry[]): HistoryEntry[] {
+  const entriesByKey = new Map<string, HistoryEntry>();
+  for (const entry of localEntries) {
+    if (!isGenerationHistoryEntry(entry)) continue;
+    const key = entry.logId ? `log:${entry.logId}` : `local:${entry.id}`;
+    entriesByKey.set(key, { ...entry, source: entry.source || "local" });
+  }
+  for (const log of logs) {
+    const entry = historyEntryFromVideoLog(log);
+    if (!entry) continue;
+    const key = `log:${log.id}`;
+    const local = entriesByKey.get(key);
+    entriesByKey.set(key, local ? { ...local, ...entry, id: local.id, source: local.source || entry.source } : entry);
+  }
+  return [...entriesByKey.values()]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 32);
 }
 
 function materialKindLabel(kind: VideoMaterialKind): string {
@@ -658,7 +778,8 @@ function MediaStack({
 }) {
   const assets = assetsForRole(item, role);
   const label = role === "input" ? "输入文件" : "输出图";
-  const useGroupedInput = role === "input" && variant === "card";
+  const inputKinds = new Set(assets.map((asset) => asset.kind));
+  const useGroupedInput = role === "input" && variant === "card" && (inputKinds.size > 1 || assets.length > 4);
   if (useGroupedInput) {
     const groups = groupedInputAssets(assets);
     return (
@@ -823,7 +944,7 @@ function ResultAssetCard({ refPath, index, onOpen }: {
   index: number;
   onOpen: (preview: VideoPreviewState) => void;
 }) {
-  const kind = isVideoRef(refPath) ? "video" : "image";
+  const kind = previewKindFromRef(refPath);
   const source = mediaAssetSource(refPath);
   const title = `生成结果 ${index + 1}`;
   return (
@@ -834,10 +955,15 @@ function ResultAssetCard({ refPath, index, onOpen }: {
     >
       {kind === "video" ? (
         <video src={source} muted playsInline preload="metadata" />
+      ) : kind === "artifact" ? (
+        <span className="ai-video-artifact-card">
+          <strong>{artifactTypeLabel(refPath)}</strong>
+          <em>队列文件</em>
+        </span>
       ) : (
         <img src={source} alt={title} loading="lazy" />
       )}
-      <span>{kind === "video" ? "视频结果" : "图片结果"}</span>
+      <span className="ai-video-result-label">{kind === "video" ? "视频结果" : kind === "artifact" ? "队列文件" : "图片结果"}</span>
     </button>
   );
 }
@@ -849,7 +975,14 @@ function VideoHistoryThumbGrid({ refs }: { refs: string[] }) {
     <span className="ai-video-history-thumb-grid" data-count={Math.min(visibleRefs.length, 4)}>
       {visibleRefs.map((ref, index) => {
         const source = mediaAssetSource(ref);
-        const kind = isVideoRef(ref) ? "video" : "image";
+        const kind = previewKindFromRef(ref);
+        if (kind === "artifact") {
+          return (
+            <span key={`${ref}-${index}`} className="ai-video-history-thumb-artifact">
+              {artifactTypeLabel(ref)}
+            </span>
+          );
+        }
         return kind === "video" ? (
           <video key={`${ref}-${index}`} src={source} muted playsInline preload="metadata" />
         ) : (
@@ -879,7 +1012,7 @@ function VideoHistoryAssetGrid({
     <div className="ai-video-history-asset-grid" data-count={Math.min(refs.length, 6)}>
       {refs.map((ref, index) => {
         const source = mediaAssetSource(ref);
-        const kind = isVideoRef(ref) ? "video" : "image";
+        const kind = previewKindFromRef(ref);
         const title = `${label} ${index + 1}`;
         const openPreview = () => onOpen({ url: source, kind, title, label });
         return (
@@ -895,6 +1028,11 @@ function VideoHistoryAssetGrid({
             >
               {kind === "video" ? (
                 <video src={source} muted playsInline preload="metadata" />
+              ) : kind === "artifact" ? (
+                <span className="ai-video-artifact-card">
+                  <strong>{artifactTypeLabel(ref)}</strong>
+                  <em>队列文件</em>
+                </span>
               ) : (
                 <img src={source} alt={title} loading="lazy" />
               )}
@@ -902,7 +1040,7 @@ function VideoHistoryAssetGrid({
             {showActions ? (
               <figcaption className="ai-video-history-asset-actions">
                 <button type="button" onClick={openPreview}>预览</button>
-                <a href={source} download={`bugu-${title}.${kind === "video" ? "mp4" : "png"}`} onClick={(event) => event.stopPropagation()}>下载</a>
+                <a href={source} download={`bugu-${title}.${kind === "video" ? "mp4" : kind === "artifact" ? artifactTypeLabel(ref).toLowerCase() : "png"}`} onClick={(event) => event.stopPropagation()}>下载</a>
               </figcaption>
             ) : null}
           </figure>
@@ -919,6 +1057,8 @@ function VideoHistoryDrawer({
   materialCount,
   mediaResult,
   onOpenMedia,
+  onSendToMaterialLibrary,
+  onPartialRetouch,
   onClose,
 }: {
   entries: HistoryEntry[];
@@ -927,6 +1067,8 @@ function VideoHistoryDrawer({
   materialCount: number;
   mediaResult: MediaGenerationResult | null;
   onOpenMedia: (preview: VideoPreviewState) => void;
+  onSendToMaterialLibrary: (entry: HistoryEntry, refs: string[]) => void;
+  onPartialRetouch: (entry: HistoryEntry, refs: string[]) => void;
   onClose: () => void;
 }) {
   const records = entries.filter((entry) =>
@@ -944,6 +1086,10 @@ function VideoHistoryDrawer({
   }, [records, selectedId]);
 
   const selectedEntry = records.find((entry) => entry.id === selectedId) || records[0];
+  const selectedOutputRefs = selectedEntry?.outputRefs?.filter(Boolean) || [];
+  const selectedMediaOutputRefs = mediaRefsOnly(selectedOutputRefs);
+  const selectedImageOutputRefs = imageRefsOnly(selectedOutputRefs);
+  const selectedInputCount = selectedEntry?.inputRefs?.length ?? uploadCount;
   return (
     <div className="ai-video-history-layer" role="presentation" onClick={onClose}>
       <section
@@ -997,12 +1143,27 @@ function VideoHistoryDrawer({
               <div className="ai-video-history-meta-row">
                 <span>{historyTaskNumber(selectedEntry)}</span>
                 <span>{selectedEntry.jobType || selectedEntry.featureTitle || featureTitle}</span>
+                {selectedEntry.featureTitle && selectedEntry.featureTitle !== selectedEntry.jobType ? (
+                  <span>{selectedEntry.featureTitle}</span>
+                ) : null}
                 <span className={`tone-${selectedEntry.tone}`}>{historyStatusText(selectedEntry)}</span>
                 <span>{formatHistoryDateTime(selectedEntry.createdAt)}</span>
               </div>
               <div className="ai-video-history-operation-row">
-                <button type="button">发送到素材库</button>
-                <button type="button">局部精修</button>
+                <button
+                  type="button"
+                  disabled={!selectedMediaOutputRefs.length}
+                  onClick={() => onSendToMaterialLibrary(selectedEntry, selectedMediaOutputRefs)}
+                >
+                  发送到素材库
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedImageOutputRefs.length}
+                  onClick={() => onPartialRetouch(selectedEntry, selectedImageOutputRefs)}
+                >
+                  局部精修
+                </button>
               </div>
               <section className="ai-video-history-section">
                 <h3>输入文件</h3>
@@ -1027,7 +1188,7 @@ function VideoHistoryDrawer({
                 <textarea value={selectedEntry.prompt || selectedEntry.detail} readOnly />
               </section>
               <p className="ai-video-history-footnote">
-                {featureTitle} · {uploadCount} 个输入素材 · {materialCount} 个素材库记录 · {mediaResult ? statusLabel(mediaResult.status) : "未生成"}
+                {selectedEntry.featureTitle || featureTitle} · {selectedInputCount} 个输入素材 · {materialCount} 个素材库记录 · {mediaResult ? statusLabel(mediaResult.status) : "未生成"}
               </p>
             </main>
           ) : (
@@ -1371,6 +1532,7 @@ export function VideoShowcaseModule({
   audioAssetRefs,
   mediaResult,
   authState,
+  logs,
   onSelectProductImages,
   onSelectVideo,
   onSelectAudio,
@@ -1379,6 +1541,7 @@ export function VideoShowcaseModule({
   onRemoveVideoAssetRef,
   onRemoveAudioAssetRef,
   onUsePromptInVideo,
+  onStartPartialRetouch,
   onClearResult,
   onGenerateVideo,
 }: VideoShowcaseModuleProps) {
@@ -1456,7 +1619,7 @@ export function VideoShowcaseModule({
   function completePendingGeneration(result: MediaGenerationResult): void {
     const pending = pendingGenerationRef.current;
     if (!pending) return;
-    const outputRefs = result.status === "succeeded" ? result.assetRefs : pending.outputRefs || [];
+    const outputRefs = result.assetRefs.length ? result.assetRefs : pending.outputRefs || [];
     setHistoryEntries((current) =>
       current.map((entry) =>
         entry.id === pending.id
@@ -1545,11 +1708,15 @@ export function VideoShowcaseModule({
   const featureVideoRefs = activeFeatureId === "omni-video" ? activeVideoRefs : [];
   const featureAudioRefs = activeFeatureId !== "storyboard" ? activeAudioRefs : [];
   const uploadCount = activeImageRefs.length + featureVideoRefs.length + featureAudioRefs.length;
-  const resultRefs = mediaResult?.status === "succeeded" ? mediaResult.assetRefs : [];
+  const resultRefs = mediaResult?.assetRefs ?? [];
   const resultMessage = mediaResult && mediaResult.status !== "succeeded" ? mediaResult.message : "";
   const latestResultKey = mediaResult
     ? `${mediaResult.logId}:${mediaResult.status}:${mediaResult.assetRefs.join("|")}`
     : "";
+  const visibleHistoryEntries = useMemo(
+    () => mergeVideoHistoryEntries(historyEntries, logs),
+    [historyEntries, logs],
+  );
 
   useEffect(() => {
     onClearResult();
@@ -1624,6 +1791,43 @@ export function VideoShowcaseModule({
       outputRefs,
       prompt: nextPrompt,
     });
+  }
+
+  function sendHistoryToMaterialLibrary(entry: HistoryEntry, refs: string[]): void {
+    const createdAt = new Date().toISOString();
+    const nextEntries = refs.map((ref, index): VideoMaterialEntry => ({
+      id: `history-${entry.id}-${index + 1}-${createdAt}`,
+      kind: previewKindFromRef(ref) === "video" ? "video" : "image",
+      actor: "virtual",
+      status: "reported",
+      title: `${entry.jobType || entry.featureTitle || entry.title || "历史素材"} ${index + 1}`,
+      ref,
+      createdAt,
+    }));
+    if (!nextEntries.length) return;
+    setMaterialEntries((current) => [...nextEntries, ...current].slice(0, 48));
+    setMaterialKind(nextEntries[0].kind);
+    setMaterialStatus("all");
+    setActiveMainTab("materials");
+    setActiveDialog(null);
+  }
+
+  function startPartialRetouchFromHistory(entry: HistoryEntry, refs: string[]): void {
+    const outputRefs = imageRefsOnly(refs).slice(0, 10);
+    if (!outputRefs.length) return;
+    onStartPartialRetouch({
+      prompt: entry.prompt || entry.detail,
+      productImageRefs: outputRefs,
+      referenceImageRefs: imageRefsOnly(entry.inputRefs || []).slice(0, 6),
+      productImageLabel: "待精修图",
+      referenceImageLabel: "视频参考图",
+      featureId: "partial-retouch",
+      featureTitle: "局部精修",
+      outputRefs,
+      sourceLogId: entry.logId,
+      sourceTitle: entry.jobType || entry.featureTitle || entry.title,
+    });
+    setActiveDialog(null);
   }
 
   function buildVideoHandoff(input?: {
@@ -2202,16 +2406,24 @@ export function VideoShowcaseModule({
               <div className="ai-video-result-stage">
                 <div className="ai-video-result-shell">
                 {resultRefs.length ? (
-                  <div className="ai-video-result-grid">
-                    {resultRefs.map((ref, index) => (
-                      <ResultAssetCard
-                        key={`${ref}-${index}`}
-                        refPath={ref}
-                        index={index}
-                        onOpen={setSelectedMedia}
-                      />
-                    ))}
-                  </div>
+                  <>
+                    <div className="ai-video-result-grid">
+                      {resultRefs.map((ref, index) => (
+                        <ResultAssetCard
+                          key={`${ref}-${index}`}
+                          refPath={ref}
+                          index={index}
+                          onOpen={setSelectedMedia}
+                        />
+                      ))}
+                    </div>
+                    {resultMessage ? (
+                      <div className={`ai-video-result-message ${mediaResult?.status || "blocked"}`}>
+                        <strong>{mediaResult ? statusLabel(mediaResult.status) : "未生成"}</strong>
+                        <span>{resultMessage}</span>
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <div className="ai-video-empty-result">
                     <p>{busy && submittedGeneration ? "正在生成中..." : "无生成结果"}</p>
@@ -2330,12 +2542,14 @@ export function VideoShowcaseModule({
 
       {activeDialog === "history" ? (
         <VideoHistoryDrawer
-          entries={historyEntries}
+          entries={visibleHistoryEntries}
           featureTitle={featureLabel}
           uploadCount={uploadCount}
           materialCount={materialEntries.length}
           mediaResult={mediaResult}
           onOpenMedia={setSelectedMedia}
+          onSendToMaterialLibrary={sendHistoryToMaterialLibrary}
+          onPartialRetouch={startPartialRetouchFromHistory}
           onClose={() => setActiveDialog(null)}
         />
       ) : null}
@@ -2354,6 +2568,12 @@ export function VideoShowcaseModule({
           <figure className="ai-video-media-preview-card" onClick={(event) => event.stopPropagation()}>
             {selectedMedia.kind === "video" ? (
               <video src={selectedMedia.url} controls autoPlay muted playsInline />
+            ) : selectedMedia.kind === "artifact" ? (
+              <div className="ai-video-media-preview-artifact">
+                <strong>可追溯队列文件</strong>
+                <span>{fileNameFromPath(selectedMedia.url)}</span>
+                <a href={selectedMedia.url} download onClick={(event) => event.stopPropagation()}>下载文件</a>
+              </div>
             ) : (
               <img src={selectedMedia.url} alt={selectedMedia.title} />
             )}

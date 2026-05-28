@@ -747,16 +747,6 @@ const FEATURE_ID_BY_BUSINESS_FLAG = new Map(
 const REFINEMENT_FEATURE_IDS = new Set([
   "partial-retouch",
 ]);
-const CASE_REFERENCE_FEATURE_IDS = new Set([
-  "model-product-display",
-  "model-change-product",
-  "model-retouch",
-  "change-model",
-  "change-pose",
-  "multi-person-fusion",
-  "face-swap",
-  "model-create",
-]);
 const REFINEMENT_TOOLS: Array<{ id: RefinementTool; label: string; icon: string }> = [
   { id: "select", label: "选择", icon: "↖" },
   { id: "pan", label: "平移画布", icon: "✣" },
@@ -1118,7 +1108,7 @@ function ImageStack({
 }) {
   const urls = urlsForRole(item, role);
   const label = role === "input" ? "输入图" : "输出图";
-  const cardLimit = role === "input" ? 3 : 4;
+  const cardLimit = 4;
   const visibleUrls = variant === "preview" ? urls : urls.slice(0, cardLimit);
   const hiddenCount = variant === "card" ? Math.max(0, urls.length - visibleUrls.length) : 0;
   const className = [
@@ -1754,12 +1744,12 @@ function splitCaseInputRefsForFeature(
   feature: ShowcaseFeature,
 ): { productRefs: string[]; referenceRefs: string[] } {
   if (inputRefs.length <= 1) {
-    return { productRefs: inputRefs, referenceRefs: [] };
+    return { productRefs: [], referenceRefs: inputRefs };
   }
   const labels = assetLabelsForFeature(feature);
   const hasDedicatedReferenceSlot = labels.uploadSlots.some((slot) => slot.role === "reference");
-  if (!hasDedicatedReferenceSlot && !CASE_REFERENCE_FEATURE_IDS.has(feature.id)) {
-    return { productRefs: inputRefs, referenceRefs: [] };
+  if (!hasDedicatedReferenceSlot) {
+    return { productRefs: [], referenceRefs: inputRefs };
   }
   return {
     productRefs: inputRefs.slice(0, 1),
@@ -2108,7 +2098,8 @@ export function ImageShowcaseModule({
   );
   const selectedMaterial = libraryMaterials.find((item) => item.id === selectedMaterialId) || null;
   const selectedMaterialRefs = selectedMaterial ? [selectedMaterial.imageUrl] : [];
-  const activeProductImageRefs = exampleImageRefs.length ? exampleImageRefs : productImageRefs;
+  const hasExampleImageRefs = Boolean(exampleImageRefs.length || exampleReferenceImageRefs.length);
+  const activeProductImageRefs = hasExampleImageRefs ? exampleImageRefs : productImageRefs;
   const activeReferenceImageRefs = exampleReferenceImageRefs.length
     ? exampleReferenceImageRefs
     : selectedMaterialRefs.length
@@ -2250,6 +2241,7 @@ export function ImageShowcaseModule({
       activePrompt,
       `${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`,
       "",
+      assistantImageRefs.length ? assistantImageRefs : undefined,
     );
     if (!template) return;
     setPromptListDraftTitle(template.title);
@@ -2259,6 +2251,16 @@ export function ImageShowcaseModule({
     setPromptListDraftImageRefs(template.imageRefs || []);
     setPromptListKind("saved");
     setActiveDialog("prompt-list");
+  }
+
+  function applyPromptTemplateImages(imageRefs?: string[]): void {
+    const refs = Array.from(new Set((imageRefs || []).filter(Boolean))).slice(0, 8);
+    if (!refs.length) return;
+    setSelectedMaterialId("");
+    setExampleImageRefs([]);
+    setExampleReferenceImageRefs(refs);
+    setWorkbenchMessage("");
+    setGenerationValidationMessage("");
   }
 
   function applySavedPromptTemplate(template: SavedPromptTemplate, closeDialog = true): void {
@@ -2271,9 +2273,10 @@ export function ImageShowcaseModule({
     setAssistantResult(template.prompt);
     setTemplateDraftTitle(template.title);
     setEditingTemplateId(template.id);
+    applyPromptTemplateImages(template.imageRefs);
     appendHistory({
       title: `已应用模板：${template.title}`,
-      detail: template.featureTitle,
+      detail: template.imageRefs?.length ? `${template.featureTitle} · 已带入 ${template.imageRefs.length} 张参考图` : template.featureTitle,
       tone: "ready",
     });
     if (closeDialog) setActiveDialog(null);
@@ -2394,6 +2397,9 @@ export function ImageShowcaseModule({
         ...current,
         [activeViewpoint]: nextPrompt,
       }));
+    }
+    if (promptListEditingId) {
+      applyPromptTemplateImages(promptListDraftImageRefs);
     }
     if (promptListEditingId) {
       savePromptListDraft();
@@ -3070,6 +3076,7 @@ export function ImageShowcaseModule({
                           assistantResult || assistantInput || activePrompt,
                           templateDraftTitle,
                           editingTemplateId,
+                          assistantImageRefs.length ? assistantImageRefs : undefined,
                         );
                         if (template) setAssistantTemplatesOpen(true);
                       }}
@@ -3175,7 +3182,12 @@ export function ImageShowcaseModule({
                       <button
                         type="button"
                         className="primary"
-                        onClick={() => savePromptTemplate(assistantResult || assistantInput || activePrompt, templateDraftTitle, editingTemplateId)}
+                        onClick={() => savePromptTemplate(
+                          assistantResult || assistantInput || activePrompt,
+                          templateDraftTitle,
+                          editingTemplateId,
+                          assistantImageRefs.length ? assistantImageRefs : undefined,
+                        )}
                       >
                         {editingTemplateId ? "更新" : "保存"}
                       </button>
@@ -3983,6 +3995,7 @@ export function ImageShowcaseModule({
                         assistantResult || assistantInput || activePrompt,
                         templateDraftTitle,
                         editingTemplateId,
+                        assistantImageRefs.length ? assistantImageRefs : undefined,
                       );
                       if (template) setAssistantTemplatesOpen(true);
                     }}
@@ -4088,7 +4101,12 @@ export function ImageShowcaseModule({
                     <button
                       type="button"
                       className="primary"
-                      onClick={() => savePromptTemplate(assistantResult || assistantInput || activePrompt, templateDraftTitle, editingTemplateId)}
+                      onClick={() => savePromptTemplate(
+                        assistantResult || assistantInput || activePrompt,
+                        templateDraftTitle,
+                        editingTemplateId,
+                        assistantImageRefs.length ? assistantImageRefs : undefined,
+                      )}
                     >
                       {editingTemplateId ? "更新" : "保存"}
                     </button>

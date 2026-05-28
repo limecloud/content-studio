@@ -1096,7 +1096,14 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
         output: outputImage ? getComputedStyle(outputImage).objectFit : null,
       };
     });
-    expect(caseImageFit).toEqual({ input: 'contain', output: 'cover' });
+    expect(caseImageFit).toEqual({ input: 'contain', output: 'contain' });
+    if (aiImageFixtureEnabled) {
+      const multiOutputCase = await page.locator('.ai-case-card').filter({ hasText: '男装' }).first().evaluate((card) => ({
+        outputImages: card.querySelectorAll('.role-output img').length,
+        hiddenBadges: card.querySelectorAll('.role-output .ai-image-more').length,
+      }));
+      expect(multiOutputCase).toEqual({ outputImages: 4, hiddenBadges: 0 });
+    }
     await expect(page.locator('.ai-case-card-meta')).toHaveCount(0);
     await expect(page.locator('.ai-case-card').first().locator('.ai-case-card-name')).toHaveText('-');
     await expect(page.locator('.ai-case-card').nth(3).locator('.ai-case-card-name')).toHaveText('白色西装');
@@ -1137,6 +1144,16 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
     await expect(page.locator('.image-workbench-layout')).toHaveCount(0);
     await expect(page.locator('.ai-showcase-left')).toContainText('图1');
     await expect(page.locator('.ai-upload-source-card.has-image img')).toHaveCount(firstCaseInputImages);
+    await expect.poll(async () => page.evaluate(async () => {
+      const settings = await window.contentStudio.getSettings();
+      const logs = await window.contentStudio.listGenerationLogs(settings.workspacePath);
+      const imageLog = logs.find((log) => log.kind === 'image');
+      const input = imageLog?.input && typeof imageLog.input === 'object' ? imageLog.input : {};
+      return {
+        productCount: Array.isArray(input.productImageRefs) ? input.productImageRefs.length : -1,
+        referenceCount: Array.isArray(input.referenceImageRefs) ? input.referenceImageRefs.length : -1,
+      };
+    })).toEqual({ productCount: 0, referenceCount: firstCaseInputImages });
     await page.locator('.ai-floating-history').click();
     await expect(page.locator('.ai-history-drawer')).toContainText('模特产品展示');
     await expect(page.locator('.ai-history-drawer')).toContainText('待配置');
@@ -1156,6 +1173,15 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
     await expect(page.locator('.ai-showcase-left')).not.toContainText('素材库');
     await expect(page.locator('.ai-showcase-left')).not.toContainText('视角');
     await expect(page.locator('.ai-prompt-tabs')).toHaveCount(0);
+    await page.locator('.ai-feature-grid button').filter({ hasText: '模特换产品' }).click();
+    if (aiImageFixtureEnabled) {
+      const fourInputCase = await page.locator('.ai-case-card').filter({ hasText: '模特换衣01' }).first().evaluate((card) => ({
+        inputImages: card.querySelectorAll('.role-input img').length,
+        outputImages: card.querySelectorAll('.role-output img').length,
+        hiddenBadges: card.querySelectorAll('.ai-image-more').length,
+      }));
+      expect(fourInputCase).toEqual({ inputImages: 4, outputImages: 3, hiddenBadges: 0 });
+    }
     await page.locator('.ai-feature-grid button').filter({ hasText: 'Ai换脸' }).click();
     await expect(page.locator('.ai-showcase-left')).toContainText('模特图片');
     await expect(page.locator('.ai-showcase-left')).toContainText('人脸图片');
@@ -1365,19 +1391,19 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expect(page.locator('.ai-video-case-card').first().locator('.ai-video-case-meta')).toHaveText('分镜图');
       await expect(page.locator('.ai-video-case-card').first().locator('.ai-video-case-meta')).not.toContainText('服饰类');
       await expect(page.locator('.ai-video-case-card').first().locator('.ai-video-case-meta')).not.toContainText('个素材');
-      await expectRectNear(page.locator('.ai-video-case-card'), { width: 398, height: 359 }, 4);
-      await expectRectNear(page.locator('.ai-video-case-media'), { width: 364, height: 271 }, 4);
-      await expectRectNear(page.locator('.ai-video-case-bottom').first(), { width: 364, height: 58 }, 3);
+      await expectRectNear(page.locator('.ai-video-case-card'), { width: 374, height: 359 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-media'), { width: 340, height: 271 }, 4);
+      await expectRectNear(page.locator('.ai-video-case-bottom').first(), { width: 340, height: 58 }, 3);
       await expectRectNear(page.locator('.ai-video-case-meta strong').first(), { width: 42, height: 23 }, 3);
       await expectRectNear(page.locator('.ai-video-case-actions').first(), { width: 156, height: 32 }, 3);
       await expectRectNear(page.locator('.ai-video-case-action-icon').first(), { width: 12, height: 12 }, 2);
-      await expectRectNear(page.locator('.ai-video-case-media > .ai-video-media-stack').first(), { width: 164, height: 247 }, 4);
-      await expectRectNear(page.locator('.ai-video-input-files').first(), { width: 164, height: 220 }, 4);
-      await expectRectNear(page.locator('.ai-video-input-thumb').first(), { width: 57, height: 78 }, 3);
-      await expect(page.locator('.ai-video-case-card').first().locator('.ai-video-input-section-title')).toHaveText(['图片']);
+      await expectRectNear(page.locator('.ai-video-case-media > .ai-video-media-stack').first(), { width: 152, height: 247 }, 4);
+      await expectRectNear(page.locator('.ai-video-media-stack[data-role="input"] .ai-video-media-grid').first(), { width: 152, height: 220 }, 4);
+      await expectRectNear(page.locator('.ai-video-media-stack[data-role="input"] .ai-video-media-frame').first(), { width: 152, height: 220 }, 4);
+      await expect(page.locator('.ai-video-case-card').first().locator('.ai-video-input-section-title')).toHaveCount(0);
       const mediaLabelOrder = await page.evaluate(() => {
-        const grid = document.querySelector('.ai-video-input-files');
-        const label = document.querySelector('.ai-video-media-label');
+        const grid = document.querySelector('.ai-video-media-stack[data-role="input"] .ai-video-media-grid');
+        const label = document.querySelector('.ai-video-media-stack[data-role="input"] .ai-video-media-label');
         if (!(grid instanceof HTMLElement) || !(label instanceof HTMLElement)) return null;
         return {
           gridTop: Math.round(grid.getBoundingClientRect().top),
@@ -1528,6 +1554,29 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await page.locator('.ai-video-feature-grid button').filter({ hasText: '智能视频' }).click();
       await page.locator('.ai-video-upload-card').filter({ hasText: '上传音频' }).click();
       await expect(page.locator('.ai-video-upload-preview-strip[data-kind="audio"] .ai-video-upload-preview-card')).toHaveCount(1);
+      await page.locator('.ai-video-generate-button').click();
+      await expect.poll(async () => page.evaluate(async () => {
+        const settings = await window.contentStudio.getSettings();
+        const logs = await window.contentStudio.listGenerationLogs(settings.workspacePath);
+        const videoLog = logs.find((log) => {
+          if (log.kind !== 'video') return false;
+          const input = log.input && typeof log.input === 'object' ? log.input : {};
+          return input.featureTitle === '智能视频';
+        });
+        const input = videoLog?.input && typeof videoLog.input === 'object' ? videoLog.input : {};
+        const output = videoLog?.output && typeof videoLog.output === 'object' ? videoLog.output : {};
+        const outputRefs = Array.isArray(output.assetRefs) ? output.assetRefs : [];
+        return {
+          status: videoLog?.status,
+          featureTitle: input.featureTitle,
+          outputCount: outputRefs.length,
+        };
+      })).toEqual({ status: 'blocked', featureTitle: '智能视频', outputCount: 2 });
+      await page.locator('.ai-video-floating-history').click();
+      await expect(page.locator('.ai-video-history-operation-row button').filter({ hasText: '发送到素材库' })).toBeDisabled();
+      await expect(page.locator('.ai-video-history-operation-row button').filter({ hasText: '局部精修' })).toBeDisabled();
+      await page.getByLabel('关闭历史记录').click();
+      await page.locator('.ai-video-main-tabs button').filter({ hasText: '选择功能' }).click();
       await expect(page.locator('.ai-video-case-board')).toContainText('当前功能 39 组');
       await expect(page.locator('.ai-video-case-card')).toHaveCount(39);
       await expect(page.locator('.ai-video-case-card img')).not.toHaveCount(0);
@@ -1634,6 +1683,32 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expect(page.locator('.ai-video-result-board')).toBeVisible();
       await expect(page.locator('.video-replica-workbench')).toHaveCount(0);
       await expect(page.locator('.ai-video-result-board')).toContainText(/无生成结果|正在生成中|视频生成/);
+      await expect.poll(async () => page.evaluate(async () => {
+        const settings = await window.contentStudio.getSettings();
+        const logs = await window.contentStudio.listGenerationLogs(settings.workspacePath);
+        const videoLog = logs.find((log) => log.kind === 'video');
+        const input = videoLog?.input && typeof videoLog.input === 'object' ? videoLog.input : {};
+        const output = videoLog?.output && typeof videoLog.output === 'object' ? videoLog.output : {};
+        const outputRefs = Array.isArray(output.assetRefs) ? output.assetRefs : [];
+        return {
+          status: videoLog?.status,
+          featureTitle: typeof input.featureTitle === 'string' ? input.featureTitle : '',
+          selectedCaseTitle: typeof input.selectedCaseTitle === 'string' ? input.selectedCaseTitle : '',
+          imageCount: Array.isArray(input.imageAssetRefs) ? input.imageAssetRefs.length : -1,
+          videoCount: Array.isArray(input.videoAssetRefs) ? input.videoAssetRefs.length : -1,
+          outputCount: outputRefs.length,
+          hasTraceArtifact: outputRefs.some((ref) => /\.(json|md)$/i.test(ref)),
+        };
+      })).toEqual({
+        status: 'blocked',
+        featureTitle: '全能视频',
+        selectedCaseTitle: '爆款复刻-拖把',
+        imageCount: 2,
+        videoCount: 1,
+        outputCount: 2,
+        hasTraceArtifact: true,
+      });
+      await expect(page.locator('.ai-video-result-asset.is-artifact')).toHaveCount(2);
       await expect(page.locator('.ai-video-floating-history')).toBeVisible();
       await page.locator('.ai-video-floating-history').click();
       await expect(page.locator('.ai-video-history-drawer')).toContainText('历史记录');
@@ -1642,6 +1717,9 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expect(page.locator('.ai-video-history-drawer')).toContainText('批量下载');
       await expect(page.locator('.ai-video-history-drawer')).toContainText('发送到素材库');
       await expect(page.locator('.ai-video-history-drawer')).toContainText('局部精修');
+      await expect(page.locator('.ai-video-history-drawer')).toContainText('3 个输入素材');
+      await expect(page.locator('.ai-video-history-operation-row button').filter({ hasText: '发送到素材库' })).toBeDisabled();
+      await expect(page.locator('.ai-video-history-operation-row button').filter({ hasText: '局部精修' })).toBeDisabled();
       await expectRectNear(page.locator('.ai-video-history-drawer'), { width: 1102, height: 762 }, 5);
       await expectRectNear(page.locator('.ai-video-history-record-list'), { width: 108 }, 5);
       await expect(page.locator('.ai-video-history-record-thumb').first().locator('span').filter({ hasText: /\\d{2}:\\d{2}/ })).toHaveCount(0);
@@ -1655,11 +1733,20 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expect(page.locator('.ai-video-history-asset-actions a').first()).toHaveAttribute('download', /bugu-生成结果/);
       await page.locator('.ai-video-history-asset-actions button').first().click();
       await expect(page.locator('.ai-video-media-preview-modal')).toBeVisible();
+      await expect(page.locator('.ai-video-media-preview-modal img, .ai-video-media-preview-modal video, .ai-video-media-preview-artifact')).toBeVisible();
       await expectOverlayCoversSidebar(page, '.ai-video-media-preview-modal');
       await expectOverlayAboveFloatingControl(page, '.ai-video-media-preview-modal', '.ai-video-floating-history');
       await page.locator('.ai-video-media-preview-close').click();
       await expect(page.locator('.ai-video-media-preview-modal')).toHaveCount(0);
       await expect(page.locator('.ai-video-history-drawer')).not.toContainText('生成爆款视频');
+      await page.getByLabel('关闭历史记录').click();
+      await clickNavItem(page, 'AI 生图');
+      await clickNavItem(page, 'AI 视频');
+      await page.locator('.ai-video-floating-history').click();
+      await expect(page.locator('.ai-video-history-drawer')).toContainText('爆款复刻-拖把');
+      await expect(page.locator('.ai-video-history-drawer')).toContainText('全能视频');
+      await expect(page.locator('.ai-video-history-drawer')).toContainText('3 个输入素材');
+      await expect(page.locator('.ai-video-history-drawer')).toContainText('队列文件');
     },
     { env: { CONTENT_STUDIO_OEM_SITE_CONFIG_FIXTURE_PATH: aiVideoFixturePath } },
   );

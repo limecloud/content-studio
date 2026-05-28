@@ -136,6 +136,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         audioAssetRefs={app.audioAssetRefs}
         mediaResult={app.mediaResult}
         authState={app.authState}
+        logs={app.logs}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectVideo={() => app.runAction(() => app.selectAssetFiles('video'))}
         onSelectAudio={() => app.runAction(() => app.selectAssetFiles('audio'))}
@@ -144,6 +145,10 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onRemoveVideoAssetRef={app.removeVideoAssetRef}
         onRemoveAudioAssetRef={app.removeAudioAssetRef}
         onUsePromptInVideo={app.useShowcasePromptInVideo}
+        onStartPartialRetouch={(input) => {
+          app.startShowcasePartialRetouch(input);
+          app.setActiveModule('image');
+        }}
         onClearResult={app.clearMediaResult}
         onGenerateVideo={(input) => app.runAction((context) => app.generateShowcaseVideo(input, context))}
       />

@@ -1076,10 +1076,6 @@
 }
 
 .ai-case-compare img {
-  object-fit: cover;
-}
-
-.ai-case-compare .ai-image-stack-grid[data-role="input"] img {
   object-fit: contain;
 }
 
@@ -1125,6 +1121,11 @@
   grid-column: 1 / -1;
 }
 
+.ai-image-stack-grid[data-role="input"][data-count="4"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
 .ai-image-frame {
   position: relative;
   min-width: 0;
@@ -1150,6 +1151,10 @@
 
 .ai-image-stack-grid[data-role="input"][data-count="1"] .ai-image-frame {
   height: 128px;
+}
+
+.ai-image-stack-grid[data-role="input"][data-count="4"] .ai-image-frame {
+  height: auto;
 }
 
 .ai-image-stack-grid[data-role="output"] .ai-image-frame {

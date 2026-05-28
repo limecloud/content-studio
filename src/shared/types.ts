@@ -1309,6 +1309,9 @@ export interface VideoGenerationRequest {
   audioAssetRefs?: string[];
   prompt: string;
   script?: string;
+  featureId?: string;
+  featureTitle?: string;
+  selectedCaseTitle?: string;
   promptPackId?: string;
   sceneCardIds?: string[];
   citations: KnowledgeCitation[];
