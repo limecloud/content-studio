@@ -245,6 +245,8 @@ async function openPromptSupportDrawer(page) {
   if (!isOpen) {
     await drawer.locator('summary').click();
   }
+  await expect(page.locator('.prompt-source-panel')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.prompt-source-panel input').first()).toBeEditable({ timeout: 20_000 });
 }
 
 async function clickNavItem(page, label) {
