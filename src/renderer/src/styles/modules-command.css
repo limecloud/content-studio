@@ -281,6 +281,116 @@
   padding: 12px;
 }
 
+.content-map-build-run {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  padding: 12px;
+}
+
+.content-map-build-run.empty {
+  background: #f8fafc;
+}
+
+.content-map-build-run > strong,
+.content-map-build-run .section-title h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.content-map-build-run > span,
+.content-map-build-run > small {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.content-map-build-run-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.content-map-build-run-summary div {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--cyan) 6%, #ffffff);
+  padding: 8px;
+}
+
+.content-map-build-run-summary strong {
+  color: var(--accent);
+  font-size: 16px;
+}
+
+.content-map-build-run-summary span {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.content-map-build-run-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.content-map-build-run-steps article {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid var(--amber);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--amber) 8%, #ffffff);
+  padding: 8px;
+}
+
+.content-map-build-run-steps article.ready {
+  border-left-color: var(--green);
+  background: color-mix(in srgb, var(--green) 8%, #ffffff);
+}
+
+.content-map-build-run-steps article.blocked {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, #ffffff);
+}
+
+.content-map-build-run-steps article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.content-map-build-run-steps strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.content-map-build-run-steps span,
+.content-map-build-run-steps p,
+.content-map-build-run-issues span {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.content-map-build-run-issues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.content-map-build-run-issues span {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--danger) 8%, #ffffff);
+  color: var(--danger);
+  padding: 5px 8px;
+}
+
 .content-map-release-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

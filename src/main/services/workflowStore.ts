@@ -11,7 +11,7 @@ import type {
   WorkflowRunStep,
   WorkflowStepDefinition,
 } from '../../shared/types';
-import { readJsonFile, writeJsonFile } from './jsonStore';
+import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 
 function definitionsFilePath(workspacePath: string): string {
@@ -1239,53 +1239,79 @@ function canApplyContentManualEvent(run: WorkflowRunRecord, input: RecordWorkflo
 
 export class WorkflowStore {
   async listDefinitions(workspacePath: string): Promise<WorkflowDefinition[]> {
-    const filePath = definitionsFilePath(workspacePath);
-    const existing = await readJsonFile<WorkflowDefinition[]>(filePath, []);
-    const seeded = seedDefinitions(workspacePath, new Date().toISOString());
-    if (existing.length > 0) {
-      const merged = mergeSeedDefinitions(existing, seeded);
-      if (merged.changed) await writeJsonFile(filePath, merged.definitions);
-      return sortDefinitions(merged.definitions);
-    }
-
-    await writeJsonFile(filePath, seeded);
-    return sortDefinitions(seeded);
+    const now = new Date().toISOString();
+    return updateJsonFile<WorkflowDefinition[], WorkflowDefinition[]>(
+      definitionsFilePath(workspacePath),
+      [],
+      (current) => {
+        const seeded = seedDefinitions(workspacePath, now);
+        if (current.length === 0) {
+          return {
+            value: seeded,
+            result: sortDefinitions(seeded),
+          };
+        }
+        const merged = mergeSeedDefinitions(current, seeded);
+        return {
+          value: merged.changed ? merged.definitions : current,
+          result: sortDefinitions(merged.definitions),
+        };
+      },
+    );
   }
 
   async createDraft(input: CreateWorkflowDraftInput): Promise<WorkflowDefinition> {
-    const definitions = await this.listDefinitions(input.workspacePath);
     const now = new Date().toISOString();
-    const source = input.templateKey
-      ? definitions.find((item) => item.key === input.templateKey) ?? definitions[0]
-      : customDraftDefinition(input.workspacePath, now);
-    const draft: WorkflowDefinition = {
-      ...source,
-      id: randomUUID(),
-      workspacePath: input.workspacePath,
-      key: `${source.key}-draft-${Date.now()}`,
-      version: 'v0.1',
-      title: input.title?.trim() || `${source.title} 草案`,
-      description: input.description?.trim() || source.description || '本地 SOP 草案，发布前必须确认输入、步骤、审核和导出规则。',
-      status: 'draft',
-      createdAt: now,
-      updatedAt: now,
-      publishedAt: undefined,
-    };
-    await writeJsonFile(definitionsFilePath(input.workspacePath), [draft, ...definitions].slice(0, 80));
-    return draft;
+    return updateJsonFile<WorkflowDefinition[], WorkflowDefinition>(
+      definitionsFilePath(input.workspacePath),
+      [],
+      (current) => {
+        const seeded = seedDefinitions(input.workspacePath, now);
+        const definitions = sortDefinitions(current.length > 0 ? mergeSeedDefinitions(current, seeded).definitions : seeded);
+        const source = input.templateKey
+          ? definitions.find((item) => item.key === input.templateKey) ?? definitions[0]
+          : customDraftDefinition(input.workspacePath, now);
+        const draft: WorkflowDefinition = {
+          ...source,
+          id: randomUUID(),
+          workspacePath: input.workspacePath,
+          key: `${source.key}-draft-${Date.now()}`,
+          version: 'v0.1',
+          title: input.title?.trim() || `${source.title} 草案`,
+          description: input.description?.trim() || source.description || '本地 SOP 草案，发布前必须确认输入、步骤、审核和导出规则。',
+          status: 'draft',
+          createdAt: now,
+          updatedAt: now,
+          publishedAt: undefined,
+        };
+        return {
+          value: [draft, ...definitions].slice(0, 80),
+          result: draft,
+        };
+      },
+    );
   }
 
   async updateDefinition(input: WorkflowDefinition): Promise<WorkflowDefinition> {
-    const definitions = await this.listDefinitions(input.workspacePath);
-    if (!definitions.some((item) => item.id === input.id)) throw new Error(`工作流定义不存在: ${input.id}`);
-    const now = new Date().toISOString();
-    const updated: WorkflowDefinition = {
-      ...input,
-      updatedAt: now,
-      publishedAt: input.status === 'published' ? input.publishedAt ?? now : input.publishedAt,
-    };
-    await writeJsonFile(definitionsFilePath(input.workspacePath), definitions.map((item) => (item.id === input.id ? updated : item)));
-    return updated;
+    return updateJsonFile<WorkflowDefinition[], WorkflowDefinition>(
+      definitionsFilePath(input.workspacePath),
+      [],
+      (current) => {
+        const now = new Date().toISOString();
+        const seeded = seedDefinitions(input.workspacePath, now);
+        const definitions = sortDefinitions(current.length > 0 ? mergeSeedDefinitions(current, seeded).definitions : seeded);
+        if (!definitions.some((item) => item.id === input.id)) throw new Error(`工作流定义不存在: ${input.id}`);
+        const updated: WorkflowDefinition = {
+          ...input,
+          updatedAt: now,
+          publishedAt: input.status === 'published' ? input.publishedAt ?? now : input.publishedAt,
+        };
+        return {
+          value: definitions.map((item) => (item.id === input.id ? updated : item)),
+          result: updated,
+        };
+      },
+    );
   }
 
   async listRuns(workspacePath: string): Promise<WorkflowRunRecord[]> {
@@ -1293,41 +1319,51 @@ export class WorkflowStore {
   }
 
   async updateRun(input: WorkflowRunRecord): Promise<WorkflowRunRecord> {
-    const runs = await this.listRuns(input.workspacePath);
-    if (!runs.some((run) => run.id === input.id)) throw new Error(`工作流运行记录不存在: ${input.id}`);
-    const updated: WorkflowRunRecord = {
-      ...input,
-      artifactRefs: Array.from(new Set(input.artifactRefs)),
-      updatedAt: new Date().toISOString(),
-    };
-    await writeJsonFile(
+    return updateJsonFile<WorkflowRunRecord[], WorkflowRunRecord>(
       runsFilePath(input.workspacePath),
-      runs.map((run) => (run.id === input.id ? updated : run)),
+      [],
+      (current) => {
+        const runs = sortRuns(current);
+        if (!runs.some((run) => run.id === input.id)) throw new Error(`工作流运行记录不存在: ${input.id}`);
+        const updated: WorkflowRunRecord = {
+          ...input,
+          artifactRefs: Array.from(new Set(input.artifactRefs)),
+          updatedAt: new Date().toISOString(),
+        };
+        return {
+          value: runs.map((run) => (run.id === input.id ? updated : run)),
+          result: updated,
+        };
+      },
     );
-    return updated;
   }
 
   async recordManualEvent(input: RecordWorkflowManualEventInput): Promise<WorkflowRunRecord> {
-    const runs = await this.listRuns(input.workspacePath);
-    const run = runs.find((item) => item.id === input.workflowRunId);
-    if (!run) throw new Error(`工作流运行记录不存在: ${input.workflowRunId}`);
-
-    let updated: WorkflowRunRecord;
-    if (isVideoMaterialWorkflow(run)) {
-      updated = applyManualEvent(run, input);
-    } else if (isIpLongformWorkflow(run)) {
-      updated = applyIpLongformManualEvent(run, input);
-    } else if (canApplyContentManualEvent(run, input)) {
-      updated = applyContentManualEvent(run, input);
-    } else {
-      throw new Error('当前手工事件只适用于已接入回写的 SOP。');
-    }
-
-    await writeJsonFile(
+    return updateJsonFile<WorkflowRunRecord[], WorkflowRunRecord>(
       runsFilePath(input.workspacePath),
-      runs.map((item) => (item.id === run.id ? updated : item)),
+      [],
+      (current) => {
+        const runs = sortRuns(current);
+        const run = runs.find((item) => item.id === input.workflowRunId);
+        if (!run) throw new Error(`工作流运行记录不存在: ${input.workflowRunId}`);
+
+        let updated: WorkflowRunRecord;
+        if (isVideoMaterialWorkflow(run)) {
+          updated = applyManualEvent(run, input);
+        } else if (isIpLongformWorkflow(run)) {
+          updated = applyIpLongformManualEvent(run, input);
+        } else if (canApplyContentManualEvent(run, input)) {
+          updated = applyContentManualEvent(run, input);
+        } else {
+          throw new Error('当前手工事件只适用于已接入回写的 SOP。');
+        }
+
+        return {
+          value: runs.map((item) => (item.id === run.id ? updated : item)),
+          result: updated,
+        };
+      },
     );
-    return updated;
   }
 
   async startRun(input: StartWorkflowRunInput): Promise<WorkflowRunRecord> {
@@ -1366,8 +1402,13 @@ export class WorkflowStore {
       createdAt: now,
       updatedAt: now,
     };
-    const runs = await this.listRuns(input.workspacePath);
-    await writeJsonFile(runsFilePath(input.workspacePath), [run, ...runs].slice(0, 200));
-    return run;
+    return updateJsonFile<WorkflowRunRecord[], WorkflowRunRecord>(
+      runsFilePath(input.workspacePath),
+      [],
+      (runs) => ({
+        value: [run, ...sortRuns(runs)].slice(0, 200),
+        result: run,
+      }),
+    );
   }
 }

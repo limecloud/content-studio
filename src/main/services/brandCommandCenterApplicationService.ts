@@ -36,6 +36,12 @@ function outcomeFor(queueItem: BrandCommandQueueItem): BrandCommandActionOutcome
   return 'blocked';
 }
 
+function isProductionQueueAction(actionType: BrandCommandQueueItem['actionType']): boolean {
+  return actionType === 'generate-prompt-draft' ||
+    actionType === 'create-scene-card' ||
+    actionType === 'launch-sop-run';
+}
+
 function nextStatus(queueItem: BrandCommandQueueItem): BrandCommandQueueItem['status'] {
   if (queueItem.status === 'ready' && queueItem.actionType === 'write-back-material-coverage') return 'written-back';
   if (queueItem.status === 'ready') return 'handed-off';
@@ -81,8 +87,7 @@ function mergeActionRecords(localRecords: BrandCommandActionRecord[], teamRecord
     });
   });
   return Array.from(byId.values())
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .slice(0, 120);
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 function uniqueStrings(values: Array<string | undefined>, limit = 12): string[] {
@@ -225,6 +230,7 @@ function coverageRowIdsForBundle(
   bundle: BrandCommandCenterRecord['resourceBundles'][number],
   map: ContentKnowledgeMapRecord | undefined,
 ): string[] {
+  if (bundle.coverageRowIds?.length) return bundle.coverageRowIds;
   if (!map) return [];
   const sellingPointLabels = new Set(bundle.sellingPointRefs);
   const sceneLabels = new Set(bundle.sceneRefs);
@@ -238,6 +244,26 @@ function coverageRowIdsForBundle(
     )
     .map((row) => row.id)
     .slice(0, 12);
+}
+
+function approvedCoverageRowIdsFor(
+  tasks: ContentReviewTask[],
+  sourceKnowledgeMapId: string | undefined,
+  coverageRowIds: string[],
+): string[] {
+  if (!sourceKnowledgeMapId || !coverageRowIds.length) return [];
+  const targetIds = new Set(coverageRowIds);
+  return Array.from(new Set(
+    tasks
+      .filter((task) =>
+        task.sourceKnowledgeMapId === sourceKnowledgeMapId &&
+        task.status === 'approved' &&
+        (task.targetType === 'selling-point' || task.targetType === 'pain-point' || task.targetType === 'scenario') &&
+        task.targetId &&
+        targetIds.has(task.targetId),
+      )
+      .map((task) => task.targetId as string),
+  ));
 }
 
 function inputSourceIdsFromMapRows(
@@ -376,8 +402,9 @@ function reviewTaskForCommand(input: {
       ...(input.bundle?.materialRefs.map((ref) => `asset-review:${ref}`) ?? []),
     ],
     risk: input.queueItem.status === 'needs-review' ? 'high' : 'medium',
-    status: input.queueItem.status === 'needs-review' ? 'open' : 'needs-evidence',
-    suggestedAction: input.queueItem.status === 'needs-review' ? 'approve' : 'request-evidence',
+    status: input.queueItem.status === 'needs-review' ? 'open' : isMaterialGap ? 'needs-material' : 'needs-evidence',
+    suggestedAction: input.queueItem.status === 'needs-review' ? 'approve' : isMaterialGap ? 'request-material' : 'request-evidence',
+    taskPurpose: input.queueItem.status === 'needs-review' ? 'review' : isMaterialGap ? 'material-supplement' : 'evidence-supplement',
     issueLabels: [
       input.queueItem.status === 'needs-review' ? '待审核' : isMaterialGap ? '补素材' : '补证据',
       '品牌战情室',
@@ -429,14 +456,15 @@ export class BrandCommandCenterApplicationService {
   }
 
   async build(input: BuildBrandCommandCenterInput): Promise<BrandCommandCenterRecord> {
-    const [maps, teamSync] = await Promise.all([
+    const [maps, teamSync, reviewTasks] = await Promise.all([
       this.knowledgeMaps.list(input.workspacePath),
       this.sync.draftStatus(input.workspacePath),
+      this.reviewTasks?.list(input.workspacePath) ?? Promise.resolve(undefined),
     ]);
     const selectedMap = input.contentKnowledgeMapId
       ? maps.find((map) => map.id === input.contentKnowledgeMapId)
       : maps[0];
-    const record = buildBrandCommandCenterDraft(input, selectedMap, teamSync);
+    const record = buildBrandCommandCenterDraft(input, selectedMap, teamSync, reviewTasks);
     if (!record.queueItems.length) return this.store.save(record);
     const queueSync = await this.queueSync.syncExecutionQueue({
       workspacePath: input.workspacePath,
@@ -460,6 +488,25 @@ export class BrandCommandCenterApplicationService {
     const now = new Date().toISOString();
     const resourceBundle = record.resourceBundles.find((bundle) => bundle.id === queueItem.resourceBundleId);
     const campaignCell = record.campaignCells.find((cell) => cell.id === queueItem.campaignCellId);
+    const requiresApprovedReview = Boolean(this.reviewTasks) && isProductionQueueAction(queueItem.actionType);
+    const needsSourceMap = queueItem.status === 'ready' &&
+      resourceBundle &&
+      (
+        (queueItem.actionType === 'generate-prompt-draft' && Boolean(this.promptDrafts)) ||
+        (queueItem.actionType === 'create-scene-card' && Boolean(this.sceneCards)) ||
+        (queueItem.actionType === 'launch-sop-run' && Boolean(this.workflows)) ||
+        requiresApprovedReview
+      );
+    const sourceMap = needsSourceMap
+      ? (await this.knowledgeMaps.list(input.workspacePath)).find((map) => map.id === record.sourceKnowledgeMapId)
+      : undefined;
+    const coverageRowIds = resourceBundle ? coverageRowIdsForBundle(resourceBundle, sourceMap) : [];
+    const reviewTasks = requiresApprovedReview && this.reviewTasks
+      ? await this.reviewTasks.list(input.workspacePath)
+      : [];
+    const approvedCoverageRowIds = requiresApprovedReview
+      ? approvedCoverageRowIdsFor(reviewTasks, record.sourceKnowledgeMapId, coverageRowIds)
+      : (resourceBundle?.approvedCoverageRowIds ?? []);
     const executionPolicy = checkBrandCommandExecution({
       record,
       queueItem,
@@ -467,6 +514,9 @@ export class BrandCommandCenterApplicationService {
       campaignCell,
       recentActions: record.actionRecords,
       actorRole: input.actorRole,
+      requiresApprovedReview,
+      coverageRowIds,
+      approvedCoverageRowIds,
     });
     let effectiveQueueItem: BrandCommandQueueItem = executionPolicy.allowed ? queueItem : {
       ...queueItem,
@@ -474,17 +524,6 @@ export class BrandCommandCenterApplicationService {
       blockedReason: executionPolicy.issues[0] || queueItem.blockedReason || '发布检查未通过，动作未执行。',
       recoveryAction: executionPolicy.recoveryAction ?? queueItem.recoveryAction,
     };
-    const needsSourceMap = effectiveQueueItem.status === 'ready' &&
-      resourceBundle &&
-      (
-        (effectiveQueueItem.actionType === 'generate-prompt-draft' && Boolean(this.promptDrafts)) ||
-        (effectiveQueueItem.actionType === 'create-scene-card' && Boolean(this.sceneCards)) ||
-        (effectiveQueueItem.actionType === 'launch-sop-run' && Boolean(this.workflows))
-      );
-    const sourceMap = needsSourceMap
-      ? (await this.knowledgeMaps.list(input.workspacePath)).find((map) => map.id === record.sourceKnowledgeMapId)
-      : undefined;
-    const coverageRowIds = resourceBundle ? coverageRowIdsForBundle(resourceBundle, sourceMap) : [];
     const inputSourceIds = inputSourceIdsFromMapRows(sourceMap, coverageRowIds);
     const promptDraft = effectiveQueueItem.status === 'ready' &&
       effectiveQueueItem.actionType === 'generate-prompt-draft' &&
@@ -672,7 +711,7 @@ export class BrandCommandCenterApplicationService {
           lastHandoffSummary,
         };
       }),
-      actionRecords: [syncedActionRecord, ...record.actionRecords].slice(0, 120),
+      actionRecords: [syncedActionRecord, ...record.actionRecords],
       syncStatus: finalTeamSync.status,
       teamSync: finalTeamSync,
       updatedAt: now,

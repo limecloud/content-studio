@@ -365,6 +365,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         sceneCards={app.sceneCards}
         promptDrafts={app.promptDrafts}
         contentKnowledgeMaps={app.contentKnowledgeMaps}
+        contentKnowledgeMapBuildRuns={app.contentKnowledgeMapBuildRuns}
         teamChangePackages={app.contentDraftChanges}
         teamKnowledgePackageVersions={app.contentKnowledgeReleases}
         teamSyncConflicts={app.contentSyncConflicts}
@@ -383,6 +384,15 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onCreateTeamKnowledgePackage={() => app.runAction(app.createContentKnowledgeRelease, '正在创建团队知识包版本')}
         onGenerateContentReviewTasksForRows={(rowIds) =>
           app.runAction(() => app.generateContentReviewTasksForRows(rowIds), '正在生成本批审核任务')
+        }
+        onGenerateContentMaterialTasksForRows={(rowIds) =>
+          app.runAction(() => app.generateContentMaterialTasksForRows(rowIds), '正在创建补素材任务')
+        }
+        onCreateContentProductionHandoffForRow={(rowId, target) =>
+          app.runAction(
+            () => app.createContentProductionHandoffForRow(rowId, target),
+            target === 'sop-run' ? '正在启动 SOP' : target === 'scene-card' ? '正在生成场景卡' : '正在生成 Prompt 草稿',
+          )
         }
         contentKnowledgePackExport={app.contentKnowledgePackExport}
         contentMaterialCoverage={app.contentMaterialCoverage}

@@ -1,7 +1,7 @@
 # Ontology v1 数据模型
 
-更新时间：2026-05-28
-状态：Draft
+更新时间：2026-05-30
+状态：Draft / 本地事实源审计历史补充
 
 ## 1. 设计结论
 
@@ -35,17 +35,26 @@ v1 采用业务服务端事实源优先：Bugu 保存团队工作区、权限、
 
 | 文件 | 定位 |
 | --- | --- |
-| `.content-studio/ontologies/*.json` | 最近打开工作区的缓存副本和离线草稿，不是团队事实源。 |
-| `.content-studio/ontology-runs.json` | 本机运行临时日志、blocked 原因和调试摘要。 |
-| `.content-studio/ontology-reviews.json` | 本机待提交审核草稿和服务端审核摘要缓存。 |
-| `.content-studio/ontology-actions.json` | 本机待同步行动草稿和服务端行动摘要缓存。 |
+| `.content-studio/content-knowledge-maps.json` | 最近打开工作区的知识地图缓存副本和离线草稿，不是团队事实源。 |
+| `.content-studio/content-knowledge-map-build-runs.json` | 本机生成流程、步骤日志、待配置原因、模型失败原因和质量摘要。 |
+| `.content-studio/content-review-tasks.json` | 本机待提交审核草稿、服务端审核摘要缓存和审核决策历史。 |
+| `.content-studio/content-production-handoffs.json` | Prompt、场景卡和 SOP 交接记录，以及发布检查通过 / 未通过的行动记录。 |
+| `.content-studio/brand-command-centers.json` | 品牌战情室、目标树、资源包、执行队列和行动记录缓存。 |
 | `.content-studio/scene-cards.json` | 下游场景卡缓存，复用现有 store。 |
 | `.content-studio/prompt-drafts.json` | 下游 PromptDraft 缓存，复用现有 store。 |
 | `.content-studio/workflow-runs.json` | SOP 运行记录缓存，复用现有 workflow store。 |
 | `.content-studio/assets/` | 本地素材文件、预览、临时导入和待上传登记。 |
 | `.content-studio/team-sync.json` | 租户、工作区、服务端 revision、未同步草稿和最近同步状态。 |
-| `.content-studio/draft-changes.json` | 本地待提交、已导入和已合并的离线变更。 |
-| `.content-studio/exports/agentknowledge/<ontologyId>/` | Agent Knowledge v0.7.2 本地导出预览，正式 release 由服务端记录。 |
+| `.content-studio/content-draft-changes.json` | 本地待提交、已导入和已合并的离线变更。 |
+| `.content-studio/content-knowledge-releases.json` | 团队知识包 release 元数据、本机预览路径和服务端包地址缓存。 |
+| `.content-studio/exports/agentknowledge/<contentKnowledgeMapId>/` | Agent Knowledge v0.7.2 本地导出预览，正式 release 由服务端记录。 |
+
+保留策略：
+
+- 生成流程、审核任务、生产交接、离线变更、品牌战情室和知识地图版本属于可审计事实，本地 Store 不按展示阈值截断。
+- UI 可以按“最近 N 条”分页或折叠展示，但不能通过 Store save / append 删除历史记录。
+- `ReviewDecision`、品牌战情室 `ActionRecord` 和已发布团队知识包 release 是追加 / 不可变事实，普通本机更新不能删除、覆盖或篡改。
+- 生成日志、Prompt 草稿、SOP 运行等非 v1 审计主线对象可继续采用模块自己的展示缓存策略，后续按具体业务风险再收敛。
 
 ## 3. 核心对象
 
@@ -547,6 +556,7 @@ export type ContentWorkspaceSyncPolicy =
 - Bugu 合并必须检查 `baseRevision`、对象 hash、业务角色和发布检查；涉及租户权益、模型策略和发布中心时再调用 LimeCore。
 - 冲突不能静默覆盖，必须进入冲突队列。
 - 已发布 release 不能原地修改，只能创建新 release。
+- Content Studio 本地 Store 只允许通过 Bugu 团队同步入口刷新已发布 release 元数据；普通本机 `save/update` 不能改写版本号、包文件、sha256、对象存储地址或来源 revision。
 
 ### 9.3 `KnowledgeRelease`
 
@@ -572,4 +582,4 @@ export type ContentWorkspaceSyncPolicy =
 
 `KnowledgeRelease` 和 Agent Knowledge v0.7.2 包一一对应。Prompt 工作台、SOP 和 Agent 客户端默认消费 release，而不是消费某个人的本地 draft。
 
-当前第一刀中，Content Studio 生成 Agent Knowledge zip、sha256 和 size；Bugu release 记录对象存储 key、公开 URL 和上传状态。Content Studio 可按已同步工作区拉取团队 release 列表，并将服务端包地址与本机预览路径合并到本地缓存。未配置公开对象存储时只能显示“发布包已登记”，不能显示“可下载”。
+当前第一刀中，Content Studio 生成 Agent Knowledge zip、sha256 和 size；Bugu release 记录对象存储 key、公开 URL 和上传状态。Content Studio 可按已同步工作区拉取团队 release 列表，并将服务端包地址与本机预览路径合并到本地缓存。拉取时按 `serverReleaseId` 收敛到同一记录，不生成重复版本；本地发布历史不因展示阈值截断。未配置公开对象存储时只能显示“发布包已登记”，不能显示“可下载”。

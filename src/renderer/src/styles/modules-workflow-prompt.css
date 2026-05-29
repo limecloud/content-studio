@@ -568,21 +568,38 @@
   padding: 10px;
 }
 
+.workflow-latest-run-context {
+  display: grid;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 20%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--cyan) 4%, #ffffff);
+  padding: 10px;
+}
+
 .workflow-latest-run-trace p {
   margin: 0;
 }
 
+.workflow-latest-run-context p,
+.workflow-latest-run-trace p {
+  margin: 0;
+}
+
+.workflow-latest-run-context span,
 .workflow-latest-run-trace span {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
+.workflow-latest-run-context strong,
 .workflow-latest-run-trace strong {
   color: var(--text);
   font-size: 12px;
 }
 
+.workflow-latest-run-context em,
 .workflow-latest-run-trace em {
   overflow: hidden;
   color: var(--text-secondary);

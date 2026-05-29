@@ -1423,6 +1423,14 @@ function SopRunner({
       .filter((step) => Boolean(step.summary?.trim()))
       .slice(-4)
     : [];
+  const latestRunInputHighlights = latestRun
+    ? workflowPayloadEntries(latestRun.inputs)
+      .filter(([key, value]) => (
+        value !== '未记录' &&
+        (key === '用户意图' || key === '补充资料说明' || key === '平台' || key === '审核人')
+      ))
+      .slice(0, 4)
+    : [];
   const missingRequiredFields = definition.inputSchema
     .filter((field) => isRequiredWorkflowInput(field) && !(inputs[field.key] ?? '').trim())
     .map(workflowInputFieldLabel);
@@ -1568,6 +1576,17 @@ function SopRunner({
               </small>
             </div>
           </div>
+          {latestRunInputHighlights.length ? (
+            <div className="workflow-latest-run-context">
+              <p className="eyebrow">本次业务对象</p>
+              {latestRunInputHighlights.map(([key, value]) => (
+                <span key={key}>
+                  <strong>{key}</strong>
+                  <em>{value}</em>
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="workflow-run-steps">
             {latestRun.steps.map((step) => (
               <span key={step.stepId} className={statusClass(step.status)}>

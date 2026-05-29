@@ -40,6 +40,7 @@ function statusForAction(
   if (action === 'reject') return 'rejected';
   if (action === 'mark-forbidden') return 'forbidden';
   if (action === 'request-evidence') return 'needs-evidence';
+  if (action === 'request-material') return 'needs-material';
   if (action === 'rename-target' || action === 'merge-related' || action === 'split-target') {
     return mutationStatus ?? (currentStatus === 'approved' ? 'open' : currentStatus);
   }
@@ -51,6 +52,7 @@ function defaultReason(action: ContentReviewDecisionAction): string {
     approve: '证据和表达边界通过审核。',
     reject: '审核驳回，不进入下游生产。',
     'request-evidence': '需要补充可追溯证据。',
+    'request-material': '需要补充可用素材后再进入对应内容生产。',
     'mark-forbidden': '标记为禁用表达或高风险主张。',
     'downgrade-to-needs-verification': '降级为待确认，不进入确定性发布交接。',
     'rename-target': '已调整条目名称，仍需继续审核。',
@@ -170,6 +172,7 @@ export class ContentReviewTaskApplicationService {
     const tasks = buildContentReviewTasksFromMap(input.workspacePath, map, {
       targetRowIds: input.targetRowIds,
       targetTypes: input.targetTypes,
+      taskPurpose: input.taskPurpose,
     });
     const saved = await this.store.saveMany(input.workspacePath, tasks);
     const mapTasks = saved.filter((task) => task.sourceKnowledgeMapId === map.id);

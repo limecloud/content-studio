@@ -7,6 +7,7 @@ import type {
   BuguAuthState,
   BuildBrandCommandCenterInput,
   BuildContentKnowledgeMapInput,
+  ContentKnowledgeMapBuildRunRecord,
   ContentKnowledgeMapRecord,
   ContentReviewDecisionAction,
   ContentReviewTask,
@@ -70,7 +71,7 @@ const settings: AppSettingsView = {
 const updateState: AutoUpdateState = {
   enabled: false,
   status: "idle",
-  currentVersion: "0.15.0",
+  currentVersion: "0.16.0",
   hasUpdate: false,
 };
 
@@ -112,6 +113,7 @@ const devPromptDrafts: PromptDraft[] = [];
 const devAgentPromptSessions: AgentPromptSession[] = [];
 const devSceneCards: SceneCard[] = [];
 const devContentKnowledgeMaps: ContentKnowledgeMapRecord[] = [];
+const devContentKnowledgeMapBuildRuns: ContentKnowledgeMapBuildRunRecord[] = [];
 const devContentDraftChanges: Awaited<ReturnType<ContentStudioApi["listContentDraftChanges"]>> = [];
 const devContentKnowledgeReleases: Awaited<ReturnType<ContentStudioApi["listContentKnowledgeReleases"]>> = [];
 const devBrandCommandCenters: BrandCommandCenterRecord[] = [];
@@ -396,6 +398,58 @@ function contentKnowledgeMap(input: BuildContentKnowledgeMapInput): ContentKnowl
   };
 }
 
+function contentKnowledgeMapBuildRun(record: ContentKnowledgeMapRecord): ContentKnowledgeMapBuildRunRecord {
+  const now = new Date().toISOString();
+  return {
+    id: `browser-dev-map-run-${Date.now()}`,
+    workspacePath: record.workspacePath,
+    title: `${record.title} 生成流程`,
+    status: record.status === "blocked" ? "blocked" : "completed",
+    contentKnowledgeMapId: record.id,
+    contentKnowledgeMapTitle: record.title,
+    model: record.model,
+    inputSourceIds: record.sourceInputSourceIds,
+    brandKnowledgeBaseIds: record.brandKnowledgeBaseIds,
+    ipKnowledgeBaseIds: record.ipKnowledgeBaseIds ?? [],
+    sceneCardIds: record.sceneCardIds,
+    promptDraftIds: record.promptDraftIds,
+    readyPercent: record.coverage.readyPercent,
+    evidenceCount: record.coverage.evidenceCount,
+    gapCount: record.coverage.gapCount,
+    issues: record.gaps,
+    teamSync: record.teamSync,
+    steps: [
+      {
+        key: "collect-inputs",
+        title: "收集输入",
+        status: "completed",
+        message: `${record.sourceInputSourceIds.length} 个输入源`,
+        startedAt: now,
+        completedAt: now,
+      },
+      {
+        key: "structure-output",
+        title: "生成结构化矩阵",
+        status: record.status === "blocked" ? "blocked" : "completed",
+        message: record.gaps[0] || `${record.sellingPoints.length} 个卖点 / ${record.painPoints.length} 个痛点 / ${record.scenarios.length} 个场景`,
+        startedAt: now,
+        completedAt: now,
+      },
+      {
+        key: "quality-check",
+        title: "质量检查",
+        status: record.status === "blocked" ? "blocked" : "completed",
+        message: record.gaps[0] || `${record.coverage.readyPercent}% 内容可用`,
+        startedAt: now,
+        completedAt: now,
+      },
+    ],
+    startedAt: now,
+    completedAt: now,
+    updatedAt: now,
+  };
+}
+
 function brandCommandCenter(input: BuildBrandCommandCenterInput): BrandCommandCenterRecord {
   const createdAt = new Date().toISOString();
   const map = input.contentKnowledgeMapId
@@ -514,12 +568,13 @@ function contentKnowledgePackExport(input: ExportContentKnowledgePackInput) {
   };
 }
 
-function contentReviewTasks(workspacePath: string, input?: { targetRowIds?: string[] }): ContentReviewTask[] {
+function contentReviewTasks(workspacePath: string, input?: { targetRowIds?: string[]; taskPurpose?: ContentReviewTask["taskPurpose"] }): ContentReviewTask[] {
   const map = devContentKnowledgeMaps[0];
   if (!map) return [];
   const createdAt = new Date().toISOString();
   const targetRowIds = new Set(input?.targetRowIds?.filter(Boolean) ?? []);
   const hasTargets = targetRowIds.size > 0;
+  const taskPurpose = input?.taskPurpose ?? "review";
   const rows = [
     ...map.sellingPoints.map((row) => ({ targetType: "selling-point" as const, row })),
     ...map.painPoints.map((row) => ({ targetType: "pain-point" as const, row })),
@@ -527,24 +582,29 @@ function contentReviewTasks(workspacePath: string, input?: { targetRowIds?: stri
   ].filter(({ row }) => (
     hasTargets
       ? targetRowIds.has(row.id)
-      : row.status !== "ready" || row.evidenceRefs.length === 0 || row.confidence < 65
+      : taskPurpose === "material-supplement"
+        ? row.materialStatus === "missing" || !row.materialRefs?.length
+        : row.status !== "ready" || row.evidenceRefs.length === 0 || row.confidence < 65
   ));
   return [
     ...rows.slice(0, hasTargets ? rows.length : 4).map(({ targetType, row }) => ({
-      id: `browser-dev-review-${row.id}`,
+      id: `browser-dev-review-${taskPurpose}-${row.id}`,
       workspacePath,
       sourceKnowledgeMapId: map.id,
       sourceKnowledgeMapTitle: map.title,
       targetType,
       targetId: row.id,
-      title: row.title,
-      summary: row.summary,
+      title: taskPurpose === "material-supplement" ? `补素材：${row.title}` : row.title,
+      summary: taskPurpose === "material-supplement"
+        ? `当前组合需要补充可用图片、视频、案例或客服截图。\n${row.summary}`
+        : row.summary,
+      taskPurpose,
       evidenceRefs: row.evidenceRefs,
       sourceRefs: row.sourceRefs,
       risk: row.status === "ready" && row.confidence >= 65 && row.evidenceRefs.length ? "low" as const : row.evidenceRefs.length ? "medium" as const : "high" as const,
-      status: row.evidenceRefs.length ? "open" as const : "needs-evidence" as const,
-      suggestedAction: row.evidenceRefs.length ? "approve" as const : "request-evidence" as const,
-      issueLabels: row.evidenceRefs.length ? ["本批送审"] : ["缺证据"],
+      status: taskPurpose === "material-supplement" ? "needs-material" as const : row.evidenceRefs.length ? "open" as const : "needs-evidence" as const,
+      suggestedAction: taskPurpose === "material-supplement" ? "request-material" as const : row.evidenceRefs.length ? "approve" as const : "request-evidence" as const,
+      issueLabels: taskPurpose === "material-supplement" ? ["补素材", "缺素材"] : row.evidenceRefs.length ? ["本批送审"] : ["缺证据"],
       decisions: [],
       createdAt,
       updatedAt: createdAt,
@@ -557,6 +617,7 @@ function contentReviewTasks(workspacePath: string, input?: { targetRowIds?: stri
       targetType: "gap" as const,
       title: "知识地图缺口处理",
       summary: gap,
+      taskPurpose: "evidence-supplement" as const,
       evidenceRefs: [],
       sourceRefs: [],
       risk: "medium" as const,
@@ -575,6 +636,7 @@ function reviewStatusForAction(action: ContentReviewDecisionAction): ContentRevi
   if (action === "reject") return "rejected";
   if (action === "mark-forbidden") return "forbidden";
   if (action === "request-evidence") return "needs-evidence";
+  if (action === "request-material") return "needs-material";
   return "open";
 }
 
@@ -1097,9 +1159,12 @@ export function createDevBridge(): ContentStudioApi {
       return card;
     },
     listContentKnowledgeMaps: async () => devContentKnowledgeMaps,
+    listContentKnowledgeMapBuildRuns: async () => devContentKnowledgeMapBuildRuns,
     buildContentKnowledgeMap: async (input) => {
       const record = contentKnowledgeMap(input);
+      const run = contentKnowledgeMapBuildRun(record);
       devContentKnowledgeMaps.unshift(record);
+      devContentKnowledgeMapBuildRuns.unshift(run);
       return record;
     },
     updateContentKnowledgeMap: async (input) => input,

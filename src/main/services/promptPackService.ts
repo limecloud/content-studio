@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { GeneratePromptPackInput, KnowledgeBaseType, KnowledgeCitation, PromptPack } from '../../shared/types';
-import { readJsonFile, writeJsonFile } from './jsonStore';
+import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { GenerationLogStore, type CreateLogInput } from './generationLogStore';
 import { TextGenerationService, TextProviderBlockedError } from './textGenerationService';
@@ -19,6 +19,10 @@ interface PromptPackModelOutput {
 
 function filePathFor(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'prompt-packs.json');
+}
+
+function sortPacks(packs: PromptPack[]): PromptPack[] {
+  return [...packs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 function inferBaseType(citations: KnowledgeCitation[]): KnowledgeBaseType {
@@ -77,7 +81,7 @@ export class PromptPackService {
 
   async list(workspacePath: string): Promise<PromptPack[]> {
     const packs = await readJsonFile<PromptPack[]>(filePathFor(workspacePath), []);
-    return packs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return sortPacks(packs);
   }
 
   async find(workspacePath: string, id: string): Promise<PromptPack | undefined> {
@@ -85,11 +89,19 @@ export class PromptPackService {
   }
 
   async update(input: PromptPack): Promise<PromptPack> {
-    const packs = await this.list(input.workspacePath);
-    if (!packs.some((pack) => pack.id === input.id)) throw new Error(`提示词包不存在: ${input.id}`);
-    const updated: PromptPack = { ...input, updatedAt: new Date().toISOString() };
-    await writeJsonFile(filePathFor(input.workspacePath), packs.map((pack) => (pack.id === input.id ? updated : pack)));
-    return updated;
+    return updateJsonFile<PromptPack[], PromptPack>(
+      filePathFor(input.workspacePath),
+      [],
+      (current) => {
+        const packs = sortPacks(current);
+        if (!packs.some((pack) => pack.id === input.id)) throw new Error(`提示词包不存在: ${input.id}`);
+        const updated: PromptPack = { ...input, updatedAt: new Date().toISOString() };
+        return {
+          value: packs.map((pack) => (pack.id === input.id ? updated : pack)),
+          result: updated,
+        };
+      },
+    );
   }
 
   async generate(input: GeneratePromptPackInput, options?: { logId?: string }): Promise<PromptPack> {
@@ -133,8 +145,14 @@ export class PromptPackService {
         createdAt: now,
         updatedAt: now,
       };
-      const packs = await this.list(input.workspacePath);
-      await writeJsonFile(filePathFor(input.workspacePath), [pack, ...packs].slice(0, 80));
+      await updateJsonFile<PromptPack[], PromptPack>(
+        filePathFor(input.workspacePath),
+        [],
+        (packs) => ({
+          value: [pack, ...sortPacks(packs)].slice(0, 80),
+          result: pack,
+        }),
+      );
       await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,

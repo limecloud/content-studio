@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { CreateSceneCardFromContentInput, GenerateSceneCardsInput, KnowledgeCitation, SceneCard } from '../../shared/types';
-import { readJsonFile, writeJsonFile } from './jsonStore';
+import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { GenerationLogStore, type CreateLogInput } from './generationLogStore';
 import { PromptPackService } from './promptPackService';
@@ -13,6 +13,10 @@ interface SceneCardModelOutput {
 
 function filePathFor(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'scene-cards.json');
+}
+
+function sortCards(cards: SceneCard[]): SceneCard[] {
+  return [...cards].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 function pickCitation(citations: KnowledgeCitation[], index: number): KnowledgeCitation[] {
@@ -80,15 +84,23 @@ export class SceneLibraryStore {
 
   async list(workspacePath: string): Promise<SceneCard[]> {
     const cards = await readJsonFile<SceneCard[]>(filePathFor(workspacePath), []);
-    return cards.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return sortCards(cards);
   }
 
   async update(input: SceneCard): Promise<SceneCard> {
-    const cards = await this.list(input.workspacePath);
-    if (!cards.some((card) => card.id === input.id)) throw new Error(`场景卡不存在: ${input.id}`);
-    const updated: SceneCard = { ...input, updatedAt: new Date().toISOString() };
-    await writeJsonFile(filePathFor(input.workspacePath), cards.map((card) => (card.id === input.id ? updated : card)));
-    return updated;
+    return updateJsonFile<SceneCard[], SceneCard>(
+      filePathFor(input.workspacePath),
+      [],
+      (current) => {
+        const cards = sortCards(current);
+        if (!cards.some((card) => card.id === input.id)) throw new Error(`场景卡不存在: ${input.id}`);
+        const updated: SceneCard = { ...input, updatedAt: new Date().toISOString() };
+        return {
+          value: cards.map((card) => (card.id === input.id ? updated : card)),
+          result: updated,
+        };
+      },
+    );
   }
 
   async createFromContent(input: CreateSceneCardFromContentInput): Promise<SceneCard> {
@@ -117,9 +129,14 @@ export class SceneLibraryStore {
       createdAt: now,
       updatedAt: now,
     };
-    const existing = await this.list(input.workspacePath);
-    await writeJsonFile(filePathFor(input.workspacePath), [card, ...existing].slice(0, 120));
-    return card;
+    return updateJsonFile<SceneCard[], SceneCard>(
+      filePathFor(input.workspacePath),
+      [],
+      (cards) => ({
+        value: [card, ...sortCards(cards)].slice(0, 120),
+        result: card,
+      }),
+    );
   }
 
   async generate(input: GenerateSceneCardsInput, options?: { logId?: string }): Promise<SceneCard[]> {
@@ -180,8 +197,14 @@ export class SceneLibraryStore {
         createdAt: now,
         updatedAt: now,
       }));
-      const existing = await this.list(input.workspacePath);
-      await writeJsonFile(filePathFor(input.workspacePath), [...cards, ...existing].slice(0, 120));
+      await updateJsonFile<SceneCard[], SceneCard[]>(
+        filePathFor(input.workspacePath),
+        [],
+        (existing) => ({
+          value: [...cards, ...sortCards(existing)].slice(0, 120),
+          result: cards,
+        }),
+      );
       await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,

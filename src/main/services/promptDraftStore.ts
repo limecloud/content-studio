@@ -11,7 +11,7 @@ import type {
   UpdatePromptDraftInput,
 } from '../../shared/types';
 import { isReusablePromptInputSource } from '../../shared/inputSourcePolicy';
-import { readJsonFile, writeJsonFile } from './jsonStore';
+import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { InputSourceStore } from './inputSourceStore';
 import { getOemRuntimeConfig } from './oemRuntimeConfig';
@@ -21,6 +21,10 @@ import { TextGenerationService, TextProviderBlockedError, TextProviderFailedErro
 
 function promptDraftsFilePath(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'prompt-drafts.json');
+}
+
+function sortDrafts(drafts: PromptDraft[]): PromptDraft[] {
+  return [...drafts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 function purposeLabel(purpose: PromptDraftPurpose): string {
@@ -196,7 +200,7 @@ export class PromptDraftStore {
 
   async list(workspacePath: string): Promise<PromptDraft[]> {
     const drafts = await readJsonFile<PromptDraft[]>(promptDraftsFilePath(workspacePath), []);
-    return drafts.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return sortDrafts(drafts);
   }
 
   async generate(input: GeneratePromptDraftInput): Promise<PromptDraft> {
@@ -233,9 +237,14 @@ export class PromptDraftStore {
       createdAt: now,
       updatedAt: now,
     };
-    const existing = await this.list(input.workspacePath);
-    await writeJsonFile(promptDraftsFilePath(input.workspacePath), [draft, ...existing].slice(0, 200));
-    return draft;
+    return updateJsonFile<PromptDraft[], PromptDraft>(
+      promptDraftsFilePath(input.workspacePath),
+      [],
+      (drafts) => ({
+        value: [draft, ...sortDrafts(drafts)].slice(0, 200),
+        result: draft,
+      }),
+    );
   }
 
   async createFromContent(input: CreatePromptDraftFromContentInput): Promise<PromptDraft> {
@@ -273,9 +282,14 @@ export class PromptDraftStore {
       createdAt: now,
       updatedAt: now,
     };
-    const existing = await this.list(input.workspacePath);
-    await writeJsonFile(promptDraftsFilePath(input.workspacePath), [draft, ...existing].slice(0, 200));
-    return draft;
+    return updateJsonFile<PromptDraft[], PromptDraft>(
+      promptDraftsFilePath(input.workspacePath),
+      [],
+      (drafts) => ({
+        value: [draft, ...sortDrafts(drafts)].slice(0, 200),
+        result: draft,
+      }),
+    );
   }
 
   private async generateDraftContent(
@@ -343,51 +357,61 @@ export class PromptDraftStore {
   }
 
   async update(input: UpdatePromptDraftInput): Promise<PromptDraft> {
-    const drafts = await this.list(input.workspacePath);
-    const draft = drafts.find((item) => item.id === input.draftId);
-    if (!draft) throw new Error(`Prompt 草稿不存在: ${input.draftId}`);
     if (!input.content.trim()) throw new Error('Prompt 草稿内容不能为空。');
-    const now = new Date().toISOString();
-    const latest = activeVersion(draft);
-    const nextVersion: PromptDraftVersion = {
-      id: randomUUID(),
-      version: latest.version + 1,
-      content: input.content.trim(),
-      note: input.note?.trim() || '人工调整版本',
-      createdAt: now,
-    };
-    const updated: PromptDraft = {
-      ...draft,
-      status: input.status ?? draft.status,
-      model: input.model ?? draft.model,
-      textProtocol: input.textProtocol ?? draft.textProtocol,
-      materializedTarget: input.materializedTarget ?? draft.materializedTarget,
-      versions: [...draft.versions, nextVersion].slice(-40),
-      activeVersionId: nextVersion.id,
-      updatedAt: now,
-    };
-    await writeJsonFile(
+    return updateJsonFile<PromptDraft[], PromptDraft>(
       promptDraftsFilePath(input.workspacePath),
-      drafts.map((item) => (item.id === input.draftId ? updated : item)),
+      [],
+      (current) => {
+        const drafts = sortDrafts(current);
+        const draft = drafts.find((item) => item.id === input.draftId);
+        if (!draft) throw new Error(`Prompt 草稿不存在: ${input.draftId}`);
+        const now = new Date().toISOString();
+        const latest = activeVersion(draft);
+        const nextVersion: PromptDraftVersion = {
+          id: randomUUID(),
+          version: latest.version + 1,
+          content: input.content.trim(),
+          note: input.note?.trim() || '人工调整版本',
+          createdAt: now,
+        };
+        const updated: PromptDraft = {
+          ...draft,
+          status: input.status ?? draft.status,
+          model: input.model ?? draft.model,
+          textProtocol: input.textProtocol ?? draft.textProtocol,
+          materializedTarget: input.materializedTarget ?? draft.materializedTarget,
+          versions: [...draft.versions, nextVersion].slice(-40),
+          activeVersionId: nextVersion.id,
+          updatedAt: now,
+        };
+        return {
+          value: drafts.map((item) => (item.id === input.draftId ? updated : item)),
+          result: updated,
+        };
+      },
     );
-    return updated;
   }
 
   async recordCopy(input: RecordPromptDraftCopyInput): Promise<PromptDraft> {
-    const drafts = await this.list(input.workspacePath);
-    const draft = drafts.find((item) => item.id === input.draftId);
-    if (!draft) throw new Error(`Prompt 草稿不存在: ${input.draftId}`);
-    const updated: PromptDraft = {
-      ...draft,
-      copyCount: (draft.copyCount ?? 0) + 1,
-      lastCopiedAt: new Date().toISOString(),
-      lastCopiedTarget: input.target?.trim() || 'external-video-platform',
-      updatedAt: new Date().toISOString(),
-    };
-    await writeJsonFile(
+    return updateJsonFile<PromptDraft[], PromptDraft>(
       promptDraftsFilePath(input.workspacePath),
-      drafts.map((item) => (item.id === input.draftId ? updated : item)),
+      [],
+      (current) => {
+        const drafts = sortDrafts(current);
+        const draft = drafts.find((item) => item.id === input.draftId);
+        if (!draft) throw new Error(`Prompt 草稿不存在: ${input.draftId}`);
+        const updated: PromptDraft = {
+          ...draft,
+          copyCount: (draft.copyCount ?? 0) + 1,
+          lastCopiedAt: new Date().toISOString(),
+          lastCopiedTarget: input.target?.trim() || 'external-video-platform',
+          updatedAt: new Date().toISOString(),
+        };
+        return {
+          value: drafts.map((item) => (item.id === input.draftId ? updated : item)),
+          result: updated,
+        };
+      },
     );
-    return updated;
   }
 }

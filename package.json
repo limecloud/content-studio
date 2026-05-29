@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "布谷AI内容工厂桌面应用，用于知识库、提示词、图片、视频和文章生产。",
   "type": "module",
   "main": "out/main/index.js",

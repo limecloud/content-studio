@@ -661,6 +661,7 @@ export class BuguContentWorkspaceSyncAdapter implements ContentWorkspaceSyncAdap
           sourceKnowledgeMapTitle: task.sourceKnowledgeMapTitle,
           targetType: task.targetType,
           targetId: task.targetId,
+          taskPurpose: task.taskPurpose,
           title: task.title,
           summary: task.summary,
           evidenceRefs: task.evidenceRefs,

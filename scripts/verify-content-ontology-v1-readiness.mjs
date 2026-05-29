@@ -37,6 +37,7 @@ const REQUIRED_SCRIPTS = [
 
 const REQUIRED_IMPLEMENTATION_FILES = [
   'src/main/services/contentKnowledgeMapApplicationService.ts',
+  'src/main/services/contentKnowledgeMapBuildRunStore.ts',
   'src/main/services/contentKnowledgeMapBuilder.ts',
   'src/main/services/contentKnowledgeMapValidator.ts',
   'src/main/services/contentReviewTaskApplicationService.ts',

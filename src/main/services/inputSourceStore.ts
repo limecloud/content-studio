@@ -8,7 +8,7 @@ import type {
   ImportInputSourceFromFileOptions,
   RegisterInputSourceInput,
 } from '../../shared/types';
-import { readJsonFile, writeJsonFile } from './jsonStore';
+import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { extractTextFromFile } from './documentTextExtractor';
 
@@ -18,6 +18,10 @@ function inputSourcesFilePath(workspacePath: string): string {
 
 function inputSourceAssetDir(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'input-sources');
+}
+
+function sortSources(sources: InputSourceRecord[]): InputSourceRecord[] {
+  return [...sources].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 function inferKind(filePath: string): InputSourceKind {
@@ -73,17 +77,24 @@ function buildSummary(input: RegisterInputSourceInput, kind: InputSourceKind): s
 export class InputSourceStore {
   async list(workspacePath: string): Promise<InputSourceRecord[]> {
     const sources = await readJsonFile<InputSourceRecord[]>(inputSourcesFilePath(workspacePath), []);
-    return sources.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return sortSources(sources);
   }
 
   async remove(workspacePath: string, sourceId: string): Promise<InputSourceRecord | null> {
     const id = sourceId.trim();
     if (!id) throw new Error('输入源 ID 为空。');
-    const existing = await this.list(workspacePath);
-    const removed = existing.find((source) => source.id === id);
-    if (!removed) return null;
-    await writeJsonFile(inputSourcesFilePath(workspacePath), existing.filter((source) => source.id !== id));
-    return removed;
+    return updateJsonFile<InputSourceRecord[], InputSourceRecord | null>(
+      inputSourcesFilePath(workspacePath),
+      [],
+      (current) => {
+        const existing = sortSources(current);
+        const removed = existing.find((source) => source.id === id) ?? null;
+        return {
+          value: removed ? existing.filter((source) => source.id !== id) : existing,
+          result: removed,
+        };
+      },
+    );
   }
 
   async register(input: RegisterInputSourceInput): Promise<InputSourceRecord> {
@@ -122,9 +133,14 @@ export class InputSourceStore {
       record.artifactRefs = Array.from(new Set([...record.artifactRefs, markdownPath]));
     }
 
-    const existing = await this.list(input.workspacePath);
-    await writeJsonFile(inputSourcesFilePath(input.workspacePath), [record, ...existing].slice(0, 300));
-    return record;
+    return updateJsonFile<InputSourceRecord[], InputSourceRecord>(
+      inputSourcesFilePath(input.workspacePath),
+      [],
+      (sources) => ({
+        value: [record, ...sortSources(sources)].slice(0, 300),
+        result: record,
+      }),
+    );
   }
 
   async importFile(

@@ -185,6 +185,7 @@ Route Adapter
 - Content Studio 桌面端内容知识地图页和 Bugu 控制台已接入同步冲突队列：展示冲突来源、摘要、版本差异、影响内容和逐项合并处理清单，并可记录“保留团队内容 / 重新提交本机修改 / 按清单转人工确认”；处理后本机地图回到待同步状态。
 - Bugu 服务端处理冲突时会接收合并处理清单，保存到冲突记录和行动记录，并推进团队工作区 revision；当前不直接改写卖点、痛点、场景或证据字段。
 - Content Studio 素材覆盖回写会把低风险字段补充转为 Bugu 审核任务：目标是补证据、补规则或补素材标签，状态为待确认；服务端继续通过审核任务承接，不在回写时改写团队知识地图主字段。
+- Bugu `content-review-tasks` 已保留审核任务业务类型：发布审核、补证据和补素材可以共存；补素材任务以 `taskPurpose=material-supplement`、`status=needs-material`、`suggestedAction=request-material` 写入服务端，控制台按待处理任务展示，避免把补拍 / 补图需求压成普通审核。
 - Agent Knowledge 发布包已形成端到端第一刀：Content Studio 导出 zip，提交 release 时发送包摘要；Bugu 使用对象存储端口登记 `packageObjectKey`、`packagePublicUrl`、`packageUploadStatus` 和包校验摘要；未配置公开对象存储时保留 metadata-only 登记，不伪造公开下载成功。
 - Bugu 控制台已支持团队知识包旧版本回滚为默认版本；Bugu 服务端通过 `content-knowledge-release-actions` 记录默认版本切换和回滚审计。
 - Bugu 服务端已支持团队知识包审批第一刀：发布可进入待确认状态，低权限角色不能批准，负责人批准后才会成为默认团队知识包；控制台展示待确认 / 已确认 / 已驳回状态。

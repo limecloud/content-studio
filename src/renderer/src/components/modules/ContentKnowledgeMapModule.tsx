@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import type {
   AgentPromptSession,
   BrandKnowledgeBaseRecord,
+  ContentKnowledgeMapBuildRunRecord,
   ContentKnowledgeMapEvidence,
   ContentKnowledgeMapMatrixRow,
   ContentKnowledgeMapRecord,
   ContentKnowledgeRelease,
   ContentKnowledgePackExportResult,
   ContentMaterialCoverageResult,
+  ContentProductionHandoffTarget,
   ContentSyncConflict,
   ContentSyncConflictResolutionAction,
   ContentWorkspaceSyncResult,
@@ -43,6 +45,7 @@ interface ContentKnowledgeMapModuleProps {
   sceneCards: SceneCard[];
   promptDrafts: PromptDraft[];
   contentKnowledgeMaps: ContentKnowledgeMapRecord[];
+  contentKnowledgeMapBuildRuns: ContentKnowledgeMapBuildRunRecord[];
   teamChangePackages: Array<{ id: string }>;
   teamKnowledgePackageVersions: ContentKnowledgeRelease[];
   teamSyncConflicts: ContentSyncConflict[];
@@ -60,6 +63,8 @@ interface ContentKnowledgeMapModuleProps {
   onResolveTeamSyncConflict: (conflict: ContentSyncConflict, resolutionAction: ContentSyncConflictResolutionAction) => void;
   onCreateTeamKnowledgePackage: () => void;
   onGenerateContentReviewTasksForRows: (rowIds: string[]) => void;
+  onGenerateContentMaterialTasksForRows: (rowIds: string[]) => void;
+  onCreateContentProductionHandoffForRow: (rowId: string, target: ContentProductionHandoffTarget) => void;
   contentKnowledgePackExport: ContentKnowledgePackExportResult | null;
   contentMaterialCoverage: ContentMaterialCoverageResult | null;
   agentPromptSessions: AgentPromptSession[];
@@ -93,6 +98,12 @@ const SYNC_STATUS_LABELS: Record<ContentKnowledgeMapRecord['syncStatus'], string
   synced: '已同步',
   conflict: '有冲突',
   blocked: '同步待处理',
+};
+
+const BUILD_RUN_STATUS_LABELS: Record<ContentKnowledgeMapBuildRunRecord['status'], string> = {
+  completed: '已生成',
+  blocked: '待处理',
+  failed: '生成失败',
 };
 
 const TAB_LABELS: Array<{ key: DetailTab; label: string }> = [
@@ -149,6 +160,18 @@ function mapStatusTone(status?: ContentKnowledgeMapRecord['status']) {
   if (status === 'ready' || status === 'published') return 'ready';
   if (status === 'blocked' || status === 'needs-review') return 'blocked';
   return 'idle';
+}
+
+function buildRunStatusTone(status?: ContentKnowledgeMapBuildRunRecord['status']) {
+  if (status === 'completed') return 'ready';
+  if (status === 'blocked' || status === 'failed') return 'blocked';
+  return 'idle';
+}
+
+function buildRunStepClass(status: ContentKnowledgeMapBuildRunRecord['steps'][number]['status']): string {
+  if (status === 'completed') return 'ready';
+  if (status === 'blocked' || status === 'failed') return 'blocked';
+  return '';
 }
 
 function syncStatusTone(status?: ContentKnowledgeMapRecord['syncStatus']) {
@@ -483,6 +506,8 @@ function renderMatrixRowDetail(
   row: ContentKnowledgeMapMatrixRow | undefined,
   evidenceById: Map<string, ContentKnowledgeMapEvidence>,
   onGenerateReviewTask: (rowId: string) => void,
+  onGenerateMaterialTask: (rowId: string) => void,
+  onCreateHandoff: (rowId: string, target: ContentProductionHandoffTarget) => void,
   onSelectModule: (module: ModuleKey) => void,
   busy: boolean,
   workspaceReady: boolean,
@@ -548,17 +573,36 @@ function renderMatrixRowDetail(
         >
           生成审核任务
         </button>
+        <button
+          className="ghost small"
+          disabled={!workspaceReady || busy}
+          onClick={() => onGenerateMaterialTask(row.id)}
+        >
+          创建补素材任务
+        </button>
         <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('knowledge-review')}>
           去审核任务
         </button>
-        <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('assets-prompt-workbench')}>
-          去 Prompt 工作台
+        <button
+          className="ghost small"
+          disabled={!workspaceReady || busy}
+          onClick={() => onCreateHandoff(row.id, 'prompt-draft')}
+        >
+          生成 Prompt 草稿
         </button>
-        <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('knowledge-scenes')}>
-          去场景库
+        <button
+          className="ghost small"
+          disabled={!workspaceReady || busy}
+          onClick={() => onCreateHandoff(row.id, 'scene-card')}
+        >
+          生成场景卡
         </button>
-        <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('assets-sop')}>
-          去 SOP 输入
+        <button
+          className="ghost small"
+          disabled={!workspaceReady || busy}
+          onClick={() => onCreateHandoff(row.id, 'sop-run')}
+        >
+          启动 SOP
         </button>
         <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('brand-command-center')}>
           去品牌战情室
@@ -623,6 +667,7 @@ function renderMaterialFeedbackContent(input: {
   map: ContentKnowledgeMapRecord;
   result: ContentMaterialCoverageResult | null;
   onWriteBack: () => void;
+  onCreateMaterialTasks: (rowIds: string[]) => void;
   onSelectModule: (module: ModuleKey) => void;
   busy: boolean;
   workspaceReady: boolean;
@@ -683,6 +728,13 @@ function renderMaterialFeedbackContent(input: {
       <ActionGroup align="left" className="content-map-section-actions">
         <button className="primary small" disabled={!input.workspaceReady || input.busy} onClick={input.onWriteBack}>
           回写素材覆盖
+        </button>
+        <button
+          className="ghost small"
+          disabled={!input.workspaceReady || input.busy || !missingRows.length}
+          onClick={() => input.onCreateMaterialTasks(missingRows.map((row) => row.id))}
+        >
+          创建补素材任务
         </button>
         <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={() => input.onSelectModule('assets')}>
           去素材库
@@ -768,6 +820,47 @@ function renderAdvancedExportContent(input: {
   );
 }
 
+function renderBuildRunContent(run: ContentKnowledgeMapBuildRunRecord | undefined) {
+  if (!run) {
+    return (
+      <div className="content-map-build-run empty">
+        <strong>暂无生成流程</strong>
+        <span>点击生成内容知识地图后，这里会显示输入、生成、校验和团队状态。</span>
+      </div>
+    );
+  }
+  return (
+    <div className="content-map-build-run">
+      <div className="section-title">
+        <h3>最近生成流程</h3>
+        <StatusPill tone={buildRunStatusTone(run.status)}>{BUILD_RUN_STATUS_LABELS[run.status]}</StatusPill>
+      </div>
+      <div className="content-map-build-run-summary">
+        <div><strong>{run.readyPercent}%</strong><span>可用内容</span></div>
+        <div><strong>{run.evidenceCount}</strong><span>证据</span></div>
+        <div><strong>{run.gapCount}</strong><span>待处理</span></div>
+      </div>
+      <div className="content-map-build-run-steps">
+        {run.steps.map((step) => (
+          <article key={`${run.id}:${step.key}`} className={buildRunStepClass(step.status)}>
+            <div>
+              <strong>{step.title}</strong>
+              <span>{step.status === 'completed' ? '完成' : step.status === 'skipped' ? '跳过' : '待处理'}</span>
+            </div>
+            <p>{step.message}</p>
+          </article>
+        ))}
+      </div>
+      {run.issues.length ? (
+        <div className="content-map-build-run-issues">
+          {run.issues.slice(0, 3).map((issue) => <span key={issue}>{issue}</span>)}
+        </div>
+      ) : null}
+      <small>{new Date(run.completedAt).toLocaleString()} · {run.model ?? '生成服务'}</small>
+    </div>
+  );
+}
+
 export function ContentKnowledgeMapModule({
   workspaceReady,
   busy,
@@ -776,6 +869,7 @@ export function ContentKnowledgeMapModule({
   sceneCards,
   promptDrafts,
   contentKnowledgeMaps,
+  contentKnowledgeMapBuildRuns,
   teamChangePackages,
   teamKnowledgePackageVersions,
   teamSyncConflicts,
@@ -793,6 +887,8 @@ export function ContentKnowledgeMapModule({
   onResolveTeamSyncConflict,
   onCreateTeamKnowledgePackage,
   onGenerateContentReviewTasksForRows,
+  onGenerateContentMaterialTasksForRows,
+  onCreateContentProductionHandoffForRow,
   contentKnowledgePackExport,
   contentMaterialCoverage,
   agentPromptSessions,
@@ -823,6 +919,14 @@ export function ContentKnowledgeMapModule({
   const [selectedMatrixRowIds, setSelectedMatrixRowIds] = useState<string[]>([]);
   const [focusedMatrixRowId, setFocusedMatrixRowId] = useState('');
   const activeMap = activeContentKnowledgeMap ?? contentKnowledgeMaps[0];
+  const latestBuildRun = useMemo(
+    () => {
+      if (!contentKnowledgeMapBuildRuns.length) return undefined;
+      if (!activeMap) return contentKnowledgeMapBuildRuns[0];
+      return contentKnowledgeMapBuildRuns.find((run) => run.contentKnowledgeMapId === activeMap.id) ?? contentKnowledgeMapBuildRuns[0];
+    },
+    [activeMap, contentKnowledgeMapBuildRuns],
+  );
   const hasInputs = inputSources.length > 0;
   const hasBrandKnowledge = brandKnowledgeBases.length > 0;
   const hasMap = Boolean(activeMap);
@@ -1302,6 +1406,8 @@ export function ContentKnowledgeMapModule({
                     focusedMatrixRow,
                     evidenceById,
                     (rowId) => onGenerateContentReviewTasksForRows([rowId]),
+                    (rowId) => onGenerateContentMaterialTasksForRows([rowId]),
+                    onCreateContentProductionHandoffForRow,
                     onSelectModule,
                     busy,
                     workspaceReady,
@@ -1340,6 +1446,7 @@ export function ContentKnowledgeMapModule({
                 map: activeMap,
                 result: contentMaterialCoverage,
                 onWriteBack: onWriteBackContentMaterialCoverage,
+                onCreateMaterialTasks: onGenerateContentMaterialTasksForRows,
                 onSelectModule,
                 busy,
                 workspaceReady,
@@ -1421,10 +1528,12 @@ export function ContentKnowledgeMapModule({
             <span className={brandKnowledgeBases.length ? 'ready' : ''}>{brandKnowledgeBases.length} 个品牌 / 产品知识库</span>
             <span className={sceneCards.length ? 'ready' : ''}>{sceneCards.length} 张场景卡</span>
             <span className={promptDrafts.length ? 'ready' : ''}>{promptDrafts.length} 个 Prompt 草稿</span>
+            <span className={latestBuildRun ? 'ready' : ''}>{contentKnowledgeMapBuildRuns.length} 条生成流程</span>
             <span className={teamChangePackages.length ? 'ready' : ''}>{teamChangePackages.length} 个变更包</span>
             <span className={openTeamConflicts.length ? '' : 'ready'}>{openTeamConflicts.length} 个同步冲突</span>
             <span className={teamKnowledgePackageVersions.length ? 'ready' : ''}>{teamKnowledgePackageVersions.length} 个团队版本</span>
           </div>
+          {renderBuildRunContent(latestBuildRun)}
           <div className="content-map-conflict-list">
             <strong>同步冲突</strong>
             {openTeamConflicts.length ? (

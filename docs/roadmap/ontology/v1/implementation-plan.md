@@ -1,6 +1,6 @@
 # Ontology v1 实施计划
 
-更新时间：2026-05-29
+更新时间：2026-05-30
 状态：Draft / First Implementation + Field Supplement Cut
 
 ## 1. 设计结论
@@ -126,7 +126,7 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 1. 定义 `ContentKnowledgeMapRecord`、矩阵行、证据、约束、缺口和团队同步摘要。
 2. 定义 `ContentReviewTask`、`ContentReviewDecision`、审核状态和审核动作。
 3. 定义 `BrandCommandSignal`、`BrandCommandObjective`、`BrandCommandResourceBundle`、`BrandCommandCampaignCell`、`BrandCommandQueueItem`、`BrandCommandActionRecord`。
-4. 本地保存 `.content-studio/content-knowledge-maps.json`、`content-review-tasks.json`、`brand-command-centers.json`，定位为缓存、离线草稿和运行临时产物。
+4. 本地保存 `.content-studio/content-knowledge-maps.json`、`content-knowledge-map-build-runs.json`、`content-review-tasks.json`、`content-production-handoffs.json`、`content-draft-changes.json` 和 `brand-command-centers.json`，定位为缓存、离线草稿和运行临时产物。
 5. 增加服务端同步字段：`tenantId`、`workspaceId`、`revision`、`baseRevision`、`syncStatus`、`lastSyncedAt`、`idempotencyKey`，本机阶段允许先以 `teamSync` 摘要表达。
 6. 暴露 list / build / update / review / recordAction / export IPC，并通过 Bugu 适配器同步变更包、审核、队列、行动、素材覆盖、同步冲突和 release；pull、逐项合并处理清单、服务端清单落库审计和素材覆盖待确认补充第一刀已补。
 
@@ -137,6 +137,7 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 - 能记录审核决策和行动记录。
 - 能区分“已同步”“未同步”“离线草稿”“冲突待处理”。
 - 未配置模型时不伪造构建结果，只返回 blocked。
+- 内容知识地图版本、生成流程、审核任务、生产交接、离线变更和品牌战情室历史不在 Store 层按展示阈值截断；UI 分页只影响视图，不删除审计事实。
 
 ### V1-P1.5：Bugu 业务后端契约和 LimeCore 云底座对接
 
@@ -193,6 +194,8 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 - Content Studio 已补发布检查 policy 第一刀：`contentKnowledgeMapValidator.ts` 识别禁用 / 绝对化表达、IP 漂移和竞品 ready 风险；`contentProductionHandoffPolicy.ts` 在审核通过后仍拦截禁用表达、竞品观察直交、缺 IP 边界和 IP 漂移；功能测试覆盖不创建下游 Prompt。
 - Content Studio 已补品牌战情室执行 policy 第一刀：`BrandCommandExecutionPolicy` 在 ready 动作执行前检查团队角色权限和平台规则 / 渠道发布边界；`viewer` 或无权限角色会被拦截，缺平台规则的生产动作不会创建下游产物，行动记录保留 `actorRole`。Bugu `content-action-records` 追加接口也按认证角色做服务端权限校验，防止绕过桌面端直接写入。
 - Content Studio 已补矩阵组合治理第一刀：`src/shared/contentMatrixPlanning.ts` 统一处理状态 / 素材 / 关键词筛选、优先级 / 可信度 / 证据 / 素材缺口排序、分页和本批摘要；内容知识地图页可选择本页或当前筛选结果的本批条目生成审核任务。
+- Content Studio 已补补素材任务第一刀：`GenerateContentReviewTasksInput.taskPurpose` 支持 `material-supplement`，`ContentReviewTask` 增加任务类型、待补素材状态和补素材决策动作；内容知识地图行详情可为当前组合创建真实补素材任务，任务进入审核列表和 Bugu 同步适配器，不与同一组合的发布审核任务互相覆盖。
+- Bugu 业务后端已补补素材任务保真：`content-review-tasks` 保存并序列化 `taskPurpose`，`needs-material` 会作为待处理审核展示；`npm run smoke:oem-service` 覆盖同一目标同时存在发布审核任务和补素材任务，后续 release 使用补素材写入后的最新 workspace revision，避免旧 revision 覆盖。
 - Content Studio 已补结构化覆盖维度第一刀：`ContentKnowledgeMapMatrixRow.dimensions` 保存人群、渠道、购买阶段、内容形式和使用场景；`contentKnowledgeMapBuilder.ts` 从 SKU 表、场景卡、品牌知识库、输入源标签和 IP 延伸场景生成维度；`contentMatrixPlanning.ts` 支持人群 / 渠道 / 内容形式筛选与维度摘要；真实页面显示并筛选这些维度，`sceneCardAssembler.ts` 和 Agent Knowledge 导出也会消费该字段。
 - Content Studio 已把结构化覆盖维度推进到品牌战情室：`BrandCommandCenterBuilder` 会把矩阵行维度合并进作战目标、资源包、作战单元和执行队列；`BrandCommandCenterApplicationService` 会把目标人群、渠道、内容形式和使用场景写入 Prompt 草稿、场景卡和 SOP 运行输入，并同步到 Bugu 执行队列。
 - Content Studio 已补指定矩阵行送审：`GenerateContentReviewTasksInput.targetRowIds` 支持只生成本批行的审核任务，ready 行也可进入人工批准，且不会带入未选行和缺口；功能测试覆盖去重和同步。
@@ -200,10 +203,15 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 - Content Studio 已补 Agent Knowledge v0.7.2 导出校验：`knowledgePackExportPolicy.ts` 在写盘前检查 ready 行、ready 证据、必需文件、JSON 合法性、frontmatter、疑似密钥、本机路径和脚本 / 自动发布 / 刷量 / 排名操控内容；失败时 `createKnowledgeRelease` 不调用 Bugu 发布接口，只返回 blocked release。
 - Content Studio 已把 v1 普通用户模块纳入 UX 文案门禁：`scripts/v2-ux-copy-audit.mjs` 现在扫描内容知识地图、审核任务和品牌战情室，阻断功能入口合集和 Ontology / Concept / Relation / CoverageMatrix / PromptGroundingContext / DecisionGate / ActionLog 等工程术语进入普通用户页面。
 - Content Studio 已补 AC-10 构建前生成服务门禁：`ContentKnowledgeMapApplicationService` 在文字生成服务待配置时保存 blocked 内容知识地图记录，只保留来源和恢复原因，不生成卖点、痛点、场景、证据或规则矩阵；功能测试覆盖不生成伪知识地图。
+- Content Studio 已把内容知识地图构建从“本地规则 seed 直接作为成功结果”升级为真实文字模型结构化生成：`contentKnowledgeMapBuilder.ts` 先生成可追溯 seed / evidence，再由 `TextGenerationService.generateJson` 执行 `generate_content_knowledge_map`，按固定 schema 输出卖点、痛点、场景、约束和资料缺口；模型失败、返回空矩阵、生成服务缺失或缺少结构化输出接口时保存待配置 / 失败记录，不回退成伪成功。
+- Content Studio 已补内容知识地图生成流程记录：`ContentKnowledgeMapBuildRunStore` 保存输入收集、团队状态、生成服务检查、来源证据整理、结构化矩阵生成和质量检查步骤；成功和 blocked 路径都能在工作台看到模型、可用比例、证据数、缺口和恢复原因。
 - Content Studio 已补 AC-03 用户反馈证据拆分：`user-feedback` 输入会生成逐条 `user-quote` / `customer-service-log` 证据，评论痛点矩阵行引用对应原声证据，功能测试覆盖痛点行不能只引用整份输入源。
-- Content Studio 已把 prototype 中第一批关键交互落到真实工作台：内容知识地图行详情支持证据 / 风险 / 恢复路径 / 交付去向下钻，并提供审核任务、Prompt 工作台、场景库、SOP 输入和品牌战情室跳转；IP 口径、竞品观察、团队知识包、素材回写和高级导出均在真实页面可切换查看；目标 E2E 已覆盖这些路径。
+- Content Studio 已把 prototype 中第一批关键交互落到真实工作台：内容知识地图行详情支持证据 / 风险 / 恢复路径 / 交付去向下钻，并提供审核任务、补素材任务、真实 Prompt 草稿、真实场景卡和真实 SOP 运行交接；未审核组合先进入审核台，已审核组合才进入下游产物。IP 口径、竞品观察、团队知识包、素材回写和高级导出均在真实页面可切换查看；目标 E2E 已覆盖这些路径。
 - Content Studio 已把作战分组 5 个左侧入口从“同一品牌战情室页签”升级为真实直达视图：`brand-command-center`、`brand-command-objectives`、`brand-command-bundles`、`brand-command-queue`、`brand-command-logs` 分别呈现品牌战情室、目标树、作战编组、执行队列和行动记录的独立标题、业务对象、主判断、主动作、交付去向和真实数据图表；这些摘要和图表只从 `BrandCommandCenterRecord`、内容知识地图、执行队列和行动记录计算，不使用 mock 数据。
 - Content Studio 已补未接生产 Bugu token 时的本地读取兜底：`ContentWorkspaceSyncService.listSyncConflicts` 捕获远端冲突列表读取失败并返回空列表，避免同步冲突 API 的权限错误阻断本地内容知识地图刷新。
+- Content Studio 已补本地 JSON 事实源可靠性：`jsonStore.ts` 统一使用临时文件 + rename 原子写，并提供按文件串行的 `updateJsonFile` 事务式读改写；内容知识地图、审核任务、品牌战情室、生产交接、团队知识包、变更包、输入源、素材审核、Prompt 草稿、场景卡、SOP 定义 / 运行和生成日志等 v1 主链 store 已接入，避免并发 IPC 下 last-write-wins 丢审核和行动记录。功能测试覆盖并发写入不丢 ID。
+- Content Studio 已补本地追加和不可变不变量：`ContentReviewTaskStore.update/updateMany` 禁止删除已有审核决策，`BrandCommandCenterStore.update` 禁止删除已有行动记录，`ContentKnowledgeReleaseStore.save/update` 禁止普通本机更新原地修改已发布团队知识包版本；Bugu release 拉取改走 `syncFromTeam` 显式团队同步入口。
+- Content Studio 已把品牌战情室行动记录和团队知识包发布历史从事实源截断改为完整保留：`BrandCommandCenterApplicationService.refreshActions`、生产交接回填和 `ContentKnowledgeReleaseStore` 不再用 120 条截断删除历史记录；展示和刷新可分批，但 Store 不负责抹掉审计历史。
 - 尚未完成：真实生产 R2 / OSS 环境、真实账号权限和两台设备执行 `content:v1:verify-online`，再执行 `content:v1:verify-report -- --production` 后归档报告。
 
 ### V1-P2：输入适配器
@@ -258,19 +266,23 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 4. 绑定证据：产品规格、用户原声、知识库段落、人工备注和素材引用。
 5. 生成覆盖矩阵：人群 x 痛点 x 卖点 x 场景 x 渠道 x 素材状态 x 证据状态。
 6. 生成 validation issues：无证据主张、禁用表达、重复概念、孤立概念、粒度异常和来源缺失。
+7. 真实运行时必须调用文字生成服务输出结构化矩阵；本地规则只负责 seed、证据候选和无模型测试工具，不能在配置了模型后冒充生成成功。
 
 验收：
 
 - 每个 `claim` 至少有 evidence status。
 - 每个用户痛点至少保留一条用户原声或客服问答。
-- LLM 推断必须标记为 `generated-inference`，不能直接进入 approved。
+- 模型输出必须引用已有 `sourceRefs` 和 `evidenceRefs`；证据不足只能进入 `needs-evidence` 或 `needs-review`，不能直接进入可交付状态。
 - 覆盖矩阵支持筛选、排序、分页和本批送审，避免组合爆炸淹没 UI。
 
 当前落地：
 
 - `contentKnowledgeMapValidator.ts` 已从单纯完整度检查升级为质量门禁：检测可交付缺证据、禁用 / 绝对化表达、重复或近似条目、孤立条目、粒度过粗 / 过细 / 混杂、IP 漂移和竞品 ready 风险。
+- `ContentKnowledgeMapApplicationService` 在真实运行时会通过 `TextGenerationService.generateJson` 调用 `generate_content_knowledge_map`，模型 prompt 只包含来源摘要、seed rows 和 evidence；模型只能引用已有来源和证据，竞品相关行强制待审核。
+- `buildContentKnowledgeMapFromModelOutput` 会清洗模型输出、丢弃无效来源 / 证据引用、补齐 evidenceRefs、合并模型资料缺口，并把结果交给 `contentKnowledgeMapValidator.ts` 统一校验。
+- 若文字模型不可用、调用失败、返回空矩阵或缺少结构化输出接口，服务端保存待配置 / 失败记录；不会把本地规则 seed 保存成已生成的知识地图。
 - 重复、孤立和粒度异常不会在 renderer 中被静默修正，而是进入缺口清单和审核调整闭环，由审核人员通过改名、合并或拆分处理。
-- 功能测试已覆盖重复 / 孤立 / 粒度异常会触发待处理状态，避免文档只声明质量门禁但实现没有校验。
+- 功能测试已覆盖模型结构化生成调用、生成服务待配置不生成伪矩阵、重复 / 孤立 / 粒度异常会触发待处理状态，避免文档只声明质量门禁但实现没有校验。
 
 ### V1-P4：内容知识地图工作台和审核台
 
@@ -352,6 +364,7 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 当前落地：
 
 - `ContentProductionHandoffService` 已将审核通过的矩阵组合交接为 Prompt 草稿、场景卡和 / 或 SOP 运行记录，并通过 `contentProductionHandoffPolicy.ts` 二次检查审核状态、证据、禁用表达、竞品直交、IP 边界和 IP 漂移。
+- 内容知识地图行详情已复用 `ContentProductionHandoffService`：用户点击生成 Prompt、场景卡或启动 SOP 时，不再只是跳转到空页面；已审核组合会创建真实下游记录并打开对应工作台，未审核组合会先创建审核任务。
 - 生产交接已写入结构化行动记录：包含 `batchId`、输入摘要、输出摘要、操作者、覆盖行、证据、来源、团队知识包版本、发布检查项、Prompt 草稿 / 场景卡 / SOP 运行 ID 和下一步，并通过 Bugu 既有 `content-action-records` API 追加到团队事实源。
 - 发布检查拦截时不会创建 PromptDraft 或 SceneCard，但会写入 `blocked` 行动记录，保留拦截原因、检查项、恢复路径和团队同步状态。
 - `promptGroundingAssembler.ts` 已收敛为短摘录注入：只写当前审核组合、已通过证据、生成边界和来源引用，不拼接完整原始文档或未通过证据。
@@ -395,7 +408,8 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 - `ContentMaterialFeedbackService` 已把已通过素材回写到内容知识地图矩阵行，并把素材覆盖结果同步到 Bugu 团队工作区；同步 payload 不包含素材本机路径。
 - `src/renderer/src/app/assetCoverage.ts` 从内容知识地图的 `materialRefs` 派生素材覆盖索引，不新增重复事实源；素材库卡片和详情页据此展示每个素材覆盖的卖点 / 痛点 / 场景组合。
 - 素材回写后的表现标签只显示为排序和复盘信号；待确认补充通过审核任务进入人工确认，不自动改写已发布主文案。
-- 功能测试已覆盖团队同步、本机路径不泄漏、素材覆盖索引、待确认补充任务和不自动提交审核结论。
+- 内容知识地图素材回写页已能把缺素材组合转成真实 `material-supplement` 审核任务；点击后进入审核台，任务状态为待补素材，建议处理为补素材，并可与同一组合的发布审核任务并存。
+- 功能测试和目标 E2E 已覆盖团队同步、本机路径不泄漏、素材覆盖索引、待确认补充任务、补素材任务真实落库和不自动提交审核结论。
 
 ### V1-P7：品牌内容作战系统
 
@@ -441,7 +455,9 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 - `BrandCommandCenterBuilder` 已补信号雷达扩展：从矩阵行标签、表现标签、缺口和规则中识别评论痛点、竞品动作、素材表现、投放表现、平台热点 / 搜索问题和品牌风险；竞品、投放和素材表现只作为行动触发器，不会自动变成产品事实。
 - 资源包素材字段读取矩阵行真实 `materialRefs`；发布检查中的素材项不再用场景名称兜底。
 - `BrandCommandExecutionPolicy` 已在执行队列动作记录前二次检查资源包、证据、素材、品牌边界、竞品不可搬运边界、渠道、平台规则、团队角色权限和重复执行风险；ready 动作缺资源、缺平台规则或当前角色无权执行时会转为已拦截并写行动记录。
+- `BrandCommandCenterBuilder` 和 `BrandCommandCenterApplicationService` 已把资源包覆盖行与审核任务绑定：构建战情室时未审核组合进入待审核队列，执行 `generate-prompt-draft`、`create-scene-card` 和 `launch-sop-run` 前会重新读取审核状态，历史 ready 队列或旧资源包仍会因未全量审核而转为已拦截，不创建下游产物。
 - 执行队列会区分可执行、待审核、待补资源、已拦截和已回写动作；`generate-prompt-draft` ready 动作会创建真实 Prompt 草稿并回填资源包，`create-scene-card` ready 动作会创建真实场景卡并回填资源包，`launch-sop-run` ready 动作会创建真实 SOP 运行记录并回填资源包，`write-back-material-coverage` 动作会调用素材覆盖回写服务并留下覆盖变更引用，补证据 / 补素材 / 送审动作会创建真实审核任务并可同步到 Bugu。
+- 真实客户端目标 E2E 已从执行队列页面点击“记录交接”，并通过 preload API 验证 `PromptDraft`、队列行动记录和 `handed-off` 状态都写入事实源；这条链路不再依赖种子阶段直接调用 `recordBrandCommandAction`。
 - 作战目标、资源包、作战单元和执行队列已保存目标人群、渠道、内容形式和使用场景；渠道优先来自内容知识地图矩阵行，不再统一写死为默认渠道。执行 `generate-prompt-draft`、`create-scene-card` 和 `launch-sop-run` 时，这些生产变量会进入 Prompt 草稿正文、场景卡 audience / usageScene / 口播方向和 SOP `intent/platform` 输入。
 - 品牌战情室 UI 已补目标树页签：展示目标类型、优先级、渠道、成功标准、关联信号、资源包和队列动作，承接“信号 -> 作战目标 -> 资源包 -> 执行队列”的中间决策层。
 - 审核页生产交接创建的 Prompt 草稿和场景卡会通过行动记录回填到品牌战情室资源包；品牌战情室自身的 ready 场景卡动作也会写入同一行动记录链路。
@@ -518,6 +534,9 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 
 - 两个用户可以通过 Bugu 共享同一个内容工作区，并看到同一服务端 revision。
 - 冲突能被检测并进入冲突队列，不能 silent last-write-wins。
+- 本地缓存和离线草稿在并发 IPC 写入时不能 silent last-write-wins 丢失审核任务、行动记录、生产交接或知识包版本。
+- 本地更新不能删除已有 `ReviewDecision` 或 `ActionRecord`；如需修正错误记录，只能追加新的审核决策、行动记录或冲突处理记录。
+- 本地更新不能原地改写已发布团队知识包 release；如需修正包内容、版本号、sha256、对象存储地址或文件清单，只能创建新 release 或从 Bugu 团队工作区显式同步。
 - 团队 release 能被 Prompt 工作台和 SOP 作为默认知识源消费；Prompt 草稿和 SOP 运行记录都能看到使用的团队知识包版本。
 - 离线导出包不包含模型密钥、登录凭证或本机绝对路径。
 

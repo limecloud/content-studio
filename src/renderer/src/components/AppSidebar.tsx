@@ -176,6 +176,8 @@ export function AppSidebar({
                 <button
                   key={`${group.title}:${item.label}`}
                   className={`nav-item ${item.key && visibleActiveModule === item.key ? "active" : ""} ${item.disabled ? "disabled" : ""}`}
+                  type="button"
+                  aria-label={item.label}
                   title={item.label}
                   onClick={() =>
                     item.key && !item.disabled && onSelectModule(item.key)
@@ -191,6 +193,7 @@ export function AppSidebar({
                 <button
                   className={`nav-item nav-advanced-toggle ${shouldShowAdvancedMaintenance ? "active" : ""}`}
                   type="button"
+                  aria-label="高级维护"
                   title="高级维护"
                   aria-expanded={shouldShowAdvancedMaintenance}
                   onClick={() => setAdvancedMaintenanceOpen((current) => !current)}
@@ -204,6 +207,8 @@ export function AppSidebar({
                 <button
                   key={`${group.title}:${item.label}`}
                   className={`nav-item nav-item-advanced ${item.key && visibleActiveModule === item.key ? "active" : ""} ${item.disabled ? "disabled" : ""}`}
+                  type="button"
+                  aria-label={item.label}
                   title={item.label}
                   onClick={() =>
                     item.key && !item.disabled && onSelectModule(item.key)

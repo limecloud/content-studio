@@ -211,6 +211,7 @@ export function validateContentKnowledgeMapBuild(
     build.scenarios.length ? '' : '缺少可生产场景。',
     build.promptDraftIds.length ? '' : '尚未关联 Prompt 草稿，下游生产交接不足。',
     build.constraints.length ? '' : '缺少合规边界和禁用表达。',
+    ...(build.gaps ?? []),
     ...validationIssuesForRows(build, inputSources),
   ]);
   const readinessChecks = [

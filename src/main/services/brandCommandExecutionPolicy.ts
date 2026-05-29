@@ -14,6 +14,9 @@ export interface BrandCommandExecutionPolicyInput {
   campaignCell?: BrandCommandCampaignCell;
   recentActions: BrandCommandActionRecord[];
   actorRole?: ContentTeamRole;
+  requiresApprovedReview?: boolean;
+  coverageRowIds?: string[];
+  approvedCoverageRowIds?: string[];
 }
 
 export interface BrandCommandExecutionPolicyResult {
@@ -86,10 +89,15 @@ export function checkBrandCommandExecution(
   const materialRequired = isProductionAction(input.queueItem.actionType);
   const sopRequired = input.queueItem.actionType === 'launch-sop-run';
   const materialCoverageRequired = input.queueItem.actionType === 'write-back-material-coverage';
+  const coverageRowIds = input.coverageRowIds ?? input.resourceBundle?.coverageRowIds ?? [];
+  const approvedCoverageRowIds = input.approvedCoverageRowIds ?? input.resourceBundle?.approvedCoverageRowIds ?? [];
+  const unapprovedCoverageCount = coverageRowIds.filter((rowId) => !approvedCoverageRowIds.includes(rowId)).length;
   const issues = [
     input.resourceBundle ? '' : '找不到动作绑定的资源包，不能执行交接。',
     input.campaignCell ? '' : '找不到动作绑定的作战单元，不能执行交接。',
     input.resourceBundle?.evidenceRefs.length ? '' : '资源包缺少可追溯证据。',
+    materialRequired && input.requiresApprovedReview && coverageRowIds.length === 0 ? '资源包没有绑定已审核内容组合，不能执行生产动作。' : '',
+    materialRequired && input.requiresApprovedReview && unapprovedCoverageCount > 0 ? `资源包仍有 ${unapprovedCoverageCount} 个内容组合未通过审核，不能执行生产动作。` : '',
     materialRequired && !(input.resourceBundle?.materialRefs.length) ? '资源包缺少可用素材，不能直接交接生产。' : '',
     sopRequired && !(input.resourceBundle?.sopRefs.length) ? '资源包没有绑定可运行 SOP，不能启动 SOP。' : '',
     materialCoverageRequired && !(input.resourceBundle?.sourceKnowledgeMapId || input.record.sourceKnowledgeMapId) ? '资源包没有绑定内容知识地图，不能回写素材覆盖。' : '',

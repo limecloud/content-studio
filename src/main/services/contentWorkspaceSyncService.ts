@@ -198,7 +198,7 @@ export class ContentWorkspaceSyncService {
       });
       for (const release of remoteReleases) {
         const existing = localReleases.find((item) => item.id === release.id || item.serverReleaseId === release.serverReleaseId);
-        await this.releases.save({
+        await this.releases.syncFromTeam({
           ...(existing ?? {}),
           ...release,
           packageObjectKey: release.packageObjectKey || existing?.packageObjectKey,

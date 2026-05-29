@@ -708,6 +708,42 @@ export interface ContentKnowledgeMapRecord {
   updatedAt: string;
 }
 
+export type ContentKnowledgeMapBuildRunStatus = 'completed' | 'blocked' | 'failed';
+export type ContentKnowledgeMapBuildRunStepStatus = 'completed' | 'blocked' | 'failed' | 'skipped';
+
+export interface ContentKnowledgeMapBuildRunStep {
+  key: string;
+  title: string;
+  status: ContentKnowledgeMapBuildRunStepStatus;
+  message: string;
+  startedAt: string;
+  completedAt: string;
+}
+
+export interface ContentKnowledgeMapBuildRunRecord {
+  id: string;
+  workspacePath: string;
+  title: string;
+  status: ContentKnowledgeMapBuildRunStatus;
+  contentKnowledgeMapId?: string;
+  contentKnowledgeMapTitle?: string;
+  model?: string;
+  inputSourceIds: string[];
+  brandKnowledgeBaseIds: string[];
+  ipKnowledgeBaseIds: string[];
+  sceneCardIds: string[];
+  promptDraftIds: string[];
+  readyPercent: number;
+  evidenceCount: number;
+  gapCount: number;
+  issues: string[];
+  steps: ContentKnowledgeMapBuildRunStep[];
+  teamSync?: ContentKnowledgeMapTeamSyncSummary;
+  startedAt: string;
+  completedAt: string;
+  updatedAt: string;
+}
+
 export interface BuildContentKnowledgeMapInput {
   workspacePath: string;
   title?: string;
@@ -788,6 +824,8 @@ export interface BrandCommandResourceBundle {
   title: string;
   objectiveId: string;
   sourceKnowledgeMapId?: string;
+  coverageRowIds?: string[];
+  approvedCoverageRowIds?: string[];
   sellingPointRefs: string[];
   evidenceRefs: string[];
   sceneRefs: string[];
@@ -1118,12 +1156,14 @@ export interface ContentWorkspaceSyncResult {
   files?: string[];
 }
 
-export type ContentReviewTaskStatus = 'open' | 'approved' | 'rejected' | 'needs-evidence' | 'forbidden';
+export type ContentReviewTaskStatus = 'open' | 'approved' | 'rejected' | 'needs-evidence' | 'needs-material' | 'forbidden';
 export type ContentReviewTaskRisk = 'low' | 'medium' | 'high';
+export type ContentReviewTaskPurpose = 'review' | 'evidence-supplement' | 'material-supplement';
 export type ContentReviewDecisionAction =
   | 'approve'
   | 'reject'
   | 'request-evidence'
+  | 'request-material'
   | 'mark-forbidden'
   | 'downgrade-to-needs-verification'
   | 'rename-target'
@@ -1164,6 +1204,7 @@ export interface ContentReviewTask {
   targetId?: string;
   title: string;
   summary: string;
+  taskPurpose?: ContentReviewTaskPurpose;
   evidenceRefs: string[];
   sourceRefs: string[];
   risk: ContentReviewTaskRisk;
@@ -1182,6 +1223,7 @@ export interface GenerateContentReviewTasksInput {
   contentKnowledgeMapId?: string;
   targetRowIds?: string[];
   targetTypes?: Array<'selling-point' | 'pain-point' | 'scenario'>;
+  taskPurpose?: ContentReviewTaskPurpose;
 }
 
 export interface SubmitContentReviewDecisionInput {
@@ -2371,6 +2413,7 @@ export interface ContentStudioApi {
   createSceneCardFromContent(input: CreateSceneCardFromContentInput): Promise<SceneCard>;
   updateSceneCard(input: SceneCard): Promise<SceneCard>;
   listContentKnowledgeMaps(workspacePath: string): Promise<ContentKnowledgeMapRecord[]>;
+  listContentKnowledgeMapBuildRuns(workspacePath: string): Promise<ContentKnowledgeMapBuildRunRecord[]>;
   buildContentKnowledgeMap(input: BuildContentKnowledgeMapInput): Promise<ContentKnowledgeMapRecord>;
   updateContentKnowledgeMap(input: ContentKnowledgeMapRecord): Promise<ContentKnowledgeMapRecord>;
   listContentDraftChanges(workspacePath: string): Promise<ContentDraftChange[]>;

@@ -5,12 +5,16 @@ import type {
   GenerateBrandKnowledgeBaseInput,
   KnowledgeCitation,
 } from '../../shared/types';
-import { readJsonFile, writeJsonFile } from './jsonStore';
+import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { TextGenerationService, TextProviderBlockedError, TextProviderFailedError } from './textGenerationService';
 
 function filePathFor(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'brand-knowledge-bases.json');
+}
+
+function sortRecords(records: BrandKnowledgeBaseRecord[]): BrandKnowledgeBaseRecord[] {
+  return [...records].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 function compactList(values: string[] | undefined, fallback: string[]): string[] {
@@ -118,7 +122,7 @@ export class BrandKnowledgeBaseStore {
 
   async list(workspacePath: string): Promise<BrandKnowledgeBaseRecord[]> {
     const records = await readJsonFile<BrandKnowledgeBaseRecord[]>(filePathFor(workspacePath), []);
-    return records.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return sortRecords(records);
   }
 
   async generate(input: GenerateBrandKnowledgeBaseInput): Promise<BrandKnowledgeBaseRecord> {
@@ -160,9 +164,14 @@ export class BrandKnowledgeBaseStore {
         createdAt: now,
         updatedAt: now,
       };
-      const existing = await this.list(input.workspacePath);
-      await writeJsonFile(filePathFor(input.workspacePath), [record, ...existing].slice(0, 80));
-      return record;
+      return updateJsonFile<BrandKnowledgeBaseRecord[], BrandKnowledgeBaseRecord>(
+        filePathFor(input.workspacePath),
+        [],
+        (records) => ({
+          value: [record, ...sortRecords(records)].slice(0, 80),
+          result: record,
+        }),
+      );
     } catch (error) {
       const reason = error instanceof TextProviderBlockedError
         ? error.message
@@ -172,17 +181,30 @@ export class BrandKnowledgeBaseStore {
       const record = localRecord(input, reason);
       record.createdAt = now;
       record.updatedAt = now;
-      const existing = await this.list(input.workspacePath);
-      await writeJsonFile(filePathFor(input.workspacePath), [record, ...existing].slice(0, 80));
-      return record;
+      return updateJsonFile<BrandKnowledgeBaseRecord[], BrandKnowledgeBaseRecord>(
+        filePathFor(input.workspacePath),
+        [],
+        (records) => ({
+          value: [record, ...sortRecords(records)].slice(0, 80),
+          result: record,
+        }),
+      );
     }
   }
 
   async update(input: BrandKnowledgeBaseRecord): Promise<BrandKnowledgeBaseRecord> {
-    const records = await this.list(input.workspacePath);
-    if (!records.some((record) => record.id === input.id)) throw new Error(`品牌知识库不存在: ${input.id}`);
-    const updated: BrandKnowledgeBaseRecord = { ...input, updatedAt: new Date().toISOString() };
-    await writeJsonFile(filePathFor(input.workspacePath), records.map((record) => (record.id === input.id ? updated : record)));
-    return updated;
+    return updateJsonFile<BrandKnowledgeBaseRecord[], BrandKnowledgeBaseRecord>(
+      filePathFor(input.workspacePath),
+      [],
+      (current) => {
+        const records = sortRecords(current);
+        if (!records.some((record) => record.id === input.id)) throw new Error(`品牌知识库不存在: ${input.id}`);
+        const updated: BrandKnowledgeBaseRecord = { ...input, updatedAt: new Date().toISOString() };
+        return {
+          value: records.map((record) => (record.id === input.id ? updated : record)),
+          result: updated,
+        };
+      },
+    );
   }
 }

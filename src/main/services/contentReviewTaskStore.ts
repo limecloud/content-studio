@@ -1,44 +1,87 @@
 import { join } from 'node:path';
 import type { ContentReviewTask } from '../../shared/types';
-import { readJsonFile, writeJsonFile } from './jsonStore';
+import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 
 function filePathFor(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'content-review-tasks.json');
 }
 
+function sortTasks(tasks: ContentReviewTask[]): ContentReviewTask[] {
+  return [...tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function assertDecisionsAppendOnly(existing: ContentReviewTask, next: ContentReviewTask): void {
+  const nextDecisionIds = new Set(next.decisions.map((decision) => decision.id));
+  const missingDecision = existing.decisions.find((decision) => !nextDecisionIds.has(decision.id));
+  if (missingDecision) throw new Error(`审核决策只能追加，不能删除已有决策: ${missingDecision.id}`);
+}
+
+function taskDedupKey(task: ContentReviewTask): string {
+  return `${task.sourceKnowledgeMapId}:${task.targetType}:${task.taskPurpose ?? 'review'}:${task.targetId ?? task.summary}`;
+}
+
 export class ContentReviewTaskStore {
   async list(workspacePath: string): Promise<ContentReviewTask[]> {
     const records = await readJsonFile<ContentReviewTask[]>(filePathFor(workspacePath), []);
-    return records.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return sortTasks(records);
   }
 
   async saveMany(workspacePath: string, tasks: ContentReviewTask[]): Promise<ContentReviewTask[]> {
-    const existing = await this.list(workspacePath);
-    const existingKeys = new Set(existing.map((task) => `${task.sourceKnowledgeMapId}:${task.targetType}:${task.targetId ?? task.summary}`));
-    const nextTasks = tasks.filter((task) => !existingKeys.has(`${task.sourceKnowledgeMapId}:${task.targetType}:${task.targetId ?? task.summary}`));
-    const next = [...nextTasks, ...existing].slice(0, 240);
-    await writeJsonFile(filePathFor(workspacePath), next);
-    return next.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return updateJsonFile<ContentReviewTask[], ContentReviewTask[]>(
+      filePathFor(workspacePath),
+      [],
+      (current) => {
+        const existing = sortTasks(current);
+        const existingKeys = new Set(existing.map(taskDedupKey));
+        const nextTasks = tasks.filter((task) => !existingKeys.has(taskDedupKey(task)));
+        const next = [...nextTasks, ...existing];
+        return {
+          value: next,
+          result: sortTasks(next),
+        };
+      },
+    );
   }
 
   async update(input: ContentReviewTask): Promise<ContentReviewTask> {
-    const records = await this.list(input.workspacePath);
-    if (!records.some((record) => record.id === input.id)) throw new Error(`审核任务不存在: ${input.id}`);
-    const updated: ContentReviewTask = { ...input, updatedAt: new Date().toISOString() };
-    await writeJsonFile(filePathFor(input.workspacePath), records.map((record) => (record.id === input.id ? updated : record)));
-    return updated;
+    return updateJsonFile<ContentReviewTask[], ContentReviewTask>(
+      filePathFor(input.workspacePath),
+      [],
+      (current) => {
+        const records = sortTasks(current);
+        const existing = records.find((record) => record.id === input.id);
+        if (!existing) throw new Error(`审核任务不存在: ${input.id}`);
+        assertDecisionsAppendOnly(existing, input);
+        const updated: ContentReviewTask = { ...input, updatedAt: new Date().toISOString() };
+        return {
+          value: records.map((record) => (record.id === input.id ? updated : record)),
+          result: updated,
+        };
+      },
+    );
   }
 
   async updateMany(workspacePath: string, inputs: ContentReviewTask[]): Promise<ContentReviewTask[]> {
     if (!inputs.length) return this.list(workspacePath);
-    const records = await this.list(workspacePath);
-    const updates = new Map(inputs.map((task) => [task.id, task]));
-    const now = new Date().toISOString();
-    await writeJsonFile(
+    return updateJsonFile<ContentReviewTask[], ContentReviewTask[]>(
       filePathFor(workspacePath),
-      records.map((record) => (updates.has(record.id) ? { ...updates.get(record.id)!, updatedAt: now } : record)),
+      [],
+      (current) => {
+        const records = sortTasks(current);
+        const updates = new Map(inputs.map((task) => [task.id, task]));
+        const now = new Date().toISOString();
+        const next = records.map((record) => {
+          const update = updates.get(record.id);
+          if (!update) return record;
+          assertDecisionsAppendOnly(record, update);
+          return { ...update, updatedAt: now };
+        });
+        return {
+          value: next,
+          result: sortTasks(next),
+        };
+      },
     );
-    return this.list(workspacePath);
   }
 }

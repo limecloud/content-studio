@@ -62,6 +62,7 @@ export function buildMaterialSupplementReviewTasks(input: {
       targetId: `material-supplement:${input.map.id}:${update.targetType}:${update.rowId}`,
       title: `补充素材证据：${row.title}`,
       summary: `已通过素材「${assetSummary}」可作为${label}「${row.title}」的补充依据，请确认是否纳入证据、规则或素材标签；不会自动改写主文案。`,
+      taskPurpose: 'material-supplement',
       evidenceRefs,
       sourceRefs,
       risk: 'low',

@@ -520,7 +520,7 @@ export class ContentProductionHandoffService {
     await this.commandCenters.update({
       ...commandCenter,
       resourceBundles: nextResourceBundles,
-      actionRecords: [...mappedActions, ...commandCenter.actionRecords].slice(0, 120),
+      actionRecords: [...mappedActions, ...commandCenter.actionRecords],
       syncStatus: actions[0].syncStatus ?? commandCenter.syncStatus,
       teamSync: actions[0].teamSync ?? commandCenter.teamSync,
     });

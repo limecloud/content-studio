@@ -91,6 +91,7 @@ import { BuguContentWorkspaceSyncAdapter } from './services/buguContentWorkspace
 import { ClaudeAgentService } from './services/claudeAgentService';
 import { PromptAgentService } from './services/claudePromptAgentService';
 import { ContentKnowledgeMapApplicationService } from './services/contentKnowledgeMapApplicationService';
+import { ContentKnowledgeMapBuildRunStore } from './services/contentKnowledgeMapBuildRunStore';
 import { ContentKnowledgeMapStore } from './services/contentKnowledgeMapStore';
 import { LocalOnlyContentKnowledgeMapSyncAdapter } from './services/contentKnowledgeMapSyncPort';
 import { ContentDraftChangeStore } from './services/contentDraftChangeStore';
@@ -388,8 +389,10 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const promptPacks = new PromptPackService(logs, textGeneration);
   const sceneCards = new SceneLibraryStore(logs, promptPacks, textGeneration);
   const contentKnowledgeMapStore = new ContentKnowledgeMapStore();
+  const contentKnowledgeMapBuildRunStore = new ContentKnowledgeMapBuildRunStore();
   const contentKnowledgeMaps = new ContentKnowledgeMapApplicationService(
     contentKnowledgeMapStore,
+    contentKnowledgeMapBuildRunStore,
     inputSources,
     brandKnowledgeBases,
     ipKnowledgeBases,
@@ -622,6 +625,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('sceneCards:createFromContent', (_event, input: CreateSceneCardFromContentInput) => sceneCards.createFromContent(input));
   ipcMain.handle('sceneCards:update', (_event, input: SceneCard) => sceneCards.update(input));
   ipcMain.handle('contentKnowledgeMaps:list', (_event, workspacePath: string) => contentKnowledgeMaps.list(workspacePath));
+  ipcMain.handle('contentKnowledgeMapBuildRuns:list', (_event, workspacePath: string) => contentKnowledgeMaps.listBuildRuns(workspacePath));
   ipcMain.handle('contentKnowledgeMaps:build', (_event, input: BuildContentKnowledgeMapInput) => contentKnowledgeMaps.build(input));
   ipcMain.handle('contentKnowledgeMaps:update', (_event, input: ContentKnowledgeMapRecord) => contentKnowledgeMaps.update(input));
   ipcMain.handle('contentDraftChanges:list', (_event, workspacePath: string) => contentWorkspaceSync.listDraftChanges(workspacePath));

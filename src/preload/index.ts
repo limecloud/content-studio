@@ -151,6 +151,7 @@ const api: ContentStudioApi = {
   createSceneCardFromContent: (input: CreateSceneCardFromContentInput) => ipcRenderer.invoke('sceneCards:createFromContent', input),
   updateSceneCard: (input: SceneCard) => ipcRenderer.invoke('sceneCards:update', input),
   listContentKnowledgeMaps: (workspacePath: string) => ipcRenderer.invoke('contentKnowledgeMaps:list', workspacePath),
+  listContentKnowledgeMapBuildRuns: (workspacePath: string) => ipcRenderer.invoke('contentKnowledgeMapBuildRuns:list', workspacePath),
   buildContentKnowledgeMap: (input: BuildContentKnowledgeMapInput) => ipcRenderer.invoke('contentKnowledgeMaps:build', input),
   updateContentKnowledgeMap: (input: ContentKnowledgeMapRecord) => ipcRenderer.invoke('contentKnowledgeMaps:update', input),
   listContentDraftChanges: (workspacePath: string) => ipcRenderer.invoke('contentDraftChanges:list', workspacePath),

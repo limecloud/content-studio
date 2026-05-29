@@ -31,9 +31,31 @@ export interface ContentKnowledgeMapBuildResult {
   scenarios: ContentKnowledgeMapMatrixRow[];
   evidence: ContentKnowledgeMapEvidence[];
   constraints: string[];
+  gaps?: string[];
   model: string;
   skuRowCount: number;
   competitorObservationCount: number;
+}
+
+export interface ContentKnowledgeMapModelRow {
+  title?: string;
+  summary?: string;
+  tags?: string[];
+  dimensions?: ContentKnowledgeMapCoverageDimensions;
+  sourceRefs?: string[];
+  evidenceRefs?: string[];
+  confidence?: number;
+  status?: ContentKnowledgeMapMatrixRow['status'];
+  materialStatus?: ContentKnowledgeMapMatrixRow['materialStatus'];
+}
+
+export interface ContentKnowledgeMapModelOutput {
+  title?: string;
+  sellingPoints?: ContentKnowledgeMapModelRow[];
+  painPoints?: ContentKnowledgeMapModelRow[];
+  scenarios?: ContentKnowledgeMapModelRow[];
+  constraints?: string[];
+  gaps?: string[];
 }
 
 function compactText(value: string | undefined, fallback = ''): string {
@@ -279,6 +301,307 @@ function dedupeRows(rows: ContentKnowledgeMapMatrixRow[], limit = 12): ContentKn
     if (result.length >= limit) break;
   }
   return result;
+}
+
+function compactLines(values: string[], limit = 8): string[] {
+  return uniqueStrings(values.map((value) => clip(value, 180)), limit);
+}
+
+function validRowStatus(value: unknown): ContentKnowledgeMapMatrixRow['status'] | undefined {
+  if (value === 'ready' || value === 'needs-evidence' || value === 'needs-review') return value;
+  return undefined;
+}
+
+function validMaterialStatus(value: unknown): ContentKnowledgeMapMatrixRow['materialStatus'] | undefined {
+  if (value === 'missing' || value === 'covered' || value === 'approved' || value === 'rejected') return value;
+  return undefined;
+}
+
+function normalizeDimensions(input: ContentKnowledgeMapCoverageDimensions | undefined): ContentKnowledgeMapCoverageDimensions | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  return optionalDimensions({
+    audiences: normalizeStringArray(input.audiences, 8),
+    channels: normalizeStringArray(input.channels, 8),
+    stages: normalizeStringArray(input.stages, 8),
+    contentFormats: normalizeStringArray(input.contentFormats, 8),
+    useCases: normalizeStringArray(input.useCases, 8),
+  });
+}
+
+function normalizeStringArray(value: unknown, limit = 12): string[] {
+  if (!Array.isArray(value)) return [];
+  return uniqueStrings(value.map((item) => typeof item === 'string' ? item : String(item ?? '')), limit);
+}
+
+function rowLooksCompetitor(row: ContentKnowledgeMapModelRow): boolean {
+  return includesAny(
+    [
+      row.title,
+      row.summary,
+      ...(Array.isArray(row.tags) ? row.tags : []),
+      ...(Array.isArray(row.sourceRefs) ? row.sourceRefs : []),
+    ].filter(Boolean).join(' '),
+    [/竞品/, /竞对/, /对标/, /不可搬运/, /competitor/i],
+  );
+}
+
+function normalizeModelRows(input: {
+  rows: ContentKnowledgeMapModelRow[] | undefined;
+  fallbackRows: ContentKnowledgeMapMatrixRow[];
+  evidence: ContentKnowledgeMapEvidence[];
+  defaultTag: string;
+  limit: number;
+}): ContentKnowledgeMapMatrixRow[] {
+  const evidenceIds = new Set(input.evidence.map((item) => item.id));
+  const evidenceIdsBySource = new Map<string, string[]>();
+  for (const item of input.evidence) {
+    const ref = sourceRef(item.sourceType, item.sourceId);
+    evidenceIdsBySource.set(ref, [...(evidenceIdsBySource.get(ref) ?? []), item.id]);
+  }
+  const validSourceRefs = new Set([
+    ...Array.from(evidenceIdsBySource.keys()),
+    ...input.fallbackRows.flatMap((row) => row.sourceRefs),
+  ]);
+  const fallbackByTitle = new Map(input.fallbackRows.map((row) => [row.title.toLowerCase(), row]));
+  const normalized = normalizeArrayLike(input.rows).map((row): ContentKnowledgeMapMatrixRow | null => {
+    const title = clip(row.title || '', 80);
+    if (!title) return null;
+    const fallback = fallbackByTitle.get(title.toLowerCase());
+    const sourceRefs = uniqueStrings([
+      ...normalizeStringArray(row.sourceRefs, 10).filter((ref) => validSourceRefs.has(ref)),
+      ...(fallback?.sourceRefs ?? []),
+    ], 10);
+    const evidenceRefs = uniqueStrings([
+      ...normalizeStringArray(row.evidenceRefs, 8).filter((id) => evidenceIds.has(id)),
+      ...sourceRefs.flatMap((ref) => evidenceIdsBySource.get(ref) ?? []),
+      ...(fallback?.evidenceRefs ?? []),
+    ], 8);
+    const competitor = rowLooksCompetitor(row);
+    const status = competitor
+      ? 'needs-review'
+      : validRowStatus(row.status) ?? fallback?.status ?? (evidenceRefs.length ? 'ready' : 'needs-evidence');
+    const normalizedRow: ContentKnowledgeMapMatrixRow = {
+      id: randomUUID(),
+      title,
+      summary: clip(row.summary || fallback?.summary || title, 180),
+      tags: uniqueStrings([input.defaultTag, ...normalizeStringArray(row.tags, 6), ...(fallback?.tags ?? [])], 8),
+      dimensions: normalizeDimensions(row.dimensions) ?? fallback?.dimensions,
+      sourceRefs,
+      evidenceRefs,
+      materialStatus: validMaterialStatus(row.materialStatus) ?? fallback?.materialStatus,
+      materialRefs: fallback?.materialRefs,
+      performanceTags: fallback?.performanceTags,
+      confidence: Math.max(0, Math.min(100, Math.round(Number(row.confidence ?? fallback?.confidence ?? (evidenceRefs.length ? 76 : 42))))),
+      status,
+    };
+    return normalizedRow;
+  }).filter((row): row is ContentKnowledgeMapMatrixRow => Boolean(row));
+
+  return dedupeRows(normalized, input.limit);
+}
+
+function normalizeArrayLike<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function sourceDigest(input: ContentKnowledgeMapBuildSources): Array<Record<string, unknown>> {
+  return [
+    ...input.inputSources.map((source) => ({
+      kind: 'input-source',
+      ref: sourceRef('input-source', source.id),
+      id: source.id,
+      purpose: source.purpose,
+      title: source.title,
+      status: source.status,
+      tags: source.tags,
+      text: clip([source.summary, source.extractedText].filter(Boolean).join('\n'), 900),
+    })),
+    ...input.brandKnowledgeBases.map((record) => ({
+      kind: 'brand-knowledge-base',
+      ref: sourceRef('brand-knowledge-base', record.id),
+      id: record.id,
+      title: record.title,
+      status: record.status,
+      audience: record.audience,
+      productFacts: compactLines(record.productFacts, 8),
+      coreSellingPoints: compactLines(record.coreSellingPoints, 8),
+      complianceBoundaries: compactLines(record.complianceBoundaries, 8),
+      sceneSeeds: compactLines(record.sceneSeeds, 8),
+      brandVoice: clip(record.brandVoice, 260),
+    })),
+    ...input.ipKnowledgeBases.map((record) => ({
+      kind: 'ip-knowledge-base',
+      ref: sourceRef('ip-knowledge-base', record.id),
+      id: record.id,
+      title: record.title,
+      status: record.status,
+      completeness: record.completeness,
+      layers: record.layers,
+      missingLayers: record.missingLayers,
+      extensionScenes: record.extensionScenes,
+    })),
+    ...input.sceneCards.map((scene) => ({
+      kind: 'scene-card',
+      ref: sourceRef('scene-card', scene.id),
+      id: scene.id,
+      title: scene.title,
+      audience: scene.audience,
+      painPoint: scene.painPoint,
+      usageScene: scene.usageScene,
+      sellingPoint: scene.sellingPoint,
+      voiceoverDirection: scene.voiceoverDirection,
+    })),
+    ...input.promptDrafts.map((draft) => ({
+      kind: 'prompt-draft',
+      ref: sourceRef('prompt-draft', draft.id),
+      id: draft.id,
+      title: draft.title,
+      purpose: draft.purpose,
+      status: draft.status,
+      content: clip(draft.versions.find((version) => version.id === draft.activeVersionId)?.content ?? draft.versions[0]?.content ?? '', 600),
+    })),
+  ];
+}
+
+function seedDigest(seed: ContentKnowledgeMapBuildResult): Record<string, unknown> {
+  return {
+    title: seed.title,
+    skuRowCount: seed.skuRowCount,
+    competitorObservationCount: seed.competitorObservationCount,
+    evidence: seed.evidence.map((item) => ({
+      id: item.id,
+      sourceRef: sourceRef(item.sourceType, item.sourceId),
+      sourceType: item.sourceType,
+      sourceTitle: item.sourceTitle,
+      claim: item.claim,
+      excerpt: item.excerpt,
+      status: item.status,
+    })),
+    seedRows: {
+      sellingPoints: seed.sellingPoints.map(rowForModelPrompt),
+      painPoints: seed.painPoints.map(rowForModelPrompt),
+      scenarios: seed.scenarios.map(rowForModelPrompt),
+    },
+    constraints: seed.constraints,
+  };
+}
+
+function rowForModelPrompt(row: ContentKnowledgeMapMatrixRow): Record<string, unknown> {
+  return {
+    title: row.title,
+    summary: row.summary,
+    tags: row.tags,
+    dimensions: row.dimensions,
+    sourceRefs: row.sourceRefs,
+    evidenceRefs: row.evidenceRefs,
+    confidence: row.confidence,
+    status: row.status,
+  };
+}
+
+export function contentKnowledgeMapModelSchema(): Record<string, unknown> {
+  const rowSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['title', 'summary', 'tags', 'sourceRefs', 'evidenceRefs', 'confidence', 'status'],
+    properties: {
+      title: { type: 'string' },
+      summary: { type: 'string' },
+      tags: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+      dimensions: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          audiences: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+          channels: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+          stages: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+          contentFormats: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+          useCases: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+        },
+      },
+      sourceRefs: { type: 'array', items: { type: 'string' }, maxItems: 10 },
+      evidenceRefs: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+      confidence: { type: 'number', minimum: 0, maximum: 100 },
+      status: { type: 'string', enum: ['ready', 'needs-evidence', 'needs-review'] },
+      materialStatus: { type: 'string', enum: ['missing', 'covered', 'approved', 'rejected'] },
+    },
+  };
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['title', 'sellingPoints', 'painPoints', 'scenarios', 'constraints', 'gaps'],
+    properties: {
+      title: { type: 'string' },
+      sellingPoints: { type: 'array', items: rowSchema, maxItems: 24 },
+      painPoints: { type: 'array', items: rowSchema, maxItems: 24 },
+      scenarios: { type: 'array', items: rowSchema, maxItems: 24 },
+      constraints: { type: 'array', items: { type: 'string' }, maxItems: 16 },
+      gaps: { type: 'array', items: { type: 'string' }, maxItems: 16 },
+    },
+  };
+}
+
+export function buildContentKnowledgeMapModelPrompt(input: {
+  buildInput: BuildContentKnowledgeMapInput;
+  sources: ContentKnowledgeMapBuildSources;
+  seed: ContentKnowledgeMapBuildResult;
+}): string {
+  return JSON.stringify({
+    task: 'generate_content_knowledge_map',
+    instructions: [
+      '基于真实输入源构建内容知识地图，不编造产品事实、用户原声、功效、价格、测试结果或案例。',
+      '先做概念拆解、聚类命名、层级归并和风险校验，再输出卖点、痛点、场景三类矩阵。',
+      '所有行只能引用 provided seed.evidence 中已有 evidenceRefs，或 sources 中已有 sourceRefs；证据不足时 status 使用 needs-evidence 或 needs-review。',
+      '竞品观察只能转成差异化机会或风险边界，不能作为本品牌事实，相关行必须 needs-review。',
+      '输出普通运营可理解的业务词，不输出 Ontology、RDF、schema、node、edge 等工程词。',
+    ],
+    requestedTitle: input.buildInput.title,
+    sources: sourceDigest(input.sources),
+    seed: seedDigest(input.seed),
+  });
+}
+
+export function buildContentKnowledgeMapFromModelOutput(input: {
+  buildInput: BuildContentKnowledgeMapInput;
+  sources: ContentKnowledgeMapBuildSources;
+  seed: ContentKnowledgeMapBuildResult;
+  output: ContentKnowledgeMapModelOutput;
+  model: string;
+}): ContentKnowledgeMapBuildResult {
+  const sellingPoints = normalizeModelRows({
+    rows: input.output.sellingPoints,
+    fallbackRows: input.seed.sellingPoints,
+    evidence: input.seed.evidence,
+    defaultTag: '卖点',
+    limit: 24,
+  });
+  const painPoints = normalizeModelRows({
+    rows: input.output.painPoints,
+    fallbackRows: input.seed.painPoints,
+    evidence: input.seed.evidence,
+    defaultTag: '痛点',
+    limit: 24,
+  });
+  const scenarios = normalizeModelRows({
+    rows: input.output.scenarios,
+    fallbackRows: input.seed.scenarios,
+    evidence: input.seed.evidence,
+    defaultTag: '场景',
+    limit: 24,
+  });
+  return {
+    ...input.seed,
+    title: compactText(input.output.title, input.seed.title),
+    sellingPoints,
+    painPoints,
+    scenarios,
+    constraints: uniqueStrings([
+      ...normalizeStringArray(input.output.constraints, 16),
+      ...input.seed.constraints,
+    ], 16),
+    gaps: normalizeStringArray(input.output.gaps, 16),
+    model: input.model,
+  };
 }
 
 export function buildContentKnowledgeMapDraft(

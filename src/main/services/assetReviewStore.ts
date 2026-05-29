@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { AssetReviewRecord, ReviewAssetInput } from '../../shared/types';
-import { readJsonFile, writeJsonFile } from './jsonStore';
+import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 
 function assetReviewsFilePath(workspacePath: string): string {
@@ -16,10 +16,14 @@ function compactTags(tags?: string[]): string[] {
   return Array.from(new Set((tags ?? []).map((tag) => tag.trim()).filter(Boolean))).slice(0, 16);
 }
 
+function sortReviews(reviews: AssetReviewRecord[]): AssetReviewRecord[] {
+  return [...reviews].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export class AssetReviewStore {
   async list(workspacePath: string): Promise<AssetReviewRecord[]> {
     const reviews = await readJsonFile<AssetReviewRecord[]>(assetReviewsFilePath(workspacePath), []);
-    return reviews.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return sortReviews(reviews);
   }
 
   async review(input: ReviewAssetInput): Promise<AssetReviewRecord> {
@@ -27,31 +31,39 @@ export class AssetReviewStore {
     const path = normalizeText(input.path);
     if (!assetKey) throw new Error('审核素材缺少 assetKey。');
     if (!path) throw new Error('审核素材缺少本地路径。');
-    const now = new Date().toISOString();
-    const reviews = await this.list(input.workspacePath);
-    const existing = reviews.find((review) => review.assetKey === assetKey);
-    const record: AssetReviewRecord = {
-      id: existing?.id ?? randomUUID(),
-      workspacePath: input.workspacePath,
-      workflowRunId: normalizeText(input.workflowRunId) || existing?.workflowRunId,
-      assetKey,
-      kind: input.kind,
-      sourceType: input.sourceType,
-      sourceId: normalizeText(input.sourceId) || undefined,
-      path,
-      title: normalizeText(input.title) || path.split(/[\\/]/).filter(Boolean).pop() || '未命名素材',
-      status: input.status,
-      note: normalizeText(input.note) || undefined,
-      tags: compactTags(input.tags),
-      reviewedAt: input.status === 'pending' ? existing?.reviewedAt : now,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    const next = existing
-      ? reviews.map((review) => (review.assetKey === assetKey ? record : review))
-      : [record, ...reviews];
-    await writeJsonFile(assetReviewsFilePath(input.workspacePath), next.slice(0, 500));
-    return record;
+    return updateJsonFile<AssetReviewRecord[], AssetReviewRecord>(
+      assetReviewsFilePath(input.workspacePath),
+      [],
+      (current) => {
+        const now = new Date().toISOString();
+        const reviews = sortReviews(current);
+        const existing = reviews.find((review) => review.assetKey === assetKey);
+        const record: AssetReviewRecord = {
+          id: existing?.id ?? randomUUID(),
+          workspacePath: input.workspacePath,
+          workflowRunId: normalizeText(input.workflowRunId) || existing?.workflowRunId,
+          assetKey,
+          kind: input.kind,
+          sourceType: input.sourceType,
+          sourceId: normalizeText(input.sourceId) || undefined,
+          path,
+          title: normalizeText(input.title) || path.split(/[\\/]/).filter(Boolean).pop() || '未命名素材',
+          status: input.status,
+          note: normalizeText(input.note) || undefined,
+          tags: compactTags(input.tags),
+          reviewedAt: input.status === 'pending' ? existing?.reviewedAt : now,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        };
+        const next = existing
+          ? reviews.map((review) => (review.assetKey === assetKey ? record : review))
+          : [record, ...reviews];
+        return {
+          value: next.slice(0, 500),
+          result: record,
+        };
+      },
+    );
   }
 
   async requireApproved(workspacePath: string, assetKeys: string[]): Promise<void> {

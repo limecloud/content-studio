@@ -15,6 +15,7 @@ import type {
   BuguEmailCodeVerifyInput,
   BuguPasswordLoginInput,
   ContentDraftChange,
+  ContentKnowledgeMapBuildRunRecord,
   ContentKnowledgeMapRecord,
   ContentKnowledgePackExportResult,
   ContentKnowledgeRelease,
@@ -479,6 +480,7 @@ export function useContentStudioApp() {
   const [brandKnowledgeBases, setBrandKnowledgeBases] = useState<BrandKnowledgeBaseRecord[]>([]);
   const [ipKnowledgeBases, setIpKnowledgeBases] = useState<IpKnowledgeBaseRecord[]>([]);
   const [contentKnowledgeMaps, setContentKnowledgeMaps] = useState<ContentKnowledgeMapRecord[]>([]);
+  const [contentKnowledgeMapBuildRuns, setContentKnowledgeMapBuildRuns] = useState<ContentKnowledgeMapBuildRunRecord[]>([]);
   const [contentDraftChanges, setContentDraftChanges] = useState<ContentDraftChange[]>([]);
   const [contentKnowledgeReleases, setContentKnowledgeReleases] = useState<ContentKnowledgeRelease[]>([]);
   const [contentSyncConflicts, setContentSyncConflicts] = useState<ContentSyncConflict[]>([]);
@@ -854,6 +856,7 @@ export function useContentStudioApp() {
     setBrandKnowledgeBases([]);
     setIpKnowledgeBases([]);
     setContentKnowledgeMaps([]);
+    setContentKnowledgeMapBuildRuns([]);
     setContentDraftChanges([]);
     setContentKnowledgeReleases([]);
     setContentSyncConflicts([]);
@@ -883,6 +886,7 @@ export function useContentStudioApp() {
       setBrandKnowledgeBases([]);
       setIpKnowledgeBases([]);
       setContentKnowledgeMaps([]);
+      setContentKnowledgeMapBuildRuns([]);
       setContentDraftChanges([]);
       setContentKnowledgeReleases([]);
       setContentSyncConflicts([]);
@@ -923,6 +927,7 @@ export function useContentStudioApp() {
       nextBrandKnowledgeBases,
       nextIpKnowledgeBases,
       nextContentKnowledgeMaps,
+      nextContentKnowledgeMapBuildRuns,
       nextContentDraftChanges,
       nextContentKnowledgeReleases,
       nextContentSyncConflicts,
@@ -947,6 +952,7 @@ export function useContentStudioApp() {
         window.contentStudio.listBrandKnowledgeBases(workspace),
         window.contentStudio.listIpKnowledgeBases(workspace),
         window.contentStudio.listContentKnowledgeMaps(workspace),
+        window.contentStudio.listContentKnowledgeMapBuildRuns(workspace),
         window.contentStudio.listContentDraftChanges(workspace),
         window.contentStudio.listContentKnowledgeReleases(workspace),
         window.contentStudio.listContentSyncConflicts(workspace),
@@ -970,6 +976,7 @@ export function useContentStudioApp() {
     setBrandKnowledgeBases(nextBrandKnowledgeBases);
     setIpKnowledgeBases(nextIpKnowledgeBases);
     setContentKnowledgeMaps(nextContentKnowledgeMaps);
+    setContentKnowledgeMapBuildRuns(nextContentKnowledgeMapBuildRuns);
     setContentDraftChanges(nextContentDraftChanges);
     setContentKnowledgeReleases(nextContentKnowledgeReleases);
     setContentSyncConflicts(nextContentSyncConflicts);
@@ -1992,6 +1999,57 @@ export function useContentStudioApp() {
     await refresh(workspace);
   }
 
+  async function generateContentMaterialTasksForRows(rowIds: string[]): Promise<void> {
+    const workspace = requireWorkspace();
+    const sourceMap = activeContentKnowledgeMap ?? contentKnowledgeMaps[0];
+    const targetRowIds = rowIds.filter(Boolean);
+    if (!sourceMap) throw new Error('请先生成内容知识地图。');
+    if (!targetRowIds.length) throw new Error('请先选择需要补素材的内容条目。');
+    const targetRowIdSet = new Set(targetRowIds);
+    const tasks = await window.contentStudio.generateContentReviewTasks({
+      workspacePath: workspace,
+      contentKnowledgeMapId: sourceMap.id,
+      targetRowIds,
+      taskPurpose: 'material-supplement',
+    });
+    setContentReviewTasks(tasks);
+    const firstTargetTask = tasks.find((task) => task.targetId && targetRowIdSet.has(task.targetId) && task.taskPurpose === 'material-supplement');
+    setActiveContentReviewTaskId(firstTargetTask?.id || tasks[0]?.id || "");
+    setActiveModule('knowledge-review');
+    await refresh(workspace);
+  }
+
+  async function createContentProductionHandoffForRow(rowId: string, target: ContentProductionHandoffTarget): Promise<void> {
+    const workspace = requireWorkspace();
+    const sourceMap = activeContentKnowledgeMap ?? contentKnowledgeMaps[0];
+    if (!sourceMap) throw new Error('请先生成内容知识地图。');
+    if (!rowId) throw new Error('请先选择要交接的内容条目。');
+    const approvedTask = contentReviewTasks.find((task) =>
+      task.sourceKnowledgeMapId === sourceMap.id &&
+      task.targetId === rowId &&
+      (task.taskPurpose ?? 'review') === 'review' &&
+      task.status === 'approved',
+    );
+    if (approvedTask) {
+      await createContentProductionHandoff(approvedTask.id, target);
+      return;
+    }
+    const tasks = await window.contentStudio.generateContentReviewTasks({
+      workspacePath: workspace,
+      contentKnowledgeMapId: sourceMap.id,
+      targetRowIds: [rowId],
+    });
+    setContentReviewTasks(tasks);
+    const reviewTask = tasks.find((task) =>
+      task.sourceKnowledgeMapId === sourceMap.id &&
+      task.targetId === rowId &&
+      (task.taskPurpose ?? 'review') === 'review',
+    );
+    setActiveContentReviewTaskId(reviewTask?.id || tasks[0]?.id || '');
+    setActiveModule('knowledge-review');
+    await refresh(workspace);
+  }
+
   async function submitContentReviewDecision(
     taskId: string,
     action: ContentReviewDecisionAction,
@@ -2032,10 +2090,26 @@ export function useContentStudioApp() {
     }
     if (result.workflowRun) {
       setWorkflowRuns((current) => [result.workflowRun!, ...current.filter((item) => item.id !== result.workflowRun!.id)]);
+      setActiveWorkflowDefinitionId(result.workflowRun.workflowDefinitionId);
       setActiveWorkflowRunId(result.workflowRun.id);
     }
-    setActiveModule(result.promptDraft ? promptWorkbenchModuleForPurpose(result.promptDraft.purpose) : result.workflowRun ? 'assets-sop' : 'assets-prompt-workbench');
+    const nextModule = result.promptDraft
+      ? promptWorkbenchModuleForPurpose(result.promptDraft.purpose)
+      : result.workflowRun
+        ? 'assets-sop'
+        : result.sceneCard
+          ? 'knowledge-scenes'
+          : 'assets-prompt-workbench';
     await refresh(workspace);
+    if (result.promptDraft) setActivePromptDraftId(result.promptDraft.id);
+    if (result.sceneCard) {
+      setSelectedSceneIds((current) => current.includes(result.sceneCard!.id) ? current : [result.sceneCard!.id, ...current].slice(0, 6));
+    }
+    if (result.workflowRun) {
+      setActiveWorkflowDefinitionId(result.workflowRun.workflowDefinitionId);
+      setActiveWorkflowRunId(result.workflowRun.id);
+    }
+    setActiveModule(nextModule);
   }
 
   async function generateIpKnowledgeBase(): Promise<void> {
@@ -4235,6 +4309,7 @@ export function useContentStudioApp() {
     brandKnowledgeBases,
     ipKnowledgeBases,
     contentKnowledgeMaps,
+    contentKnowledgeMapBuildRuns,
     contentDraftChanges,
     contentKnowledgeReleases,
     contentSyncConflicts,
@@ -4444,6 +4519,8 @@ export function useContentStudioApp() {
     createContentKnowledgeRelease,
     generateContentReviewTasks,
     generateContentReviewTasksForRows,
+    generateContentMaterialTasksForRows,
+    createContentProductionHandoffForRow,
     submitContentReviewDecision,
     createContentProductionHandoff,
     generateIpKnowledgeBase,

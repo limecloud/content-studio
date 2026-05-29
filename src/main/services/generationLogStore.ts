@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { AssetReworkSource, GenerationKind, GenerationLogEntry, GenerationStatus, KnowledgeCitation } from '../../shared/types';
-import { readJsonFile, writeJsonFile } from './jsonStore';
+import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 
 export interface CreateLogInput {
@@ -29,10 +29,14 @@ function filePathFor(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'generation-logs.json');
 }
 
+function sortLogs(logs: GenerationLogEntry[]): GenerationLogEntry[] {
+  return [...logs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export class GenerationLogStore {
   async list(workspacePath: string): Promise<GenerationLogEntry[]> {
     const logs = await readJsonFile<GenerationLogEntry[]>(filePathFor(workspacePath), []);
-    return logs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return sortLogs(logs);
   }
 
   async append(input: CreateLogInput): Promise<GenerationLogEntry> {
@@ -58,39 +62,61 @@ export class GenerationLogStore {
       createdAt: now,
       updatedAt: now,
     };
-    const logs = await this.list(input.workspacePath);
-    await writeJsonFile(filePathFor(input.workspacePath), [entry, ...logs].slice(0, 200));
-    return entry;
+    return updateJsonFile<GenerationLogEntry[], GenerationLogEntry>(
+      filePathFor(input.workspacePath),
+      [],
+      (logs) => ({
+        value: [entry, ...sortLogs(logs)].slice(0, 200),
+        result: entry,
+      }),
+    );
   }
 
   async addArtifactRef(workspacePath: string, logId: string, path: string): Promise<GenerationLogEntry | null> {
-    const logs = await this.list(workspacePath);
-    const nextLogs = logs.map((log) => {
-      if (log.id !== logId) return log;
-      const artifactRefs = Array.from(new Set([...(log.artifactRefs ?? []), path]));
-      return { ...log, artifactRefs, updatedAt: new Date().toISOString() };
-    });
-    await writeJsonFile(filePathFor(workspacePath), nextLogs);
-    return nextLogs.find((log) => log.id === logId) ?? null;
+    return updateJsonFile<GenerationLogEntry[], GenerationLogEntry | null>(
+      filePathFor(workspacePath),
+      [],
+      (current) => {
+        let updated: GenerationLogEntry | null = null;
+        const nextLogs = sortLogs(current).map((log) => {
+          if (log.id !== logId) return log;
+          const artifactRefs = Array.from(new Set([...(log.artifactRefs ?? []), path]));
+          const nextLog = { ...log, artifactRefs, updatedAt: new Date().toISOString() };
+          updated = nextLog;
+          return nextLog;
+        });
+        return {
+          value: nextLogs,
+          result: updated,
+        };
+      },
+    );
   }
 
   async update(workspacePath: string, logId: string, input: UpdateLogInput): Promise<GenerationLogEntry | null> {
-    const logs = await this.list(workspacePath);
-    let updated: GenerationLogEntry | null = null;
-    const nextLogs = logs.map((log) => {
-      if (log.id !== logId) return log;
-      updated = {
-        ...log,
-        ...input,
-        id: log.id,
-        workspacePath: log.workspacePath,
-        createdAt: log.createdAt,
-        updatedAt: new Date().toISOString(),
-      };
-      return updated;
-    });
-    if (!updated) return null;
-    await writeJsonFile(filePathFor(workspacePath), nextLogs);
-    return updated;
+    return updateJsonFile<GenerationLogEntry[], GenerationLogEntry | null>(
+      filePathFor(workspacePath),
+      [],
+      (current) => {
+        let updated: GenerationLogEntry | null = null;
+        const nextLogs = sortLogs(current).map((log) => {
+          if (log.id !== logId) return log;
+          const nextLog = {
+            ...log,
+            ...input,
+            id: log.id,
+            workspacePath: log.workspacePath,
+            createdAt: log.createdAt,
+            updatedAt: new Date().toISOString(),
+          };
+          updated = nextLog;
+          return nextLog;
+        });
+        return {
+          value: updated ? nextLogs : current,
+          result: updated,
+        };
+      },
+    );
   }
 }

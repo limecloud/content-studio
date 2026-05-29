@@ -250,7 +250,13 @@ async function openPromptSupportDrawer(page) {
 }
 
 async function clickNavItem(page, label) {
-  const item = page.locator('.nav-stack button.nav-item').filter({ hasText: label }).first();
+  const escapedLabel = label.replace(/"/g, '\\"');
+  const semanticItem = page.locator(
+    `.nav-stack button.nav-item[aria-label="${escapedLabel}"], .nav-stack button.nav-item[title="${escapedLabel}"]`,
+  ).first();
+  const item = await semanticItem.count() > 0
+    ? semanticItem
+    : page.locator('.nav-stack button.nav-item').filter({ hasText: label }).first();
   await expect(item, `导航项应存在：${label}`).toBeVisible();
   await item.click();
 }
@@ -2540,6 +2546,18 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
           confidence: 92,
           status: 'ready',
         }, {
+          id: 'selling-v1-video-material',
+          title: '续航竖版视频素材缺口',
+          summary: 'Air Pro 低档 9-14h 可以回答办公室续航异议，但短视频生产还缺竖版实拍素材。',
+          tags: ['卖点', '续航', 'SKU: Air Pro', '补素材'],
+          sourceRefs: [`input-source:${productSource.id}`, `input-source:${feedbackSource.id}`],
+          evidenceRefs: ['evidence-v1-battery'],
+          materialStatus: 'missing',
+          materialRefs: [],
+          performanceTags: ['高咨询'],
+          confidence: 82,
+          status: 'ready',
+        }, {
           id: 'selling-v1-ip',
           title: '轻量生活方法口播',
           summary: 'IP 口径强调少带负担、真实体验和轻量生活方法，不夸大降温。',
@@ -2595,6 +2613,13 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
           excerpt: 'SKU 表记录 Air Mini 净重 218g，可用于轻量便携表达。',
           status: 'ready',
         }, {
+          id: 'evidence-v1-battery',
+          sourceType: 'manual',
+          sourceTitle: 'Air Pro 续航记录',
+          claim: 'Air Pro 低档 9-14h',
+          excerpt: '产品资料记录 Air Pro 低档续航 9-14h，可用于办公室续航异议回答。',
+          status: 'ready',
+        }, {
           id: 'evidence-v1-quote',
           sourceType: 'user-quote',
           sourceTitle: '评论样本',
@@ -2630,7 +2655,7 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
           competitorObservationCount: 1,
           sceneCardCount: 1,
           promptDraftCount: 1,
-          evidenceCount: 4,
+          evidenceCount: 5,
           gapCount: 0,
           readyPercent: 92,
         },
@@ -2645,22 +2670,32 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
         title: 'BreezeGo Air 团队知识包',
         version: 'v1.4',
       });
+      const reviewTasks = await api.generateContentReviewTasks({
+        workspacePath,
+        contentKnowledgeMapId: readyMap.id,
+        targetRowIds: [
+          'selling-v1-light',
+          'selling-v1-video-material',
+          'selling-v1-ip',
+          'pain-v1-bag',
+          'scenario-v1-commute',
+          'scenario-v1-competitor',
+        ],
+      });
+      for (const task of reviewTasks) {
+        await api.submitContentReviewDecision({
+          workspacePath,
+          taskId: task.id,
+          action: 'approve',
+          reviewerLabel: 'E2E 审核员',
+          reason: 'E2E 种子内容已完成证据、素材和平台边界校验。',
+        });
+      }
       const commandCenter = await api.buildBrandCommandCenter({
         workspacePath,
         contentKnowledgeMapId: readyMap.id,
         title: 'BreezeGo Air 品牌战情室',
       });
-      const readyQueueItem = commandCenter.queueItems.find((item) => item.status === 'ready');
-      if (readyQueueItem) {
-        await api.recordBrandCommandAction({
-          workspacePath,
-          commandCenterId: commandCenter.id,
-          queueItemId: readyQueueItem.id,
-          actorLabel: 'E2E 运营',
-          actorRole: 'operator',
-          note: '已交给 Prompt 工作台确认。',
-        });
-      }
       const [settings, maps, sources, releases, commandCenters, assetReviews] = await Promise.all([
         api.getSettings(),
         api.listContentKnowledgeMaps(workspacePath),
@@ -2680,6 +2715,7 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
         commandCenterCount: commandCenters.length,
         commandCenterTitles: commandCenters.map((item) => item.title),
         assetReviewCount: assetReviews.length,
+        approvedReviewCount: reviewTasks.length,
       };
     }, { workspacePath: workspaceDir, assetPath: e2eProductAssetPath });
     expect(seedTrace.savedWorkspacePath, JSON.stringify(seedTrace)).toBe(workspaceDir);
@@ -2688,6 +2724,7 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
     expect(seedTrace.releaseTitles, JSON.stringify(seedTrace)).toContain('BreezeGo Air 团队知识包 v1.4');
     expect(seedTrace.commandCenterTitles, JSON.stringify(seedTrace)).toContain('BreezeGo Air 品牌战情室');
     expect(seedTrace.assetReviewCount, JSON.stringify(seedTrace)).toBeGreaterThanOrEqual(1);
+    expect(seedTrace.approvedReviewCount, JSON.stringify(seedTrace)).toBe(6);
 
     await page.reload();
     await expect.poll(
@@ -2778,9 +2815,29 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
     await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('当前组合');
     await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('218g');
     await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('恢复路径');
-    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('去 SOP 输入');
-    await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '去 SOP 输入' }).click();
+    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('生成 Prompt 草稿');
+    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('生成场景卡');
+    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('启动 SOP');
+    await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '生成 Prompt 草稿' }).click();
+    await expect(page.locator('.prompt-workbench')).toBeVisible();
+    await expect(page.locator('.prompt-workbench')).toContainText('轻量便携不压包 生产提示词');
+    await clickNavItem(page, '内容知识地图');
+    await mapWorkbench.locator('.content-map-table tbody tr').filter({ hasText: '轻量便携不压包' }).click();
+    await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '生成场景卡' }).click();
+    await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
+    await expect(page.locator('.scene-prompt-workbench')).toContainText('轻量便携不压包');
+    await clickNavItem(page, '内容知识地图');
+    await mapWorkbench.locator('.content-map-table tbody tr').filter({ hasText: '轻量便携不压包' }).click();
+    await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '启动 SOP' }).click();
     await expect(page.locator('.workflow-feature-workbench')).toBeVisible();
+    await expect(page.locator('.workflow-feature-workbench')).toContainText('轻量便携不压包', { timeout: 20_000 });
+    const rowHandoffRun = await page.evaluate(async (workspacePath) => {
+      const runs = await window.contentStudio.listWorkflowRuns(workspacePath);
+      return runs.find((run) => String(run.inputs?.intent || '').includes('轻量便携不压包'));
+    }, workspaceDir);
+    expect(rowHandoffRun?.title, JSON.stringify(rowHandoffRun)).toBe('品牌知识库场景提示词 SOP');
+    expect(rowHandoffRun?.inputs?.source, JSON.stringify(rowHandoffRun)).toContain('审核任务：轻量便携不压包');
+    expect(rowHandoffRun?.artifactRefs?.some((ref) => ref.startsWith('workflow-run:')), JSON.stringify(rowHandoffRun)).toBe(true);
 
     await clickNavItem(page, '内容知识地图');
     await page.locator('.content-map-tabs button').filter({ hasText: 'IP 口径' }).click();
@@ -2793,6 +2850,22 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
     await page.locator('.content-map-tabs button').filter({ hasText: '素材回写' }).click();
     await expect(mapWorkbench.locator('.content-map-material-panel')).toContainText('轻量便携不压包');
     await expect(mapWorkbench.locator('.content-map-material-panel')).toContainText('高收藏');
+    await expect(mapWorkbench.locator('.content-map-material-panel')).toContainText('续航竖版视频素材缺口');
+    await mapWorkbench.locator('.content-map-material-panel button').filter({ hasText: '创建补素材任务' }).click();
+    await expect(page.locator('.content-review-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.content-review-workbench')).toContainText('补素材：续航竖版视频素材缺口');
+    await expect(page.locator('.content-review-workbench')).toContainText('待补素材');
+    const materialSupplementTask = await page.evaluate(async (workspacePath) => {
+      const tasks = await window.contentStudio.listContentReviewTasks(workspacePath);
+      return tasks.find((task) => (
+        task.targetId === 'selling-v1-video-material' &&
+        task.taskPurpose === 'material-supplement'
+      ));
+    }, workspaceDir);
+    expect(materialSupplementTask?.status, JSON.stringify(materialSupplementTask)).toBe('needs-material');
+    expect(materialSupplementTask?.suggestedAction, JSON.stringify(materialSupplementTask)).toBe('request-material');
+    expect(materialSupplementTask?.title, JSON.stringify(materialSupplementTask)).toContain('补素材：续航竖版视频素材缺口');
+    await clickNavItem(page, '内容知识地图');
     await page.locator('.content-map-tabs button').filter({ hasText: '高级导出' }).click();
     await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('包文件');
     await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('KNOWLEDGE.md');
@@ -2817,6 +2890,64 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
     await expect(page.locator('.brand-command-view-brief')).toContainText('队列状态分布');
     await expect(page.locator('.brand-command-queue-board')).toContainText('动作：生成 Prompt 草稿');
     await expect(page.locator('.brand-command-queue-board')).toContainText('交付：Prompt 草稿');
+    const readyQueueCard = page.locator('.brand-command-queue-board article')
+      .filter({ hasText: '动作：生成 Prompt 草稿' })
+      .filter({ hasText: '可执行' })
+      .first();
+    await expect(readyQueueCard).toContainText('记录交接');
+    await readyQueueCard.locator('button').filter({ hasText: '记录交接' }).click();
+    await expect.poll(
+      async () => page.evaluate(async (workspacePath) => {
+        const [drafts, commandCenters] = await Promise.all([
+          window.contentStudio.listPromptDrafts(workspacePath),
+          window.contentStudio.listBrandCommandCenters(workspacePath),
+        ]);
+        const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
+        const handoffRecord = center?.actionRecords.find((record) => (
+          record.actionType === 'generate-prompt-draft' &&
+          Boolean(record.promptDraftId) &&
+          Boolean(record.queueItemId) &&
+          !record.queueItemId.startsWith('handoff:')
+        ));
+        const draft = drafts.find((item) => item.id === handoffRecord?.promptDraftId);
+        return Boolean(center && handoffRecord && draft);
+      }, workspaceDir),
+      { message: '等待执行队列写入真实 Prompt 草稿和行动记录', timeout: 20_000 },
+    ).toBe(true);
+    const commandQueueHandoff = await page.evaluate(async (workspacePath) => {
+      const [drafts, commandCenters] = await Promise.all([
+        window.contentStudio.listPromptDrafts(workspacePath),
+        window.contentStudio.listBrandCommandCenters(workspacePath),
+      ]);
+      const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
+      const handoffRecord = center?.actionRecords.find((record) => (
+        record.actionType === 'generate-prompt-draft' &&
+        Boolean(record.promptDraftId) &&
+        Boolean(record.queueItemId) &&
+        !record.queueItemId.startsWith('handoff:')
+      ));
+      const draft = drafts.find((item) => item.id === handoffRecord?.promptDraftId);
+      return {
+        queueStatus: center?.queueItems.find((item) => item.id === handoffRecord?.queueItemId)?.status,
+        actionType: handoffRecord?.actionType,
+        outcome: handoffRecord?.outcome,
+        promptDraftId: handoffRecord?.promptDraftId,
+        draftTitle: draft?.title,
+        draftMapId: draft?.contentKnowledgeMapId,
+        draftCoverageRowCount: draft?.coverageRowIds?.length ?? 0,
+        draftSourceRefs: draft?.sourceRefs ?? [],
+      };
+    }, workspaceDir);
+    expect(commandQueueHandoff.queueStatus, JSON.stringify(commandQueueHandoff)).toBe('handed-off');
+    expect(commandQueueHandoff.actionType, JSON.stringify(commandQueueHandoff)).toBe('generate-prompt-draft');
+    expect(commandQueueHandoff.outcome, JSON.stringify(commandQueueHandoff)).toBe('handoff');
+    expect(commandQueueHandoff.promptDraftId, JSON.stringify(commandQueueHandoff)).toBeTruthy();
+    expect(commandQueueHandoff.draftTitle, JSON.stringify(commandQueueHandoff)).toContain('Prompt 草稿');
+    expect(commandQueueHandoff.draftMapId, JSON.stringify(commandQueueHandoff)).toBeTruthy();
+    expect(commandQueueHandoff.draftCoverageRowCount, JSON.stringify(commandQueueHandoff)).toBeGreaterThan(0);
+    expect(commandQueueHandoff.draftSourceRefs, JSON.stringify(commandQueueHandoff)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^content-knowledge-map:/)]),
+    );
     await clickNavItem(page, '行动记录');
     await expect(page.locator('.brand-command-workbench > .module-command-center h2')).toHaveText('行动记录');
     await expect(page.locator('.brand-command-view-brief')).toContainText('行动记录');

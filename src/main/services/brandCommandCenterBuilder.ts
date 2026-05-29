@@ -14,7 +14,13 @@ import type {
   ContentKnowledgeMapMatrixRow,
   ContentKnowledgeMapRecord,
   ContentKnowledgeMapTeamSyncSummary,
+  ContentReviewTask,
 } from '../../shared/types';
+
+interface BrandCommandReviewGate {
+  enabled: boolean;
+  approvedRowIds: Set<string>;
+}
 
 function compactText(value: string | undefined, fallback = ''): string {
   return String(value ?? fallback).replace(/\s+/g, ' ').trim();
@@ -41,6 +47,33 @@ function uniqueStrings(values: Array<string | undefined>, limit = 12): string[] 
 
 function allMatrixRows(map: ContentKnowledgeMapRecord): ContentKnowledgeMapMatrixRow[] {
   return [...map.sellingPoints, ...map.painPoints, ...map.scenarios];
+}
+
+function uniqueRows(rows: ContentKnowledgeMapMatrixRow[], limit = 12): ContentKnowledgeMapMatrixRow[] {
+  const seen = new Set<string>();
+  const result: ContentKnowledgeMapMatrixRow[] = [];
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    result.push(row);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function reviewGateFor(map: ContentKnowledgeMapRecord, reviewTasks?: ContentReviewTask[]): BrandCommandReviewGate {
+  if (!reviewTasks) return { enabled: false, approvedRowIds: new Set() };
+  const approvedRowIds = new Set(
+    reviewTasks
+      .filter((task) =>
+        task.sourceKnowledgeMapId === map.id &&
+        task.status === 'approved' &&
+        (task.targetType === 'selling-point' || task.targetType === 'pain-point' || task.targetType === 'scenario') &&
+        Boolean(task.targetId),
+      )
+      .map((task) => task.targetId as string),
+  );
+  return { enabled: true, approvedRowIds };
 }
 
 function rowSearchText(row: ContentKnowledgeMapMatrixRow): string {
@@ -137,7 +170,31 @@ function queueStatusFor(checks: BrandCommandDecisionCheck[]): BrandCommandQueueI
   return 'ready';
 }
 
-function buildDecisionChecks(map: ContentKnowledgeMapRecord, bundle: BrandCommandResourceBundle): BrandCommandDecisionCheck[] {
+function buildDecisionChecks(
+  map: ContentKnowledgeMapRecord,
+  bundle: BrandCommandResourceBundle,
+  reviewGate: BrandCommandReviewGate,
+): BrandCommandDecisionCheck[] {
+  const coverageRowIds = bundle.coverageRowIds ?? [];
+  const approvedCoverageRowIds = bundle.approvedCoverageRowIds ?? [];
+  const reviewStatus = !reviewGate.enabled
+    ? undefined
+    : !coverageRowIds.length
+      ? {
+          status: 'needs-review' as const,
+          message: '资源包没有绑定可审核的内容组合。',
+          recoveryAction: '重新生成资源包',
+        }
+      : approvedCoverageRowIds.length === coverageRowIds.length
+        ? {
+            status: 'passed' as const,
+            message: `已通过 ${approvedCoverageRowIds.length} 个内容组合审核。`,
+          }
+        : {
+            status: 'needs-review' as const,
+            message: `还有 ${coverageRowIds.length - approvedCoverageRowIds.length} 个内容组合未通过审核。`,
+            recoveryAction: '发起审核或处理审核任务',
+          };
   return [
     {
       key: 'evidence',
@@ -146,6 +203,13 @@ function buildDecisionChecks(map: ContentKnowledgeMapRecord, bundle: BrandComman
       message: bundle.evidenceRefs.length ? `已关联 ${bundle.evidenceRefs.length} 条证据。` : '缺少可引用证据。',
       recoveryAction: bundle.evidenceRefs.length ? undefined : '创建补证据任务',
     },
+    ...(reviewStatus ? [{
+      key: 'review',
+      label: '审核',
+      status: reviewStatus.status,
+      message: reviewStatus.message,
+      recoveryAction: reviewStatus.recoveryAction,
+    }] : []),
     {
       key: 'brand-boundary',
       label: '品牌边界',
@@ -376,19 +440,41 @@ function buildBundle(
   map: ContentKnowledgeMapRecord,
   objective: BrandCommandObjective,
   signals: BrandCommandSignal[],
+  reviewGate: BrandCommandReviewGate,
 ): BrandCommandResourceBundle {
   const matrixRows = allMatrixRows(map);
   const objectiveRows = rowsForObjective(map, objective, signals);
-  const dimensions = dimensionsFromRows(objectiveRows.length ? objectiveRows : matrixRows, objective.dimensions);
-  const sellingPointRefs = map.sellingPoints.slice(0, 4).map((row) => row.title);
-  const sceneRefs = map.scenarios.slice(0, 4).map((row) => row.title);
-  const evidenceRefs = uniqueStrings([
-    ...matrixRows.flatMap((row) => row.evidenceRefs),
+  const bundleRows = uniqueRows([
+    ...(objectiveRows.length ? objectiveRows : []),
+    ...map.sellingPoints,
+    ...map.painPoints.slice(0, 2),
+    ...map.scenarios,
+    ...(objectiveRows.length ? [] : matrixRows),
   ], 12);
-  const materialRefs = uniqueStrings(matrixRows.flatMap((row) => row.materialRefs ?? []), 12);
+  const sellingPointIds = new Set(map.sellingPoints.map((row) => row.id));
+  const painPointIds = new Set(map.painPoints.map((row) => row.id));
+  const scenarioIds = new Set(map.scenarios.map((row) => row.id));
+  const dimensions = dimensionsFromRows(objectiveRows.length ? objectiveRows : matrixRows, objective.dimensions);
+  const coverageRowIds = bundleRows.map((row) => row.id);
+  const approvedCoverageRowIds = reviewGate.enabled
+    ? coverageRowIds.filter((rowId) => reviewGate.approvedRowIds.has(rowId))
+    : undefined;
+  const sellingPointRefs = bundleRows.filter((row) => sellingPointIds.has(row.id)).slice(0, 4).map((row) => row.title);
+  const sceneRefs = bundleRows
+    .filter((row) => scenarioIds.has(row.id) || painPointIds.has(row.id))
+    .slice(0, 4)
+    .map((row) => row.title);
+  const evidenceRefs = uniqueStrings([
+    ...bundleRows.flatMap((row) => row.evidenceRefs),
+  ], 12);
+  const materialRefs = uniqueStrings(bundleRows.flatMap((row) => row.materialRefs ?? []), 12);
+  const missingReviewCount = reviewGate.enabled && approvedCoverageRowIds
+    ? coverageRowIds.length - approvedCoverageRowIds.length
+    : 0;
   const gaps = uniqueStrings([
     evidenceRefs.length ? '' : '缺证据',
     materialRefs.length ? '' : '缺素材',
+    missingReviewCount > 0 ? `${missingReviewCount} 个内容组合未通过审核` : '',
     map.status === 'ready' ? '' : '知识地图待补齐',
     ...map.gaps.slice(0, 3),
   ], 8);
@@ -397,6 +483,7 @@ function buildBundle(
     evidenceRefs.length > 0,
     sceneRefs.length > 0,
     materialRefs.length > 0,
+    !reviewGate.enabled || missingReviewCount === 0,
     map.constraints.length > 0,
     gaps.length === 0,
   ];
@@ -405,6 +492,8 @@ function buildBundle(
     title: `${objective.title}资源包`,
     objectiveId: objective.id,
     sourceKnowledgeMapId: map.id,
+    coverageRowIds,
+    approvedCoverageRowIds,
     sellingPointRefs,
     evidenceRefs,
     sceneRefs,
@@ -470,6 +559,7 @@ export function buildBrandCommandCenterDraft(
   input: BuildBrandCommandCenterInput,
   map: ContentKnowledgeMapRecord | undefined,
   teamSync: ContentKnowledgeMapTeamSyncSummary,
+  reviewTasks?: ContentReviewTask[],
 ): BrandCommandCenterRecord {
   const now = new Date().toISOString();
   if (!map) {
@@ -505,14 +595,15 @@ export function buildBrandCommandCenterDraft(
   ].filter((item): item is BrandCommandSignal => Boolean(item));
   const uniqueSignals = dedupeSignals(signals);
   const objectives = buildObjectives(uniqueSignals, map);
-  const resourceBundles = objectives.map((objective) => buildBundle(map, objective, uniqueSignals));
+  const reviewGate = reviewGateFor(map, reviewTasks);
+  const resourceBundles = objectives.map((objective) => buildBundle(map, objective, uniqueSignals, reviewGate));
   const campaignCells: BrandCommandCampaignCell[] = [];
   const queueItems: BrandCommandQueueItem[] = [];
   for (const objective of objectives) {
     const bundle = resourceBundles.find((item) => item.objectiveId === objective.id);
     if (!bundle) continue;
     const cellId = randomUUID();
-    const decisionChecks = buildDecisionChecks(map, bundle);
+    const decisionChecks = buildDecisionChecks(map, bundle, reviewGate);
     const cellChannels = bundle.dimensions?.channels?.length ? bundle.dimensions.channels : objective.channels;
     const cellDimensions = mergeDimensions([bundle.dimensions, objective.dimensions, { channels: cellChannels }]);
     const cellQueueItems = buildQueueItems(cellId, bundle, decisionChecks, now, cellDimensions);

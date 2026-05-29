@@ -53,7 +53,14 @@ const TASK_STATUS_LABELS: Record<ContentReviewTask['status'], string> = {
   approved: '已通过',
   rejected: '已驳回',
   'needs-evidence': '待补证据',
+  'needs-material': '待补素材',
   forbidden: '已禁用',
+};
+
+const TASK_PURPOSE_LABELS: Record<NonNullable<ContentReviewTask['taskPurpose']>, string> = {
+  review: '发布审核',
+  'evidence-supplement': '补证据',
+  'material-supplement': '补素材',
 };
 
 const TASK_TARGET_LABELS: Record<ContentReviewTask['targetType'], string> = {
@@ -69,6 +76,7 @@ const DECISION_LABELS: Record<ContentReviewDecisionAction, string> = {
   approve: '通过',
   reject: '驳回',
   'request-evidence': '补证据',
+  'request-material': '补素材',
   'mark-forbidden': '标记禁用',
   'downgrade-to-needs-verification': '降级待确认',
   'rename-target': '改名',
@@ -93,7 +101,7 @@ const AGENT_MESSAGE_KIND_LABELS: Record<AgentPromptSession['messages'][number]['
 
 function statusTone(status?: ContentReviewTask['status']) {
   if (status === 'approved') return 'ready';
-  if (status === 'rejected' || status === 'forbidden' || status === 'needs-evidence') return 'blocked';
+  if (status === 'rejected' || status === 'forbidden' || status === 'needs-evidence' || status === 'needs-material') return 'blocked';
   return 'idle';
 }
 
@@ -250,7 +258,7 @@ export function ContentReviewTasksModule({
   const [splitDraft, setSplitDraft] = useState('');
   const [mergeTargetIds, setMergeTargetIds] = useState<string[]>([]);
   const task = activeContentReviewTask ?? contentReviewTasks[0];
-  const openCount = contentReviewTasks.filter((item) => item.status === 'open' || item.status === 'needs-evidence').length;
+  const openCount = contentReviewTasks.filter((item) => item.status === 'open' || item.status === 'needs-evidence' || item.status === 'needs-material').length;
   const approvedCount = contentReviewTasks.filter((item) => item.status === 'approved').length;
   const sourceMap = activeContentKnowledgeMap ?? contentKnowledgeMaps[0];
   const adjustableRows = useMemo(() => rowsForReviewTarget(sourceMap, task?.targetType), [sourceMap, task?.targetType]);
@@ -382,6 +390,10 @@ export function ContentReviewTasksModule({
           <span>{TASK_TARGET_LABELS[task.targetType]}</span>
         </article>
         <article>
+          <strong>任务类型</strong>
+          <span>{TASK_PURPOSE_LABELS[task.taskPurpose ?? 'review']}</span>
+        </article>
+        <article>
           <strong>风险等级</strong>
           <span>{riskLabel(task.risk)}</span>
         </article>
@@ -423,6 +435,8 @@ export function ContentReviewTasksModule({
               ? '证据和风险可接受，可通过后交接到 Prompt 工作台、场景卡或 SOP。'
               : task.suggestedAction === 'request-evidence'
                 ? '先补用户原声、产品资料、测试数据或客服记录，再重新审核。'
+                : task.suggestedAction === 'request-material'
+                  ? '先补充可用图片、视频、案例或客服截图；素材通过审核后再回写覆盖矩阵。'
                 : task.suggestedAction === 'mark-forbidden'
                   ? '标记禁用后该表达不能进入提示词依据或生产交接。'
                   : task.suggestedAction === 'downgrade-to-needs-verification'
@@ -536,6 +550,7 @@ export function ContentReviewTasksModule({
         '内容审核协作',
         task ? `当前审核任务：${task.title}（${task.id}）` : '当前还没有选中的审核任务。',
         task ? `任务类型：${TASK_TARGET_LABELS[task.targetType]}；风险：${riskLabel(task.risk)}；状态：${TASK_STATUS_LABELS[task.status]}。` : '',
+        task ? `业务类型：${TASK_PURPOSE_LABELS[task.taskPurpose ?? 'review']}。` : '',
         task ? `证据：${task.evidenceRefs.length} 条；来源引用：${task.sourceRefs.length} 条；建议动作：${DECISION_LABELS[task.suggestedAction]}。` : '',
         sourceMap ? `来源知识地图：${sourceMap.title}（${sourceMap.id}），输入源 ${sourceMap.sourceInputSourceIds.length} 个，场景卡 ${sourceMap.sceneCardIds.length} 张。` : '没有可用内容知识地图。',
         contentProductionHandoff ? `最近生产交接状态：${contentProductionHandoff.status}。` : '还没有生产交接记录。',
@@ -573,6 +588,7 @@ export function ContentReviewTasksModule({
             <button className="ghost small" disabled={busy || task.status === 'approved'} onClick={() => onSubmitContentReviewDecision(task.id, 'approve')}>通过</button>
             <button className="ghost small" disabled={busy || task.status === 'rejected'} onClick={() => onSubmitContentReviewDecision(task.id, 'reject')}>驳回</button>
             <button className="ghost small" disabled={busy} onClick={() => onSubmitContentReviewDecision(task.id, 'request-evidence')}>补证据</button>
+            <button className="ghost small" disabled={busy} onClick={() => onSubmitContentReviewDecision(task.id, 'request-material')}>补素材</button>
             <button className="ghost small" disabled={busy} onClick={() => onSubmitContentReviewDecision(task.id, 'mark-forbidden')}>标记禁用</button>
             <button className="ghost small" disabled={busy} onClick={() => onSubmitContentReviewDecision(task.id, 'downgrade-to-needs-verification')}>降级待确认</button>
             <button className="ghost small" disabled={busy || task.status !== 'approved'} onClick={() => onCreateContentProductionHandoff(task.id)}>交给 Prompt 工作台</button>
