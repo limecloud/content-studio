@@ -1,0 +1,128 @@
+import { randomUUID } from 'node:crypto';
+import type {
+  ContentKnowledgeMapRecord,
+  ContentKnowledgeMapMatrixRow,
+  ContentReviewTask,
+  ContentReviewTaskRisk,
+} from '../../shared/types';
+
+type ContentReviewMatrixTargetType = Extract<ContentReviewTask['targetType'], 'selling-point' | 'pain-point' | 'scenario'>;
+
+interface BuildContentReviewTasksFromMapOptions {
+  targetRowIds?: string[];
+  targetTypes?: ContentReviewMatrixTargetType[];
+  includeGaps?: boolean;
+  limitRows?: number;
+  limitGaps?: number;
+}
+
+function rowRisk(row: ContentKnowledgeMapMatrixRow): ContentReviewTaskRisk {
+  if (row.status !== 'ready' || row.evidenceRefs.length === 0) return 'high';
+  if (row.confidence < 65) return 'medium';
+  return 'low';
+}
+
+function rowIssueLabels(row: ContentKnowledgeMapMatrixRow): string[] {
+  const labels = [
+    row.evidenceRefs.length ? '' : '缺证据',
+    row.status === 'needs-review' ? '待人工确认' : '',
+    row.status === 'needs-evidence' ? '待补证据' : '',
+    row.confidence < 65 ? '置信度偏低' : '',
+  ].filter(Boolean);
+  return labels.length ? labels : ['本批送审'];
+}
+
+function taskFromRow(
+  workspacePath: string,
+  map: ContentKnowledgeMapRecord,
+  targetType: ContentReviewTask['targetType'],
+  row: ContentKnowledgeMapMatrixRow,
+): ContentReviewTask {
+  const now = new Date().toISOString();
+  const risk = rowRisk(row);
+  return {
+    id: randomUUID(),
+    workspacePath,
+    sourceKnowledgeMapId: map.id,
+    sourceKnowledgeMapTitle: map.title,
+    targetType,
+    targetId: row.id,
+    title: row.title,
+    summary: row.summary,
+    evidenceRefs: row.evidenceRefs,
+    sourceRefs: row.sourceRefs,
+    risk,
+    status: row.evidenceRefs.length ? 'open' : 'needs-evidence',
+    suggestedAction: row.evidenceRefs.length ? (risk === 'high' ? 'downgrade-to-needs-verification' : 'approve') : 'request-evidence',
+    issueLabels: rowIssueLabels(row),
+    decisions: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function taskFromGap(
+  workspacePath: string,
+  map: ContentKnowledgeMapRecord,
+  gap: string,
+): ContentReviewTask {
+  const now = new Date().toISOString();
+  const forbidden = /禁用|禁止|风险|拦截/.test(gap);
+  return {
+    id: randomUUID(),
+    workspacePath,
+    sourceKnowledgeMapId: map.id,
+    sourceKnowledgeMapTitle: map.title,
+    targetType: 'gap',
+    title: forbidden ? '风险缺口处理' : '知识地图缺口处理',
+    summary: gap,
+    evidenceRefs: [],
+    sourceRefs: [],
+    risk: forbidden ? 'high' : 'medium',
+    status: forbidden ? 'open' : 'needs-evidence',
+    suggestedAction: forbidden ? 'mark-forbidden' : 'request-evidence',
+    issueLabels: [forbidden ? '风险边界' : '缺口', '待处理'],
+    decisions: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function dedupeTasks(tasks: ContentReviewTask[]): ContentReviewTask[] {
+  const seen = new Set<string>();
+  const result: ContentReviewTask[] = [];
+  for (const task of tasks) {
+    const key = `${task.sourceKnowledgeMapId}:${task.targetType}:${task.targetId ?? task.summary}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(task);
+  }
+  return result;
+}
+
+export function buildContentReviewTasksFromMap(
+  workspacePath: string,
+  map: ContentKnowledgeMapRecord,
+  options: BuildContentReviewTasksFromMapOptions = {},
+): ContentReviewTask[] {
+  const targetRowIds = new Set(options.targetRowIds?.filter(Boolean) ?? []);
+  const targetTypes = new Set<ContentReviewMatrixTargetType>(options.targetTypes ?? ['selling-point', 'pain-point', 'scenario']);
+  const hasTargetRows = targetRowIds.size > 0;
+  const candidateRows = [
+    ...map.sellingPoints.map((row) => ({ type: 'selling-point' as const, row })),
+    ...map.painPoints.map((row) => ({ type: 'pain-point' as const, row })),
+    ...map.scenarios.map((row) => ({ type: 'scenario' as const, row })),
+  ].filter(({ type, row }) => (
+    targetTypes.has(type) &&
+    (hasTargetRows
+      ? targetRowIds.has(row.id)
+      : row.status !== 'ready' || row.evidenceRefs.length === 0 || row.confidence < 65)
+  ));
+  const rowLimit = options.limitRows ?? (hasTargetRows ? candidateRows.length : 30);
+  const gapLimit = options.limitGaps ?? 20;
+  const includeGaps = options.includeGaps ?? !hasTargetRows;
+  return dedupeTasks([
+    ...candidateRows.slice(0, rowLimit).map(({ type, row }) => taskFromRow(workspacePath, map, type, row)),
+    ...(includeGaps ? map.gaps.slice(0, gapLimit).map((gap) => taskFromGap(workspacePath, map, gap)) : []),
+  ]);
+}

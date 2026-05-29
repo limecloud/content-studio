@@ -1,0 +1,4 @@
+interface:
+  display_name: "布谷AI产品设计图工作流"
+  short_description: "基于布谷AI PRD 用户故事和用例生成桌面端原型"
+  default_prompt: "使用 $bugu-product-design-cheatsheet 先提取 v2 PRD 映射，再生成符合布谷AI内容工厂设计语言的桌面端产品原型。"

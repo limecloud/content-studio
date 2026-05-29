@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bugu.run/schemas/content-studio/ontology-v1-online-acceptance.schema.json",
+  "title": "Content Studio Ontology v1 Online Acceptance Report",
+  "type": "object",
+  "required": ["ok", "generatedAt", "target", "checks", "sections"],
+  "properties": {
+    "ok": {
+      "const": true
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "target": {
+      "type": "object",
+      "required": ["apiBaseUrl", "tenant", "workspaceId", "releaseId"],
+      "properties": {
+        "apiBaseUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "releaseId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    },
+    "sections": {
+      "type": "object",
+      "required": ["release", "team"],
+      "properties": {
+        "release": {
+          "type": "object",
+          "required": ["ok", "release", "package", "checks"],
+          "properties": {
+            "ok": {
+              "const": true
+            },
+            "release": {
+              "type": "object",
+              "required": ["id", "status", "approvalStatus"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "const": "published"
+                },
+                "approvalStatus": {
+                  "const": "approved"
+                }
+              },
+              "additionalProperties": true
+            },
+            "package": {
+              "type": "object",
+              "required": ["reachable", "publicUrl", "size", "sha256"],
+              "properties": {
+                "reachable": {
+                  "const": true
+                },
+                "publicUrl": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "size": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-fA-F0-9]{64}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "checks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/check"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "team": {
+          "type": "object",
+          "required": ["ok", "workspace", "release", "summaries", "checks"],
+          "properties": {
+            "ok": {
+              "const": true
+            },
+            "workspace": {
+              "type": "object",
+              "required": ["actorA", "actorB"],
+              "properties": {
+                "actorA": {
+                  "$ref": "#/$defs/workspace"
+                },
+                "actorB": {
+                  "$ref": "#/$defs/workspace"
+                }
+              },
+              "additionalProperties": true
+            },
+            "release": {
+              "type": "object",
+              "required": ["id"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": true
+            },
+            "summaries": {
+              "type": "object",
+              "required": ["actorA", "actorB"],
+              "properties": {
+                "actorA": {
+                  "$ref": "#/$defs/teamSummary"
+                },
+                "actorB": {
+                  "$ref": "#/$defs/teamSummary"
+                }
+              },
+              "additionalProperties": true
+            },
+            "checks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/check"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "check": {
+      "type": "object",
+      "required": ["id", "status", "message"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["passed", "warning", "failed", "skipped"]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "workspace": {
+      "type": "object",
+      "required": ["id", "currentRevision"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currentRevision": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "teamSummary": {
+      "type": "object",
+      "required": ["reviewTaskCount", "executionQueueCount", "releaseCount", "reviewTaskIds", "executionQueueIds", "releaseIds"],
+      "properties": {
+        "reviewTaskCount": {
+          "type": "number"
+        },
+        "executionQueueCount": {
+          "type": "number"
+        },
+        "releaseCount": {
+          "type": "number"
+        },
+        "reviewTaskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "executionQueueIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "releaseIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

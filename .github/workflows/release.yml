@@ -27,6 +27,14 @@ on:
         description: '是否发布到 GitHub Release：true / false'
         required: true
         default: 'false'
+      channel:
+        description: 'LimeCore Agent App release channel'
+        required: false
+        default: 'stable'
+      release_job_id:
+        description: 'LimeCore OEM release job id；后台触发时填写'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -262,3 +270,67 @@ jobs:
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-oem-release:
+    name: Notify LimeCore OEM Release
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - verify
+      - build
+      - publish
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.release_job_id != '' }}
+    steps:
+      - name: Notify LimeCore callback
+        env:
+          CALLBACK_URL: ${{ secrets.OEM_RELEASE_CALLBACK_URL }}
+          CALLBACK_TOKEN: ${{ secrets.OEM_RELEASE_CALLBACK_TOKEN }}
+          RELEASE_JOB_ID: ${{ inputs.release_job_id }}
+          BRAND: ${{ inputs.brand }}
+          TAG: ${{ needs.resolve.outputs.release_tag }}
+          CHANNEL: ${{ inputs.channel || 'stable' }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -z "${CALLBACK_URL}" ] || [ -z "${CALLBACK_TOKEN}" ]; then
+            echo "::warning::OEM_RELEASE_CALLBACK_URL or OEM_RELEASE_CALLBACK_TOKEN is not configured."
+            exit 0
+          fi
+          conclusion="success"
+          message="GitHub Actions release completed"
+          if [ "${VERIFY_RESULT}" != "success" ] || [ "${BUILD_RESULT}" != "success" ] || [ "${PUBLISH_RESULT}" != "success" ]; then
+            conclusion="failure"
+            message="GitHub Actions release failed: verify=${VERIFY_RESULT}, build=${BUILD_RESULT}, publish=${PUBLISH_RESULT}"
+          fi
+          release_url="${SERVER_URL}/${REPOSITORY}/releases/tag/${TAG}"
+          payload="$(
+            jq -n \
+              --arg releaseJobId "${RELEASE_JOB_ID}" \
+              --arg brand "${BRAND}" \
+              --arg tag "${TAG}" \
+              --arg channel "${CHANNEL}" \
+              --arg workflowRunId "${WORKFLOW_RUN_ID}" \
+              --arg conclusion "${conclusion}" \
+              --arg releaseUrl "${release_url}" \
+              --arg message "${message}" \
+              '{
+                releaseJobId: $releaseJobId,
+                brand: $brand,
+                tag: $tag,
+                channel: $channel,
+                workflowRunId: $workflowRunId,
+                status: "completed",
+                conclusion: $conclusion,
+                releaseUrl: $releaseUrl,
+                message: $message
+              }'
+          )"
+          curl --fail-with-body --show-error --silent \
+            -X POST "${CALLBACK_URL}" \
+            -H "Authorization: Bearer ${CALLBACK_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "${payload}"

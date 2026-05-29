@@ -788,7 +788,7 @@
       font-weight: 900;
     }
 
-    .mock-img {
+    .visual-preview {
       position: absolute;
       inset: 0;
       display: grid;
@@ -801,7 +801,7 @@
       line-height: 1.25;
     }
 
-    .mock-img.orange {
+    .visual-preview.orange {
       background:
         linear-gradient(180deg, rgba(54, 117, 73, 0.45), rgba(255, 255, 255, 0.05)),
         radial-gradient(circle at 25% 82%, #ffb14a 0 15%, transparent 16%),
@@ -809,7 +809,7 @@
         linear-gradient(145deg, #7ab79a, #f8e8c9 54%, #d8b47d);
     }
 
-    .mock-img.desk {
+    .visual-preview.desk {
       background:
         linear-gradient(150deg, #f7faf6, #d9eee4 42%, #d9b781),
         radial-gradient(circle at 24% 40%, #d1494c 0 10%, transparent 11%);
@@ -817,7 +817,7 @@
       font-size: 16px;
     }
 
-    .mock-img.window {
+    .visual-preview.window {
       background:
         linear-gradient(180deg, rgba(255,255,255,0.4), transparent),
         radial-gradient(circle at 72% 24%, #ffe38c 0 6%, transparent 7%),
@@ -826,7 +826,7 @@
       font-size: 15px;
     }
 
-    .mock-img.product {
+    .visual-preview.product {
       background:
         radial-gradient(ellipse at 55% 52%, #ffffff 0 20%, transparent 21%),
         radial-gradient(circle at 65% 68%, #c2d79b 0 8%, transparent 9%),
@@ -835,7 +835,7 @@
       font-size: 13px;
     }
 
-    .mock-img.grid {
+    .visual-preview.grid {
       background:
         linear-gradient(90deg, transparent 49%, rgba(255,255,255,0.75) 50%, transparent 51%),
         linear-gradient(180deg, transparent 49%, rgba(255,255,255,0.75) 50%, transparent 51%),
@@ -909,7 +909,7 @@
       font-weight: 800;
     }
 
-    .fake-input {
+    .readonly-field {
       min-height: 36px;
       display: flex;
       align-items: center;
@@ -1689,23 +1689,23 @@
             <div class="preview-strip" aria-label="图片预览大盘区">
               <article class="preview-card">
                 <span class="num">01</span>
-                <div class="mock-img orange">轻盈随行<br />夏日必备</div>
+                <div class="visual-preview orange">轻盈随行<br />夏日必备</div>
               </article>
               <article class="preview-card">
                 <span class="num">02</span>
-                <div class="mock-img desk">产品桌面场景</div>
+                <div class="visual-preview desk">产品桌面场景</div>
               </article>
               <article class="preview-card">
                 <span class="num">03</span>
-                <div class="mock-img window">窗边自然光</div>
+                <div class="visual-preview window">窗边自然光</div>
               </article>
               <article class="preview-card">
                 <span class="num">04</span>
-                <div class="mock-img product">产品白底图</div>
+                <div class="visual-preview product">产品白底图</div>
               </article>
               <article class="preview-card wide">
                 <span class="num">05</span>
-                <div class="mock-img grid">详情页组图</div>
+                <div class="visual-preview grid">详情页组图</div>
               </article>
             </div>
 
@@ -1769,7 +1769,7 @@
                   <h3>SOP 表单执行、审核入库与混剪包</h3>
                   <span class="prd-tag">US-07 / US-08 / US-09</span>
                 </header>
-                <p>普通用户不进 canvas。SOP 用阶段导轨执行，运行记录保存输入源、Agent 会话、Prompt 版本、模型、产物和错误；审核通过后进入素材库并可导出混剪清单。</p>
+                <p>普通用户不进 canvas。SOP 用阶段导轨执行，运行记录保存输入源、对话、Prompt 版本、模型、产物和错误；审核通过后进入素材库并可导出混剪清单。</p>
                 <div class="sop-step-grid">
                   <div class="sop-step"><strong>输入源</strong>知识库 / 图 / 视频</div>
                   <div class="sop-step"><strong>Prompt</strong>多轮调整版本</div>
@@ -1818,19 +1818,19 @@
             <div class="param-list">
               <div class="param-field">
                 <label>全局参数</label>
-                <div class="fake-input">设置</div>
+                <div class="readonly-field">设置</div>
               </div>
               <div class="param-field">
                 <label>文字模型</label>
-                <div class="fake-input">gemini-3-pro-preview</div>
+                <div class="readonly-field">gemini-3-pro-preview</div>
               </div>
               <div class="param-field">
                 <label>图片模型</label>
-                <div class="fake-input">gemini-3-pro-image-preview</div>
+                <div class="readonly-field">gemini-3-pro-image-preview</div>
               </div>
               <div class="param-field">
                 <label>视频模型</label>
-                <div class="fake-input">veo-3.1</div>
+                <div class="readonly-field">veo-3.1</div>
               </div>
               <div class="param-field">
                 <label>生成数量</label>
@@ -2280,7 +2280,7 @@
       "Prompt 工作台": {
         eyebrow: "资产 / 玩法跑通",
         title: "Prompt 工作台",
-        desc: "服务还没有固定 SOP 的探索阶段：多源输入、用户意图、Agent 多轮调整、Prompt 草稿版本和物化入口。",
+        desc: "多源输入、用户意图、多轮调整、Prompt 草稿版本和物化入口。",
         prd: "US-02 / US-03 / UC-02 / UC-13",
         status: "草稿",
         primary: "生成 Prompt",
@@ -2306,7 +2306,7 @@
         flow: ["输入源", "字段表单", "步骤执行", "人工审核", "入库", "导出"],
         panels: [
           ["SOP 示例", "小红书种草图、公众号 IP 内容、详情页素材、视频素材包。", ["小红书", "公众号", "详情页"]],
-          ["运行记录", "保存输入源、Agent 会话、Prompt 版本、模型、产物、错误和来源引用。", ["RunId", "PromptVersion", "Artifact"]]
+          ["运行记录", "保存输入源、对话、Prompt 版本、模型、产物、错误和来源引用。", ["运行编号", "Prompt 版本", "产物"]]
         ],
         preview: "小红书种草图 SOP：产品图 + 参考图 + 产品资料 -> 反推风格 -> 结构化卖点 -> Prompt -> 4 张图 -> 质检 -> 人审 -> 入库。",
         table: [["小红书种草图", "P0", "可运行", "表单"], ["公众号 IP 内容", "P0", "可运行", "Agent 读文档"], ["视频素材包", "P1", "草案", "待确认"]]
@@ -2503,7 +2503,7 @@
         <section class="right-card">
           <h3>来源 / Prompt / 审核</h3>
           <div class="ref-card"><strong>输入源</strong><p>DOCX / Markdown、参考图、参考视频、产品资料、SKU 表、历史成功素材按页面需要选择。</p></div>
-          <div class="ref-card"><strong>追溯</strong><p>保存输入源、Agent 会话、Prompt 版本、模型参数、产物和审核状态。</p></div>
+          <div class="ref-card"><strong>追溯</strong><p>保存输入源、对话、Prompt 版本、模型参数、产物和审核状态。</p></div>
           <div class="ref-card"><strong>恢复路径</strong><p>未配置真实生成服务时显示待配置，并提供配置、重试或复制 Prompt 的替代路径。</p></div>
         </section>
       `;

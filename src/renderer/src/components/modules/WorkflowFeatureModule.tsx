@@ -14,7 +14,7 @@ export type WorkflowRunAction =
   | 'open-scene-library'
   | 'open-prompt-draft'
   | 'open-asset-review'
-  | 'open-reference-reverse'
+  | 'open-material-breakdown'
   | 'open-image-workbench'
   | 'open-article-workbench'
   | 'open-video-prompt'
@@ -88,6 +88,7 @@ const INPUT_SOURCE_PURPOSE_LABELS: Record<InputSourcePurpose, string> = {
   'brand-kb': '品牌 / 产品知识库',
   'ip-kb': 'IP 知识库',
   'ip-scenario-kb': 'IP 场景库',
+  'competitor-observation': '竞品观察',
   reference: '参考素材',
   'product-brief': '产品资料',
   'user-feedback': '评论 / 客服问题',
@@ -171,13 +172,13 @@ function assetKindLabel(kind: AssetReviewRecord['kind']): string {
 function workflowStepKindLabel(kind: WorkflowDefinition['steps'][number]['kind']): string {
   const labels: Record<WorkflowDefinition['steps'][number]['kind'], string> = {
     input: '登记资料',
-    'agent-read': 'Agent 读取',
+    'agent-read': '读取资料',
     'build-brand-knowledge-base': '品牌知识抽取',
     'build-ip-knowledge-base': 'IP 知识构建',
     'generate-prompt-pack': '生成提示词包',
     'generate-scene-library': '生成场景库',
     'generate-prompt-group': '生成提示词组',
-    'reference-reverse': '对标反推',
+    'reference-reverse': '素材拆解',
     'structure-product-brief': '结构化产品资料',
     'cluster-user-feedback': '聚类用户反馈',
     'prompt-generate': '生成提示词',
@@ -386,6 +387,7 @@ function artifactRefLabel(ref: string): string {
   if (ref.startsWith('prompt-pack:')) return '提示词包';
   if (ref.startsWith('scene-card:')) return '场景卡';
   if (ref.startsWith('prompt-draft:')) return '提示词草稿';
+  if (ref.startsWith('team-knowledge-release:')) return '团队知识包';
   if (ref.startsWith('input-source:')) return '输入源';
   if (ref.startsWith('generation-log:')) return '生成记录';
   if (ref.startsWith('asset-review:')) return '素材审核';
@@ -495,7 +497,7 @@ function nextImageSopAction(run: WorkflowRunRecord): WorkflowRunNextAction | nul
 
   if (!hasStepSucceeded(run, 'reference_reverse') && isStepPending(run, 'reference_reverse')) {
     return {
-      action: 'open-reference-reverse',
+      action: 'open-material-breakdown',
       title: '打开拆解素材',
       description: '补参考素材、产品资料或视觉理解配置，重新生成可追溯图片提示词。',
       primary: true,
@@ -761,8 +763,8 @@ function nextIpLongformAction(run: WorkflowRunRecord): WorkflowRunNextAction | n
   if (!hasStepSucceeded(run, 'agent_read') && isStepPending(run, 'agent_read')) {
     return {
       action: 'open-prompt-draft',
-      title: promptDraftId ? '打开 Agent 会话' : '打开 Prompt 工作台',
-      description: '继续查看 Agent 读取知识库后的追问、草稿和缺口。',
+      title: promptDraftId ? '打开对话' : '打开 Prompt 工作台',
+      description: '继续查看读取知识库后的追问、草稿和缺口。',
       primary: true,
     };
   }
@@ -1756,7 +1758,21 @@ function RunDetail({
         <span><strong>产物线索</strong><em>{run.artifactRefs.length} 条</em></span>
         <span><strong>资料来源</strong><em>{runSourceIds.length} 个</em></span>
         <span><strong>知识引用</strong><em>{run.citations?.length ?? 0} 条</em></span>
+        <span><strong>团队知识包</strong><em>{run.teamKnowledgeRelease ? `${run.teamKnowledgeRelease.title} ${run.teamKnowledgeRelease.version}` : '未绑定'}</em></span>
       </div>
+
+      {run.teamKnowledgeRelease ? (
+        <div className="workflow-citation-panel">
+          <h4>团队知识包</h4>
+          <div className="workflow-citation-list">
+            <article className="workflow-citation-card">
+              <strong>{run.teamKnowledgeRelease.title}</strong>
+              <small>{run.teamKnowledgeRelease.version} · {run.teamKnowledgeRelease.packageUploadStatus ? '已登记发布包' : '等待发布包'}</small>
+              <p>本次 SOP 运行使用该团队知识包作为默认口径，后续 Prompt、素材审核和复盘都能追溯到同一版本。</p>
+            </article>
+          </div>
+        </div>
+      ) : null}
 
       {runSourceIds.length ? (
         <div className="workflow-citation-panel workflow-run-source-panel">

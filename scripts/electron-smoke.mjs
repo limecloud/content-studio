@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
@@ -11,7 +12,26 @@ const electronPath = require('electron');
 const WebSocketClient = globalThis.WebSocket ?? UndiciWebSocket;
 const projectRoot = resolve(new URL('..', import.meta.url).pathname);
 const mainEntry = join(projectRoot, 'out/main/index.js');
-const remoteDebuggingPort = 9333 + Math.floor(Math.random() * 400);
+
+async function getAvailablePort() {
+  return new Promise((resolvePort, rejectPort) => {
+    const server = createServer();
+    server.once('error', rejectPort);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      server.close((error) => {
+        if (error) rejectPort(error);
+        else resolvePort(port);
+      });
+    });
+  });
+}
+
+const configuredRemoteDebuggingPort = Number(process.env.CONTENT_STUDIO_SMOKE_REMOTE_DEBUGGING_PORT || 0);
+const remoteDebuggingPort = Number.isInteger(configuredRemoteDebuggingPort) && configuredRemoteDebuggingPort > 0
+  ? configuredRemoteDebuggingPort
+  : await getAvailablePort();
 const userDataDir = mkdtempSync(join(tmpdir(), `content-studio-smoke-${randomUUID()}-`));
 const workspaceDir = mkdtempSync(join(tmpdir(), `content-studio-workspace-${randomUUID()}-`));
 const headed = process.argv.slice(2).includes('--headed') || process.env.CONTENT_STUDIO_TEST_SILENT === '0';

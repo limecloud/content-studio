@@ -1399,6 +1399,12 @@
   letter-spacing: 0;
 }
 
+.ai-video-prompt-assistant-fab {
+  right: 46px;
+  bottom: 64px;
+  z-index: 6;
+}
+
 .ai-video-history-layer {
   position: fixed;
   inset: 0;

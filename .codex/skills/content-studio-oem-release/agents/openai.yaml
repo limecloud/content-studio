@@ -1,0 +1,4 @@
+interface:
+  display_name: "Content Studio OEM 发布"
+  short_description: "发布 bugu/seenx 桌面包到控制面和 R2 分发。"
+  default_prompt: "使用 $content-studio-oem-release 发布 content-studio OEM 桌面包到 stable，并验证官网和下载清单。"

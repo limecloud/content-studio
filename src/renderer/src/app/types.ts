@@ -4,7 +4,6 @@ import type { Dispatch, SetStateAction } from 'react';
 export type CoreModuleKey = 'image' | 'image-showcase' | 'video' | 'video-showcase' | 'article' | 'knowledge' | 'assets' | 'skills';
 
 export type V2ModuleKey =
-  | 'image-reference-reverse'
   | 'material-breakdown'
   | 'image-scene-prompts'
   | 'image-green-screen'
@@ -18,10 +17,17 @@ export type V2ModuleKey =
   | 'video-custom'
   | 'article-title'
   | 'article-script'
+  | 'knowledge-map'
+  | 'knowledge-review'
   | 'knowledge-brand'
   | 'knowledge-scenes'
   | 'knowledge-ip'
   | 'knowledge-inputs'
+  | 'brand-command-center'
+  | 'brand-command-objectives'
+  | 'brand-command-bundles'
+  | 'brand-command-queue'
+  | 'brand-command-logs'
   | 'assets-prompt-workbench'
   | 'assets-sop'
   | 'assets-history'

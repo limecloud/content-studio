@@ -317,6 +317,17 @@
   gap: 12px;
   margin-top: 36px;
 }
+
+.about-link-text {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 18px;
+  color: #4B5563;
+  background: #F3F4F6;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .about-link-btn {
   background: #F3F4F6;
   color: #4B5563;

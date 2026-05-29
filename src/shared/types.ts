@@ -561,6 +561,10 @@ export interface SceneCard {
   workflowRunId?: string;
   promptPackId: string;
   inputSourceIds?: string[];
+  contentKnowledgeMapId?: string;
+  contentKnowledgeMapTitle?: string;
+  coverageRowIds?: string[];
+  sourceRefs?: string[];
   title: string;
   audience: string;
   painPoint: string;
@@ -584,6 +588,726 @@ export interface GenerateSceneCardsInput {
   count?: number;
 }
 
+export interface CreateSceneCardFromContentInput {
+  workspacePath: string;
+  workflowRunId?: string;
+  promptPackId: string;
+  inputSourceIds?: string[];
+  contentKnowledgeMapId?: string;
+  contentKnowledgeMapTitle?: string;
+  coverageRowIds?: string[];
+  sourceRefs?: string[];
+  title: string;
+  audience: string;
+  painPoint: string;
+  usageScene: string;
+  visualComposition: string;
+  sellingPoint: string;
+  voiceoverDirection: string;
+  imageMaterialSuggestion: string;
+  videoMaterialSuggestion: string;
+  citations?: KnowledgeCitation[];
+}
+
+export type ContentKnowledgeMapStatus = 'draft' | 'ready' | 'needs-review' | 'blocked' | 'published';
+export type ContentKnowledgeMapSyncStatus = 'local-only' | 'pending-sync' | 'synced' | 'conflict' | 'blocked';
+export type ContentKnowledgeMapRowStatus = 'ready' | 'needs-evidence' | 'needs-review';
+export type ContentKnowledgeMapMaterialStatus = 'missing' | 'covered' | 'approved' | 'rejected';
+
+export interface ContentKnowledgeMapEvidence {
+  id: string;
+  sourceType:
+    | 'input-source'
+    | 'user-quote'
+    | 'customer-service-log'
+    | 'generated-inference'
+    | 'brand-knowledge-base'
+    | 'ip-knowledge-base'
+    | 'scene-card'
+    | 'prompt-draft'
+    | 'manual';
+  sourceId?: string;
+  sourceTitle: string;
+  claim: string;
+  excerpt: string;
+  status: 'ready' | 'missing' | 'needs-review';
+}
+
+export interface ContentKnowledgeMapCoverageDimensions {
+  audiences?: string[];
+  channels?: string[];
+  stages?: string[];
+  contentFormats?: string[];
+  useCases?: string[];
+}
+
+export interface ContentKnowledgeMapMatrixRow {
+  id: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  dimensions?: ContentKnowledgeMapCoverageDimensions;
+  sourceRefs: string[];
+  evidenceRefs: string[];
+  materialStatus?: ContentKnowledgeMapMaterialStatus;
+  materialRefs?: string[];
+  performanceTags?: string[];
+  confidence: number;
+  status: ContentKnowledgeMapRowStatus;
+}
+
+export interface ContentKnowledgeMapCoverageSummary {
+  inputSourceCount: number;
+  brandKnowledgeBaseCount: number;
+  ipKnowledgeBaseCount?: number;
+  skuRowCount?: number;
+  competitorObservationCount?: number;
+  sceneCardCount: number;
+  promptDraftCount: number;
+  evidenceCount: number;
+  gapCount: number;
+  readyPercent: number;
+}
+
+export interface ContentKnowledgeMapTeamSyncSummary {
+  backend: 'bugu';
+  status: ContentKnowledgeMapSyncStatus;
+  message: string;
+  workspaceId?: string;
+  revision?: string;
+  baseRevision?: string;
+  releaseId?: string;
+  packageObjectKey?: string;
+  packagePublicUrl?: string;
+  packageUploadStatus?: string;
+  packageStorageProvider?: string;
+  lastSyncedAt?: string;
+}
+
+export interface ContentKnowledgeMapRecord {
+  id: string;
+  workspacePath: string;
+  title: string;
+  status: ContentKnowledgeMapStatus;
+  syncStatus: ContentKnowledgeMapSyncStatus;
+  teamSync: ContentKnowledgeMapTeamSyncSummary;
+  sourceInputSourceIds: string[];
+  brandKnowledgeBaseIds: string[];
+  ipKnowledgeBaseIds?: string[];
+  sceneCardIds: string[];
+  promptDraftIds: string[];
+  sellingPoints: ContentKnowledgeMapMatrixRow[];
+  painPoints: ContentKnowledgeMapMatrixRow[];
+  scenarios: ContentKnowledgeMapMatrixRow[];
+  evidence: ContentKnowledgeMapEvidence[];
+  constraints: string[];
+  gaps: string[];
+  coverage: ContentKnowledgeMapCoverageSummary;
+  model?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BuildContentKnowledgeMapInput {
+  workspacePath: string;
+  title?: string;
+  inputSourceIds?: string[];
+  brandKnowledgeBaseIds?: string[];
+  ipKnowledgeBaseIds?: string[];
+  sceneCardIds?: string[];
+  promptDraftIds?: string[];
+}
+
+export type BrandCommandCenterStatus = 'draft' | 'active' | 'needs-review' | 'blocked' | 'archived';
+export type BrandSignalType =
+  | 'feedback-pain'
+  | 'competitor-action'
+  | 'trend'
+  | 'ad-performance'
+  | 'material-performance'
+  | 'brand-risk'
+  | 'manual';
+export type BrandObjectiveType =
+  | 'acquisition'
+  | 'conversion'
+  | 'objection-handling'
+  | 'trust-building'
+  | 'price-defense'
+  | 'risk-control'
+  | 'evidence-gap'
+  | 'material-gap'
+  | 'retention';
+export type BrandCommandQueueStatus =
+  | 'ready'
+  | 'needs-review'
+  | 'needs-resource'
+  | 'blocked'
+  | 'handed-off'
+  | 'written-back';
+export type BrandCommandActionType =
+  | 'generate-prompt-draft'
+  | 'create-scene-card'
+  | 'request-review'
+  | 'request-evidence'
+  | 'launch-sop-run'
+  | 'create-material-gap-list'
+  | 'write-back-material-coverage'
+  | 'content-production-blocked';
+export type BrandCommandActionOutcome = 'recorded' | 'blocked' | 'handoff' | 'needs-review' | 'needs-resource' | 'written-back';
+
+export interface BrandCommandSignal {
+  id: string;
+  type: BrandSignalType;
+  title: string;
+  summary: string;
+  sourceLabel: string;
+  businessValue: number;
+  evidenceReadiness: number;
+  urgency: number;
+  riskLevel: number;
+  productionCost: number;
+  recommendedObjectiveType: BrandObjectiveType;
+  riskBoundary: string;
+  relatedMapRowIds: string[];
+}
+
+export interface BrandCommandObjective {
+  id: string;
+  type: BrandObjectiveType;
+  title: string;
+  summary: string;
+  priority: 'P0' | 'P1' | 'P2';
+  channels: string[];
+  dimensions?: ContentKnowledgeMapCoverageDimensions;
+  successCriteria: string[];
+  signalIds: string[];
+}
+
+export interface BrandCommandResourceBundle {
+  id: string;
+  title: string;
+  objectiveId: string;
+  sourceKnowledgeMapId?: string;
+  sellingPointRefs: string[];
+  evidenceRefs: string[];
+  sceneRefs: string[];
+  sceneCardIds?: string[];
+  promptDraftIds: string[];
+  materialRefs: string[];
+  sopRefs: string[];
+  dimensions?: ContentKnowledgeMapCoverageDimensions;
+  constraints: string[];
+  gaps: string[];
+  handoffStatus?: 'none' | 'handed-off' | 'blocked';
+  handoffRefs?: string[];
+  lastHandoffSummary?: string;
+  lastBlockedReason?: string;
+  readyPercent: number;
+}
+
+export interface BrandCommandDecisionCheck {
+  key: string;
+  label: string;
+  status: 'passed' | 'needs-review' | 'needs-resource' | 'blocked';
+  message: string;
+  recoveryAction?: string;
+}
+
+export interface BrandCommandCampaignCell {
+  id: string;
+  title: string;
+  objectiveId: string;
+  ownerRole: string;
+  agentRole: string;
+  channels: string[];
+  dimensions?: ContentKnowledgeMapCoverageDimensions;
+  timeWindow: string;
+  resourceBundleId: string;
+  decisionChecks: BrandCommandDecisionCheck[];
+  queueItemIds: string[];
+}
+
+export interface BrandCommandQueueItem {
+  id: string;
+  campaignCellId: string;
+  actionType: BrandCommandActionType;
+  title: string;
+  summary: string;
+  status: BrandCommandQueueStatus;
+  blockedReason?: string;
+  recoveryAction?: string;
+  outputTarget: 'prompt-draft' | 'scene-card' | 'review-task' | 'evidence-task' | 'sop-run' | 'material-gap' | 'material-coverage';
+  resourceBundleId: string;
+  dimensions?: ContentKnowledgeMapCoverageDimensions;
+  syncStatus?: ContentKnowledgeMapSyncStatus;
+  teamSync?: ContentKnowledgeMapTeamSyncSummary;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BrandCommandActionRecord {
+  id: string;
+  queueItemId?: string;
+  campaignCellId?: string;
+  actionType: BrandCommandActionType;
+  title: string;
+  outcome: BrandCommandActionOutcome;
+  actorLabel: string;
+  actorRole?: ContentTeamRole;
+  inputSummary: string;
+  outputSummary: string;
+  blockedReason?: string;
+  writeBackSummary?: string;
+  promptDraftId?: string;
+  sceneCardId?: string;
+  workflowRunId?: string;
+  materialCoverageChangeId?: string;
+  reviewTaskId?: string;
+  syncStatus?: ContentKnowledgeMapSyncStatus;
+  teamSync?: ContentKnowledgeMapTeamSyncSummary;
+  createdAt: string;
+}
+
+export interface BrandCommandCenterRecord {
+  id: string;
+  workspacePath: string;
+  title: string;
+  status: BrandCommandCenterStatus;
+  syncStatus: ContentKnowledgeMapSyncStatus;
+  sourceKnowledgeMapId?: string;
+  sourceKnowledgeMapTitle?: string;
+  signals: BrandCommandSignal[];
+  objectives: BrandCommandObjective[];
+  resourceBundles: BrandCommandResourceBundle[];
+  campaignCells: BrandCommandCampaignCell[];
+  queueItems: BrandCommandQueueItem[];
+  actionRecords: BrandCommandActionRecord[];
+  constraints: string[];
+  gaps: string[];
+  teamSync: ContentKnowledgeMapTeamSyncSummary;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BuildBrandCommandCenterInput {
+  workspacePath: string;
+  title?: string;
+  contentKnowledgeMapId?: string;
+}
+
+export interface RecordBrandCommandActionInput {
+  workspacePath: string;
+  commandCenterId: string;
+  queueItemId: string;
+  actorLabel?: string;
+  actorRole?: ContentTeamRole;
+  note?: string;
+}
+
+export interface RefreshBrandCommandActionsInput {
+  workspacePath: string;
+  commandCenterId: string;
+}
+
+export interface ExportContentKnowledgePackInput {
+  workspacePath: string;
+  contentKnowledgeMapId?: string;
+}
+
+export interface ContentKnowledgePackExportResult {
+  status: 'exported' | 'blocked';
+  packageDir?: string;
+  knowledgePath?: string;
+  manifestPath?: string;
+  packageArchivePath?: string;
+  packageArchiveFileName?: string;
+  packageArchiveSha256?: string;
+  packageArchiveSize?: number;
+  files: string[];
+  issues: string[];
+}
+
+export type ContentWorkspaceSyncPolicy = 'server-authoritative' | 'offline-draft-allowed' | 'read-only-release';
+export type ContentTeamRole = 'owner' | 'content-engineer' | 'reviewer' | 'operator' | 'viewer';
+export type ContentDraftChangeStatus = 'local-draft' | 'pending-sync' | 'synced' | 'conflict' | 'blocked';
+export type ContentDraftChangeKind =
+  | 'knowledge-map-updated'
+  | 'review-decision-appended'
+  | 'action-record-appended'
+  | 'material-coverage-updated'
+  | 'knowledge-release-created';
+
+export interface ContentTeamWorkspace {
+  id: string;
+  tenantId?: string;
+  name: string;
+  currentRevision?: string;
+  defaultKnowledgeReleaseId?: string;
+  syncPolicy: ContentWorkspaceSyncPolicy;
+  role?: ContentTeamRole;
+  updatedAt?: string;
+}
+
+export interface ContentDraftChange {
+  id: string;
+  workspacePath: string;
+  workspaceId?: string;
+  contentKnowledgeMapId: string;
+  contentKnowledgeMapTitle: string;
+  title: string;
+  summary: string;
+  kind: ContentDraftChangeKind;
+  affectedObjectIds: string[];
+  affectedObjects?: ContentSyncConflictAffectedObject[];
+  baseRevision?: string;
+  syncStatus: ContentDraftChangeStatus;
+  authorLabel: string;
+  issues: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ContentKnowledgeReleaseStatus = 'local-preview' | 'pending-server' | 'published' | 'blocked';
+export type ContentKnowledgeReleaseApprovalStatus = 'pending' | 'approved' | 'rejected';
+
+export interface ContentKnowledgeRelease {
+  id: string;
+  workspacePath: string;
+  workspaceId?: string;
+  contentKnowledgeMapId: string;
+  contentKnowledgeMapTitle: string;
+  title: string;
+  version: string;
+  status: ContentKnowledgeReleaseStatus;
+  packageDir?: string;
+  knowledgePath?: string;
+  manifestPath?: string;
+  packageArchivePath?: string;
+  packageArchiveFileName?: string;
+  packageArchiveSha256?: string;
+  packageArchiveSize?: number;
+  packageObjectKey?: string;
+  packagePublicUrl?: string;
+  packageStorageProvider?: string;
+  packageUploadStatus?: string;
+  approvalStatus?: ContentKnowledgeReleaseApprovalStatus;
+  approvalRequestedBy?: string;
+  approvalRequestedAt?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  approvalNote?: string;
+  files: string[];
+  issues: string[];
+  baseRevision?: string;
+  serverReleaseId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContentKnowledgeReleaseReference {
+  id: string;
+  title: string;
+  version: string;
+  contentKnowledgeMapId?: string;
+  contentKnowledgeMapTitle?: string;
+  packageObjectKey?: string;
+  packagePublicUrl?: string;
+  packageUploadStatus?: string;
+  approvalStatus?: ContentKnowledgeReleaseApprovalStatus;
+}
+
+export type ContentSyncConflictStatus = 'open' | 'resolved' | 'dismissed';
+export type ContentSyncConflictResolutionAction =
+  | 'keep-local-change'
+  | 'keep-team-version'
+  | 'manual-review-recorded';
+export type ContentSyncConflictSourceType =
+  | 'draft-change'
+  | 'review-task'
+  | 'review-decision'
+  | 'knowledge-release'
+  | 'team-sync';
+export type ContentSyncConflictImpact = 'high' | 'medium' | 'low';
+
+export interface ContentSyncConflictAffectedObject {
+  id: string;
+  objectId?: string;
+  objectType: 'content-map' | 'selling-point' | 'pain-point' | 'scenario' | 'evidence' | 'constraint' | 'gap' | 'release' | 'review-task' | 'action' | 'unknown';
+  title: string;
+  summary: string;
+  localValue?: string;
+  teamValue?: string;
+  impact: ContentSyncConflictImpact;
+  recommendation: string;
+}
+
+export interface ContentSyncConflict {
+  id: string;
+  workspacePath: string;
+  workspaceId?: string;
+  sourceType: ContentSyncConflictSourceType;
+  sourceId?: string;
+  title: string;
+  summary: string;
+  status: ContentSyncConflictStatus;
+  baseRevision?: string;
+  serverRevision?: string;
+  affectedObjectIds: string[];
+  affectedObjects?: ContentSyncConflictAffectedObject[];
+  authorLabel?: string;
+  resolutionAction?: ContentSyncConflictResolutionAction | string;
+  resolutionNote?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateContentDraftChangeInput {
+  workspacePath: string;
+  contentKnowledgeMapId?: string;
+  authorLabel?: string;
+}
+
+export interface SubmitContentDraftChangeInput {
+  workspacePath: string;
+  draftChangeId: string;
+  authorLabel?: string;
+}
+
+export interface ExportContentDraftChangeInput {
+  workspacePath: string;
+  draftChangeId: string;
+}
+
+export interface ImportContentDraftChangeInput {
+  workspacePath: string;
+  packagePath?: string;
+  authorLabel?: string;
+}
+
+export interface CreateContentKnowledgeReleaseInput {
+  workspacePath: string;
+  contentKnowledgeMapId?: string;
+  title?: string;
+  version?: string;
+  authorLabel?: string;
+}
+
+export interface ResolveContentSyncConflictInput {
+  workspacePath: string;
+  conflictId: string;
+  resolutionAction?: ContentSyncConflictResolutionAction;
+  resolutionNote?: string;
+  mergeDraft?: unknown;
+  resolvedBy?: string;
+}
+
+export interface ContentWorkspaceSyncResult {
+  status: 'created' | 'submitted' | 'released' | 'exported' | 'imported' | 'blocked' | 'conflict';
+  issues: string[];
+  teamSync?: ContentKnowledgeMapTeamSyncSummary;
+  draftChange?: ContentDraftChange;
+  release?: ContentKnowledgeRelease;
+  conflict?: ContentSyncConflict;
+  packageDir?: string;
+  manifestPath?: string;
+  draftChangePath?: string;
+  files?: string[];
+}
+
+export type ContentReviewTaskStatus = 'open' | 'approved' | 'rejected' | 'needs-evidence' | 'forbidden';
+export type ContentReviewTaskRisk = 'low' | 'medium' | 'high';
+export type ContentReviewDecisionAction =
+  | 'approve'
+  | 'reject'
+  | 'request-evidence'
+  | 'mark-forbidden'
+  | 'downgrade-to-needs-verification'
+  | 'rename-target'
+  | 'merge-related'
+  | 'split-target';
+
+export interface ContentReviewDecisionSplitItem {
+  title: string;
+  summary?: string;
+  tags?: string[];
+}
+
+export interface ContentReviewDecisionPayload {
+  title?: string;
+  summary?: string;
+  mergeTargetIds?: string[];
+  splitItems?: ContentReviewDecisionSplitItem[];
+}
+
+export interface ContentReviewDecision {
+  id: string;
+  taskId: string;
+  action: ContentReviewDecisionAction;
+  reviewerLabel: string;
+  reason: string;
+  payload?: ContentReviewDecisionPayload;
+  beforeSnapshot: unknown;
+  afterSnapshot: unknown;
+  createdAt: string;
+}
+
+export interface ContentReviewTask {
+  id: string;
+  workspacePath: string;
+  sourceKnowledgeMapId?: string;
+  sourceKnowledgeMapTitle?: string;
+  targetType: 'selling-point' | 'pain-point' | 'scenario' | 'evidence' | 'constraint' | 'gap';
+  targetId?: string;
+  title: string;
+  summary: string;
+  evidenceRefs: string[];
+  sourceRefs: string[];
+  risk: ContentReviewTaskRisk;
+  status: ContentReviewTaskStatus;
+  suggestedAction: ContentReviewDecisionAction;
+  issueLabels: string[];
+  decisions: ContentReviewDecision[];
+  syncStatus?: ContentKnowledgeMapSyncStatus;
+  teamSync?: ContentKnowledgeMapTeamSyncSummary;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateContentReviewTasksInput {
+  workspacePath: string;
+  contentKnowledgeMapId?: string;
+  targetRowIds?: string[];
+  targetTypes?: Array<'selling-point' | 'pain-point' | 'scenario'>;
+}
+
+export interface SubmitContentReviewDecisionInput {
+  workspacePath: string;
+  taskId: string;
+  action: ContentReviewDecisionAction;
+  payload?: ContentReviewDecisionPayload;
+  reviewerLabel?: string;
+  reason?: string;
+}
+
+export type ContentProductionHandoffTarget = 'prompt-draft' | 'scene-card' | 'prompt-and-scene' | 'sop-run' | 'prompt-scene-sop';
+
+export interface CreateContentProductionHandoffInput {
+  workspacePath: string;
+  reviewTaskId: string;
+  target?: ContentProductionHandoffTarget;
+  workflowDefinitionId?: string;
+  actorLabel?: string;
+}
+
+export interface ContentProductionGroundingSummary {
+  title: string;
+  content: string;
+  sourceKnowledgeMapId: string;
+  sourceKnowledgeMapTitle: string;
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
+  coverageRowIds: string[];
+  sourceRefs: string[];
+  evidenceRefs: string[];
+  constraints: string[];
+  readyEvidenceCount: number;
+}
+
+export interface ContentProductionHandoffActionRecord {
+  id: string;
+  batchId: string;
+  actionType: 'create-prompt-draft' | 'create-scene-card' | 'launch-sop-run' | 'blocked';
+  outcome: 'handoff' | 'blocked';
+  title: string;
+  inputSummary: string;
+  outputSummary: string;
+  actorLabel: string;
+  sourceKnowledgeMapId?: string;
+  coverageRowIds: string[];
+  evidenceRefs: string[];
+  sourceRefs: string[];
+  promptDraftId?: string;
+  sceneCardId?: string;
+  workflowRunId?: string;
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
+  checks: Array<{
+    label: string;
+    status: 'passed' | 'blocked';
+    message: string;
+  }>;
+  nextStep: string;
+  syncStatus?: ContentKnowledgeMapSyncStatus;
+  teamSync?: ContentKnowledgeMapTeamSyncSummary;
+  createdAt: string;
+}
+
+export interface ContentProductionHandoffRecord {
+  id: string;
+  workspacePath: string;
+  reviewTaskId: string;
+  target: ContentProductionHandoffTarget;
+  status: 'created' | 'blocked';
+  batchId: string;
+  issues: string[];
+  sourceKnowledgeMapId?: string;
+  sourceKnowledgeMapTitle?: string;
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
+  coverageRowIds: string[];
+  sourceRefs: string[];
+  evidenceRefs: string[];
+  promptDraftId?: string;
+  sceneCardId?: string;
+  workflowRunId?: string;
+  actorLabel: string;
+  syncStatus?: ContentKnowledgeMapSyncStatus;
+  teamSync?: ContentKnowledgeMapTeamSyncSummary;
+  actionRecords: ContentProductionHandoffActionRecord[];
+  createdAt: string;
+}
+
+export interface ContentProductionHandoffResult {
+  status: 'created' | 'blocked';
+  issues: string[];
+  grounding?: ContentProductionGroundingSummary;
+  record?: ContentProductionHandoffRecord;
+  promptDraft?: PromptDraft;
+  sceneCard?: SceneCard;
+  workflowRun?: WorkflowRunRecord;
+}
+
+export interface WriteBackContentMaterialCoverageInput {
+  workspacePath: string;
+  contentKnowledgeMapId?: string;
+  assetReviewIds?: string[];
+}
+
+export interface ContentMaterialCoverageUpdate {
+  rowId: string;
+  rowTitle: string;
+  targetType: 'selling-point' | 'pain-point' | 'scenario';
+  assetReviewIds: string[];
+  materialStatus: ContentKnowledgeMapMaterialStatus;
+  performanceTags: string[];
+}
+
+export interface ContentMaterialCoverageResult {
+  status: 'updated' | 'blocked';
+  issues: string[];
+  coverageChangeId?: string;
+  contentKnowledgeMap?: ContentKnowledgeMapRecord;
+  updatedRowCount: number;
+  reviewedAssetCount: number;
+  approvedAssetCount: number;
+  updates: ContentMaterialCoverageUpdate[];
+  pendingSupplementTaskCount?: number;
+  pendingSupplementTasks?: ContentReviewTask[];
+  syncStatus?: ContentKnowledgeMapSyncStatus;
+  teamSync?: ContentKnowledgeMapTeamSyncSummary;
+}
+
 export type InputSourceKind =
   | 'docx'
   | 'markdown'
@@ -598,6 +1322,7 @@ export type InputSourcePurpose =
   | 'brand-kb'
   | 'ip-kb'
   | 'ip-scenario-kb'
+  | 'competitor-observation'
   | 'reference'
   | 'product-brief'
   | 'user-feedback'
@@ -663,6 +1388,11 @@ export interface PromptDraft {
   id: string;
   workspacePath: string;
   workflowRunId?: string;
+  contentKnowledgeMapId?: string;
+  contentKnowledgeMapTitle?: string;
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
+  coverageRowIds?: string[];
+  sourceRefs?: string[];
   title: string;
   purpose: PromptDraftPurpose;
   status: PromptDraftStatus;
@@ -697,6 +1427,11 @@ export interface GeneratePromptDraftInput {
 export interface CreatePromptDraftFromContentInput {
   workspacePath: string;
   workflowRunId?: string;
+  contentKnowledgeMapId?: string;
+  contentKnowledgeMapTitle?: string;
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
+  coverageRowIds?: string[];
+  sourceRefs?: string[];
   title: string;
   purpose: PromptDraftPurpose;
   userIntent: string;
@@ -730,6 +1465,60 @@ export interface RecordPromptDraftCopyInput {
 export type AgentPromptSessionStatus = 'active' | 'waiting-user' | 'draft-created' | 'blocked' | 'closed';
 export type AgentPromptMessageRole = 'user' | 'assistant' | 'system';
 export type AgentPromptMessageKind = 'intent' | 'draft' | 'adjustment' | 'note';
+export type AgentPromptExecutionEventKind =
+  | 'context'
+  | 'source'
+  | 'skill'
+  | 'tool'
+  | 'permission'
+  | 'sandbox'
+  | 'state'
+  | 'model'
+  | 'draft'
+  | 'handoff'
+  | 'action'
+  | 'evidence'
+  | 'note';
+export type AgentPromptExecutionEventStatus = 'pending' | 'running' | 'completed' | 'blocked' | 'failed';
+export type AgentRuntimeEventClass =
+  | 'session.created'
+  | 'turn.submitted'
+  | 'turn.started'
+  | 'turn.completed'
+  | 'turn.failed'
+  | 'run.status'
+  | 'context.resolved'
+  | 'tool.started'
+  | 'tool.result'
+  | 'tool.failed'
+  | 'tool.catalog.resolved'
+  | 'permission.evaluated'
+  | 'permission.requested'
+  | 'permission.resolved'
+  | 'sandbox.applied'
+  | 'sandbox.violation'
+  | 'model.requested'
+  | 'model.delta'
+  | 'model.completed'
+  | 'model.failed'
+  | 'artifact.changed'
+  | 'action.required'
+  | 'action.resolved'
+  | 'runtime.error'
+  | 'evidence.changed'
+  | 'snapshot.updated';
+export type AgentRuntimeFactOwner = 'runtime' | 'artifact' | 'evidence' | 'ui';
+export type AgentRuntimePhase =
+  | 'submitted'
+  | 'routing'
+  | 'preparing'
+  | 'waiting_provider'
+  | 'streaming'
+  | 'tool_running'
+  | 'action_required'
+  | 'failed'
+  | 'completed'
+  | 'blocked';
 
 export interface AgentPromptSourceSnapshot {
   sourceId: string;
@@ -752,6 +1541,39 @@ export interface AgentPromptMessage {
   createdAt: string;
 }
 
+export interface AgentPromptExecutionEvent {
+  id: string;
+  kind: AgentPromptExecutionEventKind;
+  status: AgentPromptExecutionEventStatus;
+  eventClass?: AgentRuntimeEventClass;
+  owner?: AgentRuntimeFactOwner;
+  schemaVersion?: string;
+  sequence?: number;
+  runtimeId?: string;
+  threadId?: string;
+  turnId?: string;
+  taskId?: string;
+  runId?: string;
+  stepId?: string;
+  toolCallId?: string;
+  actionId?: string;
+  traceId?: string;
+  spanId?: string;
+  attemptId?: string;
+  artifactId?: string;
+  evidenceId?: string;
+  phase?: AgentRuntimePhase;
+  title: string;
+  detail?: string;
+  refIds?: string[];
+  artifactRefs?: string[];
+  evidenceRefs?: string[];
+  payload?: Record<string, unknown>;
+  model?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
 export interface AgentPromptSession {
   id: string;
   workspacePath: string;
@@ -766,6 +1588,7 @@ export interface AgentPromptSession {
   promptDraftIds: string[];
   sourceSnapshots: AgentPromptSourceSnapshot[];
   messages: AgentPromptMessage[];
+  executionEvents?: AgentPromptExecutionEvent[];
   model?: string;
   textProtocol?: TextGenerationProtocol;
   createdAt: string;
@@ -790,6 +1613,24 @@ export interface ContinueAgentPromptSessionInput {
   sessionId: string;
   message: string;
   textModel?: string;
+}
+
+export type AgentPromptActionDecision = 'open-input-source' | 'open-model-settings' | 'acknowledge';
+
+export interface RespondAgentPromptActionInput {
+  workspacePath: string;
+  sessionId: string;
+  actionId: string;
+  decision: AgentPromptActionDecision;
+  note?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface AttachAgentPromptSessionInputSourcesInput {
+  workspacePath: string;
+  sessionId: string;
+  inputSourceIds: string[];
+  reason?: string;
 }
 
 export interface AgentPromptSessionResult {
@@ -1064,6 +1905,7 @@ export interface WorkflowRunRecord {
   inputs: Record<string, string>;
   inputSourceIds?: string[];
   citations?: KnowledgeCitation[];
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
   steps: WorkflowRunStep[];
   artifactRefs: string[];
   createdAt: string;
@@ -1076,6 +1918,7 @@ export interface StartWorkflowRunInput {
   inputs?: Record<string, string>;
   inputSourceIds?: string[];
   citations?: KnowledgeCitation[];
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
 }
 
 export type WorkflowManualEventKind =
@@ -1525,10 +2368,34 @@ export interface ContentStudioApi {
   updateIpKnowledgeBase(input: IpKnowledgeBaseRecord): Promise<IpKnowledgeBaseRecord>;
   listSceneCards(workspacePath: string): Promise<SceneCard[]>;
   generateSceneCards(input: GenerateSceneCardsInput): Promise<SceneCard[]>;
+  createSceneCardFromContent(input: CreateSceneCardFromContentInput): Promise<SceneCard>;
   updateSceneCard(input: SceneCard): Promise<SceneCard>;
+  listContentKnowledgeMaps(workspacePath: string): Promise<ContentKnowledgeMapRecord[]>;
+  buildContentKnowledgeMap(input: BuildContentKnowledgeMapInput): Promise<ContentKnowledgeMapRecord>;
+  updateContentKnowledgeMap(input: ContentKnowledgeMapRecord): Promise<ContentKnowledgeMapRecord>;
+  listContentDraftChanges(workspacePath: string): Promise<ContentDraftChange[]>;
+  createContentDraftChange(input: CreateContentDraftChangeInput): Promise<ContentWorkspaceSyncResult>;
+  submitContentDraftChange(input: SubmitContentDraftChangeInput): Promise<ContentWorkspaceSyncResult>;
+  exportContentDraftChange(input: ExportContentDraftChangeInput): Promise<ContentWorkspaceSyncResult>;
+  importContentDraftChange(input: ImportContentDraftChangeInput): Promise<ContentWorkspaceSyncResult>;
+  listContentKnowledgeReleases(workspacePath: string): Promise<ContentKnowledgeRelease[]>;
+  createContentKnowledgeRelease(input: CreateContentKnowledgeReleaseInput): Promise<ContentWorkspaceSyncResult>;
+  listContentSyncConflicts(workspacePath: string): Promise<ContentSyncConflict[]>;
+  resolveContentSyncConflict(input: ResolveContentSyncConflictInput): Promise<ContentSyncConflict | null>;
+  listBrandCommandCenters(workspacePath: string): Promise<BrandCommandCenterRecord[]>;
+  buildBrandCommandCenter(input: BuildBrandCommandCenterInput): Promise<BrandCommandCenterRecord>;
+  recordBrandCommandAction(input: RecordBrandCommandActionInput): Promise<BrandCommandCenterRecord>;
+  refreshBrandCommandActions(input: RefreshBrandCommandActionsInput): Promise<BrandCommandCenterRecord>;
+  exportContentKnowledgePack(input: ExportContentKnowledgePackInput): Promise<ContentKnowledgePackExportResult>;
+  listContentReviewTasks(workspacePath: string): Promise<ContentReviewTask[]>;
+  generateContentReviewTasks(input: GenerateContentReviewTasksInput): Promise<ContentReviewTask[]>;
+  submitContentReviewDecision(input: SubmitContentReviewDecisionInput): Promise<ContentReviewTask>;
+  createContentProductionHandoff(input: CreateContentProductionHandoffInput): Promise<ContentProductionHandoffResult>;
+  writeBackContentMaterialCoverage(input: WriteBackContentMaterialCoverageInput): Promise<ContentMaterialCoverageResult>;
 
   listInputSources(workspacePath: string): Promise<InputSourceRecord[]>;
   registerInputSource(input: RegisterInputSourceInput): Promise<InputSourceRecord>;
+  removeInputSource(workspacePath: string, sourceId: string): Promise<InputSourceRecord | null>;
   importInputSourceFromFile(
     workspacePath: string,
     purpose: InputSourcePurpose,
@@ -1543,6 +2410,8 @@ export interface ContentStudioApi {
   listAgentPromptSessions(workspacePath: string): Promise<AgentPromptSession[]>;
   startAgentPromptSession(input: StartAgentPromptSessionInput): Promise<AgentPromptSessionResult>;
   continueAgentPromptSession(input: ContinueAgentPromptSessionInput): Promise<AgentPromptSessionResult>;
+  respondAgentPromptAction(input: RespondAgentPromptActionInput): Promise<AgentPromptSession>;
+  attachAgentPromptSessionInputSources(input: AttachAgentPromptSessionInputSourcesInput): Promise<AgentPromptSession>;
 
   listOverlayCards(workspacePath: string): Promise<OverlayCardRecord[]>;
   generateOverlayCards(input: GenerateOverlayCardsInput): Promise<OverlayCardRecord[]>;

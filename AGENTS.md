@@ -64,6 +64,17 @@
 - 产品定位是“内容工厂 / 内容工作台”，不是通用聊天平台。
 - 主链保持：成型知识库 -> 提示词包 -> 场景库 -> 文章 / 图片 / 视频队列 -> 历史。
 - UI 默认桌面端，不新增移动端或营销页风格。
+- UI / UX 设计必须从真实业务任务流出发，禁止把页面做成功能罗列、能力概览或入口合集。普通用户页面必须绑定角色、业务对象、当前状态、主动作、异常状态和交付物。
+- 新增或重做普通用户页面前，先读取对应 PRD、用户故事、用例和工作流模型；无法映射到用户故事或用例的控件、卡片和入口默认不加。
+- 每个普通用户页面必须能回答：用户正在处理什么对象、当前缺什么、下一步点什么、系统如何反馈、完成后交付到哪里。
+- 原型、截图或 UI 代码改动必须先形成业务 UI 契约；契约模板和反功能平铺检查见 `docs/aiprompts/business-ux-contract.md`。
+- 同一页面只保留一个当前主动作；辅助动作必须服务当前对象，不能把所有能力做成同等权重的按钮矩阵。
+- AI Agent 是跨模块通用能力，不是某个页面的装饰区；Agent UI 默认复用 `src/renderer/src/components/agent/`，会话事实来自 `AgentPromptSession.messages` 和 `executionEvents`，禁止在模块内硬编码假 assistant 气泡、固定执行脚本或 mock 对话。
+- Agent 交互表面必须遵循 `/Users/coso/Documents/dev/ai/limecloud/agentui`：UI 只投影 runtime facts，必须区分 Composer、Message Parts、Runtime Status、Tool UI、Human-in-the-loop、Task Capsule、Artifact 和 Evidence；禁止把上下文说明、工具结果、审批状态或交付物塞进普通助手正文。
+- Agent 执行层必须遵循 `/Users/coso/Documents/dev/ai/limecloud/agentruntime`：runtime 拥有 session / thread / turn / task / run / tool / action / artifact / evidence 事实；UI-only state 不能成为执行成功、权限、交付物或审核结论的事实源。
+- 完整 Agent runtime 参考 `/Users/coso/Documents/dev/js/craft-agents-oss` 的分层：Claude 官方链路走 Claude Agent SDK；需要非 Claude 完整会话、工具调用、权限、安全模式、MCP / 能力调度和会话恢复时，按 Pi SDK 路径单独建 runtime adapter，不把 Pi / OpenAI / Gemini 硬塞进 Claude SDK，也不在 React UI 中模拟 runtime。
+- Human-in-the-loop 必须可交互：至少包含用户输入、Agent 输出、执行事件、可编辑业务对象、人工确认 / 交付动作和 blocked 恢复路径；只展示状态、说明文案或只读时间线不算 Agent 工作台。
+- Agent 页面仍必须绑定当前业务对象和交付物；聊天框只能承载协作过程，不能把内容工厂退化成无业务边界的通用聊天页。
 - 用户可见能力必须真实可追溯；未接入能力用 disabled / blocked / 后续接入表达。
 - 图片未接入真实生成服务时不得生成占位图；视频未接入真实生成服务时只保存 blocked 队列文件，并写入 `artifactRefs`。
 - 文字生成默认用协议化 生成服务路由；`claude-sdk` 可复用 Claude Code 登录 / API Key，其他协议必须使用对应端点和 Key。测试或 smoke 如需避免外发，使用 `CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY=1` 强制走 blocked 分支。
@@ -82,6 +93,16 @@
    - `RELEASE_NOTES.md`
 4. 打包配置改动必须验证 `electron-builder.yml` 和本地构建。
 5. macOS 当前默认 `identity: null`，生成 unsigned 内部预览包；正式签名 / notarization 另开任务处理。
+
+## Agent 文档与 Skill 触发
+
+- Agent 流程索引：`docs/aiprompts/README.md`。
+- 业务型 UI 契约：`docs/aiprompts/business-ux-contract.md`。
+- OEM 发布流程：`docs/aiprompts/oem-release.md`。
+- 仓库级 skills 索引：`.codex/skills/README.md`。
+- 涉及桌面端原型、UI/UX 评审、工作台页面设计或截图改造时，先使用 `.codex/skills/bugu-product-design-cheatsheet/`，并按业务 UI 契约执行。
+- 用户提到 `bugu` / `seenx` 发布、上线、promote、stable、latest、官网旧版本、下载卡片旧、R2、`download-manifest`，或在发布上下文里只说“继续 / 是”时，先使用 `.codex/skills/content-studio-oem-release/`，按 OEM 分发链路处理。
+- OEM 分发真实写入必须先按高风险操作格式确认；确认前只允许 dry run、只读 API 查询、日志读取和 Playwright 页面验证。
 
 ## 常用命令
 

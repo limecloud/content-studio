@@ -3,11 +3,17 @@ import type {
   AssetReworkSource,
   AssetReviewRecord,
   AssetReviewStatus,
+  ContentKnowledgeMapRecord,
   GenerationLogEntry,
   InputSourceRecord,
   PromptDraft,
   ReviewAssetInput,
 } from '../../../../shared/types';
+import {
+  assetCoverageMaterialStatusLabel,
+  assetCoverageRowStatusLabel,
+  buildAssetCoverageByReviewId,
+} from '../../app/assetCoverage';
 import { isPromptDistilledSource } from '../../../../shared/inputSourcePolicy';
 import {
   extractGeneratedAssetRefsFromLog,
@@ -30,6 +36,7 @@ interface AssetsModuleProps {
   logs: GenerationLogEntry[];
   inputSources: InputSourceRecord[];
   promptDrafts: PromptDraft[];
+  contentKnowledgeMaps: ContentKnowledgeMapRecord[];
   assetReviews: AssetReviewRecord[];
   copiedLogId: string | null;
   onCopyLogPrompt: (log: GenerationLogEntry) => void;
@@ -461,6 +468,7 @@ export function AssetsModule({
   logs,
   inputSources,
   promptDrafts,
+  contentKnowledgeMaps,
   assetReviews,
   copiedLogId,
   onCopyLogPrompt,
@@ -486,6 +494,10 @@ export function AssetsModule({
     () => new Map(assetReviews.map((review) => [review.assetKey, review])),
     [assetReviews],
   );
+  const coverageByReviewId = useMemo(
+    () => buildAssetCoverageByReviewId(contentKnowledgeMaps),
+    [contentKnowledgeMaps],
+  );
   const assets = useMemo(
     () => [
       ...collectImportedAssets(inputSources, promptDrafts),
@@ -509,6 +521,7 @@ export function AssetsModule({
   const rejectedCount = assets.filter((asset) => reviewMap.get(asset.id)?.status === 'rejected').length;
   const selectedReview = selectedAsset ? reviewMap.get(selectedAsset.id) : undefined;
   const selectedDecision = selectedAsset ? assetReviewDecision(selectedAsset, selectedReview) : null;
+  const selectedCoverageLinks = selectedReview ? coverageByReviewId.get(selectedReview.id) ?? [] : [];
   const header = {
     library: {
       eyebrow: '素材沉淀',
@@ -666,6 +679,7 @@ export function AssetsModule({
         {visibleAssets.map((asset) => {
           const review = reviewMap.get(asset.id);
           const decision = assetReviewDecision(asset, review);
+          const coverageLinks = review ? coverageByReviewId.get(review.id) ?? [] : [];
           return (
           <article key={asset.id} className={`asset-tile ${review?.status ?? 'pending'}`}>
             <button className="asset-preview-button" onClick={() => setSelectedAsset(asset)}>
@@ -677,6 +691,11 @@ export function AssetsModule({
               <strong>{asset.title}</strong>
               <small>{asset.subtitle}</small>
               <small>{decision.lineage.join(' · ')}</small>
+              {coverageLinks.length ? (
+                <small>{coverageLinks.length} 个内容组合已覆盖</small>
+              ) : review?.status === 'approved' ? (
+                <small>尚未回写内容组合</small>
+              ) : null}
               <span className={`status-pill ${decision.statusClass}`}>{decision.status}</span>
             </div>
             <div className="log-actions">
@@ -786,6 +805,44 @@ export function AssetsModule({
                   ))}
                 </div>
               </div>
+              <section className="asset-coverage-section" aria-label="覆盖内容组合">
+                <div className="asset-coverage-section-head">
+                  <strong>覆盖内容组合</strong>
+                  <span>{selectedCoverageLinks.length ? `${selectedCoverageLinks.length} 个组合` : '待回写'}</span>
+                </div>
+                {selectedCoverageLinks.length ? (
+                  <div className="asset-coverage-list">
+                    {selectedCoverageLinks.map((link) => (
+                      <article key={link.id} className="asset-coverage-item">
+                        <div>
+                          <strong>{link.rowTitle}</strong>
+                          <small>
+                            {link.contentKnowledgeMapTitle} · {link.targetLabel} · {assetCoverageRowStatusLabel(link.rowStatus)}
+                          </small>
+                        </div>
+                        <p>{link.rowSummary}</p>
+                        <div className="asset-coverage-meta">
+                          <span>{assetCoverageMaterialStatusLabel(link.materialStatus)}</span>
+                          <span>{link.evidenceCount} 条证据</span>
+                          <span>{link.sourceCount} 个来源</span>
+                          {link.performanceTags.map((tag) => (
+                            <span key={`${link.id}:${tag}`}>{tag}</span>
+                          ))}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="asset-coverage-empty">
+                    {selectedReview?.status === 'approved'
+                      ? '这个素材已入库，但还没有回写到卖点、痛点或场景组合。到内容知识地图页点击“回写素材”后可在这里查看覆盖关系。'
+                      : '先通过素材审核并入库，再回写到内容知识地图中的卖点、痛点或场景组合。'}
+                  </p>
+                )}
+                <p className="asset-coverage-note">
+                  表现标签只用于排序和复盘，不会直接改写卖点、痛点或场景文案。
+                </p>
+              </section>
               <div className="asset-log-detail-grid">
                 <span>
                   <strong>来源</strong>

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { GenerateSceneCardsInput, KnowledgeCitation, SceneCard } from '../../shared/types';
+import type { CreateSceneCardFromContentInput, GenerateSceneCardsInput, KnowledgeCitation, SceneCard } from '../../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { GenerationLogStore, type CreateLogInput } from './generationLogStore';
@@ -89,6 +89,37 @@ export class SceneLibraryStore {
     const updated: SceneCard = { ...input, updatedAt: new Date().toISOString() };
     await writeJsonFile(filePathFor(input.workspacePath), cards.map((card) => (card.id === input.id ? updated : card)));
     return updated;
+  }
+
+  async createFromContent(input: CreateSceneCardFromContentInput): Promise<SceneCard> {
+    if (!input.title.trim()) throw new Error('创建场景卡需要标题。');
+    const now = new Date().toISOString();
+    const card: SceneCard = {
+      id: randomUUID(),
+      workspacePath: input.workspacePath,
+      workflowRunId: input.workflowRunId,
+      promptPackId: input.promptPackId,
+      inputSourceIds: input.inputSourceIds ?? [],
+      contentKnowledgeMapId: input.contentKnowledgeMapId,
+      contentKnowledgeMapTitle: input.contentKnowledgeMapTitle,
+      coverageRowIds: input.coverageRowIds ?? [],
+      sourceRefs: input.sourceRefs ?? [],
+      title: compactText(input.title, '内容知识地图场景卡'),
+      audience: compactText(input.audience, '待细分目标人群'),
+      painPoint: compactText(input.painPoint, '待确认用户痛点'),
+      usageScene: compactText(input.usageScene, '待确认使用场景'),
+      visualComposition: compactText(input.visualComposition, '围绕可追溯卖点组织画面。'),
+      sellingPoint: compactText(input.sellingPoint, '围绕已审核卖点表达。'),
+      voiceoverDirection: compactText(input.voiceoverDirection, '保持品牌口径，避免夸大。'),
+      imageMaterialSuggestion: compactText(input.imageMaterialSuggestion, '生成一张可用于内容生产的场景图。'),
+      videoMaterialSuggestion: compactText(input.videoMaterialSuggestion, '生成一段 15-30 秒短视频分镜提示词。'),
+      citations: input.citations ?? [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    const existing = await this.list(input.workspacePath);
+    await writeJsonFile(filePathFor(input.workspacePath), [card, ...existing].slice(0, 120));
+    return card;
   }
 
   async generate(input: GenerateSceneCardsInput, options?: { logId?: string }): Promise<SceneCard[]> {

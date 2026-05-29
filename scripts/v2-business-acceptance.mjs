@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { buildProviderCheckReport } from './v2-provider-check.mjs';
 import { buildProductBriefPromptPlan, structureProductBriefSources } from '../src/shared/productBrief.ts';
@@ -39,7 +39,7 @@ const DEFAULT_EXPECTATIONS = {
   videoPackageAssetKinds: ['video', 'overlay'],
   videoPackageReviewStatuses: ['approved'],
   videoPackageGuideTerms: ['第三方混剪软件', 'manifest.csv', 'overlays/', 'videos/', '人工审核'],
-  videoPackageExternalImportFields: ['toolName', 'importedAt', 'importedAssetKinds', 'manifestImported', 'evidenceFiles'],
+  videoPackageExternalImportFields: ['toolName', 'importedAt', 'importedAssetKinds', 'importedFileCount', 'manifestImported', 'timelineCreated', 'result', 'evidenceFiles'],
   platformDraftFiles: ['draft.md', 'platform-copy.txt', 'format-guide.md', 'publish-checklist.md', 'manifest.json'],
   platformDraftTraceFields: ['workflowRunId', 'promptDraftId', 'sourceLogId'],
   platformDraftContentFields: ['draft', 'platformCopy', 'formatGuide', 'publishChecklist', 'publishBoundary'],
@@ -335,6 +335,8 @@ const LOCAL_SAMPLE = {
   },
 };
 
+const ACCEPTED_EXTERNAL_IMPORT_RESULTS = new Set(['verified', 'completed', 'complete', 'imported', 'succeeded', 'success', 'approved']);
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -446,6 +448,9 @@ function normalizeExternalMixImportEvidence(value) {
       .map(String)
       .filter(Boolean),
     missingEvidenceFiles: asArray(evidence.missingEvidenceFiles)
+      .map(String)
+      .filter(Boolean),
+    outOfScopeEvidenceFiles: asArray(evidence.outOfScopeEvidenceFiles)
       .map(String)
       .filter(Boolean),
   };
@@ -597,6 +602,7 @@ function normalizeAcceptanceInput(input = LOCAL_SAMPLE) {
       declaredPackagedFilePaths: asArray(videoPackage.declaredPackagedFilePaths).map(String).filter(Boolean),
       actualPackagedFilePaths: asArray(videoPackage.actualPackagedFilePaths).map(String).filter(Boolean),
       missingPackagedFilePaths: asArray(videoPackage.missingPackagedFilePaths).map(String).filter(Boolean),
+      unverifiedPackagedFilePaths: asArray(videoPackage.unverifiedPackagedFilePaths).map(String).filter(Boolean),
       requireExternalImportEvidence: Boolean(videoPackage.requireExternalImportEvidence || raw.requireExternalMixEvidence),
       externalImportEvidencePath: String(videoPackage.externalImportEvidencePath || ''),
       externalImportEvidence: normalizeExternalMixImportEvidence(videoPackage.externalImportEvidence),
@@ -1428,25 +1434,8 @@ async function packagedFileEvidenceFromMixManifest(packageDir, manifest) {
   const declaredPaths = asArray(asObject(manifest).assets)
     .map((asset) => String(asObject(asset).packagedPath || '').trim())
     .filter(Boolean);
-  const existingPaths = [];
-  const missingPaths = [];
-  const baseDir = packageDir ? resolve(packageDir) : '';
-
-  for (const declaredPath of declaredPaths) {
-    const resolvedPath = baseDir ? resolve(baseDir, declaredPath) : resolve(declaredPath);
-    try {
-      const fileStat = await stat(resolvedPath);
-      if (fileStat.isFile()) {
-        existingPaths.push(resolvedPath);
-      } else {
-        missingPaths.push(resolvedPath);
-      }
-    } catch {
-      missingPaths.push(resolvedPath);
-    }
-  }
-
-  return { declaredPaths, existingPaths, missingPaths };
+  const fileEvidence = await packagedFileEvidenceFromPaths(packageDir, declaredPaths);
+  return { declaredPaths, ...fileEvidence };
 }
 
 function traceFieldsFromPlatformManifest(manifest) {
@@ -1504,20 +1493,58 @@ async function isFile(path) {
   }
 }
 
+async function isNonEmptyFile(path) {
+  if (!path) return false;
+  try {
+    const info = await stat(resolve(path));
+    return info.isFile() && info.size > 0;
+  } catch {
+    return false;
+  }
+}
+
 function resolveMaybeRelative(baseDir, filePath) {
   if (!filePath) return '';
   if (isAbsolute(filePath)) return resolve(filePath);
   return baseDir ? resolve(baseDir, filePath) : resolve(filePath);
 }
 
+function isWithinDirectory(baseDir, filePath) {
+  if (!baseDir || !filePath) return true;
+  const distance = relative(resolve(baseDir), resolve(filePath));
+  return distance === '' || (distance && !distance.startsWith('..') && !isAbsolute(distance));
+}
+
+async function packagedFileEvidenceFromPaths(baseDir, filePaths) {
+  const existingPaths = [];
+  const missingPaths = [];
+  const base = baseDir ? resolve(baseDir) : '';
+
+  for (const filePath of filePaths) {
+    const resolvedPath = resolveMaybeRelative(base, filePath);
+    if (await isNonEmptyFile(resolvedPath)) {
+      existingPaths.push(resolvedPath);
+    } else {
+      missingPaths.push(resolvedPath);
+    }
+  }
+
+  return { existingPaths, missingPaths };
+}
+
 async function hydrateExternalImportEvidenceFiles(evidence, baseDir) {
   const value = normalizeExternalMixImportEvidence(evidence);
   const verifiedEvidenceFiles = [];
   const missingEvidenceFiles = [];
+  const outOfScopeEvidenceFiles = [];
   const base = baseDir ? resolve(baseDir) : '';
   for (const filePath of value.evidenceFiles) {
     const resolvedPath = resolveMaybeRelative(base, filePath);
-    if (await isFile(resolvedPath)) {
+    if (base && !isWithinDirectory(base, resolvedPath)) {
+      outOfScopeEvidenceFiles.push(resolvedPath);
+      continue;
+    }
+    if (await isNonEmptyFile(resolvedPath)) {
       verifiedEvidenceFiles.push(resolvedPath);
     } else {
       missingEvidenceFiles.push(resolvedPath);
@@ -1527,6 +1554,7 @@ async function hydrateExternalImportEvidenceFiles(evidence, baseDir) {
     ...value,
     verifiedEvidenceFiles: Array.from(new Set([...value.verifiedEvidenceFiles, ...verifiedEvidenceFiles])),
     missingEvidenceFiles: Array.from(new Set([...value.missingEvidenceFiles, ...missingEvidenceFiles])),
+    outOfScopeEvidenceFiles: Array.from(new Set([...value.outOfScopeEvidenceFiles, ...outOfScopeEvidenceFiles])),
   };
 }
 
@@ -1553,6 +1581,23 @@ async function hydrateAcceptanceInputEvidence(sample) {
   }
   const mixManifestPath = next.videoPackage.manifestPath ||
     (next.videoPackage.packageDir ? join(next.videoPackage.packageDir, 'manifest.json') : '');
+  const packageDirForEvidence = next.videoPackage.packageDir ||
+    (mixManifestPath ? dirname(mixManifestPath) : '');
+  if (next.videoPackage.actualPackagedFilePaths.length) {
+    const manualPackagedFileEvidence = await packagedFileEvidenceFromPaths(
+      packageDirForEvidence,
+      next.videoPackage.actualPackagedFilePaths,
+    );
+    next.videoPackage.unverifiedPackagedFilePaths = Array.from(new Set([
+      ...next.videoPackage.unverifiedPackagedFilePaths,
+      ...next.videoPackage.actualPackagedFilePaths,
+    ]));
+    next.videoPackage.actualPackagedFilePaths = manualPackagedFileEvidence.existingPaths;
+    next.videoPackage.missingPackagedFilePaths = Array.from(new Set([
+      ...next.videoPackage.missingPackagedFilePaths,
+      ...manualPackagedFileEvidence.missingPaths,
+    ]));
+  }
   const mixManifest = await readJsonIfExists(mixManifestPath);
   if (mixManifest && !next.videoPackage.actualFiles.includes('manifest.json')) {
     next.videoPackage.actualFiles = Array.from(new Set([...next.videoPackage.actualFiles, basename(mixManifestPath)]));
@@ -1594,8 +1639,6 @@ async function hydrateAcceptanceInputEvidence(sample) {
   if (importGuidePath && next.videoPackage.actualGuideTerms.length === 0) {
     next.videoPackage.actualGuideTerms = await presentTermsFromFile(importGuidePath, next.videoPackage.expectedGuideTerms);
   }
-  const packageDirForEvidence = next.videoPackage.packageDir ||
-    (mixManifestPath ? dirname(mixManifestPath) : '');
   const configuredImportEvidencePath = next.videoPackage.externalImportEvidencePath
     ? resolveMaybeRelative(packageDirForEvidence, next.videoPackage.externalImportEvidencePath)
     : '';
@@ -1614,7 +1657,6 @@ async function hydrateAcceptanceInputEvidence(sample) {
           evidenceFiles: [
             ...next.videoPackage.externalImportEvidence.evidenceFiles,
             ...asArray(asObject(fileExternalImportEvidence).evidenceFiles || asObject(fileExternalImportEvidence).files),
-            externalImportEvidencePath,
           ],
         }
       : next.videoPackage.externalImportEvidence,
@@ -2029,18 +2071,25 @@ function deliveryAcceptance(sample) {
     externalImportEvidence.verifiedEvidenceFiles.length,
   );
   const requiresExternalImportEvidence = Boolean(sample.videoPackage.requireExternalImportEvidence || hasExternalImportEvidence);
+  const requiredImportedFileCount = Math.max(1, sample.videoPackage.requiredAssetKinds.length);
+  const hasImportedFileCount = externalImportEvidence.importedFileCount >= requiredImportedFileCount;
+  const hasCompletedImportResult = hasAcceptedExternalImportResult(externalImportEvidence.result);
   const missingExternalImportFields = [
     externalImportEvidence.toolName ? '' : 'toolName',
     externalImportEvidence.importedAt ? '' : 'importedAt',
     externalImportEvidence.importedAssetKinds.length ? '' : 'importedAssetKinds',
+    hasImportedFileCount ? '' : 'importedFileCount',
     externalImportEvidence.manifestImported ? '' : 'manifestImported',
+    externalImportEvidence.timelineCreated ? '' : 'timelineCreated',
+    hasCompletedImportResult ? '' : 'result',
     externalImportEvidence.verifiedEvidenceFiles.length ? '' : 'evidenceFiles',
   ].filter(Boolean);
   const missingExternalImportKinds = missingItems(sample.videoPackage.requiredAssetKinds, externalImportEvidence.importedAssetKinds);
   const externalImportEvidencePassed = requiresExternalImportEvidence &&
     missingExternalImportFields.length === 0 &&
     missingExternalImportKinds.length === 0 &&
-    externalImportEvidence.missingEvidenceFiles.length === 0;
+    externalImportEvidence.missingEvidenceFiles.length === 0 &&
+    externalImportEvidence.outOfScopeEvidenceFiles.length === 0;
   const missingPlatformFiles = missingItems(sample.platformDraft.expectedFiles, platformFiles);
   const missingPlatformTraceFields = missingItems(sample.platformDraft.requiredTraceFields, platformTraceFields);
   const missingPlatformContentFields = missingItems(sample.platformDraft.requiredContentFields, platformContentFields);
@@ -2074,6 +2123,7 @@ function deliveryAcceptance(sample) {
           actualAssetKinds: videoAssetKinds,
           declaredPackagedFilePaths: sample.videoPackage.declaredPackagedFilePaths,
           actualPackagedFilePaths: sample.videoPackage.actualPackagedFilePaths,
+          unverifiedPackagedFilePaths: sample.videoPackage.unverifiedPackagedFilePaths,
         })
         : failCheck('mix-package-assets', '混剪包包含可用素材', '混剪 manifest 缺少可用素材记录，或 packagedPath 指向的素材文件不存在。', {
           requiredAssetKinds: sample.videoPackage.requiredAssetKinds,
@@ -2082,6 +2132,7 @@ function deliveryAcceptance(sample) {
           declaredPackagedFilePaths: sample.videoPackage.declaredPackagedFilePaths,
           actualPackagedFilePaths: sample.videoPackage.actualPackagedFilePaths,
           missingPackagedFilePaths: sample.videoPackage.missingPackagedFilePaths,
+          unverifiedPackagedFilePaths: sample.videoPackage.unverifiedPackagedFilePaths,
         }),
       missingReviewStatuses.length === 0
         ? passCheck('mix-package-approved-assets', '混剪包素材已通过审核', '混剪 manifest 保留素材审核状态，证明导出前已通过审核门槛。', {
@@ -2114,6 +2165,7 @@ function deliveryAcceptance(sample) {
                   operator: externalImportEvidence.operator,
                   importedAssetKinds: externalImportEvidence.importedAssetKinds,
                   importedFileCount: externalImportEvidence.importedFileCount,
+                  requiredImportedFileCount,
                   manifestImported: externalImportEvidence.manifestImported,
                   timelineCreated: externalImportEvidence.timelineCreated,
                   result: externalImportEvidence.result,
@@ -2125,9 +2177,15 @@ function deliveryAcceptance(sample) {
                   requiredAssetKinds: sample.videoPackage.requiredAssetKinds,
                   importedAssetKinds: externalImportEvidence.importedAssetKinds,
                   missingAssetKinds: missingExternalImportKinds,
+                  importedFileCount: externalImportEvidence.importedFileCount,
+                  requiredImportedFileCount,
+                  timelineCreated: externalImportEvidence.timelineCreated,
+                  result: externalImportEvidence.result,
+                  acceptedResults: Array.from(ACCEPTED_EXTERNAL_IMPORT_RESULTS),
                   evidenceFiles: externalImportEvidence.evidenceFiles,
                   verifiedEvidenceFiles: externalImportEvidence.verifiedEvidenceFiles,
                   missingEvidenceFiles: externalImportEvidence.missingEvidenceFiles,
+                  outOfScopeEvidenceFiles: externalImportEvidence.outOfScopeEvidenceFiles,
                   externalImportEvidencePath: sample.videoPackage.externalImportEvidencePath,
                 }),
             ]
@@ -2243,31 +2301,69 @@ function traceAcceptance(sample) {
 }
 
 function evidenceTextValues(sample) {
+  const sourceValues = (source) => [
+    source.id,
+    source.title,
+    source.kind,
+    source.purpose,
+    source.sourcePath,
+    source.extractedText,
+    source.text,
+    ...asArray(source.tags),
+  ];
+  const successfulInput = asObject(sample.successfulAsset.actual.distilledInputSource);
+  const successfulDraft = asObject(sample.successfulAsset.actual.distilledPromptDraft);
   const values = [
     sample.workspacePath,
     sample.brand.title,
+    ...asArray(sample.brand.facts),
+    ...asArray(sample.brand.compliance),
+    ...asArray(sample.brand.scenes).flatMap((scene) => typeof scene === 'string'
+      ? [scene]
+      : [asObject(scene).title, asObject(scene).usageScene, asObject(scene).painPoint, asObject(scene).sellingPoint]),
     sample.ip.title,
-    ...sample.productBrief.sources.flatMap((source) => [source.id, source.title]),
-    ...sample.feedback.sources.flatMap((source) => [source.id, source.title]),
+    ...Object.values(asObject(sample.ip.layers)),
+    ...sample.productBrief.sources.flatMap(sourceValues),
+    ...sample.feedback.sources.flatMap(sourceValues),
     ...sample.reference.sources,
     ...sample.videoBreakdown.sources,
-    ...sample.greenScreen.actualCards.flatMap((card) => [card.id, card.title, card.assetPath]),
+    asObject(sample.videoBreakdown.actual).summary,
+    asObject(sample.videoBreakdown.script).title,
+    asObject(sample.videoBreakdown.script).script,
+    asObject(sample.videoBreakdown.script).videoPrompt,
+    asObject(sample.videoBreakdown.script).breakdownLogId,
+    ...sample.greenScreen.actualCards.flatMap((card) => [card.id, card.title, card.text, card.assetPath, card.promptDraftId]),
     sample.successfulAsset.actual.assetKey,
     sample.successfulAsset.actual.path,
+    sample.successfulAsset.actual.workflowRunId,
+    sample.successfulAsset.actual.originalPromptDraftId,
+    ...sourceValues(successfulInput),
+    successfulDraft.id,
+    successfulDraft.title,
+    successfulDraft.workflowRunId,
+    successfulDraft.content,
     sample.videoPackage.packageDir,
     sample.videoPackage.manifestPath,
+    sample.videoPackage.externalImportEvidence.toolName,
+    sample.videoPackage.externalImportEvidence.operator,
+    ...sample.videoPackage.externalImportEvidence.evidenceFiles,
     sample.platformDraft.packageDir,
     sample.platformDraft.manifestPath,
+    ...sample.trace.actualWorkflowRunRefs.flatMap((ref) => [asObject(ref).source, asObject(ref).workflowRunId]),
   ];
   return values.map(String).map((item) => item.trim()).filter(Boolean);
 }
 
 function sampleLikeEvidenceValues(sample) {
-  return evidenceTextValues(sample).filter((value) => /(^|[/_-])sample([/_-]|$)|示例/i.test(value));
+  return evidenceTextValues(sample).filter((value) => /(^|[/_-])sample([/_-]|$)|\bmock\b|(^|[/_-])mock([/_-]|$)|示例|样例/i.test(value));
 }
 
 function hasAllItems(expected, actual) {
   return missingItems(expected, actual).length === 0;
+}
+
+function hasAcceptedExternalImportResult(result) {
+  return ACCEPTED_EXTERNAL_IMPORT_RESULTS.has(String(result || '').trim().toLowerCase());
 }
 
 function realWorkspaceEvidenceAcceptance(sample, providerReport, options = {}) {
@@ -2280,6 +2376,19 @@ function realWorkspaceEvidenceAcceptance(sample, providerReport, options = {}) {
   const successfulDraft = asObject(successfulAsset.distilledPromptDraft);
   const trace = traceAcceptance(sample);
   const sampleLikeValues = sampleLikeEvidenceValues(sample);
+  const externalImportEvidence = sample.videoPackage.externalImportEvidence;
+  const hasExternalMixImportEvidence = Boolean(
+    externalImportEvidence.toolName &&
+    externalImportEvidence.importedAt &&
+    hasAllItems(sample.videoPackage.requiredAssetKinds, externalImportEvidence.importedAssetKinds) &&
+    externalImportEvidence.importedFileCount >= Math.max(1, sample.videoPackage.requiredAssetKinds.length) &&
+    externalImportEvidence.manifestImported &&
+    externalImportEvidence.timelineCreated &&
+    hasAcceptedExternalImportResult(externalImportEvidence.result) &&
+    externalImportEvidence.verifiedEvidenceFiles.length > 0 &&
+    externalImportEvidence.missingEvidenceFiles.length === 0 &&
+    externalImportEvidence.outOfScopeEvidenceFiles.length === 0,
+  );
   const missing = [
     sample.mode === 'workspace' ? '' : '必须使用 --workspace 从真实工作区读取产物',
     sample.workspacePath ? '' : '缺少 workspacePath',
@@ -2294,8 +2403,10 @@ function realWorkspaceEvidenceAcceptance(sample, providerReport, options = {}) {
     successfulInput.id ? '' : '缺少 successful-asset 输入源沉淀证据',
     successfulDraft.id ? '' : '缺少成功素材沉淀 PromptDraft',
     sample.videoPackage.packageDir || sample.videoPackage.manifestPath ? '' : '缺少混剪包目录或 manifest',
+    sample.videoPackage.declaredPackagedFilePaths.length ? '' : '缺少混剪包 manifest packagedPath 声明',
     sample.videoPackage.actualPackagedFilePaths.length ? '' : '缺少混剪包素材文件实存证据',
     sample.videoPackage.missingPackagedFilePaths.length === 0 ? '' : '混剪包 manifest 指向的素材文件不存在',
+    hasExternalMixImportEvidence ? '' : '缺少真实第三方混剪导入证据文件',
     sample.platformDraft.packageDir || sample.platformDraft.manifestPath ? '' : '缺少平台草稿包目录或 manifest',
     trace.missingSources.length === 0 ? '' : '关键产物 runId 覆盖不完整',
     trace.uniqueWorkflowRunIds.length === 1 ? '' : '关键产物 runId 不一致',
@@ -2314,6 +2425,10 @@ function realWorkspaceEvidenceAcceptance(sample, providerReport, options = {}) {
           workspacePath: sample.workspacePath,
           mode: sample.mode,
           missing,
+          declaredPackagedFilePaths: sample.videoPackage.declaredPackagedFilePaths,
+          actualPackagedFilePaths: sample.videoPackage.actualPackagedFilePaths,
+          missingPackagedFilePaths: sample.videoPackage.missingPackagedFilePaths,
+          unverifiedPackagedFilePaths: sample.videoPackage.unverifiedPackagedFilePaths,
           sampleLikeValues,
           providerStrictPassed: providerReport.strictGate.passed,
           providerStrictReasons: providerReport.strictGate.reasons,
@@ -2321,6 +2436,7 @@ function realWorkspaceEvidenceAcceptance(sample, providerReport, options = {}) {
             '用 --workspace 指向真实 App 工作区，而不是只跑 local-sample。',
             '导入真实产品 brief / SKU、评论客服语料、参考图和参考视频后重新跑主链。',
             '完成绿幕图审核、成功素材沉淀、混剪包和平台草稿包导出。',
+            '按 import-guide.md 在真实第三方混剪工具导入视频和绿幕素材，并保存截图、录屏说明或 import-check.md 验收记录。',
             '使用 verify:v2:evidence --provider-strict --allow-network --allow-media 生成真实 provider 联调证据。',
           ],
         }),

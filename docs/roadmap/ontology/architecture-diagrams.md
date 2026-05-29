@@ -9,7 +9,7 @@ Ontology 是 Content Studio 的内容工程中间层，不是独立图数据库�
 
 在此之上，Operational Ontology 把品牌舆论和获客动作纳入同一操作层：Signal 触发 Objective，Objective 组合 CampaignCell 和 ResourceBundle，标准 ActionType 经过 DecisionGate 后执行，并通过 ActionLog 和 FeedbackLoop 回写 Ontology。
 
-内部事实源优先落在 `.content-studio/` 的本地 JSON 文件。对外发布时导出 Agent Knowledge v0.7.0 ontology-aware 知识包；互操作场景再导出 JSON-LD / RDF / Turtle。
+内部事实源优先落在 `.content-studio/` 的本地 JSON 文件。对外发布时导出 Agent Knowledge v0.7.2 ontology-aware 知识包；互操作场景再导出 JSON-LD / RDF / Turtle。
 
 ## 2. 总体架构图
 
@@ -511,7 +511,7 @@ sequenceDiagram
 | 本地 JSON Ontology Store。 | 云端图数据库。 |
 | 候选概念、关系、证据、约束和覆盖矩阵。 | 完整 OWL 编辑器。 |
 | 最小 ActionLog。 | 多 CampaignCell 协同和复杂排班。 |
-| Agent Knowledge v0.7.0 知识包导出。 | 将 `ontology/` 作为 Skill 或 workflow 执行目录。 |
+| Agent Knowledge v0.7.2 知识包导出。 | 将 `ontology/` 作为 Skill 或 workflow 执行目录。 |
 | PromptGroundingContext 子图选择。 | 把完整 Ontology 直接塞进 Prompt。 |
 | 人工审核和 blocked 状态。 | 无人值守自动发布。 |
 | DecisionGate 规则雏形。 | 舆论操控、刷量、自动发帖。 |

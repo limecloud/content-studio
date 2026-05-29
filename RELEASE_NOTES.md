@@ -1,5 +1,43 @@
 # Release Notes
 
+## v0.15.0 - 2026-05-29
+
+### 内容知识地图 v1
+
+- 新增内容知识地图工作台，围绕输入源、品牌知识库、IP 知识库、场景卡和提示词草稿生成可审核的内容矩阵。
+- 支持团队知识包导出、团队变更包创建 / 导入 / 提交、同步冲突处理和素材覆盖回写，形成本地到团队工作区的可追溯协作链路。
+- 新增 Agent Knowledge v0.7.2 ontology-aware 知识包导出，保留内容主张、证据、覆盖状态和来源追溯。
+
+### 审核任务与生产交付
+
+- 新增内容审核任务台，可从内容知识地图生成审核任务，记录通过、驳回、补素材和补证据等人工决策。
+- 审核通过后支持交付到 Prompt 工作台、场景库和 SOP 运行，避免审核结论停留在只读记录。
+- 成功素材与审核反馈可回写内容矩阵，标记已覆盖、待补充和需要复核的组合。
+
+### 品牌战情室
+
+- 新增品牌战情室，按信号、目标、资源包、行动队列和行动记录组织内容生产动作。
+- 支持基于内容知识地图生成行动建议，执行前校验证据、审核状态、资源完整度和渠道风险。
+- 行动记录可同步到团队工作区，作为后续复盘和内容矩阵更新的事实来源。
+
+### Agent-first 工作台
+
+- 普通用户模块统一接入 `AgentSessionPanel`，UI 只投影真实消息、执行事件、权限动作、证据、产物和任务状态。
+- Prompt Agent 执行层改为协议中立服务；Claude 官方链路继续走 Claude Agent SDK，OpenAI / Gemini / Anthropic 兼容协议走显式文字生成路由。
+- Human-in-the-loop 支持缺资料、补输入源、打开模型设置和恢复 blocked 会话等可交互动线，不再用模块内硬编码助手气泡模拟执行过程。
+
+### OEM 发布链路
+
+- 新增 `Publish OEM Distribution` workflow 和 R2 分发脚本，GitHub Release 产物可一键同步到 bugu / seenx 控制面 latest、R2 分平台 latest 和全局 download-manifest。
+- 新增线上分发校验脚本，覆盖 GitHub Release 资产、控制面 latest、R2 latest、公开 download-manifest 和下载链接。
+- 仓库内补齐 OEM 发布 Agent 流程文档和 skill，发布前后按 dry run、真实写入和线上验证分阶段执行。
+
+### 验证
+
+- `npm run verify:local`
+- `npm run oem:r2:publish -- --tag=v0.15.0 --brands=all --dry-run=true`
+- `npm run oem:release:verify-online -- --tag=v0.15.0 --brands=all --channel=stable`
+
 ## v0.14.0 - 2026-05-27
 
 ### 统一后台生成任务

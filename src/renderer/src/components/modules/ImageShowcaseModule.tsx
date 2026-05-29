@@ -1513,7 +1513,6 @@ function ImageHistoryDrawer({
               <section className="ai-history-section ai-history-prompt-section">
                 <header>
                   <h3>提示词</h3>
-                  <button type="button" disabled>复制</button>
                 </header>
                 <textarea value="暂无历史记录。完成一次生成后，这里会展示输入文件、生成结果和提示词。" readOnly />
               </section>
@@ -2751,7 +2750,6 @@ export function ImageShowcaseModule({
     setActiveFeatureId(item.featureId);
     const nextPrompt = promptForShowcaseCase(item, activePrompt);
     const caseInputRefs = urlsForRole(item, "input");
-    const caseOutputRefs = urlsForRole(item, "output");
     const caseFeature = featureById(item.featureId) || activeFeature;
     const { productRefs: caseProductRefs, referenceRefs: caseReferenceRefs } = splitCaseInputRefsForFeature(caseInputRefs, caseFeature);
     setSelectedMaterialId("");
@@ -2765,16 +2763,10 @@ export function ImageShowcaseModule({
       }
       return next;
     });
-    appendGenerationHistory({
+    appendHistory({
       title: `已套用案例：${item.title}`,
       detail: `${item.industry} · ${item.summary}`,
       tone: "ready",
-      featureTitle: caseFeature.title,
-      jobType: caseFeature.title,
-      statusText: "生成完成",
-      inputRefs: caseInputRefs,
-      outputRefs: caseOutputRefs,
-      prompt: nextPrompt,
     });
     onUsePromptInImage(buildImageHandoff(
       nextPrompt,

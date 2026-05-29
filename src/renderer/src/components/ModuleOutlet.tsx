@@ -4,15 +4,17 @@ import { ArticleModule } from './modules/ArticleModule';
 import { AssetsModule } from './modules/AssetsModule';
 import { ImageModule } from './modules/ImageModule';
 import { ImageShowcaseModule } from './modules/ImageShowcaseModule';
+import { BrandCommandCenterModule } from './modules/BrandCommandCenterModule';
 import { BrandKnowledgeModule } from './modules/BrandKnowledgeModule';
 import { InputSourcesModule } from './modules/InputSourcesModule';
 import { KnowledgeModule } from './modules/KnowledgeModule';
 import { GreenScreenModule } from './modules/GreenScreenModule';
+import { ContentKnowledgeMapModule } from './modules/ContentKnowledgeMapModule';
+import { ContentReviewTasksModule } from './modules/ContentReviewTasksModule';
 import { IpKnowledgeModule } from './modules/IpKnowledgeModule';
 import { MaterialBreakdownModule } from './modules/MaterialBreakdownModule';
 import { MixExportModule } from './modules/MixExportModule';
 import { PromptWorkbenchModule } from './modules/PromptWorkbenchModule';
-import { ReferenceReverseModule } from './modules/ReferenceReverseModule';
 import { ScenePromptModule } from './modules/ScenePromptModule';
 import { VideoImportModule } from './modules/VideoImportModule';
 import { VideoPromptModule } from './modules/VideoPromptModule';
@@ -22,6 +24,8 @@ import { V2FeatureModule } from './modules/V2FeatureModule';
 import { VideoModule } from './modules/VideoModule';
 import { WorkflowFeatureModule, isWorkflowFeatureModule } from './modules/WorkflowFeatureModule';
 import { isV2FeatureModule } from '../app/v2FeatureRegistry';
+import type { AgentActionResolver } from './agent/AgentSessionPanel';
+import { projectAgentRuntimeAction } from './agent/agentRuntimeProjection';
 
 interface ModuleOutletProps {
   app: ContentStudioAppController;
@@ -33,6 +37,49 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
     || app.authState?.bootstrap?.branding?.appName
     || app.authState?.bootstrap?.tenant?.name
     || '布谷AI';
+
+  const resolveAgentAction: AgentActionResolver = (event) => {
+    const action = projectAgentRuntimeAction(event);
+    const sessionId = event.threadId || app.activeAgentPromptSessionId;
+
+    const recordResponse = (afterResponse?: () => void) => {
+      if (!sessionId || !event.actionId) {
+        afterResponse?.();
+        return;
+      }
+      app.runAction(
+        async () => {
+          await app.respondAgentPromptAction({
+            sessionId,
+            actionId: event.actionId!,
+            decision: action.decision,
+            payload: {
+              actionKind: action.actionKind,
+              targetModule: action.targetModule,
+              source: 'agent-event-action',
+            },
+          });
+          afterResponse?.();
+        },
+        '正在记录处理动作',
+      );
+    };
+
+    if (action.decision === 'open-model-settings') {
+      recordResponse(() => {
+        app.setSettingsTab('model');
+        app.setShowSettingsDialog(true);
+      });
+      return;
+    }
+
+    if (action.decision === 'open-input-source') {
+      recordResponse(() => app.setActiveModule('knowledge-inputs'));
+      return;
+    }
+
+    recordResponse();
+  };
 
   const renderShowcaseFrame = (content: ReactNode) => (
     <div className="showcase-page-frame">
@@ -49,6 +96,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
       logs={app.logs}
       inputSources={app.inputSources}
       promptDrafts={app.promptDrafts}
+      contentKnowledgeMaps={app.contentKnowledgeMaps}
       assetReviews={app.assetReviews}
       copiedLogId={app.copiedLogId}
       onCopyLogPrompt={(log) => app.runAction(() => app.copyLogPrompt(log))}
@@ -286,9 +334,147 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         activeBrandKnowledgeBase={app.activeBrandKnowledgeBase}
         activeBrandKnowledgeBaseId={app.activeBrandKnowledgeBaseId}
         setActiveBrandKnowledgeBaseId={app.setActiveBrandKnowledgeBaseId}
+        inputSourceIds={app.selectedCitations
+          .map((citation) => citation.knowledgeBaseId.startsWith('input-source:') ? citation.knowledgeBaseId.slice('input-source:'.length) : '')
+          .filter(Boolean)}
+        agentPromptSessions={app.agentPromptSessions}
+        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+        textModel={app.params.textModel}
+        onSelectAgentSession={app.setActiveAgentPromptSessionId}
+        onStartAgentSession={(input) =>
+          app.runAction(() => app.startAgentPromptSession(input), '正在开始品牌知识库判断')
+        }
+        onContinueAgentSession={(input) =>
+          app.runAction(() => app.continueAgentPromptSession(input), '正在继续品牌知识库判断')
+        }
+        onResolveAgentAction={resolveAgentAction}
         onGenerateBrandKnowledgeBase={() => app.runAction(app.generateBrandKnowledgeBase, '正在生成品牌知识库')}
         onOpenKnowledgeScenes={() => app.runAction(app.generateSceneCards, '正在基于品牌知识库生成场景库')}
         onOpenInputSources={() => app.setActiveModule('knowledge-inputs')}
+      />
+    );
+  }
+
+  if (app.activeModule === 'knowledge-map') {
+    return (
+      <ContentKnowledgeMapModule
+        workspaceReady={Boolean(app.workspacePath)}
+        busy={app.busy}
+        inputSources={app.inputSources}
+        brandKnowledgeBases={app.brandKnowledgeBases}
+        sceneCards={app.sceneCards}
+        promptDrafts={app.promptDrafts}
+        contentKnowledgeMaps={app.contentKnowledgeMaps}
+        teamChangePackages={app.contentDraftChanges}
+        teamKnowledgePackageVersions={app.contentKnowledgeReleases}
+        teamSyncConflicts={app.contentSyncConflicts}
+        contentWorkspaceSyncResult={app.contentWorkspaceSyncResult}
+        activeContentKnowledgeMap={app.activeContentKnowledgeMap}
+        activeContentKnowledgeMapId={app.activeContentKnowledgeMapId}
+        setActiveContentKnowledgeMapId={app.setActiveContentKnowledgeMapId}
+        onBuildContentKnowledgeMap={() => app.runAction(app.buildContentKnowledgeMap, '正在生成内容知识地图')}
+        onExportContentKnowledgePack={() => app.runAction(app.exportContentKnowledgePack, '正在导出团队知识包')}
+        onWriteBackContentMaterialCoverage={() => app.runAction(app.writeBackContentMaterialCoverage, '正在回写素材覆盖')}
+        onCreateTeamChangePackage={() => app.runAction(app.createContentDraftChange, '正在生成变更包')}
+        onSubmitTeamChangePackage={() => app.runAction(() => app.submitContentDraftChange(), '正在提交团队工作区')}
+        onExportTeamChangePackage={() => app.runAction(() => app.exportContentDraftChange(), '正在导出变更包')}
+        onImportTeamChangePackage={() => app.runAction(app.importContentDraftChange, '正在导入变更包')}
+        onResolveTeamSyncConflict={(conflict, resolutionAction) => app.runAction(() => app.resolveContentSyncConflict(conflict, resolutionAction), '正在记录冲突处理')}
+        onCreateTeamKnowledgePackage={() => app.runAction(app.createContentKnowledgeRelease, '正在创建团队知识包版本')}
+        onGenerateContentReviewTasksForRows={(rowIds) =>
+          app.runAction(() => app.generateContentReviewTasksForRows(rowIds), '正在生成本批审核任务')
+        }
+        contentKnowledgePackExport={app.contentKnowledgePackExport}
+        contentMaterialCoverage={app.contentMaterialCoverage}
+        agentPromptSessions={app.agentPromptSessions}
+        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+        textModel={app.params.textModel}
+        onSelectAgentSession={app.setActiveAgentPromptSessionId}
+        onStartAgentSession={(input) =>
+          app.runAction(() => app.startAgentPromptSession(input), '正在开始协作')
+        }
+        onContinueAgentSession={(input) =>
+          app.runAction(() => app.continueAgentPromptSession(input), '正在继续对话')
+        }
+        onResolveAgentAction={resolveAgentAction}
+        onSelectModule={app.setActiveModule}
+      />
+    );
+  }
+
+  if (app.activeModule === 'knowledge-review') {
+    return (
+      <ContentReviewTasksModule
+        workspaceReady={Boolean(app.workspacePath)}
+        busy={app.busy}
+        contentKnowledgeMaps={app.contentKnowledgeMaps}
+        activeContentKnowledgeMap={app.activeContentKnowledgeMap}
+        contentReviewTasks={app.contentReviewTasks}
+        activeContentReviewTask={app.activeContentReviewTask}
+        activeContentReviewTaskId={app.activeContentReviewTaskId}
+        setActiveContentReviewTaskId={app.setActiveContentReviewTaskId}
+        onGenerateContentReviewTasks={() => app.runAction(app.generateContentReviewTasks, '正在生成审核任务')}
+        onSubmitContentReviewDecision={(taskId, action, payload) =>
+          app.runAction(() => app.submitContentReviewDecision(taskId, action, payload), '正在记录审核决策')
+        }
+        onCreateContentProductionHandoff={(taskId, target) =>
+          app.runAction(() => app.createContentProductionHandoff(taskId, target), target === 'sop-run' ? '正在启动 SOP' : '正在交给 Prompt 工作台')
+        }
+        contentProductionHandoff={app.contentProductionHandoff}
+        agentPromptSessions={app.agentPromptSessions}
+        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+        textModel={app.params.textModel}
+        onSelectAgentSession={app.setActiveAgentPromptSessionId}
+        onStartAgentSession={(input) =>
+          app.runAction(() => app.startAgentPromptSession(input), '正在开始审核')
+        }
+        onContinueAgentSession={(input) =>
+          app.runAction(() => app.continueAgentPromptSession(input), '正在继续审核')
+        }
+        onResolveAgentAction={resolveAgentAction}
+        onSelectModule={app.setActiveModule}
+      />
+    );
+  }
+
+  const brandCommandTab =
+    app.activeModule === 'brand-command-objectives' ? 'objectives' :
+      app.activeModule === 'brand-command-bundles' ? 'bundles' :
+        app.activeModule === 'brand-command-queue' ? 'queue' :
+          app.activeModule === 'brand-command-logs' ? 'logs' :
+            app.activeModule === 'brand-command-center' ? 'signals' : null;
+
+  if (brandCommandTab) {
+    return (
+      <BrandCommandCenterModule
+        workspaceReady={Boolean(app.workspacePath)}
+        busy={app.busy}
+        contentKnowledgeMaps={app.contentKnowledgeMaps}
+        activeContentKnowledgeMap={app.activeContentKnowledgeMap}
+        brandCommandCenters={app.brandCommandCenters}
+        activeBrandCommandCenter={app.activeBrandCommandCenter}
+        activeBrandCommandCenterId={app.activeBrandCommandCenterId}
+        setActiveBrandCommandCenterId={app.setActiveBrandCommandCenterId}
+        agentPromptSessions={app.agentPromptSessions}
+        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+        textModel={app.params.textModel}
+        initialTab={brandCommandTab}
+        onBuildBrandCommandCenter={() => app.runAction(app.buildBrandCommandCenter, '正在生成品牌战情室')}
+        onRecordBrandCommandAction={(queueItemId) =>
+          app.runAction(() => app.recordBrandCommandAction(queueItemId), '正在记录作战动作')
+        }
+        onRefreshBrandCommandActions={() =>
+          app.runAction(app.refreshBrandCommandActions, '正在同步团队记录')
+        }
+        onSelectAgentSession={app.setActiveAgentPromptSessionId}
+        onStartAgentSession={(input) =>
+          app.runAction(() => app.startAgentPromptSession(input), '正在开始协作')
+        }
+        onContinueAgentSession={(input) =>
+          app.runAction(() => app.continueAgentPromptSession(input), '正在继续对话')
+        }
+        onResolveAgentAction={resolveAgentAction}
+        onSelectModule={app.setActiveModule}
       />
     );
   }
@@ -307,6 +493,17 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         activeIpKnowledgeBase={app.activeIpKnowledgeBase}
         activeIpKnowledgeBaseId={app.activeIpKnowledgeBaseId}
         setActiveIpKnowledgeBaseId={app.setActiveIpKnowledgeBaseId}
+        agentPromptSessions={app.agentPromptSessions}
+        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+        textModel={app.params.textModel}
+        onSelectAgentSession={app.setActiveAgentPromptSessionId}
+        onStartAgentSession={(input) =>
+          app.runAction(() => app.startAgentPromptSession(input), '正在开始 IP 知识库判断')
+        }
+        onContinueAgentSession={(input) =>
+          app.runAction(() => app.continueAgentPromptSession(input), '正在继续 IP 知识库判断')
+        }
+        onResolveAgentAction={resolveAgentAction}
         onGenerateIpKnowledgeBase={() => app.runAction(app.generateIpKnowledgeBase, '正在生成 IP 知识库')}
         onCreateScenarioPrompt={(scene) =>
           app.runAction(() => app.createIpScenarioPrompt(scene), '正在生成 IP 场景延伸 Prompt')
@@ -328,63 +525,24 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         <MaterialBreakdownModule
           workspaceReady={Boolean(app.workspacePath)}
           busy={app.busy}
+          error={app.referenceReverseError}
           inputSources={app.inputSources}
-          productImageRefs={app.productImageRefs}
-          referenceImageRefs={app.referenceImageRefs}
-          mediaResult={app.mediaResult}
           reverseResult={app.referenceReverseResult}
           activePromptDraft={app.activePromptDraft}
-          onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
-          onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
           onImportInputSource={(purpose) =>
             app.runAction(() => app.importInputSource(purpose), '正在登记素材输入源')
           }
           onRegisterManualInputSource={(input) =>
             app.runAction(() => app.registerManualInputSource(input), '正在登记产品资料')
           }
+          onRemoveInputSource={(sourceId) =>
+            app.runAction(() => app.removeInputSource(sourceId), '正在移除输入源')
+          }
           onGenerateReversePrompt={(input) =>
             app.runAction(() => app.generateReferenceReversePrompt(input), '正在拆解素材')
           }
           onUpdatePromptDraft={(input) =>
             app.runAction(() => app.updatePromptDraft(input), '正在保存 Prompt 版本')
-          }
-          onUsePromptInImage={app.useReferenceReversePromptInImage}
-          onGenerateImage={(input) =>
-            app.runAction((context) => app.generateReferenceReverseImage(input, context), '正在生成图片')
-          }
-          onReviewAsset={(input) =>
-            app.runAction(() => app.reviewAsset(input), '正在记录素材审核')
-          }
-        />
-      );
-    }
-
-    if (app.activeModule === 'image-reference-reverse') {
-      return (
-        <ReferenceReverseModule
-          workspaceReady={Boolean(app.workspacePath)}
-          busy={app.busy}
-          inputSources={app.inputSources}
-          mediaResult={app.mediaResult}
-          reverseResult={app.referenceReverseResult}
-          onImportInputSource={(purpose) =>
-            app.runAction(() => app.importInputSource(purpose), '正在登记对标输入源')
-          }
-          onRegisterManualInputSource={(input) =>
-            app.runAction(() => app.registerManualInputSource(input), '正在登记产品资料')
-          }
-          onGenerateReversePrompt={(input) =>
-            app.runAction(() => app.generateReferenceReversePrompt(input), '正在反推图片 Prompt')
-          }
-          onUpdatePromptDraft={(input) =>
-            app.runAction(() => app.updatePromptDraft(input), '正在保存 Prompt 版本')
-          }
-          onUsePromptInImage={app.useReferenceReversePromptInImage}
-          onGenerateImage={(input) =>
-            app.runAction((context) => app.generateReferenceReverseImage(input, context), '正在生成图片候选')
-          }
-          onReviewAsset={(input) =>
-            app.runAction(() => app.reviewAsset(input), '正在记录素材审核')
           }
         />
       );
@@ -449,6 +607,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           skills={app.skills}
           enabledSkillKeys={app.enabledSkillKeys}
           textModel={app.params.textModel}
+          textProtocol={app.modelConfig?.textProtocol}
           textModels={app.modelCatalog?.textModels ?? []}
           activeDraftId={app.activePromptDraftId}
           activeSessionId={app.activeAgentPromptSessionId}
@@ -458,11 +617,12 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
             app.runAction(() => app.generatePromptDraft(input), '正在生成 Prompt 草稿')
           }
           onStartSession={(input) =>
-            app.runAction(() => app.startAgentPromptSession(input), '正在启动 Agent 会话')
+            app.runAction(() => app.startAgentPromptSession(input), '正在开始协作')
           }
           onContinueSession={(input) =>
-            app.runAction(() => app.continueAgentPromptSession(input), '正在继续 Agent 会话')
+            app.runAction(() => app.continueAgentPromptSession(input), '正在继续对话')
           }
+          onResolveAgentAction={resolveAgentAction}
           onUpdateDraft={(input) =>
             app.runAction(() => app.updatePromptDraft(input), '正在保存 Prompt 草稿')
           }
@@ -508,6 +668,17 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
             }, '正在记录复制动作')
           }
           onSelectDraft={app.setActivePromptDraftId}
+          agentPromptSessions={app.agentPromptSessions}
+          activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+          textModel={app.params.textModel}
+          onSelectAgentSession={app.setActiveAgentPromptSessionId}
+          onStartAgentSession={(input) =>
+            app.runAction(() => app.startAgentPromptSession(input), '正在开始视频 Prompt 打磨')
+          }
+          onContinueAgentSession={(input) =>
+            app.runAction(() => app.continueAgentPromptSession(input), '正在继续视频 Prompt 打磨')
+          }
+          onResolveAgentAction={resolveAgentAction}
           onSelectModule={app.setActiveModule}
         />
       );
@@ -589,14 +760,26 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           busy={app.busy}
           sceneCards={app.sceneCards}
           promptDrafts={app.promptDrafts}
+          agentPromptSessions={app.agentPromptSessions}
           activePromptPack={app.activePromptPack}
+          activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+          currentActionLabel={app.currentActionLabel}
+          textModel={app.params.textModel}
           citationCount={app.effectiveCitationCount}
           selectedSceneIds={app.selectedSceneIds}
           onSelectSceneIds={app.setSelectedSceneIds}
+          onSelectAgentSession={app.setActiveAgentPromptSessionId}
           onGenerateSceneCards={() => app.runAction(app.generateSceneCards, '正在生成场景库')}
           onGenerateScenePromptDraft={(input) =>
             app.runAction(() => app.generateScenePromptDraft(input), '正在生成场景 Prompt 草稿')
           }
+          onStartAgentSession={(input) =>
+            app.runAction(() => app.startAgentPromptSession(input), '正在开始协作')
+          }
+          onContinueAgentSession={(input) =>
+            app.runAction(() => app.continueAgentPromptSession(input), '正在继续对话')
+          }
+          onResolveAgentAction={resolveAgentAction}
           onUpdateSceneCard={(scene) =>
             app.runAction(() => app.updateSceneCard(scene), '正在确认场景卡')
           }
@@ -620,12 +803,23 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           workspaceReady={Boolean(app.workspacePath)}
           busy={app.busy}
           inputSources={app.inputSources}
-          onImportInputSource={(purpose) =>
-            app.runAction(() => app.importInputSource(purpose), '正在登记输入源文件')
+          onImportInputSource={(purpose, agentSessionId) =>
+            app.runAction(() => app.importInputSource(purpose, agentSessionId), '正在登记输入源文件')
           }
           onRegisterManualInputSource={(input) =>
             app.runAction(() => app.registerManualInputSource(input), '正在登记文本输入源')
           }
+          agentPromptSessions={app.agentPromptSessions}
+          activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+          textModel={app.params.textModel}
+          onSelectAgentSession={app.setActiveAgentPromptSessionId}
+          onStartAgentSession={(input) =>
+            app.runAction(() => app.startAgentPromptSession(input), '正在开始输入源分流')
+          }
+          onContinueAgentSession={(input) =>
+            app.runAction(() => app.continueAgentPromptSession(input), '正在继续输入源分流')
+          }
+          onResolveAgentAction={resolveAgentAction}
           onSelectModule={app.setActiveModule}
         />
       );
@@ -680,8 +874,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
               app.openWorkflowRunAssetReview(runId);
               return;
             }
-            if (action === 'open-reference-reverse') {
-              app.openWorkflowRunReferenceReverse(runId);
+            if (action === 'open-material-breakdown') {
+              app.openWorkflowRunMaterialBreakdown(runId);
               return;
             }
             if (action === 'open-image-workbench') {

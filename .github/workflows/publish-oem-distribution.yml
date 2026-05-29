@@ -1,0 +1,150 @@
+name: Publish OEM Distribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      brands:
+        description: '品牌：all / bugu / seenx'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - bugu
+          - seenx
+      tag:
+        description: '要发布的 tag，例如 v0.14.0'
+        required: true
+      channel:
+        description: '发布通道'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - beta
+      promote_control_plane:
+        description: '是否同步提升控制面 latest'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      dry_run:
+        description: '只校验，不写控制面/R2'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-oem-distribution-${{ inputs.brands }}-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify distribution plan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify GitHub Release assets for R2
+        run: |
+          node scripts/publish-oem-r2-release.mjs \
+            --tag=${{ inputs.tag }} \
+            --brands=${{ inputs.brands }} \
+            --dry-run=true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Verify control-plane promote payload
+        if: ${{ inputs.promote_control_plane == 'true' }}
+        run: |
+          if [ "${BRANDS}" = "all" ]; then
+            brand_list="bugu seenx"
+          else
+            brand_list="${BRANDS}"
+          fi
+          for brand in ${brand_list}; do
+            node scripts/promote-oem-release.mjs \
+              --brand="${brand}" \
+              --tag="${TAG}" \
+              --channel="${CHANNEL}" \
+              --dry-run=true
+          done
+        env:
+          BRANDS: ${{ inputs.brands }}
+          TAG: ${{ inputs.tag }}
+          CHANNEL: ${{ inputs.channel }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+  publish:
+    name: Publish distribution
+    runs-on: ubuntu-latest
+    needs: verify
+    if: ${{ inputs.dry_run == 'false' }}
+    environment: oem-promotion
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      BRANDS: ${{ inputs.brands }}
+      TAG: ${{ inputs.tag }}
+      CHANNEL: ${{ inputs.channel }}
+      RELEASE_PROMOTE_API_URL: ${{ vars.RELEASE_PROMOTE_API_URL || secrets.RELEASE_PROMOTE_API_URL }}
+      RELEASE_PROMOTE_API_TOKEN: ${{ secrets.RELEASE_PROMOTE_API_TOKEN }}
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID || secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ vars.R2_BUCKET || 'bugu-releases' }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      GLOBAL_DOWNLOAD_BASE_URL: ${{ vars.GLOBAL_DOWNLOAD_BASE_URL || 'https://downloads.bugu.run' }}
+      DOWNLOAD_MANIFEST_API_URL: ${{ vars.DOWNLOAD_MANIFEST_API_URL || 'https://api.bugu.run/api/v1/public/download-manifest' }}
+      CONTROL_PLANE_PUBLIC_API_BASE_URL: ${{ vars.CONTROL_PLANE_PUBLIC_API_BASE_URL || 'https://lime-api.limeai.run/api' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Promote control-plane latest
+        if: ${{ inputs.promote_control_plane == 'true' }}
+        run: |
+          if [ "${BRANDS}" = "all" ]; then
+            brand_list="bugu seenx"
+          else
+            brand_list="${BRANDS}"
+          fi
+          for brand in ${brand_list}; do
+            node scripts/promote-oem-release.mjs \
+              --brand="${brand}" \
+              --tag="${TAG}" \
+              --channel="${CHANNEL}" \
+              --dry-run=false
+          done
+
+      - name: Publish R2 manifests and packages
+        run: |
+          node scripts/publish-oem-r2-release.mjs \
+            --tag="${TAG}" \
+            --brands="${BRANDS}" \
+            --bucket="${R2_BUCKET}"
+
+      - name: Verify online distribution
+        run: |
+          node scripts/verify-oem-release-online.mjs \
+            --tag="${TAG}" \
+            --brands="${BRANDS}" \
+            --channel="${CHANNEL}"

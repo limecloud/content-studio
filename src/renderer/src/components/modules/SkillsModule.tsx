@@ -890,10 +890,6 @@ export function SkillsModule({
                   </button>
                   {skillMenuOpen ? (
                     <div className="skills-popover skill-action-menu">
-                      <button type="button" disabled>
-                        <SkillIcon name="message" />
-                        Try in chat
-                      </button>
                       {selectedSkill.source === 'builtin' ? (
                         <button type="button" disabled={!workspaceReady} onClick={() => {
                           onInstallSkill(selectedSkill.slug);

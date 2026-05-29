@@ -1,24 +1,37 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import { statSync } from 'node:fs';
-import type { ModelConfigView } from '../../shared/types';
+import type {
+  AgentPromptExecutionEventKind,
+  AgentPromptExecutionEventStatus,
+  AgentRuntimeEventClass,
+  AgentRuntimePhase,
+  ModelConfigView,
+} from '../../shared/types';
 import { buildClaudeSubprocessEnv, ensureClaudeConfig, resolveClaudeCodeExecutable } from '../services/claudeSdkRuntime';
 
 export class TextProviderBlockedError extends Error {
   readonly code = 'TEXT_PROVIDER_NOT_CONFIGURED';
+  readonly runtimeEvents?: TextProviderRuntimeEvent[];
 
-  constructor(message = '文字模型未配置：请在设置中保存文字模型 API Key 后再生成。') {
+  constructor(
+    message = '文字模型未配置：请在设置中保存文字模型 API Key 后再生成。',
+    runtimeEvents?: TextProviderRuntimeEvent[],
+  ) {
     super(message);
     this.name = 'TextProviderBlockedError';
+    this.runtimeEvents = runtimeEvents;
   }
 }
 
 export class TextProviderFailedError extends Error {
   readonly code = 'TEXT_PROVIDER_FAILED';
+  readonly runtimeEvents?: TextProviderRuntimeEvent[];
 
-  constructor(message: string) {
+  constructor(message: string, runtimeEvents?: TextProviderRuntimeEvent[]) {
     super(message);
     this.name = 'TextProviderFailedError';
+    this.runtimeEvents = runtimeEvents;
   }
 }
 
@@ -38,11 +51,23 @@ export interface TextRuntimeConfig {
   protocol: ModelConfigView['textProtocol'];
 }
 
+export interface TextProviderRuntimeEvent {
+  eventClass: AgentRuntimeEventClass;
+  kind: AgentPromptExecutionEventKind;
+  status: AgentPromptExecutionEventStatus;
+  phase?: AgentRuntimePhase;
+  title: string;
+  detail?: string;
+  model?: string;
+  payload?: Record<string, unknown>;
+}
+
 export interface TextGenerationOutput<T> {
   value: T;
   model: string;
   rawText: string;
   protocol: TextRuntimeConfig['protocol'];
+  providerEvents?: TextProviderRuntimeEvent[];
 }
 
 interface JsonTextProvider {
@@ -162,11 +187,75 @@ function providerError(payload: unknown, fallback: string): string {
   return sanitizeProviderError(error?.message ?? record?.message ?? record?.rawText ?? fallback);
 }
 
+function modelRequestedEvent(runtime: TextRuntimeConfig, transport: string, endpoint?: string): TextProviderRuntimeEvent {
+  return {
+    eventClass: 'model.requested',
+    kind: 'model',
+    status: 'completed',
+    phase: 'waiting_provider',
+    title: 'Provider request',
+    detail: `${runtime.protocol} / ${runtime.model}`,
+    model: runtime.model,
+    payload: {
+      transport,
+      protocol: runtime.protocol,
+      model: runtime.model,
+      endpoint,
+    },
+  };
+}
+
+function modelCompletedEvent(
+  runtime: TextRuntimeConfig,
+  payload: Record<string, unknown>,
+  detail = `${runtime.protocol} / ${runtime.model}`,
+): TextProviderRuntimeEvent {
+  return {
+    eventClass: 'model.completed',
+    kind: 'model',
+    status: 'completed',
+    phase: 'completed',
+    title: 'Provider completed',
+    detail,
+    model: runtime.model,
+    payload: {
+      protocol: runtime.protocol,
+      model: runtime.model,
+      ...payload,
+    },
+  };
+}
+
+function modelFailedEvent(
+  runtime: TextRuntimeConfig,
+  message: string,
+  payload: Record<string, unknown> = {},
+): TextProviderRuntimeEvent {
+  return {
+    eventClass: 'model.failed',
+    kind: 'model',
+    status: 'failed',
+    phase: 'failed',
+    title: 'Provider failed',
+    detail: message,
+    model: runtime.model,
+    payload: {
+      protocol: runtime.protocol,
+      model: runtime.model,
+      error: message,
+      ...payload,
+    },
+  };
+}
+
 class ClaudeSdkTextProvider implements JsonTextProvider {
   async generateJson<T>(input: GenerateJsonInput, runtime: TextRuntimeConfig): Promise<TextGenerationOutput<T>> {
     ensureWorkspaceDirectory(input.workspacePath);
     ensureClaudeConfig();
     const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable();
+    const providerEvents: TextProviderRuntimeEvent[] = [
+      modelRequestedEvent(runtime, 'claude-agent-sdk', runtime.baseUrl),
+    ];
     const options: Options = {
       cwd: input.workspacePath,
       model: runtime.model,
@@ -187,6 +276,16 @@ class ClaudeSdkTextProvider implements JsonTextProvider {
     let structuredOutput: unknown;
     try {
       for await (const message of query({ prompt: input.prompt, options })) {
+        providerEvents.push({
+          eventClass: message.type === 'assistant' ? 'model.delta' : 'run.status',
+          kind: 'model',
+          status: 'completed',
+          phase: message.type === 'assistant' ? 'streaming' : 'waiting_provider',
+          title: 'Claude SDK message',
+          detail: message.type,
+          model: runtime.model,
+          payload: { providerMessageType: message.type },
+        });
         if (message.type === 'assistant') assistantText += contentText(message.message.content);
         if (message.type === 'result') {
           const payload = message as Record<string, unknown>;
@@ -196,7 +295,10 @@ class ClaudeSdkTextProvider implements JsonTextProvider {
           }
           if (payload.subtype && payload.subtype !== 'success') {
             const errors = Array.isArray(payload.errors) ? payload.errors.join('; ') : String(payload.subtype);
-            throw new TextProviderFailedError(errors);
+            throw new TextProviderFailedError(errors, [
+              ...providerEvents,
+              modelFailedEvent(runtime, errors, { subtype: payload.subtype }),
+            ]);
           }
         }
       }
@@ -204,21 +306,45 @@ class ClaudeSdkTextProvider implements JsonTextProvider {
       if (error instanceof TextProviderFailedError) throw error;
       const message = sanitizeProviderError(error);
       if (isAuthError(message)) {
-        throw new TextProviderBlockedError('文字模型无法启动：请先登录 Claude Code，或在设置中保存 Anthropic / Claude API Key 后再生成。');
+        throw new TextProviderBlockedError(
+          '文字模型无法启动：请先登录 Claude Code，或在设置中保存 Anthropic / Claude API Key 后再生成。',
+          [...providerEvents, modelFailedEvent(runtime, message, { auth: true })],
+        );
       }
-      throw new TextProviderFailedError(message);
+      throw new TextProviderFailedError(message, [...providerEvents, modelFailedEvent(runtime, message)]);
     }
 
     const rawText = resultText || assistantText;
-    return { value: parseJsonObject<T>(structuredOutput, rawText), model: runtime.model, rawText, protocol: runtime.protocol };
+    return {
+      value: parseJsonObject<T>(structuredOutput, rawText),
+      model: runtime.model,
+      rawText,
+      protocol: runtime.protocol,
+      providerEvents: [
+        ...providerEvents,
+        modelCompletedEvent(runtime, {
+          transport: 'claude-agent-sdk',
+          resultTextLength: resultText.length,
+          assistantTextLength: assistantText.length,
+          hasStructuredOutput: Boolean(structuredOutput),
+        }),
+      ],
+    };
   }
 }
 
 class AnthropicMessagesTextProvider implements JsonTextProvider {
   async generateJson<T>(input: GenerateJsonInput, runtime: TextRuntimeConfig): Promise<TextGenerationOutput<T>> {
-    if (!runtime.apiKey) throw new TextProviderBlockedError();
+    const endpoint = resolveAnthropicMessagesEndpoint(runtime.baseUrl);
+    const providerEvents: TextProviderRuntimeEvent[] = [modelRequestedEvent(runtime, 'http', endpoint)];
+    if (!runtime.apiKey) {
+      throw new TextProviderBlockedError(undefined, [
+        ...providerEvents,
+        modelFailedEvent(runtime, 'missing api key', { auth: true, endpoint }),
+      ]);
+    }
     try {
-      const response = await fetch(resolveAnthropicMessagesEndpoint(runtime.baseUrl), {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           authorization: `Bearer ${runtime.apiKey}`,
@@ -234,23 +360,52 @@ class AnthropicMessagesTextProvider implements JsonTextProvider {
         }),
       });
       const payload = await readJsonResponse(response) as Record<string, unknown>;
-      if (!response.ok) throw new TextProviderFailedError(providerError(payload, `HTTP ${response.status}`));
+      if (!response.ok) {
+        const message = providerError(payload, `HTTP ${response.status}`);
+        throw new TextProviderFailedError(message, [
+          ...providerEvents,
+          modelFailedEvent(runtime, message, { status: response.status, endpoint }),
+        ]);
+      }
       const rawText = contentText(payload.content);
-      return { value: parseJsonObject<T>(undefined, rawText), model: runtime.model, rawText, protocol: runtime.protocol };
+      return {
+        value: parseJsonObject<T>(undefined, rawText),
+        model: runtime.model,
+        rawText,
+        protocol: runtime.protocol,
+        providerEvents: [
+          ...providerEvents,
+          modelCompletedEvent(runtime, {
+            transport: 'http',
+            endpoint,
+            status: response.status,
+            stopReason: payload.stop_reason,
+            usage: payload.usage,
+            rawTextLength: rawText.length,
+          }),
+        ],
+      };
     } catch (error) {
       if (error instanceof TextProviderFailedError || error instanceof TextProviderBlockedError) throw error;
       const message = sanitizeProviderError(error);
-      if (isAuthError(message)) throw new TextProviderBlockedError();
-      throw new TextProviderFailedError(message);
+      if (isAuthError(message)) throw new TextProviderBlockedError(undefined, [...providerEvents, modelFailedEvent(runtime, message, { auth: true, endpoint })]);
+      throw new TextProviderFailedError(message, [...providerEvents, modelFailedEvent(runtime, message, { endpoint })]);
     }
   }
 }
 
 class OpenAIChatTextProvider implements JsonTextProvider {
   async generateJson<T>(input: GenerateJsonInput, runtime: TextRuntimeConfig): Promise<TextGenerationOutput<T>> {
-    if (!runtime.apiKey) throw new TextProviderBlockedError();
+    const endpoint = resolveOpenAIChatEndpoint(runtime.baseUrl);
+    const providerEvents: TextProviderRuntimeEvent[] = [modelRequestedEvent(runtime, 'http', endpoint)];
+    if (!runtime.apiKey) {
+      throw new TextProviderBlockedError(undefined, [
+        ...providerEvents,
+        modelFailedEvent(runtime, 'missing api key', { auth: true, endpoint }),
+      ]);
+    }
     try {
-      const response = await fetch(resolveOpenAIChatEndpoint(runtime.baseUrl), {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           authorization: `Bearer ${runtime.apiKey}`,
@@ -267,26 +422,55 @@ class OpenAIChatTextProvider implements JsonTextProvider {
         }),
       });
       const payload = await readJsonResponse(response) as Record<string, unknown>;
-      if (!response.ok) throw new TextProviderFailedError(providerError(payload, `HTTP ${response.status}`));
+      if (!response.ok) {
+        const message = providerError(payload, `HTTP ${response.status}`);
+        throw new TextProviderFailedError(message, [
+          ...providerEvents,
+          modelFailedEvent(runtime, message, { status: response.status, endpoint }),
+        ]);
+      }
       const choices = Array.isArray(payload.choices) ? payload.choices : [];
       const first = choices[0] as Record<string, unknown> | undefined;
       const message = first?.message as Record<string, unknown> | undefined;
       const rawText = contentText(message?.content);
-      return { value: parseJsonObject<T>(undefined, rawText), model: runtime.model, rawText, protocol: runtime.protocol };
+      return {
+        value: parseJsonObject<T>(undefined, rawText),
+        model: runtime.model,
+        rawText,
+        protocol: runtime.protocol,
+        providerEvents: [
+          ...providerEvents,
+          modelCompletedEvent(runtime, {
+            transport: 'http',
+            endpoint,
+            status: response.status,
+            finishReason: first?.finish_reason,
+            usage: payload.usage,
+            rawTextLength: rawText.length,
+          }),
+        ],
+      };
     } catch (error) {
       if (error instanceof TextProviderFailedError || error instanceof TextProviderBlockedError) throw error;
       const message = sanitizeProviderError(error);
-      if (isAuthError(message)) throw new TextProviderBlockedError();
-      throw new TextProviderFailedError(message);
+      if (isAuthError(message)) throw new TextProviderBlockedError(undefined, [...providerEvents, modelFailedEvent(runtime, message, { auth: true, endpoint })]);
+      throw new TextProviderFailedError(message, [...providerEvents, modelFailedEvent(runtime, message, { endpoint })]);
     }
   }
 }
 
 class GeminiGenerateContentTextProvider implements JsonTextProvider {
   async generateJson<T>(input: GenerateJsonInput, runtime: TextRuntimeConfig): Promise<TextGenerationOutput<T>> {
-    if (!runtime.apiKey) throw new TextProviderBlockedError();
+    const endpoint = resolveGeminiGenerateContentEndpoint(runtime.baseUrl, runtime.model);
+    const providerEvents: TextProviderRuntimeEvent[] = [modelRequestedEvent(runtime, 'http', endpoint)];
+    if (!runtime.apiKey) {
+      throw new TextProviderBlockedError(undefined, [
+        ...providerEvents,
+        modelFailedEvent(runtime, 'missing api key', { auth: true, endpoint }),
+      ]);
+    }
     try {
-      const response = await fetch(resolveGeminiGenerateContentEndpoint(runtime.baseUrl, runtime.model), {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'x-goog-api-key': runtime.apiKey,
@@ -299,14 +483,36 @@ class GeminiGenerateContentTextProvider implements JsonTextProvider {
         }),
       });
       const payload = await readJsonResponse(response) as Record<string, unknown>;
-      if (!response.ok) throw new TextProviderFailedError(providerError(payload, `HTTP ${response.status}`));
+      if (!response.ok) {
+        const message = providerError(payload, `HTTP ${response.status}`);
+        throw new TextProviderFailedError(message, [
+          ...providerEvents,
+          modelFailedEvent(runtime, message, { status: response.status, endpoint }),
+        ]);
+      }
       const rawText = collectGeminiText(payload);
-      return { value: parseJsonObject<T>(undefined, rawText), model: runtime.model, rawText, protocol: runtime.protocol };
+      return {
+        value: parseJsonObject<T>(undefined, rawText),
+        model: runtime.model,
+        rawText,
+        protocol: runtime.protocol,
+        providerEvents: [
+          ...providerEvents,
+          modelCompletedEvent(runtime, {
+            transport: 'http',
+            endpoint,
+            status: response.status,
+            finishReason: (payload.candidates as Array<Record<string, unknown>> | undefined)?.[0]?.finishReason,
+            usage: payload.usageMetadata,
+            rawTextLength: rawText.length,
+          }),
+        ],
+      };
     } catch (error) {
       if (error instanceof TextProviderFailedError || error instanceof TextProviderBlockedError) throw error;
       const message = sanitizeProviderError(error);
-      if (isAuthError(message)) throw new TextProviderBlockedError();
-      throw new TextProviderFailedError(message);
+      if (isAuthError(message)) throw new TextProviderBlockedError(undefined, [...providerEvents, modelFailedEvent(runtime, message, { auth: true, endpoint })]);
+      throw new TextProviderFailedError(message, [...providerEvents, modelFailedEvent(runtime, message, { endpoint })]);
     }
   }
 }

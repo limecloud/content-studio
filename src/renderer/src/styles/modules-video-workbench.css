@@ -239,6 +239,17 @@
   gap: 10px;
 }
 
+.video-inline-status {
+  align-self: center;
+  border: 1px solid color-mix(in srgb, var(--amber) 34%, var(--line));
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--amber) 10%, var(--panel));
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .video-mode-card,
 .video-placeholder {
   border: 1px solid color-mix(in srgb, var(--cyan) 18%, var(--line));

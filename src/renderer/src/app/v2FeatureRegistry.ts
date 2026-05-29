@@ -2,37 +2,21 @@ import type { ModuleKey, V2ModuleKey } from './types';
 import type { V2FeatureActionSlot, V2FeatureActionTarget, V2FeatureSpec } from './v2FeatureTypes';
 
 export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
-  'image-reference-reverse': {
-    eyebrow: '图片 / 无知识库玩法',
-    title: '对标图反推',
-    description: '上传对标图、产品图和产品资料，反推构图、光线、文字区域和风格，不要求先建知识库。',
-    scope: '参考图反推 -> Prompt 草稿 -> 图片生成',
-    status: '可运行入口',
-    primaryAction: '反推图片 Prompt',
-    secondaryAction: '发送到图片生成',
-    flow: ['参考图', '产品资料', '视觉反推', 'Prompt 草稿', '人工调整', '图片生成'],
-    cards: [
-      { title: '反推维度', text: '结构化输出构图、主体位置、光线、背景、文字区域、画幅和可复用风格。', items: ['构图与画幅', '自然光和背景', '文字留白区'] },
-      { title: '合规边界', text: '只复用风格结构，不复制竞品可识别元素，不编造产品卖点。', items: ['去除竞品 Logo', '保留来源引用', 'Prompt 版本可追溯'] },
-    ],
-    preview: '竖版 4:5，产品位于右下三分之一，早餐桌自然光，左上保留标题空间，手机实拍感，细节真实。',
-    table: [['参考图 A', '已上传', '构图 / 光线', '可分析'], ['产品资料', '待补充', '规格 / 卖点', '人工补齐'], ['Prompt v1', '草稿', '可编辑', '发送图片生成']],
-  },
   'material-breakdown': {
-    eyebrow: '图片 / 素材拆解',
+    eyebrow: '图片 / SOP 提示词',
     title: '拆解素材',
-    description: '上传参考素材，AI 拆解构图、光线、风格和留白，生成可编辑 Prompt 用于图片生成。',
-    scope: '参考素材 -> AI 拆解 -> Prompt 草稿 -> 图片生成',
-    status: '可运行入口',
-    primaryAction: '开始拆解',
-    secondaryAction: '发送到图片生成',
-    flow: ['上传素材', '关联产品', 'AI 拆解', 'Prompt 编辑', '生成图片'],
+    description: '上传参考素材和本方产品资料，AI 拆解画面结构并生成可复制到外部生图工具的 Prompt。',
+    scope: '参考素材 -> 产品约束 -> AI 拆解 -> Prompt 草稿',
+    status: 'Prompt 入口',
+    primaryAction: '生成提示词',
+    secondaryAction: '保存 Prompt',
+    flow: ['上传参考素材', '关联产品', 'AI 拆解', 'Prompt 编辑', '复制外部'],
     cards: [
       { title: '拆解维度', text: '结构化输出构图、主体位置、光线、背景、文字区域、画幅和可复用风格。', items: ['构图与画幅', '光线与背景', '留白与风格'] },
       { title: '合规边界', text: '只学习风格结构，不复制竞品可识别元素，不编造产品卖点。', items: ['去除竞品元素', '保留来源引用', 'Prompt 可追溯'] },
     ],
     preview: '竖版 4:5，产品位于右下三分之一，早餐桌自然光，左上保留标题空间，手机实拍感。',
-    table: [['参考素材', '已上传', '构图 / 光线', '可分析'], ['产品图', '已关联', '产品实物', '替换主体'], ['Prompt', '草稿', '可编辑', '生成图片']],
+    table: [['参考素材', '已上传', '构图 / 光线', '可分析'], ['产品图', '已关联', '产品实物', '替换主体'], ['Prompt', '草稿', '可编辑', '复制外部']],
   },
   'image-scene-prompts': {
     eyebrow: '图片 / 场景库',
@@ -226,6 +210,38 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     preview: '很多人不是不想坚持，而是动作太复杂。把它变成早餐后顺手做的一件事，门槛就低很多。',
     table: [['口播 v1', '草稿', '60s', '待审'], ['短视频 v1', '可用', '15s', '可转 Prompt'], ['字幕卡', '8 张', '待生成', '绿幕图']],
   },
+  'knowledge-map': {
+    eyebrow: '知识库 / 内容地图',
+    title: '内容知识地图',
+    description: '把输入源、品牌 / 产品知识库、场景卡和 Prompt 草稿整理成卖点、痛点、场景、证据和缺口矩阵。',
+    scope: '输入源 -> 品牌知识库 -> 内容知识地图 -> 场景库 / Prompt / SOP',
+    status: '可运行入口',
+    primaryAction: '生成知识地图',
+    secondaryAction: '打开场景库',
+    flow: ['补输入源', '抽取品牌知识库', '生成矩阵', '查看缺口', '交给生产任务', '团队同步'],
+    cards: [
+      { title: '可控穷举', text: '把卖点、痛点、人群、场景和证据拆成矩阵，避免一次性 prompt 漏项。', items: ['卖点矩阵', '痛点矩阵', '场景矩阵'] },
+      { title: '团队边界', text: '本机草稿先生成变更包，再提交到 Bugu 团队工作区；旧版本提交进入冲突队列，不覆盖团队当前版本。', items: ['本机草稿', '团队同步', '冲突处理'] },
+    ],
+    preview: '卖点：便携条包；痛点：坚持门槛高；场景：早餐后放进书包侧袋；证据：产品资料和评论原声。',
+    table: [['卖点矩阵', '待确认', '证据 8 条', '可交接'], ['痛点矩阵', '缺评论', '需补输入源', '待补齐'], ['团队同步', '变更包', '冲突队列', '不覆盖旧版本']],
+  },
+  'knowledge-review': {
+    eyebrow: '知识库 / 审核',
+    title: '审核任务',
+    description: '审核卖点、痛点、场景、证据和风险缺口，支持通过、驳回、补证据和标记禁用。',
+    scope: '内容知识地图 -> 审核任务 -> 决策记录 -> 发布检查',
+    status: '审核入口',
+    primaryAction: '生成审核任务',
+    secondaryAction: '打开知识地图',
+    flow: ['读取矩阵', '生成待审项', '查看证据', '做审核决策', '追加记录', '发布检查'],
+    cards: [
+      { title: '审核对象', text: '待验证主张、缺证据卖点、风险表达和知识地图缺口进入审核任务。', items: ['卖点', '痛点', '场景'] },
+      { title: '决策留痕', text: '审核决策只能追加，保留审核人、时间、前后快照和原因。', items: ['通过', '补证据', '禁用'] },
+    ],
+    preview: '任务：便携条包卖点缺少证据。建议：请求补证据，补充产品资料、测试记录或品牌确认后再进入下游 Prompt。',
+    table: [['缺证据卖点', '待补证据', '高风险', '请求补证据'], ['禁用表达', '待审核', '高风险', '标记禁用'], ['低风险场景', '待确认', '低风险', '通过']],
+  },
   'knowledge-brand': {
     eyebrow: '知识库 / 品牌链路',
     title: '品牌 / 产品知识库',
@@ -266,7 +282,7 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     status: '可运行入口',
     primaryAction: '构建 IP 知识库',
     secondaryAction: '生成场景延伸库',
-    flow: ['导入素材', 'Agent 读取', '生成六层', '补齐缺口', '导出知识库', '延伸场景'],
+    flow: ['导入素材', '读取资料', '生成六层', '补齐缺口', '导出知识库', '延伸场景'],
     cards: [
       { title: '六层结构', text: '身份锚定、价值观立场、声音语言、判断方法、内容素材、创作引擎。', items: ['身份', '语言', '创作引擎'] },
       { title: '场景延伸', text: '口播、朋友圈、私域、产品化和咨询回复都引用同一 IP 知识库版本。', items: ['口播', '私域', '产品化'] },
@@ -290,15 +306,95 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     preview: '转换队列：嘉文老师_IP知识库_v1.0.docx -> markdown；参考视频 01 -> analyze；SKU 表 -> ProductBrief。',
     table: [['DOCX', '已转换 2', '待转换 1', '可重试'], ['参考视频', '待分析', '视频理解', '待配置'], ['SKU 表', '可解析', '变量表', '可运行']],
   },
+  'brand-command-center': {
+    eyebrow: '作战 / 品牌战情室',
+    title: '品牌战情室',
+    description: '从评论痛点、场景机会、缺证据和缺素材出发，组合资源包、发布检查、执行队列和行动记录。',
+    scope: '内容知识地图 -> 信号雷达 -> 资源包 -> 执行队列 -> 行动记录',
+    status: '可运行入口',
+    primaryAction: '生成战情室',
+    secondaryAction: '打开知识地图',
+    flow: ['选择信号', '设定目标', '组合资源包', '发布检查', '进入队列', '行动回写'],
+    cards: [
+      { title: '快速编组', text: '把卖点、证据、场景、Prompt、SOP 和禁用边界组合成一次内容行动。', items: ['信号雷达', '资源包', '负责人'] },
+      { title: '动作边界', text: '队列只管理内容生产和交接，不做自动发布、不绕过审核。', items: ['发布检查', '补资源', '行动记录'] },
+    ],
+    preview: '信号：评论集中问续航。目标：解释异议。资源包：续航卖点、测试证据、通勤场景、禁用表达。动作：生成 FAQ 和短视频 Prompt。',
+    table: [['信号雷达', '3 条', '价值 / 风险评分', '可选择'], ['资源包', '2 个', '缺素材 1 项', '待补齐'], ['执行队列', '5 个动作', '不自动发布', '可交接']],
+  },
+  'brand-command-objectives': {
+    eyebrow: '作战 / 目标树',
+    title: '目标树',
+    description: '把评论、竞品、素材表现和品牌风险转成拉新、转化、信任、价格防守、补证据和补素材目标。',
+    scope: '信号 -> 目标 -> 资源包 -> 队列动作',
+    status: '可运行入口',
+    primaryAction: '生成战情室',
+    secondaryAction: '打开知识地图',
+    flow: ['识别信号', '归类目标', '定义成功标准', '绑定资源包', '生成动作'],
+    cards: [
+      { title: '目标类型', text: '目标不是泛泛“生成内容”，而是可指挥资源的业务意图。', items: ['拉新', '转化', '风险控制'] },
+      { title: '成功标准', text: '每个目标保留渠道、负责人、恢复路径和交付去向。', items: ['渠道', '负责人', '交付物'] },
+    ],
+    preview: '目标：解释续航异议；成功标准：输出 FAQ、详情页模块和短视频 Prompt，缺竖版素材时创建补拍任务。',
+    table: [['续航异议', '信任', '可执行', '资源包已绑定'], ['噪音担忧', '补证据', '待处理', '缺测试记录'], ['价格疑问', '转化', '待确认', '需人工确认']],
+  },
+  'brand-command-bundles': {
+    eyebrow: '作战 / 作战编组',
+    title: '作战编组',
+    description: '把目标所需的卖点、证据、素材、FAQ、Prompt、SOP 和禁用边界组合成资源包。',
+    scope: '目标 -> 资源包 -> 发布检查 -> 执行队列',
+    status: '可运行入口',
+    primaryAction: '生成战情室',
+    secondaryAction: '打开知识地图',
+    flow: ['选择目标', '绑定卖点证据', '绑定素材', '检查边界', '排入队列'],
+    cards: [
+      { title: '资源包', text: '每个人都可以基于同一资源包协作，不再临时翻资料。', items: ['卖点', '证据', '素材'] },
+      { title: '缺口处理', text: '缺证据、缺素材和待审核项不会伪装成可交付动作。', items: ['补证据', '补素材', '送审'] },
+    ],
+    preview: '资源包：低档 9-14h、客服问题、办公室场景卡、禁用表达、FAQ Prompt 和视频素材包 SOP。',
+    table: [['续航资源包', '92%', '1 个素材缺口', '可交接'], ['噪音资源包', '54%', '缺分贝证据', '待补证据'], ['价格资源包', '68%', '待人工确认', '待审核']],
+  },
+  'brand-command-queue': {
+    eyebrow: '作战 / 执行队列',
+    title: '执行队列',
+    description: '把资源包转成可执行、待审核、待补资源和已拦截动作，逐条交接并留下行动记录。',
+    scope: '资源包 -> 发布检查 -> Prompt / SOP / 审核 / 补资源',
+    status: '可运行入口',
+    primaryAction: '处理队列',
+    secondaryAction: '打开知识地图',
+    flow: ['读取资源包', '发布检查', '生成动作', '人工处理', '行动留痕'],
+    cards: [
+      { title: '动作类型', text: '队列只做内容生产和交接，不做自动发布。', items: ['Prompt 草稿', 'SOP 运行', '审核任务'] },
+      { title: '恢复路径', text: '拦截动作必须说明为什么不能执行，以及补什么资料。', items: ['缺证据', '缺素材', '权限不足'] },
+    ],
+    preview: '动作：生成小红书图文 Prompt。检查：证据通过、品牌口径通过、短视频素材缺口只生成补拍任务。',
+    table: [['生成 Prompt', '可执行', '运营', '可交接'], ['补噪音证据', '待补资源', '产品负责人', '创建任务'], ['儿童安全表达', '已拦截', '审核员', '需改写']],
+  },
+  'brand-command-logs': {
+    eyebrow: '作战 / 行动记录',
+    title: '行动记录',
+    description: '追溯谁基于哪些资源生成了什么内容、是否被拦截、交付到了哪里，并支持素材表现回写。',
+    scope: '队列动作 -> 交付物 -> 审核 / 素材回写 -> 下一轮信号',
+    status: '可运行入口',
+    primaryAction: '同步团队记录',
+    secondaryAction: '打开知识地图',
+    flow: ['记录动作', '绑定产物', '同步团队', '素材回写', '复盘下一轮'],
+    cards: [
+      { title: '追溯', text: '记录资源包、审核任务、Prompt 草稿、SOP 运行和素材回写引用。', items: ['资源包', '产物', '团队状态'] },
+      { title: '复盘', text: '高表现标签只用于排序和复盘，不自动改写产品事实。', items: ['表现标签', '覆盖关系', '下一轮信号'] },
+    ],
+    preview: '14:31 生成小红书选题，使用轻量便携、218g 证据、通勤包内图；收藏率高于均值 31%，回写为素材表现信号。',
+    table: [['Prompt 交接', '已记录', '3 个产物', '团队已同步'], ['补素材任务', '待处理', '9:16 视频', '待负责人'], ['素材回写', '已回写', '覆盖 3 个组合', '可复用']],
+  },
   'assets-prompt-workbench': {
     eyebrow: '资产 / 玩法跑通',
     title: 'Prompt 工作台',
-    description: '服务还没有固定 SOP 的探索阶段：多源输入、用户意图、Agent 多轮调整、Prompt 草稿版本和物化入口。',
-    scope: '多源输入 -> Agent 会话 -> Prompt 草稿 -> SOP 草案',
+    description: '多源输入、用户意图、多轮调整、Prompt 草稿版本和物化入口。',
+    scope: '多源输入 -> 对话协作 -> Prompt 草稿 -> SOP 草案',
     status: '可运行入口',
     primaryAction: '生成 Prompt',
     secondaryAction: '物化为 SOP',
-    flow: ['选择输入源', '输入意图', 'Agent 追问', '确认 Prompt', '版本对比', '物化'],
+    flow: ['选择输入源', '输入意图', '追问缺口', '确认 Prompt', '版本对比', '物化'],
     cards: [
       { title: '适用场景', text: '当玩法还没固化时先跑通 Prompt，而不是先做复杂工作流。', items: ['读文档', '看图反推', '视频拆解'] },
       { title: '物化入口', text: '确认过的 Prompt 草稿可沉淀为 Prompt Pack、SOP 或 Skill。', items: ['Prompt Pack', 'SOP', 'Skill'] },
@@ -317,10 +413,10 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     flow: ['输入源', '字段表单', '步骤执行', '人工审核', '入库', '导出'],
     cards: [
       { title: 'SOP 示例', text: '小红书种草图、公众号 IP 内容、详情页素材、视频素材包。', items: ['小红书', '公众号', '详情页'] },
-      { title: '运行记录', text: '保存输入源、Agent 会话、提示词版本、模型、产物、错误和来源引用。', items: ['运行编号', '提示词版本', '产物'] },
+      { title: '运行记录', text: '保存输入源、对话、提示词版本、模型、产物、错误和来源引用。', items: ['运行编号', '提示词版本', '产物'] },
     ],
     preview: '小红书种草图 SOP：产品图 + 参考图 + 产品资料 -> 反推风格 -> 结构化卖点 -> Prompt -> 4 张图 -> 质检 -> 人审 -> 入库。',
-    table: [['小红书种草图', 'P0', '可运行', '表单'], ['公众号 IP 内容', 'P0', '可运行', 'Agent 读文档'], ['视频素材包', 'P1', '草案', '待确认']],
+    table: [['小红书种草图', 'P0', '可运行', '表单'], ['公众号 IP 内容', 'P0', '可运行', '读文档'], ['视频素材包', 'P1', '草案', '待确认']],
   },
   'assets-history': {
     eyebrow: '资产 / 审计',
@@ -365,7 +461,7 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     flow: ['读取定义', '显示节点', '调整依赖', '保存定义', '表单运行'],
     cards: [
       { title: '边界', text: '普通用户不用 canvas 也能完成 SOP；Canvas 不能取代表单执行页。', items: ['非主入口', '非事实源', '高级编辑'] },
-      { title: '节点类型', text: '节点对应工作流步骤：输入源、Agent 读取、参考图反推、视频拆解、生成、审核和导出。', items: ['输入源', 'Agent', '审核'] },
+      { title: '节点类型', text: '节点对应工作流步骤：输入源、资料读取、参考图反推、视频拆解、生成、审核和导出。', items: ['输入源', '读取', '审核'] },
     ],
     preview: '品牌知识库 -> 场景库 -> Prompt 组 -> 图片生成 -> 审核 -> 素材库。保存后同步 SOP 定义。',
     table: [['节点图', '可查看', '高级用户', '非主入口'], ['定义同步', '可保存', 'SOP 定义', '事实源'], ['运行', '表单执行', '普通用户', '推荐']],
@@ -375,11 +471,8 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
 const V2_FEATURE_ACTION_TARGETS: Partial<
   Record<V2ModuleKey, Partial<Record<V2FeatureActionSlot, V2FeatureActionTarget>>>
 > = {
-  'image-reference-reverse': {
-    secondary: { type: 'module', module: 'image' },
-  },
   'material-breakdown': {
-    secondary: { type: 'module', module: 'image' },
+    secondary: { type: 'module', module: 'assets-prompt-workbench' },
   },
   'image-scene-prompts': {
     secondary: { type: 'module', module: 'image' },
@@ -405,6 +498,14 @@ const V2_FEATURE_ACTION_TARGETS: Partial<
   'article-script': {
     secondary: { type: 'module', module: 'image-green-screen' },
   },
+  'knowledge-map': {
+    primary: { type: 'module', module: 'knowledge-brand' },
+    secondary: { type: 'module', module: 'knowledge-scenes' },
+  },
+  'knowledge-review': {
+    primary: { type: 'module', module: 'knowledge-map' },
+    secondary: { type: 'module', module: 'knowledge-map' },
+  },
   'knowledge-brand': {
     primary: { type: 'module', module: 'knowledge-scenes' },
     secondary: { type: 'module', module: 'knowledge' },
@@ -419,6 +520,26 @@ const V2_FEATURE_ACTION_TARGETS: Partial<
   },
   'knowledge-inputs': {
     primary: { type: 'module', module: 'knowledge' },
+  },
+  'brand-command-center': {
+    primary: { type: 'module', module: 'knowledge-map' },
+    secondary: { type: 'module', module: 'knowledge-map' },
+  },
+  'brand-command-objectives': {
+    primary: { type: 'module', module: 'brand-command-center' },
+    secondary: { type: 'module', module: 'knowledge-map' },
+  },
+  'brand-command-bundles': {
+    primary: { type: 'module', module: 'brand-command-center' },
+    secondary: { type: 'module', module: 'knowledge-map' },
+  },
+  'brand-command-queue': {
+    primary: { type: 'module', module: 'brand-command-center' },
+    secondary: { type: 'module', module: 'assets-prompt-workbench' },
+  },
+  'brand-command-logs': {
+    primary: { type: 'module', module: 'brand-command-center' },
+    secondary: { type: 'module', module: 'assets' },
   },
   'assets-prompt-workbench': {
     secondary: { type: 'module', module: 'assets-sop' },

@@ -4,25 +4,19 @@ import type {
   InputSourcePurpose,
   InputSourceRecord,
   InputSourceStatus,
-  MediaGenerationResult,
-  MixPackageAssetKind,
   PromptDraft,
   ReferenceReverseAnalysis,
   ReferenceReverseResult,
 } from '../../../../shared/types';
-import { fileNameFromPath, inputSourceKindLabel, localAssetUrl } from '../../app/formatters';
+import { inputSourceKindLabel, localAssetUrl } from '../../app/formatters';
 
 interface MaterialBreakdownModuleProps {
   workspaceReady: boolean;
   busy: boolean;
+  error?: string | null;
   inputSources: InputSourceRecord[];
-  productImageRefs: string[];
-  referenceImageRefs: string[];
-  mediaResult: MediaGenerationResult | null;
   reverseResult: ReferenceReverseResult | null;
   activePromptDraft?: PromptDraft;
-  onSelectProductImages: () => void;
-  onSelectReferenceImages: () => void;
   onImportInputSource: (purpose: InputSourcePurpose) => void;
   onRegisterManualInputSource: (input: {
     title: string;
@@ -30,6 +24,7 @@ interface MaterialBreakdownModuleProps {
     text: string;
     tags?: string[];
   }) => void;
+  onRemoveInputSource: (sourceId: string) => void;
   onGenerateReversePrompt: (input: {
     referenceSourceIds: string[];
     productSourceIds: string[];
@@ -43,35 +38,6 @@ interface MaterialBreakdownModuleProps {
     content: string;
     note?: string;
     confirm?: boolean;
-  }) => void;
-  onUsePromptInImage: (input: {
-    prompt: string;
-    productImageRefs?: string[];
-    referenceImageRefs?: string[];
-    productImageLabel?: string;
-    referenceImageLabel?: string;
-    featureId?: string;
-    featureTitle?: string;
-  }) => void;
-  onGenerateImage: (input: {
-    prompt: string;
-    productImageRefs?: string[];
-    referenceImageRefs?: string[];
-    productImageLabel?: string;
-    referenceImageLabel?: string;
-    featureId?: string;
-    featureTitle?: string;
-  }) => void;
-  onReviewAsset: (input: {
-    assetKey: string;
-    kind: MixPackageAssetKind;
-    sourceType: 'generation-log' | 'manual';
-    sourceId?: string;
-    path: string;
-    title: string;
-    status: 'approved' | 'rejected';
-    note?: string;
-    tags?: string[];
   }) => void;
 }
 
@@ -107,11 +73,6 @@ function selectedSources(sources: InputSourceRecord[], ids: string[]): InputSour
   return sources.filter((s) => selected.has(s.id));
 }
 
-function generatedImageRefs(result: MediaGenerationResult | null): string[] {
-  if (result?.status !== 'succeeded') return [];
-  return result.assetRefs.filter((r) => /\.(png|jpe?g|webp|gif|avif)(?:[?#].*)?$/i.test(r));
-}
-
 function analysisCards(analysis?: ReferenceReverseAnalysis | null) {
   return [
     { title: '构图', value: analysis?.composition, icon: '◧' },
@@ -134,28 +95,22 @@ function promptFromAnalysis(analysis?: ReferenceReverseAnalysis | null): string 
 export function MaterialBreakdownModule({
   workspaceReady,
   busy,
+  error,
   inputSources,
-  productImageRefs,
-  referenceImageRefs,
-  mediaResult,
   reverseResult,
   activePromptDraft,
-  onSelectProductImages,
-  onSelectReferenceImages,
   onImportInputSource,
   onRegisterManualInputSource,
+  onRemoveInputSource,
   onGenerateReversePrompt,
   onUpdatePromptDraft,
-  onUsePromptInImage,
-  onGenerateImage,
-  onReviewAsset,
 }: MaterialBreakdownModuleProps) {
   const [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [productIds, setProductIds] = useState<string[]>([]);
   const [platform, setPlatform] = useState(PLATFORM_OPTIONS[0]);
   const [targetFormat, setTargetFormat] = useState<GlobalGenerationParams['aspectRatio']>('4:5');
   const [productBrief, setProductBrief] = useState('');
-  const [userIntent, setUserIntent] = useState('拆解参考图的构图、光线和留白，保留真实感，替换为本方产品。');
+  const [userIntent, setUserIntent] = useState('参考 SOP 示例图生成同类小红书种草图 Prompt：学习构图、光线、文字排版和留白，替换为本方产品，不直接生成图片。');
   const [promptText, setPromptText] = useState('');
   const [copied, setCopied] = useState(false);
 
@@ -170,30 +125,46 @@ export function MaterialBreakdownModule({
   const selectedReferenceSources = useMemo(() => selectedSources(referenceSources, referenceIds), [referenceIds, referenceSources]);
   const selectedProductSources = useMemo(() => selectedSources(productSources, productIds), [productIds, productSources]);
   const selectedReferenceRefs = useMemo(
-    () => imageSourcesFromRefs([...referenceImageRefs, ...sourceAssetRefs(selectedReferenceSources)]),
-    [referenceImageRefs, selectedReferenceSources],
+    () => imageSourcesFromRefs(sourceAssetRefs(selectedReferenceSources)),
+    [selectedReferenceSources],
   );
   const selectedProductRefs = useMemo(
-    () => imageSourcesFromRefs([...productImageRefs, ...sourceAssetRefs(selectedProductSources)]),
-    [productImageRefs, selectedProductSources],
+    () => imageSourcesFromRefs(sourceAssetRefs(selectedProductSources)),
+    [selectedProductSources],
   );
-  const outputRefs = useMemo(() => generatedImageRefs(mediaResult), [mediaResult]);
   const analysis = reverseResult?.analysis;
   const draftForResult = reverseResult?.promptDraft;
-  const draftContent = activeDraftContent(draftForResult);
-  const canBreakdown = workspaceReady && !busy && referenceIds.length > 0 && userIntent.trim().length > 0;
+  const activeDraftFallback = activePromptDraft?.purpose === 'image' ? activeDraftContent(activePromptDraft) : '';
+  const draftContent = activeDraftContent(draftForResult) || activeDraftFallback;
+  const missingItems = [
+    selectedReferenceRefs.length === 0 ? '参考素材' : '',
+    productIds.length === 0 ? '产品图或已登记产品资料' : '',
+    userIntent.trim().length === 0 ? '拆解目标' : '',
+  ].filter(Boolean);
+  const canBreakdown = workspaceReady && !busy && referenceIds.length > 0 && productIds.length > 0 && userIntent.trim().length > 0;
   const canUsePrompt = promptText.trim().length > 0;
+  const showRetry = Boolean(error) && canBreakdown;
 
 
   useEffect(() => {
     if (referenceIds.length || referenceSources.length === 0) return;
-    setReferenceIds(referenceSources.slice(0, 2).map((s) => s.id));
+    setReferenceIds(referenceSources.slice(0, 4).map((s) => s.id));
   }, [referenceIds.length, referenceSources]);
 
   useEffect(() => {
     if (productIds.length || productSources.length === 0) return;
     setProductIds(productSources.slice(0, 2).map((s) => s.id));
   }, [productIds.length, productSources]);
+
+  useEffect(() => {
+    const availableIds = new Set(referenceSources.map((source) => source.id));
+    setReferenceIds((current) => current.filter((id) => availableIds.has(id)));
+  }, [referenceSources]);
+
+  useEffect(() => {
+    const availableIds = new Set(productSources.map((source) => source.id));
+    setProductIds((current) => current.filter((id) => availableIds.has(id)));
+  }, [productSources]);
 
   useEffect(() => {
     const nextPrompt = draftContent || promptFromAnalysis(analysis);
@@ -207,6 +178,13 @@ export function MaterialBreakdownModule({
       text: productBrief,
       tags: ['素材拆解', platform],
     });
+    setProductBrief('');
+  }
+
+  function removeSource(source: InputSourceRecord): void {
+    const confirmed = window.confirm(`从当前工作区移除「${source.title}」？原始文件不会从磁盘删除。`);
+    if (!confirmed) return;
+    onRemoveInputSource(source.id);
   }
 
   function runBreakdown(): void {
@@ -217,6 +195,8 @@ export function MaterialBreakdownModule({
         userIntent,
         `平台：${platform}`,
         `目标画幅：${targetFormat}`,
+        '输出要求：只生成可复制到外部生图工具的图片 Prompt，不创建图片生成任务。',
+        '提示词数量：围绕参考素材输出 3-4 个同风格变体方向。',
         productBrief.trim() ? `补充产品资料：${productBrief.trim()}` : '',
       ].filter(Boolean).join('\n'),
       platform,
@@ -230,7 +210,7 @@ export function MaterialBreakdownModule({
     onUpdatePromptDraft({
       draftId: draftForResult.id,
       content: promptText,
-      note: confirm ? '素材拆解确认版本' : '素材拆解编辑版本',
+      note: confirm ? '素材拆解 Prompt 确认版本' : '素材拆解 Prompt 编辑版本',
       confirm,
     });
   }
@@ -242,95 +222,72 @@ export function MaterialBreakdownModule({
     window.setTimeout(() => setCopied(false), 1400);
   }
 
-  function handoffToImage(generate: boolean): void {
-    const input = {
-      prompt: promptText,
-      productImageRefs: selectedProductRefs,
-      referenceImageRefs: selectedReferenceRefs,
-      productImageLabel: '产品图',
-      referenceImageLabel: '参考素材',
-      featureId: 'material-breakdown',
-      featureTitle: '拆解素材',
-    };
-    if (generate) onGenerateImage(input);
-    else onUsePromptInImage(input);
-  }
-
-  function reviewOutput(ref: string, status: 'approved' | 'rejected'): void {
-    onReviewAsset({
-      assetKey: `material-breakdown:${mediaResult?.logId ?? 'manual'}:${ref}`,
-      kind: 'image',
-      sourceType: mediaResult?.logId ? 'generation-log' : 'manual',
-      sourceId: mediaResult?.logId,
-      path: ref,
-      title: fileNameFromPath(ref),
-      status,
-      note: status === 'approved' ? '素材拆解审核通过，入库。' : '素材拆解审核驳回，需调整。',
-      tags: ['素材拆解', platform, targetFormat],
-    });
-  }
-
-
   return (
     <section className="ai-breakdown-shell">
       <aside className="ai-breakdown-sidebar">
-        <div className="ai-breakdown-upload-zone">
-          <button className="ai-breakdown-upload-btn" disabled={!workspaceReady || busy} onClick={() => onImportInputSource('reference')}>
-            <span className="ai-breakdown-upload-icon">+</span>
-            <span>上传参考素材</span>
-            <small>支持图片，拖拽或点击上传</small>
-          </button>
-        </div>
+        <header className="ai-breakdown-header">
+          <p className="eyebrow">图片 SOP / 提示词生成</p>
+          <h2>拆解素材</h2>
+          <span>用参考素材学习画面结构，用本方产品替换主体，只生成可复制 Prompt。</span>
+        </header>
 
-        {selectedReferenceRefs.length > 0 && (
-          <div className="ai-breakdown-thumb-strip">
-            {selectedReferenceRefs.map((ref) => (
-              <figure key={ref} className="ai-breakdown-thumb">
-                <img src={localAssetUrl(ref)} alt="" />
-              </figure>
-            ))}
-          </div>
-        )}
-
-        <div className="ai-breakdown-section">
-          <h4>产品图</h4>
-          <div className="ai-breakdown-upload-row">
-            <button className="ai-breakdown-btn-ghost" disabled={!workspaceReady || busy} onClick={onSelectProductImages}>
-              选择产品图
+        <div className="ai-breakdown-input-card">
+          <div className="ai-breakdown-input-title">
+            <div>
+              <strong>参考素材</strong>
+              <small>学习构图、光线、文字排版和留白，不作为产品主体。</small>
+            </div>
+            <button className="ai-breakdown-btn-ghost small" disabled={!workspaceReady || busy} onClick={() => onImportInputSource('reference')}>
+              上传参考
             </button>
           </div>
-          {selectedProductRefs.length > 0 && (
-            <div className="ai-breakdown-thumb-strip">
-              {selectedProductRefs.map((ref) => (
-                <figure key={ref} className="ai-breakdown-thumb">
-                  <img src={localAssetUrl(ref)} alt="" />
-                </figure>
-              ))}
-            </div>
-          )}
+          <ImageStrip refs={selectedReferenceRefs} emptyText="还没有参考图" />
+          <SourcePicker
+            title="参考源"
+            sources={referenceSources}
+            selectedIds={referenceIds}
+            onChange={setReferenceIds}
+            onRemove={removeSource}
+            busy={busy}
+          />
         </div>
 
-        <div className="ai-breakdown-section">
-          <h4>产品资料</h4>
+        <div className="ai-breakdown-input-card">
+          <div className="ai-breakdown-input-title">
+            <div>
+              <strong>本方产品</strong>
+              <small>作为图片主体和卖点事实来源。</small>
+            </div>
+            <button className="ai-breakdown-btn-ghost small" disabled={!workspaceReady || busy} onClick={() => onImportInputSource('product-brief')}>
+              上传产品图
+            </button>
+          </div>
+          <ImageStrip refs={selectedProductRefs} emptyText="还没有产品图" />
+          <SourcePicker
+            title="产品源"
+            sources={productSources}
+            selectedIds={productIds}
+            onChange={setProductIds}
+            onRemove={removeSource}
+            busy={busy}
+          />
           <textarea
             className="ai-breakdown-brief"
             value={productBrief}
-            placeholder="简要描述产品特点、使用场景..."
+            placeholder="补充产品名称、卖点、适用场景、禁用词..."
             onChange={(e) => setProductBrief(e.target.value)}
           />
-          {productBrief.trim() && (
-            <button className="ai-breakdown-btn-ghost small" disabled={!workspaceReady || busy} onClick={registerBrief}>
-              登记资料
-            </button>
-          )}
+          <button className="ai-breakdown-btn-ghost small" disabled={!workspaceReady || busy || !productBrief.trim()} onClick={registerBrief}>
+            登记产品资料
+          </button>
         </div>
 
         <div className="ai-breakdown-section">
-          <h4>拆解意图</h4>
+          <h4>拆解目标</h4>
           <textarea
             className="ai-breakdown-intent"
             value={userIntent}
-            placeholder="描述你想从参考素材中学习什么..."
+            placeholder="描述这次要生成什么类型的提示词..."
             onChange={(e) => setUserIntent(e.target.value)}
           />
         </div>
@@ -350,36 +307,38 @@ export function MaterialBreakdownModule({
           </label>
         </div>
 
-        {referenceSources.length > 0 && (
-          <div className="ai-breakdown-source-list">
-            <h4>参考源 <small>{referenceIds.length}/{referenceSources.length}</small></h4>
-            {referenceSources.map((s) => (
-              <label key={s.id} className="ai-breakdown-source-row">
-                <input
-                  type="checkbox"
-                  checked={referenceIds.includes(s.id)}
-                  onChange={(e) => setReferenceIds(
-                    e.target.checked ? [...referenceIds, s.id].slice(0, 8) : referenceIds.filter((id) => id !== s.id),
-                  )}
-                />
-                <span>{s.title}</span>
-                <small>{inputSourceKindLabel(s.kind)} · {INPUT_SOURCE_STATUS_LABELS[s.status]}</small>
-              </label>
-            ))}
+        {missingItems.length > 0 && (
+          <div className="ai-breakdown-inline-note">
+            还需：{missingItems.join('、')}
           </div>
         )}
 
         <button className="ai-breakdown-primary-btn" disabled={!canBreakdown} onClick={runBreakdown}>
-          {analysis ? '重新拆解' : '开始拆解'}
+          {analysis ? '重新生成提示词' : '生成提示词'}
         </button>
       </aside>
 
       <main className="ai-breakdown-canvas">
-        {!analysis && !outputRefs.length && (
+        {error && (
+          <section className="ai-breakdown-error-state" role="alert">
+            <span className="ai-breakdown-badge warning">未完成</span>
+            <div>
+              <h3>素材拆解没有生成</h3>
+              <p>{error}</p>
+            </div>
+            {showRetry ? (
+              <button className="ai-breakdown-btn-ghost small" disabled={busy} onClick={runBreakdown}>
+                重试生成
+              </button>
+            ) : null}
+          </section>
+        )}
+
+        {!analysis && (
           <div className="ai-breakdown-empty-state">
             <span className="ai-breakdown-empty-icon">✦</span>
-            <h3>上传参考素材，AI 帮你拆解</h3>
-            <p>分析构图、光线、风格和留白，生成可编辑 Prompt</p>
+            <h3>按 SOP 上传参考素材和产品资料</h3>
+            <p>系统只生成提示词，不在本页创建图片生成任务。</p>
           </div>
         )}
 
@@ -438,7 +397,7 @@ export function MaterialBreakdownModule({
               <h3>Prompt</h3>
               <div className="ai-breakdown-prompt-actions">
                 <button className="ai-breakdown-btn-ghost small" disabled={!canUsePrompt} onClick={copyPrompt}>
-                  {copied ? '已复制' : '复制'}
+                  {copied ? '已复制' : '复制 Prompt'}
                 </button>
                 <button className="ai-breakdown-btn-ghost small" disabled={!draftForResult?.id || !canUsePrompt} onClick={() => savePrompt(false)}>
                   保存
@@ -451,45 +410,88 @@ export function MaterialBreakdownModule({
             <textarea
               className="ai-breakdown-prompt-textarea"
               value={promptText}
-              placeholder="拆解后会生成可编辑 Prompt..."
+              placeholder="生成后会出现可编辑、可复制的 Prompt..."
               onChange={(e) => setPromptText(e.target.value)}
             />
             <div className="ai-breakdown-prompt-footer">
-              <button className="ai-breakdown-primary-btn" disabled={!canUsePrompt || busy} onClick={() => handoffToImage(true)}>
-                生成图片
-              </button>
-              <button className="ai-breakdown-btn-ghost" disabled={!canUsePrompt} onClick={() => handoffToImage(false)}>
-                发送到图片生成
+              <button className="ai-breakdown-primary-btn" disabled={!canUsePrompt} onClick={copyPrompt}>
+                {copied ? '已复制' : '复制到外部工具'}
               </button>
             </div>
           </section>
         )}
 
-        {outputRefs.length > 0 && (
-          <section className="ai-breakdown-output">
-            <header className="ai-breakdown-section-header">
-              <h3>生成结果</h3>
-              {mediaResult && (
-                <span className={`ai-breakdown-badge ${mediaResult.status === 'succeeded' ? 'ready' : ''}`}>
-                  {mediaResult.status === 'succeeded' ? '生成完成' : mediaResult.message}
-                </span>
-              )}
-            </header>
-            <div className="ai-breakdown-output-grid">
-              {outputRefs.map((ref) => (
-                <article key={ref} className="ai-breakdown-output-card">
-                  <img src={localAssetUrl(ref)} alt="" />
-                  <div className="ai-breakdown-output-actions">
-                    <button className="approve" onClick={() => reviewOutput(ref, 'approved')}>通过</button>
-                    <button className="reject" onClick={() => reviewOutput(ref, 'rejected')}>驳回</button>
-                  </div>
-                  <span className="ai-breakdown-output-name">{fileNameFromPath(ref)}</span>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
+        <aside className="ai-breakdown-boundary">
+          <strong>生成边界</strong>
+          <span>只复用参考素材的风格结构，不复制可识别品牌元素。</span>
+          <span>产品卖点以本方产品资料为准，不编造功效承诺。</span>
+          <span>本页只交付 Prompt，图片生成在外部工具或其他工作台完成。</span>
+        </aside>
       </main>
     </section>
+  );
+}
+
+function ImageStrip({ refs, emptyText }: { refs: string[]; emptyText: string }) {
+  if (!refs.length) {
+    return <div className="ai-breakdown-image-empty">{emptyText}</div>;
+  }
+  return (
+    <div className="ai-breakdown-thumb-strip">
+      {refs.map((ref) => (
+        <figure key={ref} className="ai-breakdown-thumb">
+          <img src={localAssetUrl(ref)} alt="" />
+        </figure>
+      ))}
+    </div>
+  );
+}
+
+function SourcePicker({
+  title,
+  sources,
+  selectedIds,
+  onChange,
+  onRemove,
+  busy,
+}: {
+  title: string;
+  sources: InputSourceRecord[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  onRemove: (source: InputSourceRecord) => void;
+  busy: boolean;
+}) {
+  if (!sources.length) return null;
+  return (
+    <div className="ai-breakdown-source-list">
+      <h4>{title} <small>{selectedIds.length}/{sources.length}</small></h4>
+      {sources.map((source) => (
+        <div key={source.id} className="ai-breakdown-source-row">
+          <input
+            type="checkbox"
+            checked={selectedIds.includes(source.id)}
+            disabled={busy}
+            onChange={(event) => onChange(
+              event.target.checked
+                ? [...selectedIds, source.id].slice(0, 8)
+                : selectedIds.filter((id) => id !== source.id),
+            )}
+          />
+          <span className="ai-breakdown-source-title">{source.title}</span>
+          <button
+            type="button"
+            className="ai-breakdown-source-remove"
+            disabled={busy}
+            title="从当前工作区移除"
+            aria-label={`移除 ${source.title}`}
+            onClick={() => onRemove(source)}
+          >
+            删除
+          </button>
+          <small>{inputSourceKindLabel(source.kind)} · {INPUT_SOURCE_STATUS_LABELS[source.status]}</small>
+        </div>
+      ))}
+    </div>
   );
 }

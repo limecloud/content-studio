@@ -106,7 +106,7 @@ KnowledgeBase / InputSource
 | 品牌 / 产品知识库 -> 场景库 -> 提示词组 | 云端向量数据库 |
 | IP 知识库六层体系导入 / 构建 | 团队权限后台 |
 | Prompt 工作台和 Prompt 版本 | 云端向量数据库 |
-| 对标图反推 Prompt | 全平台自动发布 |
+| 拆解素材生成 Prompt | 全平台自动发布 |
 | DOCX / Markdown 知识库导入和转换 | 全平台自动发布 |
 | Claude SDK Agent 读取知识库并生成 Prompt | 数据追踪大屏 |
 | Prompt 模板和 Skill 封装 | 多人权限管理 |

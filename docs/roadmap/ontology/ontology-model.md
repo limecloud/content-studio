@@ -7,7 +7,7 @@
 
 Ontology 的运行时模型先采用本地 JSON 事实源，而不是直接引入 RDF / OWL 运行时。原因是当前产品的核心需求是内容生产、证据追溯和矩阵覆盖，不是通用语义推理平台。
 
-对外发布和知识库互操作对齐 Agent Knowledge v0.7.0 ontology-aware 知识包：Content Studio 内部继续维护可编辑事实源，发布时序列化为 `KNOWLEDGE.md` + `ontology/` 的目录包。
+对外发布和知识库互操作对齐 Agent Knowledge v0.7.2 ontology-aware 知识包：Content Studio 内部继续维护可编辑事实源，发布时序列化为 `KNOWLEDGE.md` + `ontology/` 的目录包。
 
 ```text
 OntologyWorkspace
@@ -573,7 +573,7 @@ Prompt 不应注入完整 Ontology，而应注入与本次任务相关的子图�
 输出：10 条 UGC 手机实拍图片 Prompt
 ```
 
-## 7. Agent Knowledge v0.7.0 发布包模型
+## 7. Agent Knowledge v0.7.2 发布包模型
 
 Agent Knowledge 包是审核后 Ontology 的发布形态，不是内部编辑态。Content Studio 可以重新生成包，但不能把包内数据反向当成可执行流程。
 

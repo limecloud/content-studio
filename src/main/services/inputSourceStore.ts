@@ -76,6 +76,16 @@ export class InputSourceStore {
     return sources.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  async remove(workspacePath: string, sourceId: string): Promise<InputSourceRecord | null> {
+    const id = sourceId.trim();
+    if (!id) throw new Error('输入源 ID 为空。');
+    const existing = await this.list(workspacePath);
+    const removed = existing.find((source) => source.id === id);
+    if (!removed) return null;
+    await writeJsonFile(inputSourcesFilePath(workspacePath), existing.filter((source) => source.id !== id));
+    return removed;
+  }
+
   async register(input: RegisterInputSourceInput): Promise<InputSourceRecord> {
     const now = new Date().toISOString();
     const text = normalizeText(input.text);

@@ -80,8 +80,13 @@ export class SettingsStore {
     const settings = await this.readRaw();
     if (!settings.workspacePath) {
       await mkdir(this.defaultWorkspacePath, { recursive: true });
-      settings.workspacePath = this.defaultWorkspacePath;
-      await this.writeRaw(settings);
+      const latest = await this.readRaw();
+      if (!latest.workspacePath) {
+        latest.workspacePath = this.defaultWorkspacePath;
+        await this.writeRaw(latest);
+      } else {
+        await mkdir(latest.workspacePath, { recursive: true });
+      }
     } else {
       await mkdir(settings.workspacePath, { recursive: true });
     }

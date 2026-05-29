@@ -32,7 +32,7 @@ Ontology 是布谷AI内容工厂的内容生产知识地图和内容作战操作
 3. Ontology 不是一次性 LLM 输出；生产级构建必须拆步骤、可校验、可人审。
 4. Ontology 运行时事实源优先是本地 JSON；RDF / OWL 只是后续互操作导出。
 5. 所有用户可见内容主张必须可追溯来源；没有证据的主张只能标记为待验证，不能伪造成事实。
-6. Ontology 对外发布必须对齐 Agent Knowledge v0.7.0 ontology-aware 知识包，保证知识库、Prompt 工作台和后续 Agent 客户端使用同一数据标准。
+6. Ontology 对外发布必须对齐 Agent Knowledge v0.7.2 ontology-aware 知识包，保证知识库、Prompt 工作台和后续 Agent 客户端使用同一数据标准。
 7. Operational Ontology 只把合法、真实、可审核的内容行动纳入系统，不做虚假舆论操控、自动刷量或绕过平台规则的动作。
 
 ## 3. 用户问题
@@ -62,7 +62,7 @@ Ontology 是布谷AI内容工厂的内容生产知识地图和内容作战操作
 9. 支持人工审核：通过、驳回、合并、拆分、改名、降级为待验证。
 10. 支持把审核通过的结构输出到场景库、PromptDraft、PromptGroup、SOP 和审核台。
 11. 支持成功素材回写 Ontology，标记哪些组合产生过高质量素材。
-12. 支持将审核后的 Ontology 导出为 Agent Knowledge v0.7.0 ontology-aware 知识包，包含 `KNOWLEDGE.md`、`ontology/`、`metadata.primaryOntology` 和 provenance。
+12. 支持将审核后的 Ontology 导出为 Agent Knowledge v0.7.2 ontology-aware 知识包，包含 `KNOWLEDGE.md`、`ontology/`、`metadata.primaryOntology` 和 provenance。
 13. 支持 Operational Ontology 对象：`Signal`、`Objective`、`CampaignCell`、`ResourceBundle`、`ActionType`、`ActionLog`、`DecisionGate` 和 `FeedbackLoop`。
 14. 支持把审核通过的资源组合快速触发标准动作，例如生成 Prompt、补证据、发起审核、启动 SOP 和回写覆盖矩阵。
 15. 支持 v1 导出 JSON-LD / RDF / Turtle 之一，便于和外部知识图谱工具互操作。
@@ -152,7 +152,7 @@ Ontology 是布谷AI内容工厂的内容生产知识地图和内容作战操作
 - Prompt 工作台按相关子图注入上下文。
 - 审核台展示 Ontology 风险和覆盖。
 - SOP 可按 Ontology 组合批量运行。
-- Agent Knowledge v0.7.0 ontology-aware 知识包导出。
+- Agent Knowledge v0.7.2 ontology-aware 知识包导出。
 - Signal、Objective、CampaignCell、ResourceBundle、ActionType 和 DecisionGate。
 - 标准动作执行前校验权限、证据、审核状态和渠道风险。
 - JSON-LD / RDF / Turtle 导出之一。
@@ -189,7 +189,7 @@ Ontology 是布谷AI内容工厂的内容生产知识地图和内容作战操作
 6. 能从审核通过的组合生成 SceneCard 或 PromptDraft。
 7. 能保存构建运行记录，记录输入源、模型、提示词版本、校验问题和人工审核结果。
 8. 能保存最小 ActionLog，记录从覆盖矩阵组合到 PromptDraft / WorkflowRun 的行动链路。
-9. 能导出符合 Agent Knowledge v0.7.0 的 ontology-aware 知识包，并通过包结构校验。
+9. 能导出符合 Agent Knowledge v0.7.2 的 ontology-aware 知识包，并通过包结构校验。
 10. 未配置模型时显示 blocked，不伪造 Ontology。
 
 ## 12. 风险与待确认

@@ -269,6 +269,7 @@ function sourceSectionType(source: InputSourceRecord, definition: WorkflowDefini
   if (source.purpose === 'brand-kb') return 'brand';
   if (source.purpose === 'product-brief') return 'product';
   if (source.purpose === 'user-feedback') return 'objection-handling';
+  if (source.purpose === 'competitor-observation') return 'scenario-script';
   if (source.purpose === 'reference') return 'scenario-script';
   return definition.key.includes('video') ? 'scenario-script' : 'product';
 }
@@ -280,6 +281,7 @@ function citationFromInputSource(source: InputSourceRecord, definition: Workflow
     'brand-kb': '品牌 / 产品知识库',
     'ip-kb': 'IP 知识库',
     'ip-scenario-kb': 'IP 场景库',
+    'competitor-observation': '竞品观察',
     reference: '参考素材',
     'product-brief': '产品资料',
     'user-feedback': '评论 / 客服问题',
@@ -995,7 +997,7 @@ export class WorkflowEngine {
       .map((source) => source.id);
     if (referenceSourceIds.length === 0) {
       return {
-        run: this.patchStep(run, step, 'blocked', '缺少参考图 / 参考视频输入源，无法进行对标图反推。', {
+        run: this.patchStep(run, step, 'blocked', '缺少参考图 / 参考视频输入源，无法进行素材拆解。', {
           action: 'missing-reference-source',
           inputSourceIds: context.inputSourceIds,
         }, [], 'WORKFLOW_REFERENCE_SOURCE_MISSING'),
@@ -1017,7 +1019,7 @@ export class WorkflowEngine {
         run,
         step,
         'succeeded',
-        '已通过真实视觉理解服务完成对标图反推，并生成图片提示词草稿。',
+        '已通过真实视觉理解服务完成素材拆解，并生成图片提示词草稿。',
         {
           logId: result.logId,
           promptDraftId: result.promptDraft.id,
@@ -1229,7 +1231,7 @@ export class WorkflowEngine {
   ): Promise<{ run: WorkflowRunRecord; stop: boolean }> {
     if (context.inputSourceIds.length === 0) {
       return {
-        run: this.patchStep(run, step, 'blocked', '缺少可读输入源，无法启动 Agent 会话。', {
+        run: this.patchStep(run, step, 'blocked', '缺少可读输入源，无法开始对话。', {
           action: 'missing-input-source',
         }, [], 'WORKFLOW_INPUT_SOURCE_MISSING'),
         stop: true,
@@ -1239,7 +1241,7 @@ export class WorkflowEngine {
     const result = await this.agentSessions.start({
       workspacePath: run.workspacePath,
       workflowRunId: run.id,
-      title: `${definition.title} Agent 会话`,
+      title: `${definition.title}协作`,
       purpose: promptPurposeFor(definition, step),
       userIntent: [
         compactText(run.inputs.intent, definition.description),
@@ -1269,7 +1271,7 @@ export class WorkflowEngine {
         run,
         step,
         blocked ? 'blocked' : 'succeeded',
-        blocked ? 'Agent 会话已保存，但文字模型未配置，等待配置后继续。' : 'Agent 会话已读取输入源并生成首版提示词草稿。',
+        blocked ? '对话已保存，但文字模型未配置，等待配置后继续。' : '已读取输入源并生成首版提示词草稿。',
         {
           agentSessionId: result.session.id,
           promptDraftId: result.draft.id,

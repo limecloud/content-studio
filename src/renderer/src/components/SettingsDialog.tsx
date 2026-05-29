@@ -597,9 +597,9 @@ export function SettingsDialog({
               </div>
 
               <div className="about-links-section">
-                <button className="about-link-btn" disabled>服务条款（后续提供）</button>
-                <button className="about-link-btn" disabled>隐私政策（后续提供）</button>
-                <button className="about-link-btn" disabled>官方网站（后续提供）</button>
+                <span className="about-link-text">服务条款待配置</span>
+                <span className="about-link-text">隐私政策待配置</span>
+                <span className="about-link-text">官方网站待配置</span>
               </div>
             </div>
           ) : (

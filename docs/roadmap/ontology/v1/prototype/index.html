@@ -1,0 +1,3844 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>布谷AI内容工厂 内容知识地图原型</title>
+  <style>
+    :root {
+      --bg: #f4f7f6;
+      --panel: #ffffff;
+      --panel-soft: #f8faf9;
+      --line: #dfe8e4;
+      --line-strong: #bfd2ca;
+      --text: #1f2a24;
+      --secondary: #587066;
+      --muted: #8b9b94;
+      --green: #395745;
+      --green-soft: #edf5f0;
+      --blue: #2f6f9f;
+      --blue-soft: #edf6fb;
+      --amber: #a76516;
+      --amber-soft: #fff6e5;
+      --red: #b42318;
+      --red-soft: #fff1f0;
+      --purple: #6c4ab6;
+      --purple-soft: #f3f0ff;
+      --radius: 8px;
+      --shadow: 0 10px 28px rgba(20, 31, 27, 0.06);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 1440px;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      letter-spacing: 0;
+    }
+
+    button, input, textarea, select { font: inherit; }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 244px minmax(860px, 1fr) 360px;
+      gap: 18px;
+      padding: 18px;
+    }
+
+    .side,
+    .main,
+    .right {
+      min-height: 0;
+    }
+
+    .side,
+    .right {
+      position: sticky;
+      top: 18px;
+      max-height: calc(100vh - 36px);
+      overflow-y: auto;
+    }
+
+    .side {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .brand,
+    .workspace,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 14px;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--green);
+      font-weight: 900;
+    }
+
+    .brand small,
+    .workspace small,
+    .label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .brand strong {
+      display: block;
+      margin-top: 2px;
+      font-size: 18px;
+    }
+
+    .workspace {
+      padding: 14px;
+    }
+
+    .workspace strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .nav {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav-group {
+      display: grid;
+      gap: 2px;
+    }
+
+    .nav-title {
+      padding: 7px 8px 4px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .nav-item {
+      width: 100%;
+      min-height: 38px;
+      display: grid;
+      grid-template-columns: 22px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--secondary);
+      text-align: left;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .nav-item.active {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: var(--line-strong);
+    }
+
+    .nav-item .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #c8d6d0;
+    }
+
+    .nav-item.active .dot { background: var(--green); }
+
+    .count {
+      color: var(--green);
+      background: #eef7f2;
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .account {
+      margin-top: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      color: var(--secondary);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .avatar {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--green);
+      background: var(--green-soft);
+      font-weight: 900;
+    }
+
+    .main {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 16px;
+      min-height: 76px;
+      padding: 15px 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .crumb {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .page-title {
+      margin: 4px 0 0;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn {
+      height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .btn.primary {
+      color: #fff;
+      background: var(--green);
+      border-color: var(--green);
+    }
+
+    .btn.blue {
+      color: var(--blue);
+      background: var(--blue-soft);
+      border-color: #c9e2f1;
+    }
+
+    .btn:disabled {
+      color: #a7b2ad;
+      background: #f1f4f3;
+      cursor: not-allowed;
+    }
+
+    .page {
+      display: none;
+      gap: 14px;
+    }
+
+    .page.active {
+      display: grid;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .wide-grid {
+      display: grid;
+      grid-template-columns: 1.7fr 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .metric,
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .metric {
+      padding: 14px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 26px;
+      line-height: 1;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 6px;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .card {
+      padding: 16px;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .card h2,
+    .card h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .card h3 { font-size: 14px; }
+
+    .sub {
+      margin: 4px 0 0;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .step {
+      min-height: 74px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+    }
+
+    .step.done {
+      border-color: #bed8ca;
+      background: #f0f8f3;
+    }
+
+    .step.warn {
+      border-color: #efd49d;
+      background: var(--amber-soft);
+    }
+
+    .step strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .step span {
+      display: block;
+      margin-top: 7px;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .table th,
+    .table td {
+      padding: 11px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .table th {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .table tr:last-child td { border-bottom: 0; }
+
+    .table tbody tr {
+      transition: background 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .table tbody tr.drillable,
+    .source-card,
+    .dimension,
+    .mini-row,
+    .queue-card,
+    .queue-item,
+    .asset-card,
+    .timeline-item,
+    .flow-card,
+    .bundle-node,
+    .release-card,
+    .fact,
+    .check,
+    .source,
+    .activity {
+      cursor: pointer;
+    }
+
+    .table tbody tr.drillable:hover,
+    .table tbody tr.selected,
+    .source-card.selected,
+    .dimension.selected,
+    .mini-row.selected,
+    .queue-card.selected,
+    .queue-item.selected,
+    .asset-card.selected,
+    .timeline-item.selected,
+    .flow-card.selected,
+    .bundle-node.selected,
+    .release-card.selected,
+    .fact.selected,
+    .check.selected,
+    .source.selected,
+    .activity.selected {
+      background: #eef7f2;
+      box-shadow: inset 3px 0 0 var(--green);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .status.ready {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .status.warn {
+      color: var(--amber);
+      background: var(--amber-soft);
+    }
+
+    .status.block {
+      color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .status.info {
+      color: var(--blue);
+      background: var(--blue-soft);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 9px;
+      color: var(--secondary);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .chip.active {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: var(--line-strong);
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+    }
+
+    .tab {
+      height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 7px;
+      color: var(--secondary);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      color: var(--green);
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(20, 31, 27, 0.08);
+    }
+
+    .matrix-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter {
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--secondary);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .filter.active {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: var(--line-strong);
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 12px;
+    }
+
+    .preview-box {
+      min-height: 172px;
+      padding: 14px;
+      border: 1px dashed #c8d9d1;
+      border-radius: var(--radius);
+      background: #fbfdfc;
+    }
+
+    .preview-box.compact {
+      min-height: auto;
+    }
+
+    .prompt-text {
+      margin: 10px 0 0;
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 0 0 10px;
+    }
+
+    .section-title h3 {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .section-title span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .source-card {
+      display: grid;
+      gap: 8px;
+      min-height: 118px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+    }
+
+    .source-card strong {
+      font-size: 13px;
+    }
+
+    .source-card p {
+      margin: 0;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .mini-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+      font-size: 12px;
+    }
+
+    .mini-row strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 12px;
+    }
+
+    .mini-row span {
+      color: var(--secondary);
+      line-height: 1.4;
+    }
+
+    .dimension-board {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .dimension {
+      min-height: 106px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+    }
+
+    .dimension strong {
+      display: block;
+      font-size: 12px;
+    }
+
+    .dimension .chips {
+      margin-top: 8px;
+      gap: 5px;
+    }
+
+    .dimension .chip {
+      padding: 4px 7px;
+      font-size: 11px;
+    }
+
+    .detail-board {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fbfdfc;
+    }
+
+    .evidence-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .evidence {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      font-size: 12px;
+    }
+
+    .evidence strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .evidence span {
+      color: var(--secondary);
+      line-height: 1.45;
+    }
+
+    .queue {
+      display: grid;
+      gap: 8px;
+    }
+
+    .queue-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+      font-size: 12px;
+    }
+
+    .queue-item.active {
+      border-color: var(--line-strong);
+      background: var(--green-soft);
+    }
+
+    .queue-item strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    .queue-item span {
+      color: var(--secondary);
+      line-height: 1.45;
+    }
+
+    .action-flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .flow-card {
+      min-height: 118px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+    }
+
+    .flow-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+
+    .flow-card p {
+      margin: 0;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .loop-diagram {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .loop-step {
+      position: relative;
+      min-height: 104px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+      font-size: 12px;
+    }
+
+    .loop-step::after {
+      content: ">";
+      position: absolute;
+      top: 50%;
+      right: -9px;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .loop-step:last-child::after { content: ""; }
+
+    .loop-step strong {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 12px;
+    }
+
+    .loop-step span {
+      color: var(--secondary);
+      line-height: 1.45;
+    }
+
+    .signal-bars {
+      display: grid;
+      gap: 10px;
+    }
+
+    .signal-bar {
+      display: grid;
+      grid-template-columns: 132px 1fr 42px;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .signal-bar strong {
+      font-size: 12px;
+    }
+
+    .bar-track {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e7efeb;
+    }
+
+    .bar-track i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+    }
+
+    .bar-track.warn i { background: var(--amber); }
+    .bar-track.block i { background: var(--red); }
+    .bar-track.info i { background: var(--blue); }
+
+    .bundle-map {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .bundle-node {
+      min-height: 86px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      font-size: 12px;
+    }
+
+    .bundle-node strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+
+    .bundle-node span {
+      color: var(--secondary);
+      line-height: 1.45;
+    }
+
+    .queue-board {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .queue-col {
+      min-height: 218px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+    }
+
+    .queue-col h3 {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 9px;
+    }
+
+    .queue-card {
+      display: grid;
+      gap: 5px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      font-size: 12px;
+    }
+
+    .queue-card + .queue-card {
+      margin-top: 7px;
+    }
+
+    .queue-card span {
+      color: var(--secondary);
+      line-height: 1.4;
+    }
+
+    .release-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 12px;
+    }
+
+    .release-card {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+    }
+
+    .release-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .release-card p {
+      margin: 0;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .service-map {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .service-node {
+      position: relative;
+      min-height: 104px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+      font-size: 12px;
+    }
+
+    .service-node::after {
+      content: ">";
+      position: absolute;
+      top: 50%;
+      right: -9px;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .service-node:last-child::after { content: ""; }
+
+    .service-node strong {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 13px;
+    }
+
+    .service-node span {
+      display: block;
+      color: var(--secondary);
+      line-height: 1.45;
+    }
+
+    .package-layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .package-menu {
+      display: grid;
+      gap: 6px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+    }
+
+    .package-menu button {
+      width: 100%;
+      min-height: 34px;
+      padding: 0 10px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      color: var(--secondary);
+      background: transparent;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .package-menu button {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .package-menu button em {
+      color: var(--muted);
+      font-style: normal;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .package-menu button.active {
+      color: var(--green);
+      background: #fff;
+      border-color: var(--line-strong);
+    }
+
+    .package-menu button.active em {
+      color: var(--green);
+    }
+
+    .package-viewer {
+      display: grid;
+      gap: 10px;
+    }
+
+    .package-viewer-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fbfdfc;
+    }
+
+    .package-viewer-head strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .package-viewer-head span {
+      display: block;
+      margin-top: 4px;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .package-nav-actions {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      white-space: nowrap;
+    }
+
+    .package-pane {
+      display: none;
+      gap: 10px;
+    }
+
+    .package-pane.active {
+      display: grid;
+    }
+
+    .fact-sheet {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .fact {
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      font-size: 12px;
+    }
+
+    .fact strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .fact span {
+      color: var(--secondary);
+      line-height: 1.48;
+    }
+
+    .quote {
+      padding: 10px 11px;
+      border: 1px solid #d8e5df;
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .quote b {
+      color: var(--text);
+    }
+
+    .file-tree {
+      display: grid;
+      gap: 4px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fbfdfc;
+      color: var(--secondary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .asset-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .asset-card {
+      min-height: 118px;
+      display: grid;
+      align-content: end;
+      gap: 5px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(145deg, rgba(57, 87, 69, 0.06), rgba(47, 111, 159, 0.06)),
+        #fff;
+      font-size: 12px;
+    }
+
+    .asset-card strong {
+      font-size: 12px;
+    }
+
+    .asset-card span {
+      color: var(--secondary);
+      line-height: 1.4;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 9px;
+    }
+
+    .timeline-item {
+      display: grid;
+      grid-template-columns: 76px 1fr auto;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+      font-size: 12px;
+    }
+
+    .timeline-item time {
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .timeline-item strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+
+    .timeline-item span {
+      color: var(--secondary);
+      line-height: 1.45;
+    }
+
+    .handoff-board {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .handoff-card {
+      min-height: 128px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+      font-size: 12px;
+    }
+
+    .handoff-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .handoff-card span,
+    .handoff-card p {
+      color: var(--secondary);
+      line-height: 1.5;
+    }
+
+    .handoff-card p {
+      margin: 0;
+    }
+
+    .script-preview {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .script-preview strong {
+      font-size: 13px;
+    }
+
+    .script-preview span {
+      color: var(--secondary);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      background: #fff;
+      color: var(--text);
+      font-size: 13px;
+      outline: 0;
+    }
+
+    .field textarea {
+      min-height: 80px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    .side-context {
+      display: none;
+    }
+
+    .side-context.active {
+      display: grid;
+      gap: 9px;
+    }
+
+    .right {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .right .panel {
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .source-list,
+    .check-list,
+    .activity-list {
+      display: grid;
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .source,
+    .check,
+    .activity {
+      display: grid;
+      gap: 4px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+      font-size: 12px;
+    }
+
+    .source strong,
+    .check strong,
+    .activity strong {
+      font-size: 12px;
+    }
+
+    .source span,
+    .check span,
+    .activity span {
+      color: var(--secondary);
+      line-height: 1.45;
+    }
+
+    .progress {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e8efec;
+    }
+
+    .progress i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+    }
+
+    .empty-note {
+      padding: 14px;
+      color: var(--secondary);
+      background: #fbfcfb;
+      border: 1px dashed #c8d9d1;
+      border-radius: var(--radius);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .inspector {
+      display: grid;
+      gap: 12px;
+    }
+
+    .inspector-head {
+      display: grid;
+      gap: 6px;
+    }
+
+    .inspector-title {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .inspector-meta {
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .inspector-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .inspector-tags span {
+      border-radius: 999px;
+      padding: 4px 7px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .kv-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .kv {
+      display: grid;
+      gap: 4px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+      font-size: 12px;
+    }
+
+    .kv small {
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .kv strong {
+      color: var(--text);
+      line-height: 1.35;
+    }
+
+    .detail-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .detail-item {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      font-size: 12px;
+      line-height: 1.48;
+    }
+
+    .detail-item strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+
+    .detail-item span {
+      color: var(--secondary);
+    }
+
+    .route-line {
+      display: grid;
+      gap: 7px;
+    }
+
+    .route-step {
+      position: relative;
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 8px;
+      align-items: start;
+      font-size: 12px;
+    }
+
+    .route-step i {
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--green);
+      font-style: normal;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .route-step strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 12px;
+    }
+
+    .route-step span {
+      color: var(--secondary);
+      line-height: 1.42;
+    }
+
+    .delivery-panel {
+      border-color: var(--line-strong);
+      background: linear-gradient(180deg, #fff, #f8fbfa);
+    }
+
+    .delivery-output {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+
+    .delivery-output div {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--secondary);
+      line-height: 1.45;
+    }
+
+    .delivery-output strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+
+    .operation-log {
+      display: grid;
+      gap: 7px;
+      margin-top: 10px;
+      max-height: 164px;
+      overflow: auto;
+    }
+
+    .operation-log div {
+      padding: 8px 9px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-soft);
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .danger-line {
+      border-left: 3px solid var(--red);
+    }
+
+    .warn-line {
+      border-left: 3px solid var(--amber);
+    }
+
+    .ready-line {
+      border-left: 3px solid var(--green);
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      transform: translateX(-50%);
+      display: none;
+      min-width: 280px;
+      padding: 12px 14px;
+      color: #fff;
+      background: var(--green);
+      border-radius: var(--radius);
+      box-shadow: 0 16px 40px rgba(20, 31, 27, 0.18);
+      font-size: 13px;
+      font-weight: 800;
+      z-index: 5;
+    }
+
+    .toast.show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="brand-mark">布</div>
+        <div>
+          <small>内容工作台</small>
+          <strong>布谷AI</strong>
+        </div>
+      </div>
+
+      <div class="workspace">
+        <small>当前项目</small>
+        <strong>BreezeGo Air 新品内容生产</strong>
+        <div class="sub">团队知识包：便携风扇 v1.4</div>
+      </div>
+
+      <nav class="nav" aria-label="主导航">
+        <div class="nav-group">
+          <div class="nav-title">知识库</div>
+          <button class="nav-item active" data-page="map"><span class="dot"></span><span>内容知识地图</span><span class="count">86%</span></button>
+          <button class="nav-item" data-page="build"><span class="dot"></span><span>生成流程</span><span class="count">5步</span></button>
+          <button class="nav-item" data-page="feedback"><span class="dot"></span><span>评论痛点</span><span class="count">18</span></button>
+          <button class="nav-item" data-page="selling"><span class="dot"></span><span>卖点矩阵</span><span class="count">42</span></button>
+          <button class="nav-item" data-page="scene"><span class="dot"></span><span>场景矩阵</span><span class="count">128</span></button>
+          <button class="nav-item" data-page="ip"><span class="dot"></span><span>IP 口径</span><span class="count">6层</span></button>
+          <button class="nav-item" data-page="competitor"><span class="dot"></span><span>竞品观察</span><span class="count">8</span></button>
+          <button class="nav-item" data-page="review"><span class="dot"></span><span>审核任务</span><span class="count">12</span></button>
+          <button class="nav-item" data-page="team"><span class="dot"></span><span>团队知识包</span><span class="count">v1.4</span></button>
+        </div>
+        <div class="nav-group">
+          <div class="nav-title">作战系统</div>
+          <button class="nav-item" data-page="command"><span class="dot"></span><span>品牌战情室</span><span class="count">7</span></button>
+          <button class="nav-item" data-page="action"><span class="dot"></span><span>作战编组</span><span class="count">3</span></button>
+          <button class="nav-item" data-page="queue"><span class="dot"></span><span>执行队列</span><span class="count">16</span></button>
+          <button class="nav-item" data-page="material"><span class="dot"></span><span>素材回写</span><span class="count">64</span></button>
+          <button class="nav-item" data-page="log"><span class="dot"></span><span>行动记录</span><span class="count">29</span></button>
+        </div>
+        <div class="nav-group">
+          <div class="nav-title">现有模块</div>
+          <button class="nav-item" data-page="prompt"><span class="dot"></span><span>Prompt 交接</span><span class="count">4</span></button>
+          <button class="nav-item" data-page="sop"><span class="dot"></span><span>SOP 输入</span><span class="count">3</span></button>
+          <button class="nav-item" data-page="asset"><span class="dot"></span><span>素材库</span><span class="count">64</span></button>
+          <button class="nav-item" data-page="export"><span class="dot"></span><span>高级导出</span><span class="count">3</span></button>
+        </div>
+      </nav>
+
+      <div class="account">
+        <div class="avatar">林</div>
+        <div>
+          <strong>林小北</strong>
+          <small>电商运营 / 可发布</small>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="crumb" id="crumb">知识库 / 内容知识地图</div>
+          <h1 class="page-title" id="pageTitle">内容知识地图</h1>
+        </div>
+        <div class="top-actions">
+          <button class="btn">导入输入源</button>
+          <button class="btn blue">查看提示词依据</button>
+          <button class="btn primary" id="primaryAction">生成知识地图</button>
+        </div>
+      </header>
+
+      <section class="page active" id="page-map">
+        <div class="grid-3">
+          <div class="metric">
+            <span class="label">知识地图质量</span>
+            <strong>86%</strong>
+            <span>证据覆盖、审核通过和素材覆盖综合评分。</span>
+          </div>
+          <div class="metric">
+            <span class="label">可用内容组合</span>
+            <strong>74</strong>
+            <span>已通过发布检查，可生成 Prompt 或场景卡。</span>
+          </div>
+          <div class="metric">
+            <span class="label">待处理缺口</span>
+            <strong>19</strong>
+            <span>含缺证据、缺素材和待审核组合。</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>从输入源到可发布内容</h2>
+              <p class="sub">普通用户只需要看流程结果：输入、生成矩阵、审核、发布和团队共享。</p>
+            </div>
+            <button class="btn primary">继续生成矩阵</button>
+          </div>
+          <div class="steps">
+            <div class="step done"><strong>1. 输入源</strong><span>产品 brief、SKU 表、品牌资料和评论已导入。</span></div>
+            <div class="step done"><strong>2. 知识整理</strong><span>卖点、痛点、人群、场景已归一。</span></div>
+            <div class="step warn"><strong>3. 证据检查</strong><span>8 条主张需要补证据。</span></div>
+            <div class="step warn"><strong>4. 审核任务</strong><span>12 个组合等待品牌负责人确认。</span></div>
+            <div class="step done"><strong>5. 团队知识包</strong><span>v1.4 已可供 Prompt 和 SOP 使用。</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>输入源处理台</h2>
+              <p class="sub">先把资料变成可追溯来源，再进入卖点和场景矩阵。</p>
+            </div>
+            <div class="tabs">
+              <button class="tab active">全部</button>
+              <button class="tab">产品</button>
+              <button class="tab">用户反馈</button>
+              <button class="tab">素材</button>
+            </div>
+          </div>
+          <div class="source-grid">
+            <div class="source-card">
+              <strong>产品 brief.docx</strong>
+              <p>抽取 12 条产品主张、8 个功能点、5 条禁用表达。</p>
+              <span class="status ready">已解析</span>
+            </div>
+            <div class="source-card">
+              <strong>BreezeGo-Air-SKU.xlsx</strong>
+              <p>3 个规格、5 个属性差异、2 个价格带。</p>
+              <span class="status ready">已解析</span>
+            </div>
+            <div class="source-card">
+              <strong>用户评论 812 条</strong>
+              <p>聚类出 18 个痛点、9 个异议、42 条可引用原声。</p>
+              <span class="status warn">待确认命名</span>
+            </div>
+            <div class="source-card">
+              <strong>素材库关联</strong>
+              <p>37 张图片、18 条视频、9 个案例已匹配内容组合。</p>
+              <span class="status info">部分覆盖</span>
+            </div>
+            <div class="source-card">
+              <strong>品牌口径</strong>
+              <p>语气、禁用词、功效表达边界和审核要求已读取。</p>
+              <span class="status ready">已启用</span>
+            </div>
+            <div class="source-card">
+              <strong>竞品观察</strong>
+              <p>只提取结构、证据形式和差异化机会，不复制表达。</p>
+              <span class="status info">仅参考</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>核心维度</h2>
+              <p class="sub">这些维度会组合成卖点矩阵、场景矩阵和素材覆盖表。</p>
+            </div>
+          </div>
+          <div class="dimension-board">
+            <div class="dimension">
+              <strong>卖点</strong>
+              <div class="chips"><span class="chip active">轻量便携</span><span class="chip">长效续航</span><span class="chip">省心服务</span></div>
+            </div>
+            <div class="dimension">
+              <strong>痛点</strong>
+              <div class="chips"><span class="chip active">包里太重</span><span class="chip">续航焦虑</span><span class="chip">怕踩坑</span></div>
+            </div>
+            <div class="dimension">
+              <strong>人群</strong>
+              <div class="chips"><span class="chip active">通勤白领</span><span class="chip">新手用户</span><span class="chip">高频外出</span></div>
+            </div>
+            <div class="dimension">
+              <strong>场景</strong>
+              <div class="chips"><span class="chip active">早高峰</span><span class="chip">周末短途</span><span class="chip">大促对比</span></div>
+            </div>
+            <div class="dimension">
+              <strong>渠道</strong>
+              <div class="chips"><span class="chip active">小红书</span><span class="chip">抖音</span><span class="chip">详情页</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>输入源</h2>
+                <p class="sub">所有主张都能追溯到这里。</p>
+              </div>
+              <span class="status ready">已同步</span>
+            </div>
+            <table class="table">
+              <thead><tr><th>来源</th><th>内容</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>产品 brief</td><td>新品核心功能、价格带、适用人群</td><td><span class="status ready">已解析</span></td></tr>
+                <tr><td>SKU 表</td><td>3 个规格、5 个属性差异</td><td><span class="status ready">已解析</span></td></tr>
+                <tr><td>用户评论</td><td>812 条评价和客服问答</td><td><span class="status warn">待确认命名</span></td></tr>
+                <tr><td>素材库</td><td>37 张图、18 条视频、9 条案例</td><td><span class="status info">部分覆盖</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>当前缺口</h2>
+                <p class="sub">优先补这些，后续生成更稳。</p>
+              </div>
+            </div>
+            <div class="source-list">
+              <div class="source warn-line"><strong>缺证据</strong><span>“7 天可见改善”缺少产品报告或案例。</span></div>
+              <div class="source warn-line"><strong>缺素材</strong><span>通勤场景缺少横版视频素材。</span></div>
+              <div class="source danger-line"><strong>禁用表达</strong><span>“绝对安全”不符合品牌发布规则。</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-build">
+        <div class="grid-4">
+          <div class="metric"><span class="label">构建方法</span><strong>拆解</strong><span>生产主路径：分步抽取、归一、证据和人审。</span></div>
+          <div class="metric"><span class="label">运行状态</span><strong>4/5</strong><span>已完成 4 步，审核仍有 12 项。</span></div>
+          <div class="metric"><span class="label">质量问题</span><strong>23</strong><span>重复、缺证据、禁用表达和孤立项。</span></div>
+          <div class="metric"><span class="label">模型状态</span><strong>可用</strong><span>未配置时会显示待配置，不伪造结果。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>生成流程</h2>
+              <p class="sub">每次生成都拆成可恢复步骤；失败时保留问题清单，不伪造结果。</p>
+            </div>
+            <button class="btn primary">继续审核</button>
+          </div>
+          <div class="steps">
+            <div class="step done"><strong>1. 收集输入源</strong><span>brief、SKU、评论、素材、竞品观察已接入。</span></div>
+            <div class="step done"><strong>2. 抽取候选内容</strong><span>卖点、痛点、人群、场景、证据和禁用表达。</span></div>
+            <div class="step done"><strong>3. 归一和去重</strong><span>合并“轻便通勤 / 轻量随身”等重复命名。</span></div>
+            <div class="step warn"><strong>4. 质量检查</strong><span>23 个问题，含缺证据和禁用表达。</span></div>
+            <div class="step warn"><strong>5. 人工审核</strong><span>12 项待品牌负责人确认。</span></div>
+          </div>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>质量问题清单</h2>
+                <p class="sub">不是让用户看图数据库，而是把可修复问题列出来。</p>
+              </div>
+            </div>
+            <table class="table">
+              <thead><tr><th>问题</th><th>对象</th><th>原因</th><th>建议处理</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>缺证据</td><td>3 秒降温</td><td>没有测试报告或公开依据</td><td>禁用或补报告</td><td><span class="status block">拦截</span></td></tr>
+                <tr><td>重复命名</td><td>轻量便携 / 轻便通勤</td><td>同一卖点两种名称</td><td>合并为轻量通勤，保留别名</td><td><span class="status warn">待合并</span></td></tr>
+                <tr><td>孤立内容</td><td>清凉露营</td><td>无 SKU、素材或人群关联</td><td>关联 Clip 场景或删除</td><td><span class="status warn">待处理</span></td></tr>
+                <tr><td>儿童场景风险</td><td>宝宝必备</td><td>儿童安全承诺过强</td><td>改为成人看护提醒</td><td><span class="status block">禁用</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h2>构建模式和恢复路径</h2>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>生产拆解</strong><span>用于品牌 / 产品资料，按步骤绑定证据和审核。</span></div><span class="status ready">当前</span></div>
+              <div class="mini-row"><div><strong>评论聚类</strong><span>用于评论、差评和客服问题，保留用户原声。</span></div><span class="status info">可切换</span></div>
+              <div class="mini-row"><div><strong>快速草稿</strong><span>只进入草稿，不直接发布到 Prompt 或 SOP。</span></div><span class="status warn">需审核</span></div>
+              <div class="mini-row"><div><strong>模型未配置</strong><span>显示待配置，不生成伪结果。</span></div><span class="status ready">有兜底</span></div>
+              <div class="mini-row"><div><strong>输入源缺失</strong><span>允许建空项目，但不能生成事实主张。</span></div><span class="status ready">有兜底</span></div>
+              <div class="mini-row"><div><strong>组合过多</strong><span>按渠道、人群优先级、证据强度排序。</span></div><span class="status ready">有排序</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-feedback">
+        <div class="grid-4">
+          <div class="metric"><span class="label">评论样本</span><strong>812</strong><span>来自商品评价、客服问答和私域反馈。</span></div>
+          <div class="metric"><span class="label">痛点聚类</span><strong>18</strong><span>已按用户原声、异议和购买阻碍分组。</span></div>
+          <div class="metric"><span class="label">可引用原声</span><strong>42</strong><span>可进入标题、FAQ、脚本和详情页。</span></div>
+          <div class="metric"><span class="label">待补资料</span><strong>7</strong><span>噪音、儿童场景和售后承诺边界。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>评论痛点聚类</h2>
+              <p class="sub">把用户真实语言沉淀成痛点、异议、选题和产品资料待补清单。</p>
+            </div>
+            <button class="btn primary">确认痛点命名</button>
+          </div>
+          <table class="table">
+            <thead><tr><th>痛点</th><th>用户原声</th><th>购买异议</th><th>对应卖点</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>包里东西太多</td><td>“夏天包里已经有伞和水杯，不想再塞重东西。”</td><td>担心便携风扇增加负担</td><td>Air Mini 218g，轻量便携</td><td><span class="status ready">可用</span></td></tr>
+              <tr><td>怕下午没电</td><td>“办公室开一下午，别老提醒我充电就行。”</td><td>担心续航不够</td><td>低档 9-14h 测试</td><td><span class="status ready">可用</span></td></tr>
+              <tr><td>风大是不是吵</td><td>“要是开会旁边很吵，我肯定不会用。”</td><td>担心办公场景打扰别人</td><td>低档桌面使用</td><td><span class="status warn">待补噪音证据</span></td></tr>
+              <tr><td>亲子场景是否安全</td><td>“夹婴儿车上会不会松？”</td><td>儿童场景安全担忧</td><td>Clip 夹扣结构图</td><td><span class="status warn">需审核表达</span></td></tr>
+              <tr><td>大促会不会买贵</td><td>“现在下单还是等 618？”</td><td>价格犹豫和决策延迟</td><td>价格带和组合优惠</td><td><span class="status info">可做 FAQ</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>选题和场景输出</h2>
+                <p class="sub">每个痛点都能回到原声证据，并映射到卖点、场景和内容格式。</p>
+              </div>
+              <span class="status ready">23 个可生成</span>
+            </div>
+            <table class="table">
+              <thead><tr><th>痛点</th><th>目标人群</th><th>内容角度</th><th>推荐产物</th><th>发布检查</th></tr></thead>
+              <tbody>
+                <tr><td>包里东西太多</td><td>通勤白领</td><td>早高峰轻装通勤</td><td>小红书图文 / 详情页主图</td><td><span class="status ready">通过</span></td></tr>
+                <tr><td>怕下午没电</td><td>办公室用户</td><td>低档续航 FAQ</td><td>私域话术 / 客服回答</td><td><span class="status ready">通过</span></td></tr>
+                <tr><td>风大是不是吵</td><td>会议室用户</td><td>低档桌面近距离使用</td><td>补证据任务 / FAQ</td><td><span class="status warn">待补证据</span></td></tr>
+                <tr><td>大促会不会买贵</td><td>价格敏感用户</td><td>Mini / Clip / Pro 选择建议</td><td>购买指南 / 直播间答疑</td><td><span class="status info">需价格确认</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h2>命名确认和资料待补</h2>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>合并命名</strong><span>“包里太重 / 不想多带东西 / 通勤负担”合并为“包里东西太多”。</span></div><button class="btn">确认</button></div>
+              <div class="mini-row"><div><strong>保留原声</strong><span>42 条原声可直接作为标题、脚本和 FAQ 的语言来源。</span></div><span class="status ready">已保留</span></div>
+              <div class="mini-row"><div><strong>补噪音测试</strong><span>缺低档分贝或会议室使用证据。</span></div><button class="btn">创建任务</button></div>
+              <div class="mini-row"><div><strong>补儿童边界</strong><span>儿童场景只允许成人看护提醒，不做安全承诺。</span></div><button class="btn">送审</button></div>
+            </div>
+            <div class="check-list">
+              <div class="check ready-line"><strong>用户原声</strong><span>痛点命名必须保留至少一条真实评论或客服问答。</span></div>
+              <div class="check warn-line"><strong>待补卖点</strong><span>噪音和儿童场景不能直接进入可发布主张。</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-selling">
+        <div class="matrix-toolbar">
+          <div class="filters">
+            <button class="filter">全部 SKU</button>
+            <button class="filter">已证实</button>
+            <button class="filter">缺证据</button>
+            <button class="filter">缺素材</button>
+            <button class="filter">待审核</button>
+          </div>
+          <button class="btn primary">生成图片 Prompt</button>
+        </div>
+        <div class="grid-4">
+          <div class="metric"><span class="label">矩阵组合</span><strong>42</strong><span>覆盖 SKU、功能、收益、人群和证据。</span></div>
+          <div class="metric"><span class="label">可直接生成</span><strong>34</strong><span>已通过证据和规则检查。</span></div>
+          <div class="metric"><span class="label">待补证据</span><strong>6</strong><span>需要报告、案例或人工说明。</span></div>
+          <div class="metric"><span class="label">被拦截</span><strong>2</strong><span>包含禁用表达或高风险承诺。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>卖点矩阵</h2>
+              <p class="sub">按产品功能、用户收益、证据和适用场景拆解，保证各渠道口径一致。</p>
+            </div>
+            <span class="status ready">34 个可用组合</span>
+          </div>
+          <table class="table">
+            <thead><tr><th>卖点</th><th>用户收益</th><th>适用人群</th><th>证据</th><th>素材</th><th>动作</th></tr></thead>
+            <tbody>
+              <tr><td>轻量便携</td><td>通勤放包负担更低</td><td>一线城市通勤人群</td><td><span class="status ready">SKU 218g</span></td><td><span class="status ready">称重图</span></td><td><button class="btn">生成 Prompt</button></td></tr>
+              <tr><td>长效续航</td><td>减少办公室频繁充电</td><td>办公室久坐用户</td><td><span class="status ready">低档 9-14h</span></td><td><span class="status warn">缺竖版视频</span></td><td><button class="btn">补素材</button></td></tr>
+              <tr><td>夹扣多场景</td><td>桌边、露营桌、婴儿车更稳</td><td>露营 / 亲子用户</td><td><span class="status ready">结构图</span></td><td><span class="status info">有场景图</span></td><td><button class="btn">生成脚本</button></td></tr>
+              <tr><td>3 秒降温</td><td>快速消暑</td><td>高温出行用户</td><td><span class="status block">缺报告</span></td><td><span class="status block">不可发布</span></td><td><button class="btn" disabled>已拦截</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>组合详情：轻量便携 x 通勤白领</h2>
+                <p class="sub">运营在发布前看到完整依据、素材和禁用边界。</p>
+              </div>
+              <span class="status ready">可发布</span>
+            </div>
+            <div class="detail-board">
+              <div class="chips">
+                <span class="chip active">Air Mini</span>
+                <span class="chip active">轻量便携</span>
+                <span class="chip active">通勤放包负担更低</span>
+                <span class="chip">小红书</span>
+                <span class="chip">详情页主图</span>
+              </div>
+              <div class="evidence-grid">
+                <div class="evidence"><strong>规格证据</strong><span>Air Mini 净重 218g，Type-C 充电，三档风量。</span></div>
+                <div class="evidence"><strong>用户原声</strong><span>“我不是要多强的风，主要是不想包里再多一个重东西。”</span></div>
+                <div class="evidence"><strong>可用素材</strong><span>称重实拍图、通勤包内图、办公室桌面图。</span></div>
+                <div class="evidence"><strong>禁用边界</strong><span>不能写“全网最轻”“绝对无负担”，建议写“更轻便”。</span></div>
+              </div>
+              <div class="preview-box">
+                <span class="status ready">提示词依据</span>
+                <p class="prompt-text">面向一线城市通勤白领，表达 Air Mini “更轻便、更适合日常通勤放包”，引用 218g 净重和用户原声，生成小红书种草图文 Prompt。避免全网最轻、绝对无负担等无法证明表达。</p>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>批量动作</h3><span>选中 8 个组合</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>生成图片 Prompt</strong><span>用于主图、种草图和详情页图。</span></div><button class="btn">生成</button></div>
+              <div class="mini-row"><div><strong>生成视频 Prompt</strong><span>仅输出 Prompt，复制到外部平台。</span></div><button class="btn">生成</button></div>
+              <div class="mini-row"><div><strong>加入场景库</strong><span>生成可复用场景卡。</span></div><button class="btn">加入</button></div>
+              <div class="mini-row"><div><strong>请求补素材</strong><span>创建短视频补拍清单。</span></div><button class="btn">创建</button></div>
+            </div>
+            <div class="check-list">
+              <div class="check ready-line"><strong>发布检查</strong><span>当前组合通过证据、禁用表达和品牌口径检查。</span></div>
+              <div class="check warn-line"><strong>素材提醒</strong><span>短视频素材缺口不影响图文 Prompt 生成。</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-scene">
+        <div class="matrix-toolbar">
+          <div class="filters">
+            <button class="filter">小红书</button>
+            <button class="filter">抖音</button>
+            <button class="filter">详情页</button>
+            <button class="filter">私域</button>
+            <button class="filter">高优先级</button>
+          </div>
+          <button class="btn primary">生成场景卡</button>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>场景变量选择器</h2>
+              <p class="sub">运营可以按目标挑组合，不需要面对一张不可控的大表。</p>
+            </div>
+            <button class="btn">保存筛选方案</button>
+          </div>
+          <div class="dimension-board">
+            <div class="dimension"><strong>目标</strong><div class="chips"><span class="chip active">拉新</span><span class="chip">转化</span><span class="chip">解释异议</span></div></div>
+            <div class="dimension"><strong>人群</strong><div class="chips"><span class="chip active">通勤白领</span><span class="chip">新手用户</span><span class="chip">价格敏感</span></div></div>
+            <div class="dimension"><strong>痛点</strong><div class="chips"><span class="chip active">包里太重</span><span class="chip">怕踩坑</span><span class="chip">不划算</span></div></div>
+            <div class="dimension"><strong>时刻</strong><div class="chips"><span class="chip active">早高峰</span><span class="chip">下单前</span><span class="chip">大促前</span></div></div>
+            <div class="dimension"><strong>格式</strong><div class="chips"><span class="chip active">图文</span><span class="chip">短视频</span><span class="chip">详情页</span></div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>场景矩阵</h2>
+              <p class="sub">把人群、痛点、场景、渠道和内容角度组合起来，避免选题只靠临时发散。</p>
+            </div>
+            <span class="status info">128 个组合</span>
+          </div>
+          <table class="table">
+            <thead><tr><th>人群</th><th>痛点</th><th>使用场景</th><th>渠道</th><th>内容角度</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>通勤白领</td><td>包里东西多</td><td>早高峰地铁</td><td>小红书</td><td>Air Mini 放包更轻便</td><td><span class="status ready">可生成</span></td></tr>
+              <tr><td>办公室用户</td><td>怕下午没电</td><td>工位低档使用</td><td>私域</td><td>低档续航 FAQ</td><td><span class="status ready">可生成</span></td></tr>
+              <tr><td>露营人群</td><td>桌面空间少</td><td>周末露营桌边</td><td>抖音</td><td>Clip 夹扣更省桌面空间</td><td><span class="status warn">缺视频</span></td></tr>
+              <tr><td>亲子用户</td><td>担心使用安全</td><td>婴儿车夹扣</td><td>私域</td><td>成人看护下的使用提醒</td><td><span class="status warn">待审核</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="three-col">
+          <div class="card">
+            <div class="section-title"><h3>推荐场景卡</h3><span>优先级高</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>早高峰轻装通勤</strong><span>小红书图文，使用 Air Mini 218g 证据。</span></div><span class="status ready">可用</span></div>
+              <div class="mini-row"><div><strong>办公室低档续航</strong><span>私域 FAQ，引用低档 9-14h 测试。</span></div><span class="status ready">可用</span></div>
+              <div class="mini-row"><div><strong>露营桌边夹扣</strong><span>抖音视频 Prompt，缺竖版素材。</span></div><span class="status warn">缺素材</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>素材缺口</h3><span>6 项</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>9:16 通勤视频</strong><span>缺少竖版通勤场景。</span></div><button class="btn">补拍</button></div>
+              <div class="mini-row"><div><strong>大促对比图</strong><span>缺少价格解释视觉。</span></div><button class="btn">生成</button></div>
+              <div class="mini-row"><div><strong>客服 FAQ 截图</strong><span>缺少真实咨询截图。</span></div><button class="btn">导入</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>生成预览</h3><span>3 个产物</span></div>
+            <div class="preview-box">
+              <span class="status info">将生成</span>
+              <p class="prompt-text">1 张场景卡、4 条小红书标题、3 组图文 Prompt。所有产物会保留来源、证据和发布检查结果。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-ip">
+        <div class="grid-3">
+          <div class="metric"><span class="label">IP 完整度</span><strong>82%</strong><span>身份、观点、语言、方法论、故事和创作规则。</span></div>
+          <div class="metric"><span class="label">一致性风险</span><strong>5</strong><span>跨平台表达可能偏离核心立场。</span></div>
+          <div class="metric"><span class="label">可生成场景</span><strong>31</strong><span>口播、文章、私域和产品化内容。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>IP 口径：林小北的轻量生活方法</h2>
+              <p class="sub">不同平台可以变表达，但身份、观点、语言规则和禁区必须保持一致。</p>
+            </div>
+            <button class="btn primary">生成 IP 口播 Prompt</button>
+          </div>
+          <div class="dimension-board">
+            <div class="dimension"><strong>身份</strong><div class="chips"><span class="chip active">电商运营</span><span class="chip">轻量生活实践者</span></div></div>
+            <div class="dimension"><strong>核心观点</strong><div class="chips"><span class="chip active">买轻不是买便宜</span><span class="chip">先看使用场景</span></div></div>
+            <div class="dimension"><strong>语言规则</strong><div class="chips"><span class="chip active">具体</span><span class="chip">克制</span><span class="chip">少夸张</span></div></div>
+            <div class="dimension"><strong>方法论</strong><div class="chips"><span class="chip active">三问法</span><span class="chip">场景优先</span></div></div>
+            <div class="dimension"><strong>禁区</strong><div class="chips"><span class="chip active">不装专家</span><span class="chip">不绝对化</span></div></div>
+          </div>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <h2>IP 内容矩阵</h2>
+            <table class="table">
+              <thead><tr><th>平台</th><th>主题</th><th>观点锚点</th><th>可用素材</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>小红书</td><td>通勤包减负</td><td>先看重量，再看使用频率</td><td>Air Mini 称重图</td><td><span class="status ready">可生成</span></td></tr>
+                <tr><td>抖音</td><td>一分钟挑便携风扇</td><td>不追参数，先问使用场景</td><td>三 SKU 对比图</td><td><span class="status ready">可生成</span></td></tr>
+                <tr><td>私域</td><td>为什么不建议盲买 Pro</td><td>桌面用户才需要 Pro</td><td>办公桌面图</td><td><span class="status warn">需审核</span></td></tr>
+                <tr><td>公众号</td><td>轻量生活不是断舍离</td><td>降低日常决策负担</td><td>方法论卡片</td><td><span class="status ready">可生成</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h2>漂移检查</h2>
+            <div class="check-list">
+              <div class="check ready-line"><strong>核心立场</strong><span>不改变“场景优先”的 IP 观点。</span></div>
+              <div class="check warn-line"><strong>可能漂移</strong><span>“买最贵的 Pro 就对了”偏离方法论。</span></div>
+              <div class="check danger-line"><strong>必须拦截</strong><span>“我是小家电专家认证”无来源，不能使用。</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-competitor">
+        <div class="grid-3">
+          <div class="metric"><span class="label">竞品观察</span><strong>8</strong><span>公开页面、达人内容和用户评论摘要。</span></div>
+          <div class="metric"><span class="label">差异机会</span><strong>11</strong><span>可转成选题、卖点补充和素材任务。</span></div>
+          <div class="metric"><span class="label">搬运风险</span><strong>3</strong><span>需要人工确认不可复制边界。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>竞品观察</h2>
+              <p class="sub">只提取结构、证据形式、用户异议和差异机会，不复制可识别表达。</p>
+            </div>
+            <button class="btn primary">生成差异化机会</button>
+          </div>
+          <table class="table">
+            <thead><tr><th>竞品</th><th>对方主张</th><th>证据形式</th><th>BreezeGo 机会</th><th>边界</th></tr></thead>
+            <tbody>
+              <tr><td>CoolMate Mini</td><td>“超小随身”</td><td>口袋对比图</td><td>用 218g 称重图做通勤包对比</td><td>不复制口袋创意构图</td></tr>
+              <tr><td>WindGo Pro</td><td>“大风力露营”</td><td>户外视频</td><td>用 Clip 夹扣强调桌边稳定</td><td>不做风力绝对对比</td></tr>
+              <tr><td>OfficeFan X</td><td>“办公室静音”</td><td>分贝图</td><td>当前缺噪音测试，先不打静音主张</td><td>需补证据</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h2>差异化机会</h2>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>轻量通勤</strong><span>竞品讲“小”，我们讲“放包负担低”，引用 218g。</span></div><span class="status ready">可用</span></div>
+              <div class="mini-row"><div><strong>夹扣场景</strong><span>避开“大风力”对比，强调桌边、省空间、可固定。</span></div><span class="status ready">可用</span></div>
+              <div class="mini-row"><div><strong>静音表达</strong><span>缺噪音证据，只能写“低档桌面近距离使用”。</span></div><span class="status warn">待证据</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>不可搬运边界</h2>
+            <div class="check-list">
+              <div class="check danger-line"><strong>可识别文案</strong><span>不复制竞品标题、话术和独特分镜。</span></div>
+              <div class="check warn-line"><strong>事实证据</strong><span>竞品材料不能作为 BreezeGo 产品事实。</span></div>
+              <div class="check ready-line"><strong>允许提取</strong><span>可以提取结构、证据类型、用户异议和机会。</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-review">
+        <div class="grid-3">
+          <div class="metric"><span class="label">待审核</span><strong>12</strong><span>主张、证据和内容组合。</span></div>
+          <div class="metric"><span class="label">已拦截</span><strong>4</strong><span>包含禁用表达或证据不足。</span></div>
+          <div class="metric"><span class="label">今日通过</span><strong>18</strong><span>已进入 Prompt 和场景库。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>审核任务</h2>
+              <p class="sub">品牌负责人看到的是主张、证据、来源和风险，不需要理解内部结构。</p>
+            </div>
+          </div>
+          <table class="table">
+            <thead><tr><th>待审内容</th><th>来源</th><th>风险</th><th>建议</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>7 天可见改善</td><td>模型推断，缺少报告</td><td><span class="status warn">缺证据</span></td><td>补产品报告或改成弱表达</td><td><button class="btn">补证据</button></td></tr>
+              <tr><td>绝对安全</td><td>用户草稿</td><td><span class="status block">禁用表达</span></td><td>标记禁止使用</td><td><button class="btn">禁用</button></td></tr>
+              <tr><td>适合通勤轻装</td><td>SKU 表、用户评论</td><td><span class="status ready">低风险</span></td><td>通过</td><td><button class="btn primary">通过</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>审核详情：7 天可见改善</h2>
+                <p class="sub">审核人员需要看到“为什么不能直接发布”，以及可选处理方式。</p>
+              </div>
+              <span class="status warn">需要补证据</span>
+            </div>
+            <div class="detail-board">
+              <div class="section-title"><h3>待审主张</h3><span>来自产品卖点草稿</span></div>
+              <div class="preview-box">
+                <span class="status warn">当前不可发布</span>
+                <p class="prompt-text">建议表达：“坚持使用 7 天可见改善。” 当前证据只有模型推断和用户主观感受，缺少产品报告、实测数据或品牌负责人确认。</p>
+              </div>
+              <div class="evidence-grid">
+                <div class="evidence"><strong>已有来源</strong><span>用户评论 18 条提到“感觉更省心”，但没有明确周期和改善指标。</span></div>
+                <div class="evidence"><strong>缺少证据</strong><span>没有 7 天测试报告、实验记录、案例授权或可公开引用说明。</span></div>
+                <div class="evidence"><strong>风险判断</strong><span>涉及效果承诺，发布到公域前必须弱化或补证据。</span></div>
+                <div class="evidence"><strong>推荐改写</strong><span>“不少用户反馈使用后更省心”，并链接用户原声。</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>处理方式</h3><span>品牌负责人</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>请求补证据</strong><span>指派给产品负责人补报告或案例。</span></div><button class="btn">发起</button></div>
+              <div class="mini-row"><div><strong>改成弱表达</strong><span>保留用户反馈，但不承诺周期。</span></div><button class="btn">改写</button></div>
+              <div class="mini-row"><div><strong>禁止使用</strong><span>所有渠道生成时自动拦截。</span></div><button class="btn">禁用</button></div>
+              <div class="mini-row"><div><strong>通过审核</strong><span>需要负责人确认已有证据充分。</span></div><button class="btn primary">通过</button></div>
+            </div>
+            <div class="check-list">
+              <div class="check warn-line"><strong>下游影响</strong><span>关联 6 个卖点组合、3 个场景卡和 2 个 Prompt 草稿。</span></div>
+              <div class="check ready-line"><strong>审计记录</strong><span>任何处理都会写入审核记录和行动记录。</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-team">
+        <div class="grid-3">
+          <div class="metric"><span class="label">当前知识包</span><strong>v1.4</strong><span>BreezeGo Air 便携风扇，品牌负责人发布。</span></div>
+          <div class="metric"><span class="label">包内内容</span><strong>216</strong><span>事实、卖点、证据、场景卡、FAQ 和素材引用。</span></div>
+          <div class="metric"><span class="label">可直接复用</span><strong>74</strong><span>已通过审核，可进入 Prompt、SOP 和素材库。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>团队同步拓扑</h2>
+              <p class="sub">团队项目、版本、审核和发布记录在布谷业务服务中同步；账号、权益和云端策略由账号与权益服务校验。</p>
+            </div>
+            <span class="status ready">已连接</span>
+          </div>
+          <div class="service-map">
+            <div class="service-node"><strong>桌面工作台</strong><span>本地缓存、离线草稿、生成和审核交互；断网时保留未同步修改。</span></div>
+            <div class="service-node"><strong>布谷业务服务</strong><span>团队项目、版本、审核、冲突、队列、素材覆盖和知识包发布记录。</span></div>
+            <div class="service-node"><strong>账号与权益服务</strong><span>租户、账号、权益、模型策略、发布资格和下载中心校验。</span></div>
+            <div class="service-node"><strong>团队知识包</strong><span>审核后的稳定版本，供 Prompt、SOP、素材库和 Agent 客户端使用。</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>团队知识包：BreezeGo Air 便携风扇 v1.4</h2>
+              <p class="sub">这里不是版本壳子，而是团队真正复用的内容资产包：事实、证据、规则、场景、FAQ、素材和提示词依据。</p>
+            </div>
+            <button class="btn primary">发布新版本</button>
+          </div>
+          <div class="package-layout">
+            <div class="package-menu">
+              <button class="active" data-pack="overview"><span>包概览</span><em>8 类</em></button>
+              <button data-pack="brief"><span>产品事实</span><em>3 SKU</em></button>
+              <button data-pack="claims"><span>卖点与证据</span><em>12 条</em></button>
+              <button data-pack="voice"><span>品牌口径</span><em>10 条</em></button>
+              <button data-pack="scenes"><span>场景卡</span><em>24 张</em></button>
+              <button data-pack="answers"><span>FAQ 与回答</span><em>16 个</em></button>
+              <button data-pack="assets"><span>素材覆盖</span><em>64 个</em></button>
+              <button data-pack="prompt"><span>提示词依据</span><em>4 组</em></button>
+              <button data-pack="files"><span>包文件</span><em>高级</em></button>
+            </div>
+            <div class="package-viewer">
+              <div class="package-viewer-head">
+                <div>
+                  <strong id="packTitle">包概览</strong>
+                  <span id="packDesc">查看 BreezeGo Air v1.4 中可被团队复用的内容资产。</span>
+                </div>
+                <div class="package-nav-actions">
+                  <button class="btn" id="prevPack">上一项</button>
+                  <button class="btn" id="nextPack">下一项</button>
+                  <button class="btn primary">复制到 Prompt 工作台</button>
+                </div>
+              </div>
+              <div class="package-pane active" id="pack-overview">
+                <div class="section-title"><h3>当前查看：团队可复用内容资产</h3><span>点击左侧目录切换详情</span></div>
+                <div class="fact-sheet">
+                  <div class="fact"><strong>品牌</strong><span>BreezeGo，定位“轻量出行小电器”，语气克制、实用、可验证。</span></div>
+                  <div class="fact"><strong>产品</strong><span>BreezeGo Air 便携风扇，面向通勤、露营、办公室和学生宿舍。</span></div>
+                  <div class="fact"><strong>当前下游</strong><span>Prompt 工作台、图片 SOP、视频 Prompt、素材库审核、客服 FAQ。</span></div>
+                  <div class="fact"><strong>发布边界</strong><span>不自动发布；所有功效、续航和安全表达必须引用证据。</span></div>
+                </div>
+                <div class="file-tree">
+                  <div>团队知识包 / BreezeGo-Air / v1.4</div>
+                  <div>├─ 品牌口径：6 条可用规则，4 条禁用表达</div>
+                  <div>├─ 产品事实：3 个 SKU，18 个规格字段</div>
+                  <div>├─ 卖点证据：12 条主张，9 条已证实，3 条待验证</div>
+                  <div>├─ 场景卡：24 张，覆盖小红书、抖音、详情页、私域</div>
+                  <div>├─ FAQ：16 个问题，含回答边界和引用来源</div>
+                  <div>└─ 素材覆盖：37 张图，18 条视频，9 条案例</div>
+                </div>
+                <div class="three-col">
+                  <div class="release-card">
+                    <strong>可直接生成</strong>
+                    <p>小红书图文 Prompt：Air Mini 218g、通勤包内图、用户原声“包里不想再多一个重东西”。</p>
+                  </div>
+                  <div class="release-card">
+                    <strong>可直接回答</strong>
+                    <p>低档续航 FAQ：Mini 低档约 9 小时，Pro 低档约 14 小时，实际受档位和环境影响。</p>
+                  </div>
+                  <div class="release-card">
+                    <strong>必须拦截</strong>
+                    <p>禁止输出“全网最轻”“绝对安全”“3 秒降温”“宝宝必备”等无证据或高风险表达。</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="package-pane" id="pack-brief">
+                <div class="section-title"><h3>当前查看：产品事实</h3><span>可进入卖点矩阵和详情页内容</span></div>
+                <div class="fact-sheet">
+                  <div class="fact"><strong>SKU A：Air Mini</strong><span>净重 218g，三档风量，官方标称低档 9 小时，Type-C 充电。</span></div>
+                  <div class="fact"><strong>SKU B：Air Pro</strong><span>净重 286g，五档风量，官方标称低档 14 小时，带桌面底座。</span></div>
+                  <div class="fact"><strong>SKU C：Air Clip</strong><span>净重 241g，夹扣设计，适合婴儿车、书桌、露营桌边。</span></div>
+                  <div class="fact"><strong>价格带</strong><span>Mini 129 元，Pro 179 元，Clip 159 元；大促可做组合优惠。</span></div>
+                </div>
+                <table class="table">
+                  <thead><tr><th>字段</th><th>Mini</th><th>Pro</th><th>Clip</th><th>可用内容</th></tr></thead>
+                  <tbody>
+                    <tr><td>重量</td><td>218g</td><td>286g</td><td>241g</td><td>轻装通勤、包内对比图</td></tr>
+                    <tr><td>续航</td><td>低档 9h</td><td>低档 14h</td><td>低档 10h</td><td>周末短途、办公室一整天</td></tr>
+                    <tr><td>结构</td><td>手持 / 挂绳</td><td>手持 / 桌面</td><td>夹扣 / 桌面</td><td>宿舍、露营、婴儿车场景</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="package-pane" id="pack-claims">
+                <div class="section-title"><h3>当前查看：卖点与证据</h3><span>每条主张都有可用边界</span></div>
+                <table class="table">
+                  <thead><tr><th>卖点</th><th>可用表达</th><th>证据</th><th>边界</th><th>状态</th></tr></thead>
+                  <tbody>
+                    <tr><td>轻量便携</td><td>“约一瓶矿泉水的重量，通勤放包里负担更低。”</td><td>SKU 表：Mini 218g；产品实拍称重图。</td><td>不能说“全网最轻”。</td><td><span class="status ready">可用</span></td></tr>
+                    <tr><td>长效续航</td><td>“低档可覆盖一天办公室使用。”</td><td>官方测试记录：低档 9-14h。</td><td>不能承诺所有档位一天。</td><td><span class="status ready">可用</span></td></tr>
+                    <tr><td>夹扣多场景</td><td>“夹在桌边、婴儿车或露营桌上都更稳。”</td><td>Clip 结构图；素材库 6 张场景图。</td><td>婴儿相关表达需避免安全承诺。</td><td><span class="status ready">可用</span></td></tr>
+                    <tr><td>明显降温</td><td>“3 秒快速降温。”</td><td>缺少测试报告。</td><td>不允许进入公域发布。</td><td><span class="status block">禁用</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="quote"><b>用户原声：</b>“我不是要多强的风，主要是不想包里再多一个重东西。” 来源：小红书评论导入，2026-05-23。</div>
+                <div class="quote"><b>客服问答：</b>“低档在办公室吹一下午够吗？” 回答边界：只能引用低档测试记录，不能泛化到所有档位。</div>
+              </div>
+
+              <div class="package-pane" id="pack-voice">
+                <div class="section-title"><h3>当前查看：品牌口径</h3><span>控制生成语气和禁用表达</span></div>
+                <div class="fact-sheet">
+                  <div class="fact"><strong>品牌语气</strong><span>具体、克制、像朋友给购买建议；少用夸张形容。</span></div>
+                  <div class="fact"><strong>可用词</strong><span>轻便、随身、低负担、低档续航、桌面使用、通勤更省心。</span></div>
+                  <div class="fact"><strong>禁用词</strong><span>全网最轻、绝对安全、3 秒降温、医学级、宝宝必备。</span></div>
+                  <div class="fact"><strong>审核要求</strong><span>续航、重量、安全、儿童场景必须带来源或转弱表达。</span></div>
+                </div>
+                <div class="mini-list">
+                  <div class="mini-row"><div><strong>推荐句式</strong><span>“如果你主要在通勤路上用，Mini 的重量更友好。”</span></div><span class="status ready">可用</span></div>
+                  <div class="mini-row"><div><strong>需改写句式</strong><span>“一整天都不用充电”需改成“低档测试记录可覆盖多数办公室使用”。</span></div><span class="status warn">需改</span></div>
+                  <div class="mini-row"><div><strong>禁止句式</strong><span>“宝宝使用绝对安全”涉及安全绝对化和儿童场景承诺。</span></div><span class="status block">禁用</span></div>
+                </div>
+              </div>
+
+              <div class="package-pane" id="pack-scenes">
+                <div class="section-title"><h3>当前查看：场景卡</h3><span>可直接生成选题、脚本和 Prompt</span></div>
+                <table class="table">
+                  <thead><tr><th>场景卡</th><th>人群</th><th>痛点</th><th>渠道</th><th>可产物</th></tr></thead>
+                  <tbody>
+                    <tr><td>早高峰轻装通勤</td><td>通勤白领</td><td>包里东西多</td><td>小红书</td><td>图文 Prompt、标题、封面文案</td></tr>
+                    <tr><td>办公室低档续航</td><td>办公室久坐用户</td><td>怕下午没电</td><td>详情页 / 私域</td><td>FAQ、对比表、客服话术</td></tr>
+                    <tr><td>露营桌边夹扣</td><td>周末露营人群</td><td>桌面空间少</td><td>抖音 / 小红书</td><td>视频 Prompt、分镜脚本</td></tr>
+                    <tr><td>宿舍桌面安静使用</td><td>学生用户</td><td>怕吵到室友</td><td>小红书</td><td>测评脚本、图片 Prompt</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="package-pane" id="pack-answers">
+                <div class="section-title"><h3>当前查看：FAQ 与回答</h3><span>客服、私域和详情页可复用</span></div>
+                <div class="mini-list">
+                  <div class="mini-row"><div><strong>Q：低档能用多久？</strong><span>A：按官方测试，Mini 低档约 9 小时，Pro 低档约 14 小时。实际会受档位和环境影响。</span></div><span class="status ready">可引用</span></div>
+                  <div class="mini-row"><div><strong>Q：适合通勤带吗？</strong><span>A：Mini 净重 218g，更适合通勤放包；如果主要桌面使用，Pro 更稳。</span></div><span class="status ready">可引用</span></div>
+                  <div class="mini-row"><div><strong>Q：宝宝能用吗？</strong><span>A：不能做绝对安全承诺；只说明 Clip 有夹扣场景，儿童使用需成人看护。</span></div><span class="status warn">需审核</span></div>
+                  <div class="mini-row"><div><strong>Q：会不会很吵？</strong><span>A：当前缺少公开噪音测试，不建议写确定数值；可用“更适合桌面近距离低档使用”。</span></div><span class="status warn">待证据</span></div>
+                </div>
+              </div>
+
+              <div class="package-pane" id="pack-assets">
+                <div class="section-title"><h3>当前查看：素材覆盖</h3><span>知道哪些组合已有素材，哪些要补</span></div>
+                <div class="asset-strip">
+                  <div class="asset-card"><strong>称重实拍图</strong><span>覆盖轻量便携；可用于详情页。</span><span class="status ready">已审核</span></div>
+                  <div class="asset-card"><strong>通勤包内图</strong><span>覆盖早高峰通勤；小红书可用。</span><span class="status ready">高表现</span></div>
+                  <div class="asset-card"><strong>桌面低档视频</strong><span>覆盖办公室续航；需补横版。</span><span class="status warn">缺版本</span></div>
+                  <div class="asset-card"><strong>露营夹扣图</strong><span>覆盖 Clip 场景；抖音脚本可用。</span><span class="status ready">已审核</span></div>
+                </div>
+                <table class="table">
+                  <thead><tr><th>组合</th><th>已覆盖素材</th><th>缺口</th><th>建议</th></tr></thead>
+                  <tbody>
+                    <tr><td>轻量便携 x 通勤</td><td>3 图 1 视频</td><td>无</td><td>优先复用</td></tr>
+                    <tr><td>续航 x 办公室</td><td>2 图</td><td>缺 9:16 视频</td><td>创建补拍</td></tr>
+                    <tr><td>Clip x 婴儿车</td><td>1 图</td><td>需审核儿童表达</td><td>先私域，不进公域</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="package-pane" id="pack-prompt">
+                <div class="section-title"><h3>当前查看：提示词依据</h3><span>复制到 Prompt 工作台前的上下文</span></div>
+                <div class="preview-box">
+                  <span class="status ready">可直接给 Prompt 工作台</span>
+                  <p class="prompt-text">任务：生成小红书图文种草 Prompt。目标人群：通勤白领。核心卖点：Mini 净重 218g，放通勤包负担更低。证据：SKU 表和称重实拍图。用户痛点：包里东西多，不想再带重物。场景：早高峰地铁、办公室桌面。禁用表达：全网最轻、绝对安全、3 秒降温。语气：具体、克制、像购买建议。</p>
+                </div>
+                <div class="mini-list">
+                  <div class="mini-row"><div><strong>可生成</strong><span>标题 10 条、封面文案 5 条、图片 Prompt 4 组。</span></div><button class="btn">生成</button></div>
+                  <div class="mini-row"><div><strong>不可生成</strong><span>任何包含“全网最轻”“绝对安全”的文案。</span></div><span class="status block">拦截</span></div>
+                </div>
+              </div>
+
+              <div class="package-pane" id="pack-files">
+                <div class="section-title"><h3>当前查看：包文件</h3><span>高级模式给内容工程师检查</span></div>
+                <div class="file-tree">
+                  <div>BreezeGo-Air-v1.4/</div>
+                  <div>├─ KNOWLEDGE.md</div>
+                  <div>├─ brand/voice-rules.json</div>
+                  <div>├─ product/skus.json</div>
+                  <div>├─ claims/selling-points.json</div>
+                  <div>├─ evidence/source-quotes.json</div>
+                  <div>├─ constraints/forbidden-expressions.json</div>
+                  <div>├─ scenes/scene-cards.json</div>
+                  <div>├─ answers/questions.json</div>
+                  <div>├─ assets/material-coverage.json</div>
+                  <div>└─ compiled/prompt-brief.md</div>
+                </div>
+                <div class="empty-note">这是给团队和 Agent 客户端消费的发布包结构。普通用户主要看上面的业务内容，内容工程师可在高级模式查看文件。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>版本历史</h2>
+              <p class="sub">每个版本都能说明改了什么、影响哪些下游。</p>
+            </div>
+          </div>
+          <table class="table">
+            <thead><tr><th>版本</th><th>发布人</th><th>具体变更</th><th>下游使用</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>v1.4</td><td>品牌负责人</td><td>新增 BreezeGo Air 通勤、续航、夹扣场景；禁用 4 个高风险表达。</td><td>Prompt、SOP、素材库</td><td><span class="status ready">当前使用</span></td></tr>
+              <tr><td>v1.3</td><td>内容工程师</td><td>补充 SKU 表、评论痛点和 12 条用户原声。</td><td>Prompt</td><td><span class="status info">可回滚</span></td></tr>
+              <tr><td>待发布</td><td>林小北</td><td>3 个变更包等待合并：命名调整、素材覆盖、FAQ 补充。</td><td>未使用</td><td><span class="status warn">待审核</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="release-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>变更包队列</h2>
+                <p class="sub">未同步修改提交到布谷业务服务后，团队看到的是变更包、冲突和发布版本。</p>
+              </div>
+              <button class="btn">拉取团队更新</button>
+            </div>
+            <div class="queue">
+              <div class="queue-item active">
+                <div><strong>卖点命名调整</strong><span>林小北提交：轻量便携 -> 轻便通勤；影响 9 个组合。</span></div>
+                <span class="status warn">有冲突</span>
+              </div>
+              <div class="queue-item">
+                <div><strong>素材覆盖回写</strong><span>素材审核提交：新增 4 个高表现图文组合。</span></div>
+                <span class="status ready">可合并</span>
+              </div>
+              <div class="queue-item">
+                <div><strong>评论痛点补充</strong><span>运营提交：新增“怕踩坑”原声证据 12 条。</span></div>
+                <span class="status ready">可合并</span>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>冲突处理</h2>
+                <p class="sub">冲突不能静默覆盖，需要人工选择。</p>
+              </div>
+            </div>
+            <div class="release-card">
+              <strong>同一卖点被两人改名</strong>
+              <p>当前团队版本：轻量便携。林小北建议：轻便通勤。内容工程师建议：轻量随身。影响小红书、详情页和视频脚本。</p>
+            </div>
+            <div class="mini-list" style="margin-top: 10px;">
+              <div class="mini-row"><div><strong>保留团队版本</strong><span>保持“轻量便携”，新词作为别名。</span></div><button class="btn">选择</button></div>
+              <div class="mini-row"><div><strong>采用轻便通勤</strong><span>更贴近场景，但需批量更新。</span></div><button class="btn">选择</button></div>
+              <div class="mini-row"><div><strong>合并为轻量通勤</strong><span>创建新名称并保留两个别名。</span></div><button class="btn primary">合并</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h2>发布前检查</h2>
+            <div class="check-list">
+              <div class="check warn-line"><strong>冲突待处理</strong><span>“轻量便携”与“轻便通勤”需要合并命名。</span></div>
+              <div class="check ready-line"><strong>敏感数据</strong><span>未发现 API Key、登录凭证和本机路径。</span></div>
+              <div class="check ready-line"><strong>审核覆盖</strong><span>发布版本只包含已审核内容和明确待验证说明。</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>下游消费</h2>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>Prompt 工作台</strong><span>默认使用 BreezeGo Air v1.4。</span></div><span class="status ready">已启用</span></div>
+              <div class="mini-row"><div><strong>SOP 工作流</strong><span>图片、视频和文案流程读取当前版本。</span></div><span class="status ready">已启用</span></div>
+              <div class="mini-row"><div><strong>素材库</strong><span>素材覆盖回写到当前团队项目。</span></div><span class="status info">同步中</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-material">
+        <div class="grid-4">
+          <div class="metric"><span class="label">素材总量</span><strong>64</strong><span>37 张图、18 条视频、9 个案例。</span></div>
+          <div class="metric"><span class="label">已覆盖组合</span><strong>41</strong><span>可回写到卖点和场景矩阵。</span></div>
+          <div class="metric"><span class="label">高表现组合</span><strong>7</strong><span>收藏、转化或复用表现高。</span></div>
+          <div class="metric"><span class="label">缺口</span><strong>13</strong><span>主要是竖版视频和 FAQ 截图。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>素材覆盖回写</h2>
+              <p class="sub">素材表现只作为排序和复盘信号，不能替代产品事实。</p>
+            </div>
+            <button class="btn primary">回写选中素材</button>
+          </div>
+          <div class="asset-strip">
+            <div class="asset-card"><strong>通勤包内图 A03</strong><span>覆盖 Air Mini / 轻量便携 / 小红书。</span><span class="status ready">高表现</span></div>
+            <div class="asset-card"><strong>称重实拍图 P12</strong><span>覆盖 218g 证据，可用于详情页。</span><span class="status ready">已审核</span></div>
+            <div class="asset-card"><strong>桌面低档视频 V06</strong><span>覆盖续航 FAQ，缺 9:16 裁切。</span><span class="status warn">待处理</span></div>
+            <div class="asset-card"><strong>Clip 露营图 C02</strong><span>覆盖夹扣场景，适合短视频脚本。</span><span class="status ready">已审核</span></div>
+          </div>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <h2>回写明细</h2>
+            <table class="table">
+              <thead><tr><th>素材</th><th>覆盖组合</th><th>表现</th><th>回写结果</th><th>注意</th></tr></thead>
+              <tbody>
+                <tr><td>通勤包内图 A03</td><td>轻量便携 x 通勤白领 x 小红书</td><td>收藏率 +31%</td><td><span class="status ready">高表现组合</span></td><td>可优先复用</td></tr>
+                <tr><td>桌面低档视频 V06</td><td>长效续航 x 办公室 x 私域</td><td>客服转化反馈好</td><td><span class="status ready">FAQ 复用</span></td><td>不新增事实主张</td></tr>
+                <tr><td>Clip 婴儿车图 C08</td><td>夹扣 x 亲子场景</td><td>点击高</td><td><span class="status warn">待审核</span></td><td>儿童安全表达需弱化</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h2>缺口任务</h2>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>9:16 通勤视频</strong><span>用于小红书视频和抖音脚本。</span></div><button class="btn">创建</button></div>
+              <div class="mini-row"><div><strong>低档续航测试截图</strong><span>用于 FAQ 和详情页。</span></div><button class="btn">导入</button></div>
+              <div class="mini-row"><div><strong>Clip 桌边固定视频</strong><span>用于露营和办公桌场景。</span></div><button class="btn">创建</button></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-command">
+        <div class="grid-4">
+          <div class="metric"><span class="label">今日信号</span><strong>7</strong><span>评论痛点、竞品动作、素材表现和品牌风险。</span></div>
+          <div class="metric"><span class="label">高优先级目标</span><strong>3</strong><span>续航异议、轻量差异化、儿童场景风险。</span></div>
+          <div class="metric"><span class="label">可调资源包</span><strong>12</strong><span>已审核卖点、证据、素材、FAQ 和 SOP。</span></div>
+          <div class="metric"><span class="label">今日拦截</span><strong>2</strong><span>绝对安全、3 秒降温等高风险表达。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>作战闭环图</h2>
+              <p class="sub">从市场信号到资源编组、执行、交接和回写，形成可追溯闭环。</p>
+            </div>
+          </div>
+          <div class="loop-diagram">
+            <div class="loop-step"><strong>1. 信号</strong><span>评论、竞品、热点、素材表现和品牌风险。</span></div>
+            <div class="loop-step"><strong>2. 目标</strong><span>拉新、转化、信任、风险、素材和复购。</span></div>
+            <div class="loop-step"><strong>3. 资源包</strong><span>卖点、证据、素材、FAQ、Prompt 和 SOP。</span></div>
+            <div class="loop-step"><strong>4. 发布检查</strong><span>证据、品牌、平台、竞品、权限和素材。</span></div>
+            <div class="loop-step"><strong>5. 执行队列</strong><span>可执行、待审、待补资源和已拦截。</span></div>
+            <div class="loop-step"><strong>6. 回写</strong><span>审核结论、素材覆盖、表现和下一步信号。</span></div>
+          </div>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>信号雷达</h2>
+                <p class="sub">信号只触发行动，不直接变成产品事实。</p>
+              </div>
+              <button class="btn primary">创建作战目标</button>
+            </div>
+            <table class="table">
+              <thead><tr><th>信号</th><th>来源</th><th>建议目标</th><th>价值</th><th>风险</th><th>动作</th></tr></thead>
+              <tbody>
+                <tr><td>评论集中问续航</td><td>812 条评论聚类</td><td>解释异议 / 转化</td><td><span class="status ready">高</span></td><td><span class="status info">低</span></td><td><button class="btn">组包</button></td></tr>
+                <tr><td>竞品主打“超小随身”</td><td>公开商品页 / 达人内容</td><td>轻量差异化</td><td><span class="status ready">高</span></td><td><span class="status warn">中</span></td><td><button class="btn">组包</button></td></tr>
+                <tr><td>达人想写绝对安全</td><td>达人 Brief 草稿</td><td>风险拦截</td><td><span class="status warn">中</span></td><td><span class="status block">高</span></td><td><button class="btn">送审</button></td></tr>
+                <tr><td>通勤包内图收藏高</td><td>素材表现回写</td><td>复用高表现组合</td><td><span class="status ready">高</span></td><td><span class="status info">低</span></td><td><button class="btn">扩展</button></td></tr>
+                <tr><td>大促前价格犹豫</td><td>客服问答 / 私域咨询</td><td>价格防守</td><td><span class="status info">中</span></td><td><span class="status warn">需确认</span></td><td><button class="btn">补信息</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>目标树</h3><span>本周主攻</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>转化：解释续航异议</strong><span>资源齐全，适合私域 FAQ、小红书图文和直播答疑。</span></div><span class="status ready">今日执行</span></div>
+              <div class="mini-row"><div><strong>拉新：轻量通勤差异化</strong><span>与竞品“小巧”错位，强调 218g 和放包负担低。</span></div><span class="status ready">今日执行</span></div>
+              <div class="mini-row"><div><strong>风险：儿童场景边界</strong><span>亲子素材表现好，但需要弱化安全承诺。</span></div><span class="status warn">先审核</span></div>
+              <div class="mini-row"><div><strong>素材：补 9:16 通勤视频</strong><span>影响抖音和小红书视频脚本生产。</span></div><span class="status warn">待补拍</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="section-title"><h3>信号价值 / 风险图</h3><span>0-100</span></div>
+            <div class="signal-bars">
+              <div class="signal-bar"><strong>续航异议</strong><div class="bar-track"><i style="width: 92%"></i></div><span>92</span></div>
+              <div class="signal-bar"><strong>轻量差异</strong><div class="bar-track info"><i style="width: 86%"></i></div><span>86</span></div>
+              <div class="signal-bar"><strong>儿童风险</strong><div class="bar-track block"><i style="width: 78%"></i></div><span>78</span></div>
+              <div class="signal-bar"><strong>价格犹豫</strong><div class="bar-track warn"><i style="width: 64%"></i></div><span>64</span></div>
+              <div class="signal-bar"><strong>通勤素材</strong><div class="bar-track"><i style="width: 81%"></i></div><span>81</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>席位图</h3><span>本次战役</span></div>
+            <div class="bundle-map">
+              <div class="bundle-node"><strong>战役负责人</strong><span>目标优先级和资源调度。</span></div>
+              <div class="bundle-node"><strong>信号分析</strong><span>评论、竞品和素材表现归因。</span></div>
+              <div class="bundle-node"><strong>品牌审核</strong><span>证据、禁用表达和竞品边界。</span></div>
+              <div class="bundle-node"><strong>内容运营</strong><span>Prompt、标题、FAQ 和脚本。</span></div>
+              <div class="bundle-node"><strong>素材负责人</strong><span>补拍、补图和素材覆盖回写。</span></div>
+              <div class="bundle-node"><strong>Agent 操作者</strong><span>触发标准动作并查看拦截原因。</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <div class="section-title"><h3>今日战役</h3><span>3 个作战单元</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>续航异议解释</strong><span>负责人：林小北；渠道：私域 / 小红书；窗口：今日 18:00 前。</span></div><span class="status ready">可执行</span></div>
+              <div class="mini-row"><div><strong>轻量通勤差异化</strong><span>负责人：内容工程师；渠道：详情页 / 小红书。</span></div><span class="status ready">可执行</span></div>
+              <div class="mini-row"><div><strong>儿童场景风险收敛</strong><span>负责人：品牌审核；先改写再进入素材回写。</span></div><span class="status warn">待审核</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>资源状态</h3><span>可调度</span></div>
+            <div class="check-list">
+              <div class="check ready-line"><strong>证据</strong><span>218g、低档 9-14h、用户原声已可用。</span></div>
+              <div class="check warn-line"><strong>缺口</strong><span>噪音测试、9:16 通勤视频、实时价格确认。</span></div>
+              <div class="check ready-line"><strong>团队知识包</strong><span>BreezeGo Air v1.4 是当前默认版本。</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>风险摘要</h3><span>硬拦截</span></div>
+            <div class="check-list">
+              <div class="check danger-line"><strong>绝对安全</strong><span>儿童和安全承诺必须禁用。</span></div>
+              <div class="check danger-line"><strong>3 秒降温</strong><span>缺少测试报告，不进入可发布 Prompt。</span></div>
+              <div class="check warn-line"><strong>竞品对比</strong><span>只讲差异机会，不贬损竞品。</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-action">
+        <div class="grid-3">
+          <div class="metric"><span class="label">作战单元</span><strong>3</strong><span>续航异议、轻量差异化、儿童场景风险。</span></div>
+          <div class="metric"><span class="label">资源包完整度</span><strong>82%</strong><span>卖点、证据、素材、FAQ、Prompt 和 SOP。</span></div>
+          <div class="metric"><span class="label">待补资源</span><strong>4</strong><span>噪音测试、竖版视频、价格确认和儿童表达审核。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>作战编组：续航异议解释</h2>
+              <p class="sub">从信号开始，把目标、资源包、负责人、渠道和标准动作组合起来。</p>
+            </div>
+            <button class="btn primary">保存作战单元</button>
+          </div>
+          <div class="action-flow">
+            <div class="flow-card"><strong>1. 内容信号</strong><p>评论集中问“续航到底够不够”。来源：812 条评论聚类。</p></div>
+            <div class="flow-card"><strong>2. 目标</strong><p>解释异议，降低首次下单前的犹豫。</p></div>
+            <div class="flow-card"><strong>3. 资源包</strong><p>长效续航卖点、测试记录、周末短途素材、FAQ 场景。</p></div>
+            <div class="flow-card"><strong>4. 发布检查</strong><p>证据已覆盖，禁用表达通过，缺 1 条竖版视频素材。</p></div>
+            <div class="flow-card"><strong>5. 标准动作</strong><p>生成 10 条小红书选题，创建 1 条补素材任务。</p></div>
+          </div>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>资源包</h2>
+                <p class="sub">资源包必须说明可用依据、可产出内容和不能说什么。</p>
+              </div>
+              <button class="btn primary">生成执行队列</button>
+            </div>
+            <table class="table">
+              <thead><tr><th>槽位</th><th>当前内容</th><th>来源</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>卖点</td><td>低档 9-14h 长效续航</td><td>SKU 表 / 测试记录</td><td><span class="status ready">可用</span></td></tr>
+                <tr><td>用户痛点</td><td>怕下午没电，不想频繁充电</td><td>评论聚类 / 客服问答</td><td><span class="status ready">可用</span></td></tr>
+                <tr><td>素材</td><td>桌面低档视频 V06，周末短途素材</td><td>素材库</td><td><span class="status warn">缺 9:16</span></td></tr>
+                <tr><td>可用产物</td><td>FAQ、私域话术、小红书标题、视频脚本 Prompt</td><td>场景矩阵</td><td><span class="status ready">可用</span></td></tr>
+                <tr><td>禁用边界</td><td>不能写“全天不用充”“绝对静音”</td><td>品牌口径</td><td><span class="status block">硬拦截</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="card">
+            <h2>发布检查结果</h2>
+            <div class="check-list">
+              <div class="check ready-line"><strong>证据</strong><span>续航主张有 SKU 表和测试记录。</span></div>
+              <div class="check ready-line"><strong>审核</strong><span>品牌口径 v1.4 已确认。</span></div>
+              <div class="check warn-line"><strong>素材</strong><span>图文和 FAQ 可执行；短视频需补 9:16 素材。</span></div>
+              <div class="check danger-line"><strong>拦截</strong><span>“全天不用充”“绝对静音”禁止发布。</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>资源包结构图</h2>
+              <p class="sub">资源包不是素材合集，而是一次行动需要的事实、证据、素材、产物和边界。</p>
+            </div>
+          </div>
+          <div class="bundle-map">
+            <div class="bundle-node ready-line"><strong>产品事实</strong><span>Air Mini 218g，低档 9-14h，Type-C 充电。</span></div>
+            <div class="bundle-node ready-line"><strong>卖点主张</strong><span>长效续航、轻量便携、夹扣多场景。</span></div>
+            <div class="bundle-node ready-line"><strong>证据</strong><span>SKU 表、测试记录、用户原声、客服问答。</span></div>
+            <div class="bundle-node"><strong>人群痛点</strong><span>通勤白领、办公室用户、怕下午没电。</span></div>
+            <div class="bundle-node"><strong>场景渠道</strong><span>私域 FAQ、小红书图文、详情页模块。</span></div>
+            <div class="bundle-node warn-line"><strong>素材缺口</strong><span>短视频缺 9:16 通勤素材和噪音测试。</span></div>
+            <div class="bundle-node"><strong>Prompt / SOP</strong><span>标题生成、FAQ、视频脚本 Prompt、补素材 SOP。</span></div>
+            <div class="bundle-node danger-line"><strong>禁用边界</strong><span>全天不用充、绝对静音、绝对安全。</span></div>
+            <div class="bundle-node"><strong>交接产物</strong><span>Prompt 草稿、场景卡、补拍清单和审核任务。</span></div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="section-title"><h3>负责人和协作</h3><span>本次行动</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>林小北</strong><span>负责选题和 Prompt 生成。</span></div><span class="status ready">可执行</span></div>
+              <div class="mini-row"><div><strong>品牌负责人</strong><span>负责续航表达审核。</span></div><span class="status warn">待确认</span></div>
+              <div class="mini-row"><div><strong>素材审核</strong><span>负责补素材任务和覆盖回写。</span></div><span class="status info">已指派</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>产物计划</h3><span>发布前不自动外发</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>小红书标题</strong><span>10 条，引用续航测试记录。</span></div><button class="btn">生成</button></div>
+              <div class="mini-row"><div><strong>视频脚本 Prompt</strong><span>3 条，复制到第三方平台。</span></div><button class="btn">生成</button></div>
+              <div class="mini-row"><div><strong>补素材清单</strong><span>竖版短视频 1 条，场景：周末短途。</span></div><button class="btn">创建</button></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-queue">
+        <div class="grid-4">
+          <div class="metric"><span class="label">动作总数</span><strong>16</strong><span>来自 3 个作战单元。</span></div>
+          <div class="metric"><span class="label">可执行</span><strong>7</strong><span>通过发布检查，可生成 Prompt 或任务。</span></div>
+          <div class="metric"><span class="label">待补资源</span><strong>5</strong><span>缺证据、缺素材或缺实时价格确认。</span></div>
+          <div class="metric"><span class="label">已拦截</span><strong>4</strong><span>包含禁用表达、越权或高风险比较。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>执行队列</h2>
+              <p class="sub">队列只管理生产动作和交接，不自动发布到外部平台。</p>
+            </div>
+            <button class="btn primary">执行可用动作</button>
+          </div>
+          <table class="table">
+            <thead><tr><th>动作</th><th>作战目标</th><th>资源包</th><th>状态</th><th>处理</th></tr></thead>
+            <tbody>
+              <tr><td>生成 10 条小红书标题</td><td>续航异议解释</td><td>低档 9-14h + 评论原声</td><td><span class="status ready">可执行</span></td><td><button class="btn">生成</button></td></tr>
+              <tr><td>生成私域 FAQ</td><td>续航异议解释</td><td>客服问答 + 续航测试</td><td><span class="status ready">可执行</span></td><td><button class="btn">生成</button></td></tr>
+              <tr><td>生成抖音视频 Prompt</td><td>续航异议解释</td><td>周末短途场景</td><td><span class="status warn">待补素材</span></td><td><button class="btn">创建补拍</button></td></tr>
+              <tr><td>详情页轻量对比模块</td><td>轻量差异化</td><td>218g 称重图 + 通勤包内图</td><td><span class="status ready">可执行</span></td><td><button class="btn">生成</button></td></tr>
+              <tr><td>儿童场景短视频脚本</td><td>儿童场景风险</td><td>Clip 婴儿车图 C08</td><td><span class="status warn">待审核</span></td><td><button class="btn">送审</button></td></tr>
+              <tr><td>达人 Brief：绝对安全</td><td>风险拦截</td><td>安全相关主张</td><td><span class="status block">已拦截</span></td><td><button class="btn" disabled>不可执行</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>队列状态看板</h2>
+              <p class="sub">同一个作战目标下的动作按状态分列，便于团队接力处理。</p>
+            </div>
+          </div>
+          <div class="queue-board">
+            <div class="queue-col">
+              <h3>可执行 <span class="status ready">7</span></h3>
+              <div class="queue-card"><strong>小红书标题</strong><span>续航异议，引用测试记录。</span></div>
+              <div class="queue-card"><strong>私域 FAQ</strong><span>客服解释话术，引用用户问题。</span></div>
+              <div class="queue-card"><strong>详情页模块</strong><span>轻量通勤，引用 218g。</span></div>
+            </div>
+            <div class="queue-col">
+              <h3>待审核 <span class="status warn">3</span></h3>
+              <div class="queue-card"><strong>儿童场景脚本</strong><span>需品牌审核安全边界。</span></div>
+              <div class="queue-card"><strong>竞品差异文案</strong><span>需确认不构成贬损。</span></div>
+            </div>
+            <div class="queue-col">
+              <h3>待补资源 <span class="status info">5</span></h3>
+              <div class="queue-card"><strong>9:16 通勤视频</strong><span>短视频 Prompt 缺素材。</span></div>
+              <div class="queue-card"><strong>噪音测试</strong><span>办公室安静表达缺证据。</span></div>
+              <div class="queue-card"><strong>价格确认</strong><span>大促购买指南需实时确认。</span></div>
+            </div>
+            <div class="queue-col">
+              <h3>已拦截 <span class="status block">4</span></h3>
+              <div class="queue-card"><strong>绝对安全</strong><span>儿童场景安全承诺。</span></div>
+              <div class="queue-card"><strong>3 秒降温</strong><span>缺测试报告。</span></div>
+              <div class="queue-card"><strong>贬损竞品</strong><span>改成中性场景对比。</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <div class="section-title"><h3>可执行</h3><span>7 项</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>小红书标题</strong><span>续航异议，引用测试记录。</span></div><button class="btn">生成</button></div>
+              <div class="mini-row"><div><strong>私域 FAQ</strong><span>客服解释话术，引用用户问题。</span></div><button class="btn">生成</button></div>
+              <div class="mini-row"><div><strong>详情页模块</strong><span>轻量通勤，引用 218g 称重图。</span></div><button class="btn">生成</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>待补资源</h3><span>5 项</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>9:16 通勤视频</strong><span>短视频 Prompt 缺素材。</span></div><button class="btn">补拍</button></div>
+              <div class="mini-row"><div><strong>噪音测试</strong><span>办公室安静表达缺证据。</span></div><button class="btn">补证据</button></div>
+              <div class="mini-row"><div><strong>大促价格</strong><span>购买指南需确认价格和库存。</span></div><button class="btn">确认</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>已拦截</h3><span>4 项</span></div>
+            <div class="check-list">
+              <div class="check danger-line"><strong>绝对安全</strong><span>儿童场景安全承诺。</span></div>
+              <div class="check danger-line"><strong>3 秒降温</strong><span>缺测试报告的效果承诺。</span></div>
+              <div class="check warn-line"><strong>贬损竞品</strong><span>改成中性场景对比。</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-log">
+        <div class="grid-3">
+          <div class="metric"><span class="label">本周行动</span><strong>29</strong><span>生成、审核、补证据和素材回写。</span></div>
+          <div class="metric"><span class="label">高表现回写</span><strong>7</strong><span>已标记为可复用组合。</span></div>
+          <div class="metric"><span class="label">仍待处理</span><strong>5</strong><span>补证据、补素材和冲突处理。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>行动记录</h2>
+              <p class="sub">复盘每次内容生产用过哪些资源、产出了什么、回写了什么。</p>
+            </div>
+          </div>
+          <table class="table">
+            <thead><tr><th>时间</th><th>行动</th><th>使用资源</th><th>产物</th><th>回写</th></tr></thead>
+            <tbody>
+              <tr><td>14:31</td><td>生成小红书选题</td><td>通勤白领 / 轻量便携 / 早高峰地铁</td><td>10 条标题和 3 组图文 Prompt</td><td><span class="status ready">已覆盖</span></td></tr>
+              <tr><td>13:42</td><td>请求补证据</td><td>7 天可见改善</td><td>证据任务</td><td><span class="status warn">待补充</span></td></tr>
+              <tr><td>11:08</td><td>发布团队知识包</td><td>BreezeGo Air v1.4</td><td>团队默认知识包</td><td><span class="status ready">已同步</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>复盘时间线</h2>
+                <p class="sub">从信号到产物再到素材回写，保留完整追溯。</p>
+              </div>
+            </div>
+            <div class="timeline">
+              <div class="timeline-item"><time>14:31</time><div><strong>生成小红书选题</strong><span>资源：通勤白领、轻量便携、早高峰地铁。产物：10 条标题和 3 组图文 Prompt。</span></div><span class="status ready">已完成</span></div>
+              <div class="timeline-item"><time>14:12</time><div><strong>发布检查通过</strong><span>证据来自 SKU 表和用户评论；禁用表达检查通过。</span></div><span class="status ready">通过</span></div>
+              <div class="timeline-item"><time>13:42</time><div><strong>请求补证据</strong><span>“7 天可见改善”缺少报告，已指派产品负责人。</span></div><span class="status warn">待处理</span></div>
+              <div class="timeline-item"><time>11:08</time><div><strong>发布团队知识包</strong><span>BreezeGo Air v1.4 已成为团队默认版本。</span></div><span class="status ready">已同步</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>素材回写</h3><span>高表现组合</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>通勤轻量图文</strong><span>收藏率高于均值 31%，回写为高表现组合。</span></div><span class="status ready">已回写</span></div>
+              <div class="mini-row"><div><strong>续航 FAQ 私域话术</strong><span>客服转化反馈较好，标记为可复用。</span></div><span class="status ready">已回写</span></div>
+              <div class="mini-row"><div><strong>周末短途视频</strong><span>缺素材，仍在补拍清单。</span></div><span class="status warn">待补</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-prompt">
+        <div class="grid-4">
+          <div class="metric"><span class="label">可交接依据</span><strong>4</strong><span>来自已审核卖点、场景、FAQ 和品牌口径。</span></div>
+          <div class="metric"><span class="label">已生成草稿</span><strong>18</strong><span>图文、标题、视频 Prompt 和客服话术。</span></div>
+          <div class="metric"><span class="label">发布检查</span><strong>通过</strong><span>当前选中组合无禁用表达。</span></div>
+          <div class="metric"><span class="label">交付去向</span><strong>Prompt</strong><span>保存为草稿，不自动发布。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Prompt 交接台：轻量通勤图文</h2>
+              <p class="sub">用户看到的是“这次要生成什么、用哪些依据、不能说什么、交付到哪里”。</p>
+            </div>
+            <button class="btn primary">生成 Prompt 草稿</button>
+          </div>
+          <div class="handoff-board">
+            <div class="handoff-card ready-line"><strong>输入对象</strong><p>卖点组合：Air Mini x 轻量便携 x 通勤白领 x 小红书。</p></div>
+            <div class="handoff-card ready-line"><strong>可用证据</strong><p>SKU 表 218g、称重实拍图、用户原声“包里不想再多一个重东西”。</p></div>
+            <div class="handoff-card warn-line"><strong>素材缺口</strong><p>短视频缺 9:16 通勤素材；不影响图文 Prompt 生成。</p></div>
+            <div class="handoff-card danger-line"><strong>禁用边界</strong><p>不能写“全网最轻”“绝对无负担”“3 秒降温”。</p></div>
+          </div>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>提示词依据预览</h2>
+                <p class="sub">只注入本次相关的短摘录，不塞完整原文。</p>
+              </div>
+              <span class="status ready">可生成</span>
+            </div>
+            <div class="script-preview">
+              <strong>任务</strong>
+              <span>生成小红书图文种草 Prompt，主题为“夏天通勤包里减负”。</span>
+              <strong>必须引用</strong>
+              <span>Air Mini 净重 218g；用户原声：“我不是要多强的风，主要是不想包里再多一个重东西。”</span>
+              <strong>表达风格</strong>
+              <span>具体、克制、像朋友给购买建议；避免夸张功效和绝对化承诺。</span>
+              <strong>产物规格</strong>
+              <span>标题 10 条、封面文案 5 条、图片 Prompt 4 组、发布检查摘要 1 条。</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>交付结果</h3><span>将写入运行记录</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>Prompt 草稿 P-1042</strong><span>绑定团队知识包 v1.4、卖点组合 SP-001 和素材 A03。</span></div><button class="btn">打开</button></div>
+              <div class="mini-row"><div><strong>补素材任务 M-087</strong><span>短视频 9:16 通勤素材仍需补拍。</span></div><button class="btn">创建</button></div>
+              <div class="mini-row"><div><strong>审核摘要</strong><span>禁用表达已拦截，证据引用完整。</span></div><span class="status ready">通过</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-sop">
+        <div class="grid-3">
+          <div class="metric"><span class="label">可启动流程</span><strong>3</strong><span>图文生成、详情页模块、补素材清单。</span></div>
+          <div class="metric"><span class="label">待人工确认</span><strong>2</strong><span>价格、儿童场景表达。</span></div>
+          <div class="metric"><span class="label">最近交接</span><strong>14:31</strong><span>轻量通勤图文已交给 Prompt 工作台。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>SOP 输入：续航异议解释</h2>
+              <p class="sub">SOP 只拿到已审核的资源包和明确待补项，不直接读取完整资料库。</p>
+            </div>
+            <button class="btn primary">启动 SOP 草稿</button>
+          </div>
+          <div class="action-flow">
+            <div class="flow-card ready-line"><strong>1. 作战目标</strong><p>解释“低档到底够不够用”，降低首次下单犹豫。</p></div>
+            <div class="flow-card ready-line"><strong>2. 输入依据</strong><p>低档 9-14h 测试、客服问答、办公室场景卡。</p></div>
+            <div class="flow-card warn-line"><strong>3. 人工确认</strong><p>大促价格和库存需运营确认。</p></div>
+            <div class="flow-card ready-line"><strong>4. SOP 产物</strong><p>FAQ、详情页模块、直播答疑卡和私域话术。</p></div>
+            <div class="flow-card"><strong>5. 回写</strong><p>发布检查、审核结论和表现标签回写行动记录。</p></div>
+          </div>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <h2>流程输入包</h2>
+            <table class="table">
+              <thead><tr><th>输入</th><th>内容</th><th>来源</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>产品事实</td><td>Mini 低档约 9 小时，Pro 低档约 14 小时。</td><td>SKU 表 / 测试记录</td><td><span class="status ready">可用</span></td></tr>
+                <tr><td>用户问题</td><td>“开一下午够不够？”“是不是要一直充电？”</td><td>评论 / 客服问答</td><td><span class="status ready">可用</span></td></tr>
+                <tr><td>渠道规则</td><td>私域可解释使用条件，详情页需证据更完整。</td><td>品牌口径 v1.4</td><td><span class="status ready">可用</span></td></tr>
+                <tr><td>价格信息</td><td>大促价、组合优惠、库存。</td><td>运营手动确认</td><td><span class="status warn">待确认</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>恢复路径</h3><span>不能自动绕过</span></div>
+            <div class="check-list">
+              <div class="check ready-line"><strong>证据充分</strong><span>续航表达可以进入 FAQ，但需要说明档位和环境影响。</span></div>
+              <div class="check warn-line"><strong>价格待确认</strong><span>价格未确认前，只能生成占位答疑卡，不能进入发布版本。</span></div>
+              <div class="check danger-line"><strong>禁止表达</strong><span>不能写“全天不用充”“绝对静音”。</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-asset">
+        <div class="grid-4">
+          <div class="metric"><span class="label">素材总量</span><strong>64</strong><span>37 张图、18 条视频、9 个案例。</span></div>
+          <div class="metric"><span class="label">可复用组合</span><strong>41</strong><span>已映射到卖点、场景、渠道和产物。</span></div>
+          <div class="metric"><span class="label">缺素材任务</span><strong>13</strong><span>主要是竖版视频、FAQ 截图和测试证明。</span></div>
+          <div class="metric"><span class="label">高表现</span><strong>7</strong><span>只作为排序和复盘信号。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>素材库：覆盖关系视图</h2>
+              <p class="sub">素材不只是文件列表；要能看出它覆盖哪些卖点、痛点、场景和作战目标。</p>
+            </div>
+            <button class="btn primary">创建补素材任务</button>
+          </div>
+          <div class="asset-strip">
+            <div class="asset-card ready-line"><strong>通勤包内图 A03</strong><span>覆盖轻量便携 / 通勤白领 / 小红书；收藏率高于均值 31%。</span><span class="status ready">高表现</span></div>
+            <div class="asset-card"><strong>称重实拍图 P12</strong><span>覆盖 218g 证据和详情页对比模块。</span><span class="status ready">已审核</span></div>
+            <div class="asset-card warn-line"><strong>桌面低档视频 V06</strong><span>覆盖续航 FAQ，但缺少 9:16 版本。</span><span class="status warn">待裁切</span></div>
+            <div class="asset-card danger-line"><strong>Clip 婴儿车图 C08</strong><span>表现高，但儿童安全表达必须弱化。</span><span class="status warn">待审核</span></div>
+          </div>
+        </div>
+        <div class="wide-grid">
+          <div class="card">
+            <h2>素材覆盖矩阵</h2>
+            <table class="table">
+              <thead><tr><th>素材</th><th>覆盖组合</th><th>可交付产物</th><th>表现</th><th>边界</th></tr></thead>
+              <tbody>
+                <tr><td>通勤包内图 A03</td><td>轻量便携 x 早高峰通勤</td><td>小红书图文、详情页主图</td><td>收藏 +31%</td><td>不能证明“全网最轻”</td></tr>
+                <tr><td>桌面低档视频 V06</td><td>续航 x 办公室低档</td><td>私域 FAQ、客服话术</td><td>转化反馈好</td><td>不能泛化到所有档位</td></tr>
+                <tr><td>Clip 婴儿车图 C08</td><td>夹扣 x 亲子场景</td><td>私域说明、补审核任务</td><td>点击高</td><td>不能做安全承诺</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div class="section-title"><h3>补素材清单</h3><span>按作战目标排序</span></div>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>9:16 通勤视频</strong><span>影响抖音视频 Prompt 和小红书短视频脚本。</span></div><button class="btn">创建</button></div>
+              <div class="mini-row"><div><strong>低档噪音测试</strong><span>影响办公室静音相关表达。</span></div><button class="btn">补证据</button></div>
+              <div class="mini-row"><div><strong>大促价格截图</strong><span>影响购买指南和直播答疑。</span></div><button class="btn">导入</button></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-export">
+        <div class="grid-3">
+          <div class="metric"><span class="label">团队包</span><strong>通过</strong><span>可发布为 v1.4，供 Prompt、SOP 和 Agent 使用。</span></div>
+          <div class="metric"><span class="label">互操作</span><strong>3</strong><span>JSON-LD、RDF、Turtle 导出预览。</span></div>
+          <div class="metric"><span class="label">校验问题</span><strong>0</strong><span>当前发布包不含脚本、凭证和本机路径。</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>高级导出</h2>
+              <p class="sub">发布团队知识包和互操作文件；普通用户不必进入这里。</p>
+            </div>
+            <button class="btn primary">导出团队知识包</button>
+          </div>
+          <div class="release-grid">
+            <div class="release-card">
+              <strong>团队知识包</strong>
+              <p>包含 KNOWLEDGE.md、结构化知识数据、FAQ、素材覆盖和提示词依据。用于团队运行时消费。</p>
+            </div>
+            <div class="release-card">
+              <strong>互操作文件</strong>
+              <p>JSON-LD / RDF / Turtle 只作为外部图谱工具互操作，不替代布谷业务服务中的团队版本。</p>
+            </div>
+          </div>
+          <div class="file-tree" style="margin-top: 12px;">
+            <div>BreezeGo-Air-v1.4-export/</div>
+            <div>├─ KNOWLEDGE.md</div>
+            <div>├─ data/brand-voice.json</div>
+            <div>├─ data/product-facts.json</div>
+            <div>├─ data/selling-points.json</div>
+            <div>├─ data/evidence.json</div>
+            <div>├─ data/scene-cards.json</div>
+            <div>├─ answers/questions.json</div>
+            <div>├─ compiled/prompt-brief.md</div>
+            <div>└─ interop/knowledge-map.jsonld</div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h2>发布包校验</h2>
+            <div class="check-list">
+              <div class="check ready-line"><strong>数据层</strong><span>只包含知识数据，不包含脚本、工具调用或自动发布指令。</span></div>
+              <div class="check ready-line"><strong>来源</strong><span>主张、证据、场景和 FAQ 都保留来源引用。</span></div>
+              <div class="check ready-line"><strong>隐私</strong><span>未发现 API Key、登录凭证、本机绝对路径。</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>导出用途</h2>
+            <div class="mini-list">
+              <div class="mini-row"><div><strong>Prompt 工作台</strong><span>按任务加载相关子集，不塞完整文档。</span></div><span class="status ready">推荐</span></div>
+              <div class="mini-row"><div><strong>SOP 工作流</strong><span>读取场景卡、规则和素材覆盖。</span></div><span class="status ready">推荐</span></div>
+              <div class="mini-row"><div><strong>外部图谱工具</strong><span>只用于分析和互操作，不作为运行时事实源。</span></div><span class="status info">高级</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="right">
+      <div class="panel inspector" id="objectInspector">
+        <div class="inspector-head">
+          <small class="label">当前选中对象</small>
+          <h3 class="inspector-title" id="inspectorTitle">BreezeGo Air 新品内容生产</h3>
+          <div class="inspector-meta" id="inspectorMeta">点击表格行、资源卡、队列动作或知识包目录，可查看证据、风险、交付去向和恢复路径。</div>
+        </div>
+        <div class="inspector-tags" id="inspectorTags">
+          <span>内容知识地图</span>
+          <span>团队知识包 v1.4</span>
+        </div>
+        <div class="kv-grid" id="inspectorFacts">
+          <div class="kv"><small>当前状态</small><strong>资料基本齐全</strong></div>
+          <div class="kv"><small>主动作</small><strong>生成知识地图</strong></div>
+          <div class="kv"><small>风险</small><strong>缺 8 条证据</strong></div>
+          <div class="kv"><small>交付</small><strong>卖点矩阵 / 审核任务</strong></div>
+        </div>
+        <div class="detail-stack" id="inspectorDetails">
+          <div class="detail-item"><strong>证据</strong><span>产品 brief、SKU 表、812 条评论和素材库记录已进入当前项目。</span></div>
+          <div class="detail-item"><strong>恢复路径</strong><span>先处理缺证据、禁用表达和素材缺口，再进入 Prompt 或 SOP。</span></div>
+        </div>
+        <div class="route-line" id="inspectorRoute">
+          <div class="route-step"><i>1</i><div><strong>输入</strong><span>产品资料、评论和素材。</span></div></div>
+          <div class="route-step"><i>2</i><div><strong>检查</strong><span>证据、品牌口径和素材覆盖。</span></div></div>
+          <div class="route-step"><i>3</i><div><strong>交付</strong><span>生成矩阵、审核任务和团队知识包。</span></div></div>
+        </div>
+      </div>
+
+      <div class="panel delivery-panel">
+        <div class="card-head">
+          <div>
+            <h3>本次交付结果</h3>
+            <p class="sub">按钮操作会更新这里，便于确认原型闭环。</p>
+          </div>
+        </div>
+        <div class="delivery-output" id="deliveryOutput">
+          <div><strong>等待操作</strong>选择一个业务对象后，执行生成、送审、补素材、回写或导出动作。</div>
+        </div>
+        <div class="operation-log" id="operationLog">
+          <div>09:20 打开 BreezeGo Air 新品内容生产项目。</div>
+        </div>
+      </div>
+
+      <div class="panel side-context active" data-context="map">
+        <div class="card-head">
+          <div>
+            <h3>来源与证据</h3>
+            <p class="sub">生成和审核都从这些来源追溯。</p>
+          </div>
+        </div>
+        <div class="source-list">
+          <div class="source"><strong>BreezeGo Air brief</strong><span>12 条主张，9 条已证实。</span></div>
+          <div class="source"><strong>SKU 表</strong><span>Air Mini / Pro / Clip，18 个规格字段。</span></div>
+          <div class="source"><strong>用户评论</strong><span>812 条原声，已聚类 18 个痛点。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context active" data-context="map">
+        <div class="card-head">
+          <div>
+            <h3>发布检查</h3>
+            <p class="sub">发布前必须通过。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check"><strong>证据覆盖</strong><div class="progress"><i style="width: 78%"></i></div><span>78% 已有证据。</span></div>
+          <div class="check"><strong>审核覆盖</strong><div class="progress"><i style="width: 84%"></i></div><span>84% 已审核。</span></div>
+          <div class="check"><strong>素材覆盖</strong><div class="progress"><i style="width: 61%"></i></div><span>61% 已有素材。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context active" data-context="map team">
+        <div class="card-head">
+          <div>
+            <h3>团队状态</h3>
+            <p class="sub">当前团队默认使用便携风扇 v1.4。</p>
+          </div>
+        </div>
+        <div class="activity-list">
+          <div class="activity"><strong>品牌负责人</strong><span>通过 6 个 BreezeGo Air 卖点组合。</span></div>
+          <div class="activity"><strong>内容工程师</strong><span>提交 2 个变更包。</span></div>
+          <div class="activity"><strong>素材审核</strong><span>回写 4 个高表现组合。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context active" data-context="map build feedback selling scene ip competitor review team command action queue material log prompt sop asset export">
+        <h3>产品命名检查</h3>
+        <div class="empty-note">普通用户主路径只展示内容知识地图、矩阵、审核、团队知识包和行动记录；内部工程术语隐藏在高级模式。</div>
+      </div>
+
+      <div class="panel side-context" data-context="build">
+        <div class="card-head">
+          <div>
+            <h3>生成流程状态</h3>
+            <p class="sub">每一步都能恢复、重跑或转人工处理。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check ready-line"><strong>已完成</strong><span>输入源、候选内容、归一去重已完成。</span></div>
+          <div class="check warn-line"><strong>待处理</strong><span>23 个质量问题，优先处理缺证据和禁用表达。</span></div>
+          <div class="check ready-line"><strong>失败兜底</strong><span>模型未配置或解析失败时显示待配置，不生成伪结果。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="feedback">
+        <div class="card-head">
+          <div>
+            <h3>评论痛点摘要</h3>
+            <p class="sub">痛点必须保留用户原声，不能只靠模型命名。</p>
+          </div>
+        </div>
+        <div class="source-list">
+          <div class="source ready-line"><strong>高频痛点</strong><span>包里东西太多、怕下午没电、风大是不是吵。</span></div>
+          <div class="source warn-line"><strong>待补资料</strong><span>噪音测试、儿童场景边界和大促价格确认。</span></div>
+          <div class="source"><strong>推荐动作</strong><span>确认痛点命名后生成选题矩阵和 FAQ 草稿。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="selling">
+        <div class="card-head">
+          <div>
+            <h3>卖点组合详情</h3>
+            <p class="sub">当前选中：Air Mini 轻量便携。</p>
+          </div>
+        </div>
+        <div class="source-list">
+          <div class="source ready-line"><strong>证据</strong><span>Air Mini 218g、用户原声和称重实拍图已覆盖。</span></div>
+          <div class="source warn-line"><strong>素材缺口</strong><span>缺 9:16 通勤短视频，可继续生成图文。</span></div>
+          <div class="source"><strong>推荐动作</strong><span>生成小红书图文 Prompt，并创建视频补拍任务。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="scene">
+        <div class="card-head">
+          <div>
+            <h3>场景筛选摘要</h3>
+            <p class="sub">目标：拉新；渠道：小红书。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check"><strong>推荐优先级</strong><span>通勤白领 x 包里太重 x 早高峰。</span></div>
+          <div class="check"><strong>可生成产物</strong><span>场景卡、标题、图文 Prompt、补素材清单。</span></div>
+          <div class="check warn-line"><strong>风险</strong><span>首次下单确认点仍待品牌审核。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="ip">
+        <div class="card-head">
+          <div>
+            <h3>IP 口径检查</h3>
+            <p class="sub">同一 IP 版本驱动跨平台内容。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check ready-line"><strong>六层完整度</strong><span>身份、观点、语言、方法论、故事和创作规则已覆盖 82%。</span></div>
+          <div class="check warn-line"><strong>漂移风险</strong><span>“买最贵的 Pro 就对了”偏离场景优先方法论。</span></div>
+          <div class="check danger-line"><strong>禁止</strong><span>不能伪造专家认证或把 IP 观点当产品功效证据。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="competitor">
+        <div class="card-head">
+          <div>
+            <h3>竞品边界</h3>
+            <p class="sub">竞品只能提供观察和机会，不能替代本品证据。</p>
+          </div>
+        </div>
+        <div class="source-list">
+          <div class="source ready-line"><strong>可提取</strong><span>内容结构、证据形式、用户异议和差异机会。</span></div>
+          <div class="source danger-line"><strong>不可搬运</strong><span>标题、话术、可识别构图和独特分镜。</span></div>
+          <div class="source warn-line"><strong>待补证据</strong><span>办公室静音表达缺少噪音测试。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="review">
+        <div class="card-head">
+          <div>
+            <h3>审核辅助</h3>
+            <p class="sub">展示来源、风险和建议处理。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check warn-line"><strong>缺证据</strong><span>“7 天可见改善”缺报告，不建议发布。</span></div>
+          <div class="check danger-line"><strong>禁用表达</strong><span>“绝对安全”应标记禁止使用。</span></div>
+          <div class="check ready-line"><strong>可通过</strong><span>“适合通勤轻装”有 SKU 和评论证据。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="team">
+        <div class="card-head">
+          <div>
+            <h3>版本发布检查</h3>
+            <p class="sub">发布前必须处理冲突。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check warn-line"><strong>命名冲突</strong><span>建议合并为“轻量通勤”。</span></div>
+          <div class="check ready-line"><strong>敏感数据</strong><span>未发现 API Key、登录凭证和本机路径。</span></div>
+          <div class="check ready-line"><strong>下游</strong><span>Prompt 工作台、SOP 和素材库可消费新版本。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="material">
+        <div class="card-head">
+          <div>
+            <h3>素材回写边界</h3>
+            <p class="sub">高表现素材只能证明组合有效，不能证明产品事实。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check ready-line"><strong>可回写</strong><span>通勤包内图 A03、桌面低档视频 V06 已关联内容组合。</span></div>
+          <div class="check warn-line"><strong>待审核</strong><span>Clip 婴儿车图 C08 需要弱化儿童安全表达。</span></div>
+          <div class="check"><strong>补素材</strong><span>9:16 通勤视频、低档续航截图、Clip 桌边固定视频。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="command">
+        <div class="card-head">
+          <div>
+            <h3>战情室摘要</h3>
+            <p class="sub">信号进入目标树后才能组包执行。</p>
+          </div>
+        </div>
+        <div class="source-list">
+          <div class="source ready-line"><strong>今日主攻</strong><span>续航异议解释、轻量差异化、儿童场景风险收敛。</span></div>
+          <div class="source warn-line"><strong>资源缺口</strong><span>9:16 通勤视频、噪音测试、实时价格确认。</span></div>
+          <div class="source danger-line"><strong>硬拦截</strong><span>绝对安全、3 秒降温、无证据竞品贬损。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="action">
+        <div class="card-head">
+          <div>
+            <h3>作战资源包</h3>
+            <p class="sub">本次作战单元不会自动发布。</p>
+          </div>
+        </div>
+        <div class="source-list">
+          <div class="source"><strong>目标</strong><span>解释续航异议，降低首次下单犹豫。</span></div>
+          <div class="source ready-line"><strong>可用资源</strong><span>续航测试记录、FAQ 场景、周末短途素材。</span></div>
+          <div class="source warn-line"><strong>待补</strong><span>缺 1 条竖版视频素材。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="queue">
+        <div class="card-head">
+          <div>
+            <h3>队列处理规则</h3>
+            <p class="sub">动作必须先通过发布检查。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check ready-line"><strong>可执行</strong><span>生成 Prompt、FAQ、详情页模块和补素材清单。</span></div>
+          <div class="check warn-line"><strong>待补资源</strong><span>短视频素材、噪音测试、价格确认。</span></div>
+          <div class="check danger-line"><strong>已拦截</strong><span>禁用表达和无证据承诺不会进入生成链路。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="log">
+        <div class="card-head">
+          <div>
+            <h3>复盘摘要</h3>
+            <p class="sub">沉淀可复用组合。</p>
+          </div>
+        </div>
+        <div class="activity-list">
+          <div class="activity"><strong>高表现组合</strong><span>通勤轻量图文收藏率高于均值 31%。</span></div>
+          <div class="activity"><strong>待处理</strong><span>7 天改善主张仍待补证据。</span></div>
+          <div class="activity"><strong>团队同步</strong><span>v1.4 已成为默认知识包。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="prompt">
+        <div class="card-head">
+          <div>
+            <h3>Prompt 交接检查</h3>
+            <p class="sub">只交接当前任务所需依据。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check ready-line"><strong>可用依据</strong><span>轻量便携、218g、用户原声和通勤素材已覆盖。</span></div>
+          <div class="check warn-line"><strong>素材缺口</strong><span>短视频缺 9:16，不影响图文 Prompt。</span></div>
+          <div class="check danger-line"><strong>禁用表达</strong><span>全网最轻、绝对无负担、3 秒降温。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="sop">
+        <div class="card-head">
+          <div>
+            <h3>SOP 输入检查</h3>
+            <p class="sub">流程启动前先看缺口和人工确认项。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check ready-line"><strong>续航依据</strong><span>低档 9-14h 测试和客服问答可用于 FAQ。</span></div>
+          <div class="check warn-line"><strong>价格确认</strong><span>大促价格未确认前不能写入发布版本。</span></div>
+          <div class="check ready-line"><strong>回写</strong><span>SOP 产物会绑定团队知识包和行动记录。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="asset">
+        <div class="card-head">
+          <div>
+            <h3>素材库检查</h3>
+            <p class="sub">素材表现不替代产品事实。</p>
+          </div>
+        </div>
+        <div class="source-list">
+          <div class="source ready-line"><strong>高表现素材</strong><span>通勤包内图 A03 可优先复用。</span></div>
+          <div class="source warn-line"><strong>缺口</strong><span>9:16 通勤视频、低档噪音测试和价格截图。</span></div>
+          <div class="source danger-line"><strong>边界</strong><span>儿童场景不能做绝对安全承诺。</span></div>
+        </div>
+      </div>
+
+      <div class="panel side-context" data-context="export">
+        <div class="card-head">
+          <div>
+            <h3>导出校验</h3>
+            <p class="sub">高级导出不影响团队服务中的当前版本。</p>
+          </div>
+        </div>
+        <div class="check-list">
+          <div class="check ready-line"><strong>团队知识包</strong><span>结构、来源、FAQ、素材覆盖和提示词依据校验通过。</span></div>
+          <div class="check ready-line"><strong>互操作</strong><span>JSON-LD / RDF / Turtle 用于外部分析，不作为运行时依赖。</span></div>
+          <div class="check ready-line"><strong>安全</strong><span>未发现脚本、凭证、本机绝对路径和自动发布指令。</span></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="toast" id="toast">原型操作已记录</div>
+
+  <script>
+    const pageMeta = {
+      map: { title: '内容知识地图', crumb: '知识库 / 内容知识地图', action: '生成知识地图' },
+      build: { title: '生成流程', crumb: '知识库 / 生成流程', action: '继续审核' },
+      feedback: { title: '评论痛点', crumb: '知识库 / 评论痛点', action: '确认痛点命名' },
+      selling: { title: '卖点矩阵', crumb: '知识库 / 卖点矩阵', action: '生成图片 Prompt' },
+      scene: { title: '场景矩阵', crumb: '知识库 / 场景矩阵', action: '生成场景卡' },
+      ip: { title: 'IP 口径', crumb: '知识库 / IP 口径', action: '生成 IP 口播 Prompt' },
+      competitor: { title: '竞品观察', crumb: '知识库 / 竞品观察', action: '生成差异化机会' },
+      review: { title: '审核任务', crumb: '知识库 / 审核任务', action: '批量通过' },
+      team: { title: '团队知识包', crumb: '知识库 / 团队知识包', action: '发布新版本' },
+      material: { title: '素材回写', crumb: '资产 / 素材回写', action: '回写选中素材' },
+      command: { title: '品牌战情室', crumb: '作战系统 / 品牌战情室', action: '创建作战目标' },
+      action: { title: '作战编组', crumb: '作战系统 / 作战编组', action: '保存作战单元' },
+      queue: { title: '执行队列', crumb: '作战系统 / 执行队列', action: '执行可用动作' },
+      log: { title: '行动记录', crumb: '资产 / 行动记录', action: '导出记录' },
+      prompt: { title: 'Prompt 交接', crumb: '现有模块 / Prompt 交接', action: '生成 Prompt 草稿' },
+      sop: { title: 'SOP 输入', crumb: '现有模块 / SOP 输入', action: '启动 SOP 草稿' },
+      asset: { title: '素材库', crumb: '现有模块 / 素材库', action: '创建补素材任务' },
+      export: { title: '高级导出', crumb: '管理 / 高级导出', action: '导出团队知识包' }
+    };
+
+    const toast = document.getElementById('toast');
+    const deliveryOutput = document.getElementById('deliveryOutput');
+    const operationLog = document.getElementById('operationLog');
+
+    const defaultDetails = {
+      map: {
+        title: 'BreezeGo Air 新品内容生产',
+        meta: '当前业务对象是一个新品内容项目，正在从输入源生成可审核、可交付的内容知识地图。',
+        tags: ['产品 brief', 'SKU 表', '812 条评论', '团队知识包 v1.4'],
+        facts: [['当前状态', '资料基本齐全'], ['主动作', '生成知识地图'], ['风险', '缺 8 条证据'], ['交付', '卖点矩阵 / 审核任务']],
+        details: [['证据', '产品资料、SKU 表、评论原声、素材记录和竞品观察已进入当前项目。'], ['恢复路径', '先处理缺证据、禁用表达和素材缺口，再进入 Prompt、SOP 或团队知识包。']],
+        route: [['输入', '产品资料、评论和素材。'], ['检查', '证据、品牌口径和素材覆盖。'], ['交付', '生成矩阵、审核任务和团队知识包。']]
+      },
+      build: {
+        title: '分步生成运行 2026-05-29-01',
+        meta: '生成流程已经完成输入、抽取、归一，当前卡在质量检查和人工审核。',
+        tags: ['5 步流程', '质量问题 23', '可恢复'],
+        facts: [['当前状态', '4/5'], ['主动作', '继续审核'], ['风险', '禁用表达 / 粒度异常'], ['交付', '知识地图草稿']],
+        details: [['质量问题', '3 秒降温缺报告、轻量便携存在同义命名、儿童场景安全承诺过强。'], ['恢复路径', '合并重复命名、补证据、禁用高风险表达，必要时转人工审核。']],
+        route: [['抽取', '从输入源提取候选内容。'], ['校验', '检查证据、重复、粒度和禁用表达。'], ['审核', '人工确认后才进入下游。']]
+      },
+      feedback: {
+        title: '评论痛点：包里东西太多',
+        meta: '812 条评论聚类中的高频痛点，已保留用户原声，可生成选题和 FAQ。',
+        tags: ['用户原声', '痛点聚类', '选题方向'],
+        facts: [['样本', '812 条'], ['原声', '42 条可引用'], ['状态', '待确认命名'], ['交付', '痛点矩阵 / 选题']],
+        details: [['用户原声', '“夏天包里已经有伞和水杯，不想再塞重东西。”'], ['业务判断', '该痛点可连接 Air Mini 218g 证据和通勤包内图素材。']],
+        route: [['聚类', '评论和客服问答归类。'], ['确认', '运营确认痛点命名。'], ['输出', '生成选题、FAQ 和补资料任务。']]
+      },
+      selling: {
+        title: '卖点组合：轻量便携 x 通勤白领',
+        meta: '已审核组合，可以生成图文 Prompt；短视频素材仍有缺口。',
+        tags: ['Air Mini', '218g', '小红书', '可发布'],
+        facts: [['状态', '可发布'], ['证据', 'SKU + 用户原声'], ['素材', '称重图 / 包内图'], ['交付', 'Prompt 草稿']],
+        details: [['可用表达', '“约一瓶矿泉水的重量，通勤放包里负担更低。”'], ['禁用边界', '不能写“全网最轻”“绝对无负担”。']],
+        route: [['选组合', 'SKU、卖点、人群和渠道。'], ['发布检查', '证据和禁用表达通过。'], ['交接', '生成 Prompt 草稿和补素材任务。']]
+      },
+      scene: {
+        title: '场景组合：早高峰轻装通勤',
+        meta: '拉新目标下的高优先级场景，可生成场景卡、标题和图片 Prompt。',
+        tags: ['拉新', '通勤白领', '小红书图文'],
+        facts: [['状态', '可生成'], ['痛点', '包里东西多'], ['素材', '通勤包内图'], ['交付', '场景卡']],
+        details: [['内容角度', '用 Air Mini 218g 和包内实拍图解释“少带一点也能更舒服”。'], ['恢复路径', '如切到短视频，需要创建 9:16 通勤视频补拍任务。']],
+        route: [['选择变量', '目标、人群、痛点、时刻、渠道。'], ['确认素材', '检查素材覆盖和缺口。'], ['生成', '场景卡、标题、图片 Prompt。']]
+      },
+      ip: {
+        title: 'IP 口径：林小北的轻量生活方法',
+        meta: '跨平台内容必须沿用同一套身份、观点、语言规则和禁区。',
+        tags: ['六层知识库', '场景优先', '克制表达'],
+        facts: [['完整度', '82%'], ['风险', '5 项'], ['主动作', '生成口播 Prompt'], ['交付', 'IP 场景延伸']],
+        details: [['核心立场', '买轻不是买便宜，先看使用场景和使用频率。'], ['拦截示例', '“我是小家电专家认证”无来源，不能使用。']],
+        route: [['读取版本', 'IP 六层知识库。'], ['漂移检查', '校验立场和语言规则。'], ['生成', '口播、私域、文章提示词。']]
+      },
+      competitor: {
+        title: '竞品观察：超小随身主张',
+        meta: '竞品只能提供结构、证据形式和差异机会，不能作为本品牌事实证据。',
+        tags: ['公开观察', '差异机会', '不可搬运'],
+        facts: [['观察数', '8'], ['机会', '11'], ['风险', '3'], ['交付', '差异化选题']],
+        details: [['可用机会', '对方讲“小”，BreezeGo 讲“放包负担低”，引用 218g 和包内实拍。'], ['边界', '不复制标题、话术、可识别构图和独特分镜。']],
+        route: [['观察', '公开页面和达人内容。'], ['抽取', '结构、证据形式、用户异议。'], ['转写', '形成本品牌已审核机会。']]
+      },
+      review: {
+        title: '审核任务：7 天可见改善',
+        meta: '当前主张缺少测试报告，不能直接进入发布版本。',
+        tags: ['缺证据', '待处理', '影响 6 个组合'],
+        facts: [['状态', '需要补证据'], ['风险', '效果承诺'], ['处理人', '品牌负责人'], ['交付', '补证据任务']],
+        details: [['已有来源', '18 条评论提到“更省心”，但没有明确周期和改善指标。'], ['推荐处理', '改成弱表达“不少用户反馈更省心”，或补报告后再审。']],
+        route: [['查看证据', '已有来源和缺口。'], ['做决策', '补证据、弱化、禁用或通过。'], ['写记录', '影响下游组合和行动记录。']]
+      },
+      team: {
+        title: '团队知识包：BreezeGo Air v1.4',
+        meta: '团队真正复用的内容资产包，包含事实、证据、规则、场景、FAQ、素材和提示词依据。',
+        tags: ['当前默认', '216 项内容', '可复用 74'],
+        facts: [['版本', 'v1.4'], ['发布人', '品牌负责人'], ['状态', '可分发'], ['下游', 'Prompt / SOP / 素材库']],
+        details: [['包内容', '3 个 SKU、12 条卖点证据、24 张场景卡、16 个 FAQ、64 个素材覆盖。'], ['冲突', '轻量便携命名存在冲突，发布下一版前需合并。']],
+        route: [['审核', '只收已审核内容。'], ['发布', '生成团队知识包版本。'], ['消费', 'Prompt、SOP 和素材库绑定版本。']]
+      },
+      command: {
+        title: '内容信号：评论集中问续航',
+        meta: '信号只触发行动，不直接变成产品事实；需要转成目标和资源包。',
+        tags: ['高价值', '低风险', '转化目标'],
+        facts: [['价值', '92'], ['风险', '低'], ['建议目标', '解释异议'], ['交付', '作战目标']],
+        details: [['来源', '812 条评论聚类和客服问答，问题集中在“低档够不够用”。'], ['资源建议', '低档 9-14h 测试、办公室场景卡、客服 FAQ。']],
+        route: [['信号', '评论和客服问题。'], ['目标', '解释续航异议。'], ['资源包', '证据、FAQ、素材和 SOP。']]
+      },
+      action: {
+        title: '作战单元：续航异议解释',
+        meta: '把一个目标下的负责人、渠道、资源包、发布检查和标准动作编组。',
+        tags: ['转化', '私域 / 小红书', '资源完整度 82%'],
+        facts: [['状态', '可保存'], ['缺口', '9:16 视频'], ['负责人', '林小北'], ['交付', '执行队列']],
+        details: [['资源包', '低档 9-14h、评论原声、办公室场景卡、FAQ、禁用边界。'], ['发布检查', '图文和 FAQ 可执行；短视频需补素材。']],
+        route: [['选信号', '续航异议。'], ['组资源', '证据、素材、FAQ、Prompt、SOP。'], ['排队', '生成可执行动作和补资源任务。']]
+      },
+      queue: {
+        title: '队列动作：生成 10 条小红书标题',
+        meta: '通过发布检查的生产动作，可生成 Prompt 草稿并写入行动记录。',
+        tags: ['可执行', '续航异议', '小红书'],
+        facts: [['状态', '可执行'], ['资源包', '低档 9-14h'], ['席位', '内容运营'], ['交付', 'Prompt 草稿']],
+        details: [['动作输入', '续航测试记录、客服问题、办公室低档场景和品牌口径。'], ['动作输出', '10 条标题、3 组图文 Prompt、发布检查摘要。']],
+        route: [['检查', '证据、品牌、素材、权限。'], ['执行', '生成 Prompt 或任务。'], ['记录', '写入行动记录和素材回写。']]
+      },
+      material: {
+        title: '素材回写：通勤包内图 A03',
+        meta: '高表现素材可以提升排序和复用优先级，但不能替代产品事实证据。',
+        tags: ['高表现', '轻量便携', '小红书'],
+        facts: [['表现', '收藏 +31%'], ['覆盖', '3 个组合'], ['风险', '不能证明最轻'], ['交付', '素材覆盖表']],
+        details: [['覆盖关系', '轻量便携 x 通勤白领 x 小红书；可进入图文 Prompt。'], ['回写边界', '表现标签只用于排序和复盘，不新增事实主张。']],
+        route: [['匹配', '素材连接组合。'], ['审核', '确认素材可用边界。'], ['回写', '更新素材覆盖和行动记录。']]
+      },
+      log: {
+        title: '行动记录：生成小红书选题',
+        meta: '记录谁基于哪些资源做了什么、产出了什么、是否回写。',
+        tags: ['已完成', '可追溯', '高表现回写'],
+        facts: [['时间', '14:31'], ['产物', '10 标题 / 3 Prompt'], ['状态', '已覆盖'], ['下游', '素材回写']],
+        details: [['使用资源', '通勤白领、轻量便携、早高峰地铁、218g 证据和通勤包内图。'], ['复盘', '收藏率高于均值 31%，可扩展相似场景。']],
+        route: [['行动', '执行队列生成内容。'], ['产物', 'Prompt 草稿和标题。'], ['回写', '表现标签和下一轮信号。']]
+      },
+      prompt: {
+        title: 'Prompt 交接：轻量通勤图文',
+        meta: '已审核组合正在交给 Prompt 工作台，只包含本次任务相关依据。',
+        tags: ['Prompt 草稿', '小红书图文', '可生成'],
+        facts: [['状态', '可生成'], ['依据', '4 类'], ['缺口', '短视频素材'], ['交付', 'Prompt 草稿 P-1042']],
+        details: [['提示词依据', 'Air Mini 218g、用户原声、通勤包内图、禁用表达和品牌语气。'], ['边界', '不注入完整原文，不带未通过证据。']],
+        route: [['选择组合', '轻量便携 x 通勤。'], ['注入依据', '短摘录和禁用边界。'], ['保存', 'Prompt 草稿和运行记录。']]
+      },
+      sop: {
+        title: 'SOP 输入：续航异议解释',
+        meta: 'SOP 使用资源包生成 FAQ、详情页模块和私域话术，价格仍需人工确认。',
+        tags: ['SOP 草稿', '续航 FAQ', '待确认价格'],
+        facts: [['状态', '可启动'], ['人工确认', '2 项'], ['输入', '续航测试'], ['交付', 'FAQ / 详情页模块']],
+        details: [['可用输入', '低档 9-14h 测试、客服问答、办公室场景卡。'], ['恢复路径', '价格未确认前只生成草稿，不进入发布版本。']],
+        route: [['读取资源包', '已审核证据和 FAQ。'], ['生成草稿', 'SOP 产物。'], ['回写', '审核结论和行动记录。']]
+      },
+      asset: {
+        title: '素材库：覆盖关系视图',
+        meta: '从素材反查它服务哪些卖点、痛点、场景和作战目标。',
+        tags: ['64 个素材', '覆盖关系', '补素材任务'],
+        facts: [['素材', '64'], ['覆盖组合', '41'], ['缺口', '13'], ['高表现', '7']],
+        details: [['当前重点', '通勤包内图 A03 覆盖轻量便携和小红书图文，可优先复用。'], ['边界', '高表现只证明内容组合有效，不能证明产品事实。']],
+        route: [['反查', '素材覆盖的组合。'], ['补缺口', '生成补拍和补证据任务。'], ['回写', '素材覆盖表和复盘信号。']]
+      },
+      export: {
+        title: '高级导出：团队知识包 v1.4',
+        meta: '高级导出用于团队知识包和互操作文件，不影响普通用户主路径。',
+        tags: ['校验通过', '无凭证', '高级模式'],
+        facts: [['团队包', '通过'], ['互操作', '3 类'], ['校验问题', '0'], ['交付', 'zip / JSON-LD']],
+        details: [['安全校验', '不包含脚本、凭证、API Key、本机绝对路径或自动发布指令。'], ['使用边界', '互操作文件只用于分析，不替代布谷业务服务事实源。']],
+        route: [['检查', '来源、隐私、安全。'], ['导出', '团队包和互操作文件。'], ['归档', '记录版本和校验结果。']]
+      }
+    };
+
+    const detailLibrary = [
+      { match: ['3 秒降温', '明显降温'], detail: {
+        title: '被拦截主张：3 秒降温',
+        meta: '缺少测试报告，属于效果承诺，不能进入可发布 Prompt。',
+        tags: ['已拦截', '缺报告', '禁用表达'],
+        facts: [['状态', '不可发布'], ['风险', '效果承诺'], ['恢复', '补报告或删除'], ['影响', '4 个组合']],
+        details: [['缺口', '没有测试报告、实验记录或品牌负责人确认。'], ['处理建议', '禁用该表达，改为“体感更凉爽”等弱表达也需要来源。']],
+        route: [['识别', '发现高风险主张。'], ['拦截', '阻断 Prompt 和场景卡。'], ['恢复', '补证据或禁用。']]
+      }},
+      { match: ['绝对安全', '宝宝必备', '儿童场景'], detail: {
+        title: '风险表达：儿童场景安全承诺',
+        meta: '亲子素材可以保留，但安全绝对化表达必须拦截并改写。',
+        tags: ['儿童场景', '安全承诺', '需审核'],
+        facts: [['状态', '待审核'], ['风险', '高'], ['处理', '弱化表达'], ['交付', '审核任务']],
+        details: [['可用表达', '“儿童使用需成人看护，夹扣场景仅作使用方式说明。”'], ['禁用表达', '“绝对安全”“宝宝必备”“放心给孩子单独用”。']],
+        route: [['发现', '达人 Brief 或素材涉及儿童。'], ['审核', '品牌负责人确认边界。'], ['交付', '改写建议或禁用记录。']]
+      }},
+      { match: ['续航异议', '怕下午没电', '低档 9-14h', '生成 10 条小红书标题', '生成私域 FAQ'], detail: defaultDetails.queue },
+      { match: ['轻量便携', '轻便通勤', '218g', '通勤包内图', 'Air Mini'], detail: defaultDetails.selling },
+      { match: ['风大是不是吵', '噪音测试', '静音'], detail: {
+        title: '资料缺口：办公室噪音证据',
+        meta: '用户关心安静使用，但当前没有公开噪音测试，不能写确定数值。',
+        tags: ['待补证据', '办公室场景', 'FAQ'],
+        facts: [['状态', '待补证据'], ['来源', '评论原声'], ['风险', '数值不可写'], ['交付', '补证据任务']],
+        details: [['用户原声', '“要是开会旁边很吵，我肯定不会用。”'], ['处理建议', '创建低档分贝测试或改成“更适合桌面近距离低档使用”。']],
+        route: [['评论', '识别噪音担忧。'], ['补证据', '创建测试任务。'], ['再审核', '证据充分后进入 FAQ。']]
+      }},
+      { match: ['大促', '价格', '618'], detail: {
+        title: '价格防守：大促前购买犹豫',
+        meta: '价格和库存需要实时人工确认，不能由知识包自动承诺。',
+        tags: ['价格确认', '转化目标', '人工确认'],
+        facts: [['状态', '待确认'], ['来源', '客服 / 私域'], ['风险', '价格变动'], ['交付', '购买指南']],
+        details: [['用户问题', '“现在下单还是等 618？”'], ['恢复路径', '运营确认价格、库存和活动边界后，才能进入直播答疑和购买指南。']],
+        route: [['信号', '价格犹豫。'], ['确认', '运营人工确认。'], ['输出', '购买指南和直播答疑。']]
+      }},
+      { match: ['CoolMate', '竞品', '贬损竞品'], detail: defaultDetails.competitor },
+      { match: ['知识包', 'v1.4', '包概览', '产品事实', '卖点与证据', '品牌口径', '场景卡', 'FAQ', '包文件'], detail: defaultDetails.team },
+      { match: ['Prompt 草稿', 'Prompt 交接', 'P-1042', '提示词依据'], detail: defaultDetails.prompt },
+      { match: ['SOP', '流程输入包', '详情页模块'], detail: defaultDetails.sop },
+      { match: ['素材库', '素材覆盖', '补素材', '补拍', '素材回写'], detail: defaultDetails.asset },
+      { match: ['行动记录', '复盘', '14:31'], detail: defaultDetails.log }
+    ];
+
+    const escapeHtml = (value) => String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+
+    const renderInspector = (detail) => {
+      const safeDetail = detail || defaultDetails.map;
+      document.getElementById('inspectorTitle').textContent = safeDetail.title;
+      document.getElementById('inspectorMeta').textContent = safeDetail.meta;
+      document.getElementById('inspectorTags').innerHTML = safeDetail.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('');
+      document.getElementById('inspectorFacts').innerHTML = safeDetail.facts
+        .map(([key, value]) => `<div class="kv"><small>${escapeHtml(key)}</small><strong>${escapeHtml(value)}</strong></div>`)
+        .join('');
+      document.getElementById('inspectorDetails').innerHTML = safeDetail.details
+        .map(([key, value]) => `<div class="detail-item"><strong>${escapeHtml(key)}</strong><span>${escapeHtml(value)}</span></div>`)
+        .join('');
+      document.getElementById('inspectorRoute').innerHTML = safeDetail.route
+        .map(([key, value], index) => `<div class="route-step"><i>${index + 1}</i><div><strong>${escapeHtml(key)}</strong><span>${escapeHtml(value)}</span></div></div>`)
+        .join('');
+    };
+
+    const currentPage = () => document.querySelector('.page.active')?.id.replace('page-', '') || 'map';
+
+    const findDetail = (text) => {
+      const source = text.replace(/\s+/g, ' ');
+      const match = detailLibrary.find((item) => item.match.some((keyword) => source.includes(keyword)));
+      return match ? match.detail : defaultDetails[currentPage()] || defaultDetails.map;
+    };
+
+    const addOperationLog = (message) => {
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const item = document.createElement('div');
+      item.textContent = `${time} ${message}`;
+      operationLog.prepend(item);
+      while (operationLog.children.length > 6) operationLog.lastElementChild.remove();
+    };
+
+    const setDelivery = (title, body, next) => {
+      deliveryOutput.innerHTML = `
+        <div><strong>${escapeHtml(title)}</strong>${escapeHtml(body)}</div>
+        <div><strong>下一步</strong>${escapeHtml(next)}</div>
+      `;
+      addOperationLog(`${title}：${body}`);
+    };
+
+    const actionResults = [
+      { match: ['生成 Prompt 草稿', '生成 Prompt', '生成图片 Prompt', '生成视频 Prompt', '生成 IP 口播 Prompt'], result: ['已生成 Prompt 草稿 P-1042', '已绑定团队知识包 v1.4、证据短摘录和禁用表达。', '打开 Prompt 交接页检查草稿，短视频缺素材时创建补拍任务。'], detail: defaultDetails.prompt },
+      { match: ['生成场景卡', '加入场景库'], result: ['已生成场景卡 SC-218', '场景卡包含人群、痛点、渠道、素材缺口和发布检查摘要。', '交给 Prompt 工作台或 SOP 输入，不自动发布。'], detail: defaultDetails.scene },
+      { match: ['确认痛点命名', '确认'], result: ['痛点命名已确认', '“包里东西太多”保留 42 条用户原声，已进入痛点矩阵。', '可继续生成选题方向和 FAQ 草稿。'], detail: defaultDetails.feedback },
+      { match: ['继续审核', '通过', '批量通过'], result: ['审核结论已记录', '当前决策写入审核记录，并更新受影响的矩阵组合。', '通过项可交给 Prompt / SOP；缺证据项创建补证据任务。'], detail: defaultDetails.review },
+      { match: ['补证据', '发起'], result: ['已创建补证据任务 E-073', '任务指派给产品负责人，关联“7 天可见改善”和噪音测试缺口。', '证据补齐前不会进入可发布 Prompt。'], detail: defaultDetails.review },
+      { match: ['禁用'], result: ['表达已加入禁用清单', '相关组合会在发布检查中被硬拦截。', '需要改写后重新送审。'], detail: detailLibrary[1].detail },
+      { match: ['生成执行队列', '执行可用动作', '执行当前动作', '生成'], result: ['执行队列已更新', '可执行动作生成 Prompt 草稿；待补资源动作转成补拍或补证据任务。', '查看执行队列页确认每个动作的状态和产物。'], detail: defaultDetails.queue },
+      { match: ['创建补拍', '补拍', '补素材', '创建补素材任务', '创建'], result: ['已创建补素材任务 M-087', '任务要求补 9:16 通勤视频、低档噪音测试或大促价格截图。', '素材通过审核后回写覆盖矩阵。'], detail: defaultDetails.asset },
+      { match: ['回写选中素材', '回写素材覆盖'], result: ['素材覆盖已回写', '高表现标签只用于排序和复盘，不改写产品事实。', '可在素材库和行动记录中查看覆盖关系。'], detail: defaultDetails.material },
+      { match: ['发布新版本', '导出团队知识包', '导出高级包'], result: ['发布包校验通过', '未发现凭证、本机绝对路径或自动发布指令；团队知识包可进入确认流程。', '生产完成仍需真实 Bugu 双账号和真实对象存储验收。'], detail: defaultDetails.export },
+      { match: ['拉取团队更新', '合并', '选择'], result: ['团队变更已进入冲突处理', '当前选择会保留审计记录，不能静默覆盖团队版本。', '处理后本机草稿回到待同步状态。'], detail: defaultDetails.team },
+      { match: ['保存作战单元', '创建作战目标', '组包', '扩展', '补信息'], result: ['作战目标已更新', '信号被归入目标树，并连接资源包、负责人、渠道和发布检查。', '下一步生成执行队列或创建补资源任务。'], detail: defaultDetails.action },
+      { match: ['启动 SOP 草稿'], result: ['SOP 草稿已创建', '已注入续航测试、客服问答和发布检查；价格仍需人工确认。', '价格确认前只能作为草稿，不进入发布版本。'], detail: defaultDetails.sop }
+    ];
+    const showToast = (message) => {
+      toast.textContent = message;
+      toast.classList.add('show');
+      window.clearTimeout(window.__toastTimer);
+      window.__toastTimer = window.setTimeout(() => toast.classList.remove('show'), 1500);
+    };
+
+    document.querySelectorAll('.nav-item[data-page]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const page = button.dataset.page;
+        document.querySelectorAll('.nav-item[data-page]').forEach((item) => item.classList.toggle('active', item === button));
+        document.querySelectorAll('.page').forEach((section) => section.classList.toggle('active', section.id === `page-${page}`));
+        document.querySelectorAll('.side-context').forEach((panel) => {
+          const contexts = panel.dataset.context.split(' ');
+          panel.classList.toggle('active', contexts.includes(page));
+        });
+        const meta = pageMeta[page] || pageMeta.map;
+        document.getElementById('pageTitle').textContent = meta.title;
+        document.getElementById('crumb').textContent = meta.crumb;
+        document.getElementById('primaryAction').textContent = meta.action;
+        document.querySelectorAll('.selected').forEach((item) => item.classList.remove('selected'));
+        renderInspector(defaultDetails[page] || defaultDetails.map);
+      });
+    });
+
+    const packMeta = [
+      { key: 'overview', title: '包概览', desc: '查看 BreezeGo Air v1.4 中可被团队复用的内容资产。' },
+      { key: 'brief', title: '产品事实', desc: 'SKU、规格、价格带和可用内容方向，作为所有卖点的事实底座。' },
+      { key: 'claims', title: '卖点与证据', desc: '每条卖点都带可用表达、证据来源、禁用边界和审核状态。' },
+      { key: 'voice', title: '品牌口径', desc: '品牌语气、推荐句式、需改写句式和禁用表达。' },
+      { key: 'scenes', title: '场景卡', desc: '按人群、痛点、渠道和产物形式组织的可复用内容场景。' },
+      { key: 'answers', title: 'FAQ 与回答', desc: '客服、私域、详情页和回答型内容可直接复用的问题与边界。' },
+      { key: 'assets', title: '素材覆盖', desc: '展示每个内容组合已有素材、缺口和推荐补拍动作。' },
+      { key: 'prompt', title: '提示词依据', desc: '复制到 Prompt 工作台前使用的业务上下文和禁用表达。' },
+      { key: 'files', title: '包文件', desc: '高级模式查看发布包目录和结构化文件。' }
+    ];
+
+    const switchPack = (pack) => {
+      const meta = packMeta.find((item) => item.key === pack) || packMeta[0];
+      document.querySelectorAll('.package-menu button').forEach((item) => item.classList.toggle('active', item.dataset.pack === meta.key));
+      document.querySelectorAll('.package-pane').forEach((pane) => pane.classList.toggle('active', pane.id === `pack-${meta.key}`));
+      document.getElementById('packTitle').textContent = meta.title;
+      document.getElementById('packDesc').textContent = meta.desc;
+      renderInspector(findDetail(meta.title));
+    };
+
+    document.querySelectorAll('.package-menu button').forEach((button) => {
+      button.addEventListener('click', () => {
+        switchPack(button.dataset.pack);
+      });
+    });
+
+    document.getElementById('prevPack').addEventListener('click', () => {
+      const activeKey = document.querySelector('.package-menu button.active').dataset.pack;
+      const index = packMeta.findIndex((item) => item.key === activeKey);
+      const nextIndex = (index - 1 + packMeta.length) % packMeta.length;
+      switchPack(packMeta[nextIndex].key);
+      showToast(`已切换到：${packMeta[nextIndex].title}`);
+    });
+
+    document.getElementById('nextPack').addEventListener('click', () => {
+      const activeKey = document.querySelector('.package-menu button.active').dataset.pack;
+      const index = packMeta.findIndex((item) => item.key === activeKey);
+      const nextIndex = (index + 1) % packMeta.length;
+      switchPack(packMeta[nextIndex].key);
+      showToast(`已切换到：${packMeta[nextIndex].title}`);
+    });
+
+    const selectableSelector = [
+      '.table tbody tr',
+      '.source-card',
+      '.dimension',
+      '.mini-row',
+      '.queue-card',
+      '.queue-item',
+      '.asset-card',
+      '.timeline-item',
+      '.flow-card',
+      '.bundle-node',
+      '.release-card',
+      '.fact',
+      '.check',
+      '.source',
+      '.activity',
+      '.handoff-card',
+      '.script-preview'
+    ].join(', ');
+
+    document.querySelectorAll('.table tbody tr').forEach((row) => row.classList.add('drillable'));
+
+    document.querySelectorAll(selectableSelector).forEach((item) => {
+      item.addEventListener('click', (event) => {
+        if (event.target.closest('button')) return;
+        document.querySelectorAll('.selected').forEach((node) => node.classList.remove('selected'));
+        item.classList.add('selected');
+        renderInspector(findDetail(item.textContent));
+      });
+    });
+
+    document.querySelectorAll('.tab').forEach((button) => {
+      button.addEventListener('click', () => {
+        button.closest('.tabs')?.querySelectorAll('.tab').forEach((item) => item.classList.toggle('active', item === button));
+        renderInspector(findDetail(button.textContent));
+        showToast(`已切换视图：${button.textContent.trim()}`);
+      });
+    });
+
+    document.querySelectorAll('.filter').forEach((button) => {
+      button.addEventListener('click', () => {
+        button.classList.toggle('active');
+        renderInspector(findDetail(button.textContent));
+        setDelivery('筛选已应用', `当前页面按“${button.textContent.trim()}”更新矩阵和详情。`, '点击矩阵行查看证据、素材和恢复路径。');
+      });
+    });
+
+    const handlePrototypeAction = (button) => {
+      const label = button.textContent.trim();
+      const context = `${label} ${button.closest('.card, .mini-row, tr, .package-pane, .topbar')?.textContent || ''}`;
+      const action = actionResults.find((item) => item.match.some((keyword) => context.includes(keyword))) || {
+        result: [`${label} 已记录`, '已更新当前对象状态、交付结果和行动记录。', '继续查看右侧详情确认恢复路径和下游去向。'],
+        detail: findDetail(context)
+      };
+      setDelivery(action.result[0], action.result[1], action.result[2]);
+      renderInspector(action.detail || findDetail(context));
+      showToast(`${label}：已更新交付结果`);
+    };
+
+    document.querySelectorAll('button').forEach((button) => {
+      if (button.disabled || button.dataset.page || button.dataset.pack || button.id === 'prevPack' || button.id === 'nextPack') return;
+      if (button.classList.contains('tab') || button.classList.contains('filter')) return;
+      button.addEventListener('click', () => handlePrototypeAction(button));
+    });
+
+    renderInspector(defaultDetails.map);
+  </script>
+</body>
+</html>

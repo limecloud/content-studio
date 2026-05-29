@@ -11,7 +11,7 @@
 
 真实 provider 联调入口：`npm run verify:v2:providers`。默认只做 dry-run 配置诊断，不发起网络请求；设置 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1` 后才会调用文字 / 视觉 provider，设置 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1` 后才会继续验证视频媒体 provider。需要留存联调证据时使用 `-- --output <报告路径>` 或 `CONTENT_STUDIO_V2_PROVIDER_REPORT=<报告路径>`。
 
-真实 provider 发布门槛：`npm run verify:v2:providers:strict`。严格模式下必须显式开启网络和媒体联调，且只要存在 `failed` 或 `blocked` 就退出非 0；默认 dry-run 仍用于诊断，不作为发布通过信号。
+真实 provider 发布门槛：`npm run verify:v2:providers:strict`。严格模式下必须显式开启网络和媒体联调，且只要存在 `failed`、`blocked` 或 `skipped` 就退出非 0；默认 dry-run 仍用于诊断，不作为发布通过信号。
 
 真实业务素材验收入口：`npm run verify:v2:acceptance`。当前默认使用 local-sample 固化品牌资料、IP 六层、产品资料结构化、主图 / 卖点图 / 详情页 Prompt 追溯、评论痛点聚类、标题方向、客服异议话术、对标图字段、参考视频拆解、绿幕文案图、成功素材回炉、混剪包导入说明、平台草稿包、视频成本边界、跨产物 runId 关键覆盖和一致性的验收口径；真实素材可通过 `npm run verify:v2:acceptance -- --input docs/roadmap/v2/business-acceptance-input.example.json` 替换同一报告输入，也可通过 `npm run verify:v2:acceptance -- --workspace <工作区路径>` 直接从 `.content-studio/` 读取已生成产物，而不是另建一套不可复核的人工清单。目录 / 工作区模式会校验输入源里的产品资料 / 评论反馈、视频拆解与脚本、绿幕文案图、成功素材沉淀、混剪清单文件的 `packagedPath` 是否指向真实文件，并校验 `import-guide.md` 是否覆盖第三方混剪软件、素材目录、CSV 和人工审核边界。需要把“已在真实混剪工具导入”作为门槛时，加 `-- --require-external-mix-evidence`，并在混剪包目录放 `import-evidence.json` 及截图 / 录屏 / 验收记录文件，参考 `docs/roadmap/v2/mix-import-evidence.example.json`。需要证明不是 local-sample 或手填清单，而是完整真实工作区闭环时，加 `-- --require-real-workspace-evidence --require-external-mix-evidence`；其中 `--require-real-workspace-evidence` 会自动要求真实混剪工具导入证据，并要求 `--workspace`、真实产品资料 / 评论反馈 / 参考图视频、视频拆解、绿幕图审核、成功素材沉淀、混剪包实存文件、平台草稿包、runId 一致性和 provider strict 证据都成立。需要留存验收证据时使用 `-- --output <报告路径>` 或 `CONTENT_STUDIO_V2_ACCEPTANCE_REPORT=<报告路径>`。
 
@@ -30,7 +30,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 | 提示词组 | 能从场景库生成 UGC 实拍图片 / 图生视频提示词。 | 已验证，数量按场景卡配置生成 |
 | IP 知识库 | 能展示身份、价值观、语言、判断方法、素材和创作引擎六层完整度。 | 已验证 |
 | Prompt 工作台 | 能选择输入源、多轮调整 Prompt、保存版本并确认用途。 | 已验证 |
-| 对标图反推 | 无知识库路径能反推 Prompt 并进入同风格图片链路。 | 已验证 blocked / HTTP provider mock 成功分支，待真实用户 provider 联调 |
+| 素材拆解 | 无知识库路径能拆解参考素材并生成同风格 Prompt。 | 已验证 blocked / HTTP provider mock 成功分支，待真实用户 provider 联调 |
 | 工作流类型 | `WorkflowDefinition`、`WorkflowRun`、步骤输入 / 输出 / artifact refs 有共享类型。 | 已验证 |
 | 内置 SOP | 至少 7 个内置 SOP 可列出，并覆盖产品商业素材、评论痛点选题和绿幕文案图。 | 已验证 |
 | SOP 执行页 | 不打开 canvas 可运行 SOP，运行前能显式确认本次资料来源。 | 已验证，输入源显式选择已补齐 |
@@ -51,7 +51,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 - PromptDraft 生成：`PromptDraftStore` 优先通过 `TextGenerationService.generateJson` 调用 Claude SDK / Anthropic / OpenAI / Gemini 显式协议 provider；未配置或失败时只生成 `blocked:text-provider` / `fallback:local-rule` 的可追溯本地草稿，不伪造成模型成功。
 - Agent 多轮会话：`AgentPromptSessionStore` 记录会话、用户意图、输入源快照、消息流和关联草稿；启动会话时先生成首版 PromptDraft，继续会话时会写入新的草稿版本并同步会话历史。
 - IP 场景延伸：`IpKnowledgeModule` 可从同一套 IP 六层知识库生成口播 / 长文 / 私域等 `ip-scenario-kb` 输入源和对应 `PromptDraft`，并把来源回写到关联 IP SOP 运行记录，避免不同场景各自发明人设。
-- 对标图反推：`ReferenceReverseService` 只在真实视觉理解 endpoint 可用时分析参考图 / 产品图，未配置时保持 blocked，不伪造“看过图”的结果；成功后会产出 `PromptDraft` 和 `generation-log:reference-reverse`。
+- 素材拆解：`ReferenceReverseService` 只在真实视觉理解 endpoint 可用时分析参考图 / 产品图，未配置时保持 blocked，不伪造“看过图”的结果；成功后会产出 `PromptDraft` 和 `generation-log:reference-reverse`。
 - 成品视频导入：`VideoImportModule` 通过输入源登记第三方生成后的视频文件，并关联原 PromptDraft。
 - 内部视频 API 成本边界：`MediaProvider.generateVideo` 在真实 Generic HTTP 成功、任务 queued、失败和未配置 blocked 队列四种路径中统一写入 `model`、`durationSeconds`、`aspectRatio` 和 `costEstimate`；provider 返回 `cost/currency` 时优先使用真实返回值，否则按 `CONTENT_STUDIO_VIDEO_CNY_PER_SECOND` 或默认 2 元/秒估算，视频工作台直接展示成本估算。
 - 绿幕文案图：`OverlayCardStore` 生成本地 9:16 绿幕 SVG 文案图，作为确定性本地素材，不伪造成 AI 图片生成。
@@ -80,7 +80,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 
 | 用户故事 / 用例 | 普通用户目标 | 本轮修正 | 仍需继续 |
 | --- | --- | --- | --- |
-| US-01 / UC-03 无知识库对标图反推 | 上传参考图和产品资料，得到可修改图片提示词，再生成图片和审核入库。 | 对标图页新增“无知识库小红书扒图”导轨，明确参考图、产品资料、反推提示词、图片生成和审核入库的顺序；反推成功仍自动进入 Prompt 工作台继续修改。 | 需要真实视觉 provider + 真实业务参考图做点击级验收。 |
+| US-01 / UC-03 无知识库素材拆解 | 上传参考图和产品资料，得到可修改图片提示词。 | `拆解素材` 是当前唯一前端入口，明确参考图、产品资料、提示词生成和外部复制边界；不在本页创建图片生成任务。 | 需要真实视觉 provider + 真实业务参考图做点击级验收。 |
 | US-04 / UC-05 产品资料结构化 | 把产品 brief / SKU 表变成卖点、规格、场景和禁用表达变量表，再进入图片、详情页或 Prompt 生产。 | 输入源页新增“产品资料结构化”面板，登记产品资料后自动从明示字段整理产品名称、卖点、规格、适用场景、禁用表达和 SKU 行；缺项直接标记待补，不编造字段，并生成主图、卖点图和详情页模块 Prompt 交付，保留输入源与 SKU / 规格追溯。 | 仍需真实 SKU / 详情页资料验收批量变体质量。 |
 | US-11 用户反馈痛点聚类 | 从评论、差评和客服问题里找到真实痛点、选题方向和可用标签。 | 输入源模型新增 `user-feedback` 用途；输入源页新增“评论痛点聚类 / 用户问题矩阵”面板；`feedback-topic-matrix` SOP 已能把评论原声推进到痛点矩阵、选题方向、客服异议话术、确认态文案 Prompt 和人工审核。 | 仍需真实评论 / 客服记录验收聚类与话术质量，并决定是否沉淀为独立痛点库。 |
 | US-02 / US-13 / UC-15 品牌知识库到场景库 | 导入品牌 / 产品资料，先得到场景库，再生成可复制提示词。 | 品牌知识库页新增“品牌 / 产品资料先变成场景库”导轨，主路径固定为选择资料 -> 抽取事实 -> 生成场景库 -> 生产提示词组；场景库页已补场景卡字段编辑和确认动作，可在下游前修正人群、痛点、空间、构图、卖点和素材建议。 | 仍需真实业务资料下的场景质量人工验收。 |
@@ -98,7 +98,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 
 - `src/renderer/src/app/constants.ts`：补齐现有一级分组下的二级入口，不新增另一套一级导航。
 - `src/renderer/src/components/UserJourneyGuide.tsx`：新增复用任务导轨，服务普通用户“当前在哪、缺什么、下一步去哪”。
-- `InputSourcesModule`、`ReferenceReverseModule`、`BrandKnowledgeModule`、`IpKnowledgeModule`、`ScenePromptModule`、`VideoPromptModule`、`PromptWorkbenchModule`：接入任务导轨并收敛工程化文案；场景库页支持场景卡字段确认 / 编辑，场景提示词支持单条复制，IP 知识库页支持结构化 IP 运营场景库和已生成延伸提示词回看。
+- `InputSourcesModule`、`MaterialBreakdownModule`、`BrandKnowledgeModule`、`IpKnowledgeModule`、`ScenePromptModule`、`VideoPromptModule`、`PromptWorkbenchModule`：接入任务导轨并收敛工程化文案；场景库页支持场景卡字段确认 / 编辑，场景提示词支持单条复制，IP 知识库页支持结构化 IP 运营场景库和已生成延伸提示词回看。
 - `VideoPromptModule` / `VideoImportModule`：视频 Prompt 复制后进入“已复制待导入”本地状态，成品视频导入后变为“已导入成品”，导入页可按状态筛选原提示词。
 - `AssetsModule`：素材卡片和详情不再把 SOP / Prompt 作为主判断层，改为“任务可追溯 / 提示词可追溯 / 审核决策 / 建议下一步”，审核人员先做业务判断，再查看追溯信息。
 - `tests/e2e/electron-app.spec.mjs`：导航断言改为普通用户关键二级入口可见，创意视频 / 自定义视频继续作为高级入口隐藏。
@@ -108,24 +108,20 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 ### 3.1 无知识库小红书扒图 SOP
 
 ```text
-选择对标图反推
+选择拆解素材
 -> 上传 1-10 张参考图
 -> 上传产品图 / 填产品资料
 -> 模型反推构图、风格、文字区域和 Prompt
 -> 用户多轮调整 Prompt
--> 生成 4 张同风格图
--> 质检文字、主体一致性和侵权风险
--> 人工审核
--> 通过图进入素材库
--> 成功素材反向沉淀 Prompt
+-> 复制到外部生图工具
 ```
 
 验收：
 
 - 全流程不要求知识库。
-- 参考图、产品资料、Prompt 版本和生成结果能追溯到同一个 runId。
-- 多模态模型未配置时必须 blocked，不伪造分析。
-- 通过图可复用到下一次 SOP。
+- 参考图、产品资料和 Prompt 版本能追溯到同一个 runId。
+- 素材拆解复用设置 - 模型中的图片 / 多模态端点、Key 和模型；未配置时必须 blocked，不伪造分析。
+- 本页只交付可复制 Prompt，不创建图片任务、不审核入库。
 
 ### 3.2 品牌知识库场景提示词 SOP
 
@@ -315,7 +311,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 - 至少 5 条 SOP 用户路径有本地验证记录。
 - 品牌知识库 -> 场景库 -> 提示词组路径有本地验证记录。
 - IP 知识库六层构建路径有本地验证记录。
-- 无知识库对标图反推路径有本地验证记录。
+- 无知识库素材拆解路径有本地验证记录。
 - GUI 关键路径经过 smoke 或 e2e 验证。
 - 文档已同步最新边界：不做混剪、不默认自动发布、第三方视频生成只做 Prompt 人工复制。
 - 未配置 provider 的 blocked 状态有明确 UI。
@@ -757,7 +753,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 - 新增 `src/shared/productBrief.ts`，从产品资料 / SKU 输入源中提取明示的产品名称、卖点、规格、适用场景、禁用表达和 SKU 行。
 - 解析器只整理用户已写出的字段；缺少产品名称、规格 / SKU、场景 / 人群、禁用表达等内容时标记 `missingFields`，不做模板补全或编造。
 - 输入源页新增“产品资料结构化 / 产品变量表”面板，普通用户登记产品 brief 后能直接看到变量表、待补字段和 SKU 预览。
-- 面板给出去 Prompt 工作台、对标图反推和图片生成的下游入口，补齐 UC-05 到 US-01 / US-04 图片生产链路之间的断点。
+- 面板给出去 Prompt 工作台、拆解素材和图片生成的下游入口，补齐 UC-05 到 US-01 / US-04 图片生产链路之间的断点。
 
 已补验证：
 
@@ -1159,7 +1155,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 - 普通用户界面不再直接暴露 `blocked`、`PromptDraft`、`Artifact 引用`、`WorkflowRun` 等工程词；运行状态统一显示“待配置 / 待解析 / 待补充”，底层状态码不变。
 - SOP 运行详情的产物入口从“打开 Prompt 草稿 / Artifact 引用”收敛为“打开提示词草稿 / 产物引用”，并保留真实步骤输出和 runId 追溯。
 - 平台草稿包、文章草稿包和混剪素材候选的按钮从单独的 `Prompt` 收敛为“提示词”，普通用户不用识别内部对象名。
-- 对标图反推、Prompt 工作台、绿幕文案图、视频生成、场景提示词和 v2 功能说明中的“provider / blocked / PromptRef / inputSchema”等可见描述改成“生成服务 / 待配置 / 提示词来源 / 输入字段”等业务表达。
+- 素材拆解、Prompt 工作台、绿幕文案图、视频生成、场景提示词和 v2 功能说明中的“provider / blocked / PromptRef / inputSchema”等可见描述改成“生成服务 / 待配置 / 提示词来源 / 输入字段”等业务表达。
 - `docs/roadmap/v2/user-story-flow-map.md` 同步说明：`blocked` 仅保留为底层状态码，普通用户必须看到恢复路径，而不是错误码。
 
 已补验证：
@@ -1295,7 +1291,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 - 品牌 / 产品知识库和 IP 知识库当前来源从 `source:id` 组合收敛为“产品型 / 个人 IP 型”业务标签。
 - 品牌 / IP 知识库版本状态从 `ready` 收敛为“已抽取 / 已构建”；IP 场景延伸不再展示短 IP 版本 ID，改为“已关联同一 IP 知识库版本”。
 - IP 场景延伸结果和场景提示词版本列表不再展示 `image / video / article` 用途枚举或短任务 ID；改为“图片提示词 / 视频提示词 / 文案提示词 / 已关联 SOP / 资料 N 份”。
-- 对标图反推输入源、素材库导入标签、混剪候选标签和知识引用标题统一显示“图片 / 视频 / 文档 / 任务输入”等业务词，不把 `manual-note`、`sop-input` 或原始 kind / purpose 当用户上下文。
+- 素材拆解输入源、素材库导入标签、混剪候选标签和知识引用标题统一显示“图片 / 视频 / 文档 / 任务输入”等业务词，不把 `manual-note`、`sop-input` 或原始 kind / purpose 当用户上下文。
 - 右侧最近生成记录、图片历史详情和生成结果详情统一使用“本地生成服务 / 生成服务：xxx / 生成服务待配置 / 本地规则草稿”展示模型来源，不直接显示 `local`、`blocked:*` 或 `fallback:*`。
 - SOP 高级维护页把“输入字段 JSON / 执行步骤 JSON”收敛为“输入字段（高级配置）/ 执行步骤（高级配置）”，错误提示改为“列表格式”；Canvas 节点卡片显示能力类型、输出项数量和上游步骤数量，不把节点 ID、输出 key 列表作为主文案。
 
@@ -1572,6 +1568,410 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行 provider dry-run 诊断和
 - 真实生成服务 strict：缺文字、视觉、图片、视频服务配置与联调结果。
 - 真实业务工作区：缺真实品牌 / IP / 产品 / SKU / 评论 / 参考图 / 参考视频跑完主链后的 `.content-studio/` 证据。
 - 真实混剪工具导入：缺 `import-evidence.json`、截图 / 录屏 / 验收记录，以及视频和绿幕图在真实工具里的导入证明。
+
+### 6.73 2026-05-29 Agent-first 普通用户工作台收口审计
+
+已完成：
+
+- 普通用户工作台不再把 Agent 当页面装饰区。`AgentSessionPanel` 统一投影 `AgentPromptSession.messages` 和 `executionEvents`，模块侧不再硬编码固定助手气泡、固定执行脚本或 mock 对话；`projectAgentRuntimeReadModel` 会把 Tool / Permission / Human action / Artifact / Evidence / Snapshot 分层投影，`snapshot.updated` 只作为 runtime 恢复事实，不进入普通可见事件。
+- Prompt 对话执行层已从 Claude 专名收敛为协议中立 `PromptAgentService`，Claude 官方链路继续走 Claude Agent SDK，OpenAI Chat 兼容协议等非 Claude 文字模型首轮和续写会沿用当前模型，不再掉回 Claude SDK。
+- Human-in-the-loop 已形成可交互闭环：缺输入源时写入 `permission.requested -> action.required -> snapshot.updated`；用户点击补输入源后写入 `permission.resolved -> action.resolved -> snapshot.updated`；登记新输入源后回写 `context.resolved / evidence.changed` 并关闭待办；继续对话会基于新增 evidence 生成下一轮草稿或保持真实 blocked。
+- Runtime recovery 事实已补齐：首轮、续写、人工处理和补输入源都会追加 `snapshot.updated`，payload 包含 `sessionStatus`、`eventCount`、`messageCount`、`draftIds`、`pendingActionIds`、`artifactRefs` 和 `evidenceRefs`。续写快照基于“历史事件 + 本轮事件”计算，避免丢失旧证据和旧待办状态。
+- Provider trace 已进入模型事件：HTTP / Claude SDK 成功和失败都会返回脱敏 provider events；缺 Key / 失败路径保留 `model.failed` 和 `providerEvents`，并要求配置模型，不伪造成模型成功。
+- 浏览器开发桥接不再手写一套假 runtime。`devContentStudioBridge` 使用同类 runtime fact、permission resolution 和 snapshot 规则；开发模式明确记录 `blocked:browser-dev-runtime`，不会生成 `model.completed` 伪成功，也不会把继续对话变成另一个新假会话。
+- 生产 UI 中“看起来像按钮但永远不能点”的静态假入口已收敛：图片 / 视频空历史状态不再显示禁用“复制”按钮；视频链接“不下载”改为状态文本；设置页服务条款 / 隐私政策 / 官网改为待配置状态文本；Skills 菜单移除未接通的 `Try in chat` 假入口。
+- 静态原型去掉 `mock-img / fake-input` 命名，改为 `visual-preview / readonly-field`；v2 UX 文案审计新增规则，阻断禁用复制按钮、禁用不下载按钮、后续提供外链按钮、未接通试聊入口和 mock / fake 原型命名回退。
+
+验证：
+
+- `npm run typecheck -- --pretty false` 通过。
+- `npm run build` 通过。
+- `npm run verify:v2:ux-copy` 通过，19 个文件、63 条规则。
+- `npm run test:functional -- --test-name-pattern "对话可以记录首版草稿和多轮调整"` 通过。
+- `npm run test:functional -- --test-name-pattern "对话缺少输入源会写入待处理动作事实"` 通过。
+- `npm run test:functional -- --test-name-pattern "对话生成服务缺少密钥时保留 provider 失败事实并要求配置模型"` 通过。
+- `npm run test:functional -- --test-name-pattern "对话会话使用非 Claude 协议时首轮和续写都沿用当前文字模型"` 通过。
+- `npm run test:functional -- --test-name-pattern "浏览器开发桥接不会模拟模型成功并保留可恢复运行快照"` 通过。
+- `npm run test:e2e -- "tests/e2e/electron-app.spec.mjs" -g "对话里的待处理动作可以恢复到真实输入源页面"` 通过。
+- `npm run test:e2e -- "tests/e2e/electron-app.spec.mjs" -g "AI 生图页复刻关键选项并消费 OEM 素材清单"` 通过。
+- `npm run test:e2e -- "tests/e2e/electron-app.spec.mjs" -g "AI 视频页复刻关键选项并消费 OEM 视频素材清单"` 通过。
+- `rg -n "mock-img|fake-input|<button[^>]*disabled[^>]*>\\s*(复制|不下载)|后续提供|Try in chat|服务还没有|探索阶段|Agent 会话|通用 Agent|真实 Agent|当前上下文|AI Agent|启动.*Agent|问.*Agent|Agent 输出" src/renderer/src src/main tests docs/roadmap/v2/prototype` 仅命中 `AgentSessionPanel` 的内部 sanitizer，不是普通用户可见文案。
+- `git diff --check` 针对本轮改动文件通过。
+
+当前判断：
+
+- 用户最初指出的“功能拼凑、满屏文字、按钮不可走通、HITL 只展示不交互、Agent UI 固定死、mock 数据 / 伪成功、工程废话”在本地工程主链里已被门禁和 E2E 覆盖，属于本地已验证。
+- 仍不能把 v2 发布级完成声明为已完成；发布级仍受第 7 节真实 provider strict、真实业务工作区闭环和真实混剪工具导入证据约束。
+
+### 6.74 2026-05-29 Agent-first 本地总闸回归
+
+已完成：
+
+- 修正 Playwright E2E 中 5 处旧 UI 选择器，全部改为当前真实业务表面：视频 Prompt 面板标题改读协作面板标题；场景库确认状态改读场景工作台摘要；IP 长文 SOP 改为点击具体口播场景卡的“生成延伸库”；场景 Prompt 改为从当前对话输入区主动作生成，再在产物区复制交付。
+- 保留真实业务路径，不通过跳过测试、放宽到全页 body 或恢复旧假按钮来通过验证。
+- 复核此前 Electron 启动失败为偶发：`模型密钥不可解密时进入统一授权处理` 单条重跑通过。
+
+验证：
+
+- `npm run test:e2e -- "tests/e2e/electron-app.spec.mjs" -g "模型密钥不可解密时进入统一授权处理"` 通过，1/1。
+- `npm run test:e2e -- "tests/e2e/electron-app.spec.mjs" -g "独立视频 Prompt|品牌 SOP 运行详情|IP 长文 SOP|文章生成不会自动混入|参考视频拆解三步"` 首轮 4/5 通过；唯一失败为“已复制”按钮 strict mode 命中草稿列表和操作按钮两处，已收窄为精确按钮名。
+- `npm run test:e2e -- "tests/e2e/electron-app.spec.mjs" -g "独立视频 Prompt 复制不会误推进无关联 SOP"` 通过，1/1。
+- `npm run verify:local` 通过；覆盖 typecheck、build、v2 provider dry-run / 业务验收 / UX 文案审计、功能测试、Electron smoke 和 Playwright E2E 28/28。
+- `rg -n "mock-img|fake-input|<button[^>]*disabled[^>]*>\\s*(复制|不下载)|后续提供|Try in chat|服务还没有|探索阶段|Agent 会话|通用 Agent|真实 Agent|当前上下文|AI Agent|启动.*Agent|问.*Agent|Agent 输出" src/renderer/src src/main tests docs/roadmap/v2/prototype` 仅命中 `AgentSessionPanel` 的内部 sanitizer 两行，不是普通用户可见文案。
+
+当前判断：
+
+- Agent-first 普通用户工作台本地工程目标已通过总闸；本地流程、HITL 交互、真实 blocked 分支、可追溯产物和主链 E2E 已闭环。
+- 发布级仍不能伪完成；真实 provider strict、真实业务工作区和真实混剪导入证据仍按第 7 节处理。
+
+### 6.75 2026-05-29 混剪导入证据防伪收口
+
+已完成：
+
+- `scripts/v2-business-acceptance.mjs` 不再把混剪包目录里的 `import-evidence.json` 本身计入 `evidenceFiles`。该 JSON 只作为证据索引；真实混剪工具导入门槛必须另有截图、录屏说明或 `import-check.md` / 验收记录文件。
+- `tests/functional/content-flow.test.mjs` 新增断言：即使 `import-evidence.json` 填齐 `toolName`、`importedAt`、`importedAssetKinds`、`manifestImported=true`、`timelineCreated=true` 和 `result=verified`，只要没有独立证据文件，`mix-package-external-import` 仍然失败并明确缺 `evidenceFiles`。
+- `docs/roadmap/v2/implementation-plan.md` 同步说明 `import-evidence.json` 不是可计入的证据文件，避免真实验收时用一份自述 JSON 冒充第三方导入证据。
+
+验证：
+
+- `node --check scripts/v2-business-acceptance.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "v2 业务验收脚本"` 通过。
+- `npm run verify:v2:acceptance -- --input <临时 JSON-only 混剪导入输入> --require-external-mix-evidence` 按预期失败；`mix-package-external-import` 的 `missingFields` 包含 `evidenceFiles`，`verifiedEvidenceFiles` 为空。
+- `npm run verify:v2:acceptance` 通过，local-sample 业务验收 50/50。
+- `npm run test:functional` 通过。
+
+当前判断：
+
+- 发布级混剪导入证据门槛更接近真实验收：索引文件、清单和口头字段不能单独证明第三方工具导入，必须有可复核的独立证据文件。
+
+### 6.76 2026-05-29 真实工作区缺口清单一致性收口
+
+已完成：
+
+- `scripts/v2-business-acceptance.mjs` 的 `real-workspace-evidence` 检查现在直接要求真实第三方混剪导入证据文件；不再只让 delivery 分区报 `mix-package-external-import` 失败。
+- `real-workspace-evidence.nextActions` 新增真实恢复动作：按 `import-guide.md` 在第三方混剪工具导入视频和绿幕素材，并保存截图、录屏说明或 `import-check.md` 验收记录。
+- `tests/functional/content-flow.test.mjs` 同步断言真实工作区门槛缺口必须包含“缺少真实第三方混剪导入证据文件”，并且恢复动作必须指向真实第三方混剪工具导入。
+
+验证：
+
+- `node --check scripts/v2-business-acceptance.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "v2 业务验收脚本"` 通过。
+- `npm run verify:v2:evidence -- --provider-strict --require-real-workspace-evidence --output-dir .tmp/v2-real-workspace-import-gap-check` 按预期失败；manifest 中 `real-workspace-evidence.missing` 包含“缺少真实第三方混剪导入证据文件”，delivery 分区仍包含 `mix-package-external-import` 失败，缺 `toolName / importedAt / importedAssetKinds / manifestImported / evidenceFiles / video / overlay`。
+
+当前判断：
+
+- 发布级缺口清单与验收门槛语义一致：真实工作区闭环本身就要求真实混剪工具导入证据，而不是只要求 App 里导出一个混剪包。
+
+### 6.77 2026-05-29 Provider strict 跳过检查防伪收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 的 `strictGate` 不再只拦 `failed / blocked`；现在任何 provider 返回 `skipped` 也会让 strict gate 失败，并在报告里输出 `PROVIDER_CHECK_SKIPPED`、`skippedChecks` 和 `required.noSkippedChecks=true`。
+- 图片 provider 在媒体联调阶段返回 `IMAGE_MEDIA_CHECK_USE_APP_WORKFLOW` 时，`strictGate.nextActions` 会明确要求补真实 App 图片生成工作流证据：provider 响应、生成资产和审核证据，不能把“跳过检查”当发布通过信号。
+- `hasProviderStrictFailure` fallback 也把 `summary.skipped > 0` 视为 strict failure，避免旧格式报告误判。
+- `tests/functional/content-flow.test.mjs` 新增 provider strict skipped 回归：仅配置图片 Key 且开启网络 / 媒体时，图片检查为 `skipped`，strict gate 必须失败并列出 `skippedChecks: ["image"]`。
+- `docs/roadmap/v2/implementation-plan.md` 和本审计文档同步更新发布门槛口径：strict provider 必须无 `failed / blocked / skipped`。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "v2 provider 验收脚本"` 通过。
+- `node -e "import('./scripts/v2-provider-check.mjs').then(async ({buildProviderCheckReport}) => { ... })"` 直接验证图片 `skipped` 时 `strictGate.passed=false`，`reasons` 包含 `PROVIDER_CHECK_SKIPPED`，`skippedChecks` 为 `["image"]`。
+
+当前判断：
+
+- 发布级 provider strict 不再允许“配置存在但检查被跳过”的灰色通过；图片真实能力必须由直接联调或真实 App 工作流证据补齐。
+
+### 6.78 2026-05-29 图片 provider strict 直接联调收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 在 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1` 且 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1` 后不再把图片检查标记为 `skipped`，而是按 `openai-responses`、`openai-chat-data-uri`、`gemini-generate-content` 三类协议直接调用 provider。
+- 图片检查只有解析到真实图片 payload 才返回 `succeeded`：OpenAI Responses 读取 `image_generation_call.result`，OpenAI Chat 读取 `data:image/*;base64`，Gemini 读取 `inlineData.data`；空响应、队列描述或纯文本说明都会变成 `failed`。
+- provider 报告现在保留 `outerModel`、`imageCount` 和脱敏错误，仍只输出 key 是否配置的布尔值，不写出密钥或图片 payload。
+- `tests/functional/content-flow.test.mjs` 新增两条回归：本地 fake 图片 provider 返回 `image_generation_call.result` 时图片检查成功；四类 provider 都真实响应时 `strictGate.passed=true`，证明 strict gate 是真实发布门槛，不是永远失败的形式检查。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新 provider 报告要求，明确图片 provider 必须直接联调并解析图片 payload。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "真实探测图片"` 通过。
+- `npm run test:functional -- --test-name-pattern "四类 provider"` 通过。
+- `npm run verify:v2:providers` 通过，默认 dry-run 不外发，报告中 `skippedChecks` 为空。
+- `npm run verify:v2` 通过。
+
+当前判断：
+
+- 图片 provider strict 已从“要求补证据但脚本无法直接通过”收口为可执行联调：真实 Key 和 endpoint 配好后，发布级检查必须拿到真实图片 payload 才能过。
+
+### 6.79 2026-05-29 真实工作区证据防空文件和样例污染收口
+
+已完成：
+
+- `scripts/v2-business-acceptance.mjs` 的混剪导入证据文件不再只判断 `isFile`，现在必须是非空文件；空截图、空验收记录和空 `import-check.md` 都会进入 `missingEvidenceFiles`，不能让 `mix-package-external-import` 通过。
+- `real-workspace-evidence` 的 sample-like 检测范围从少量标题 / 路径扩展到输入源正文、tags、品牌事实、IP 层、参考来源、视频拆解、视频脚本、绿幕卡、成功素材沉淀、混剪证据文件路径和 trace runId。
+- sample-like 规则从 `sample / 示例` 扩展到 `sample / mock / 示例 / 样例`，用于发布级真实工作区门槛；默认 local-sample 仍只作为本地结构诊断，不触发真实门槛。
+- `tests/functional/content-flow.test.mjs` 新增回归：空混剪证据文件不能通过；即使 provider strict 伪造为通过、mode 为 workspace，只要产品输入源正文仍包含“示例素材”，真实工作区门槛也必须失败。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新真实工作区和混剪导入证据要求。
+
+验证：
+
+- `node --check scripts/v2-business-acceptance.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "v2 业务验收脚本支持外部真实素材输入"` 通过。
+- `npm run verify:v2:acceptance` 通过。
+- `npm run verify:v2` 通过。
+
+当前判断：
+
+- 真实工作区发布门槛进一步远离“手工拼清单”：证据文件必须有内容，样例污染会从业务正文和产物链路中暴露出来。
+
+### 6.80 2026-05-29 成套证据缺口清单可读性收口
+
+已完成：
+
+- `scripts/v2-acceptance-evidence.mjs` 的 `MISSING_EVIDENCE.md` 现在会把 provider `skipped` 也列入 Provider 待补；发布验收不再只关注 `blocked / failed`。
+- 业务失败项和 manifest 中的 `businessFailures[].missing` 现在会直接展开 `sampleLikeValues`，以“样例/占位污染：...”列出命中值；真实工作区被 sample / mock / 示例污染时，不需要打开 `business-acceptance.json` 才能看到具体问题。
+- `tests/functional/content-flow.test.mjs` 加强真实工作区证据 CLI 回归：本地样例触发真实工作区门槛时，manifest 和 `MISSING_EVIDENCE.md` 必须出现样例污染项，例如 `sample-product-brief`。
+- `docs/roadmap/v2/implementation-plan.md` 同步要求成套证据目录的 Markdown 缺口清单必须能独立指导发布补齐。
+
+验证：
+
+- `node --check scripts/v2-acceptance-evidence.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "v2 验收证据 CLI 真实工作区门槛"` 通过。
+
+当前判断：
+
+- 真实发布缺口不再依赖阅读深层 JSON：验收人员只看 `MISSING_EVIDENCE.md` 也能发现 provider 跳过检查和样例污染。
+
+### 6.81 2026-05-29 Provider strict 响应语义收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 修正文字 provider 默认端点：`openai-chat` 默认走 `https://api.openai.com/v1`，`gemini-generate-content` 默认走 Gemini v1beta，不再沿用 Anthropic 默认 base URL。
+- 文字 provider strict 不再只看 HTTP 200；必须能从 OpenAI / Gemini / Anthropic 响应中解析到模型输出文本，否则返回 `TEXT_PROVIDER_NO_MODEL_OUTPUT`。
+- 视频 provider strict 不再接受任意 JSON；必须能解析到视频 URL、视频 base64、job / task / request id，或 queued / processing / completed 等真实状态证据。`{ "ok": true }`、空 JSON 或普通说明文本会返回 `VIDEO_PROVIDER_NO_JOB_OR_ASSET_RESULT` 并让 strict gate 失败。
+- `tests/functional/content-flow.test.mjs` 新增回归：四类 provider 都返回真实响应时 strict gate 可通过；视频 provider 只返回空 JSON 语义时必须失败，并将 `video` 计入 `failedChecks`。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新 provider strict 响应语义要求。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "v2 provider strict"` 通过。
+- `npm run test:functional -- --test-name-pattern "空 JSON"` 通过。
+
+当前判断：
+
+- Provider strict 更接近真实联调：通过信号必须来自模型输出、图片 payload、视频资产或可追溯任务，而不是 HTTP 层面“有响应”。
+
+### 6.82 2026-05-29 视觉 provider strict 结构化响应收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 新增 `visionProviderEvidence`，视觉理解联调不再接受任意 HTTP 200 JSON。
+- 视觉 provider strict 必须解析到 `prompt / composition / lighting / negativePrompt / risks / qualityChecklist` 中的结构化拆解证据，并同时包含画面分析和风险 / 质量边界；否则返回 `VISION_PROVIDER_NO_STRUCTURED_ANALYSIS`。
+- `tests/functional/content-flow.test.mjs` 更新四类 provider 成功回归，fake vision 响应必须包含真实拆解字段；新增“视觉 provider 空结构”回归，`{ "ok": true }` 必须失败并将 `vision` 计入 `failedChecks`。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新 provider strict 响应语义。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "视觉 provider 空结构"` 通过。
+- `npm run test:functional -- --test-name-pattern "v2 provider strict 在四类"` 通过。
+
+当前判断：
+
+- 文字、视觉、图片、视频四类 provider strict 都已经从“HTTP 成功”收口到“能解析出业务需要的真实响应证据”。
+
+### 6.83 2026-05-29 混剪包素材实存证据防手填收口
+
+已完成：
+
+- `scripts/v2-business-acceptance.mjs` 现在会校验手工传入的 `actualPackagedFilePaths`，只有真实存在且非空的文件才会进入已验证素材路径。
+- 手工传入但未验证的素材路径会保留在 `unverifiedPackagedFilePaths`，不存在或空文件会进入 `missingPackagedFilePaths`，供 `mix-package-assets` 和 `real-workspace-evidence` 直接暴露。
+- `real-workspace-evidence` 现在同时要求混剪包有 manifest `packagedPath` 声明和已验证的素材实存证据；不能只靠手填两个路径数组证明混剪包可交付。
+- `scripts/v2-acceptance-evidence.mjs` 的 manifest 和 `MISSING_EVIDENCE.md` 会展开 `missingPackagedFilePaths` / `unverifiedPackagedFilePaths`，发布验收人员不需要打开深层 JSON 才能定位缺失素材。
+- `tests/functional/content-flow.test.mjs` 新增回归：即使 provider strict 伪造为通过、外部混剪导入证据文件存在，只要 `actualPackagedFilePaths` 指向的素材文件不存在，真实工作区门槛和混剪包素材检查都必须失败。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新混剪包素材实存证据要求。
+
+验证：
+
+- `node --check scripts/v2-business-acceptance.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "真实工作区"` 通过。
+- `npm run test:functional -- --test-name-pattern "缺失混剪素材路径"` 通过。
+
+当前判断：
+
+- 真实工作区发布门槛不再接受“手工填路径”的素材证据；混剪包必须有 manifest 声明，并且声明指向真实非空文件。
+
+### 6.84 2026-05-29 混剪导入证据目录作用域收口
+
+已完成：
+
+- `scripts/v2-business-acceptance.mjs` 的混剪导入证据文件校验从“真实存在且非空”升级为“真实存在、非空、且位于混剪包目录内”。
+- 绝对路径或相对路径解析后如果逃出混剪包目录，会进入 `outOfScopeEvidenceFiles`，不会进入 `verifiedEvidenceFiles`，也不能让 `mix-package-external-import` 或 `real-workspace-evidence` 通过。
+- `scripts/v2-acceptance-evidence.mjs` 的 manifest 和 `MISSING_EVIDENCE.md` 会展开 `outOfScopeEvidenceFiles`，发布验收人员能直接看到哪个证据文件没有随混剪包归档。
+- `tests/functional/content-flow.test.mjs` 新增回归：混剪包 `packageDir` 存在时，把 `evidenceFiles` 指向包目录外的非空文件必须失败；成套证据 CLI 必须在缺口清单里展开越界路径。
+- `docs/roadmap/v2/implementation-plan.md` 同步要求截图、录屏说明或验收记录必须随混剪包归档。
+
+验证：
+
+- `node --check scripts/v2-business-acceptance.mjs` 通过。
+- `node --check scripts/v2-acceptance-evidence.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "混剪导入证据"` 通过。
+- `npm run test:functional -- --test-name-pattern "目录越界路径"` 通过。
+
+当前判断：
+
+- 发布级混剪导入证据不能再指向任意本地非空文件；证据必须跟混剪包同目录归档，便于交接和复核。
+
+### 6.85 2026-05-29 混剪导入完成态字段收口
+
+已完成：
+
+- `scripts/v2-business-acceptance.mjs` 的 `mix-package-external-import` 门槛新增 `importedFileCount`、`timelineCreated` 和完成态 `result` 要求。
+- `importedFileCount` 必须大于等于所需素材类型数量，避免只导入一个视频却声称视频和绿幕图都已进入混剪工具。
+- `timelineCreated` 必须为 true，证明不是只把文件拖进素材池，而是已经创建时间线 / 工程。
+- `result` 只接受 `verified / completed / complete / imported / succeeded / success / approved`，`draft` 等未完成状态不能通过。
+- `real-workspace-evidence` 同步使用同一完成态判断；第三方混剪导入证据不完整时，真实工作区发布门槛必须失败。
+- `tests/functional/content-flow.test.mjs` 新增回归：导入文件数不足、未创建时间线、结果为 `draft` 时，即使证据文件存在也不能通过。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新真实混剪导入字段要求。
+
+验证：
+
+- `node --check scripts/v2-business-acceptance.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "混剪导入证据"` 通过。
+
+当前判断：
+
+- 真实混剪导入证据从“有自述字段和截图文件”收口为“导入数量、时间线和完成态都可验收”的业务证据。
+
+### 6.86 2026-05-29 图片 provider strict 图片 payload 有效性收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 不再把 `image_generation_call.result` 的任意非空字符串当作图片；OpenAI Responses 必须返回有效图片 base64 或 data URI。
+- OpenAI Chat data URI 检查会验证 `data:image/png|jpg|jpeg|webp;base64,...` 的 base64 payload；普通文本或畸形 data URI 不再通过。
+- Gemini `inlineData.data` 必须是有效 base64，且 `mimeType` 必须是图片 MIME；`not-an-image` 这类普通字符串不会计入图片结果。
+- `tests/functional/content-flow.test.mjs` 新增回归：OpenAI Responses 和 Gemini GenerateContent 返回非图片字符串时，图片 provider 必须 `failed` 并返回 `IMAGE_PROVIDER_NO_IMAGE_RESULT`。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新图片 provider strict 的 payload 有效性要求。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "非图片 payload"` 通过。
+
+当前判断：
+
+- 图片 provider strict 从“能解析到一个字符串”收口为“能解析到有效图片 payload”，减少假成功空间。
+
+### 6.87 2026-05-29 视频 provider strict job 证据收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 的视频 base64 证据不再只看长度，改为必须符合 base64 payload 格式。
+- 视频 provider strict 的 job 证据从“有 job id 或有状态”收紧为“job / task / request id 和 queued / processing / completed 等状态同时存在”。
+- 单独返回 `{ "status": "queued" }`、只有 job id、伪 base64 字符串或空 JSON 都不能让视频 provider 通过。
+- `tests/functional/content-flow.test.mjs` 新增回归：视频 provider 只返回单独状态或伪 base64 时，必须 `failed` 并返回 `VIDEO_PROVIDER_NO_JOB_OR_ASSET_RESULT`。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新视频 provider strict 的 job / asset 语义。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "单独状态或伪 base64"` 通过。
+
+当前判断：
+
+- 视频 provider strict 不再接受“看起来像状态”的弱信号；要么返回真实视频资产，要么返回可追踪 job id + 状态。
+
+### 6.88 2026-05-29 视频 provider strict 资产证据防伪收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 不再把任意 `http(s)` URL 当作视频资产；URL 必须带视频扩展名、视频 MIME / content-type 查询参数，或与同一响应对象里的 `mimeType / contentType / type / kind / assetType / mediaType=video` 元数据绑定。
+- 视频 base64 不再只看合法 base64 格式；必须能识别 MP4 / MOV `ftyp`、WebM EBML、Ogg 或 MPEG-TS 等视频魔数。普通文本编码成 base64 不再计入视频资产。
+- 视频 provider 失败时保留 `responseEvidence.rejectedUrlCount / rejectedBase64Count`，方便真实联调时看清是普通链接、文本 payload，还是缺 job 证据。
+- `tests/functional/content-flow.test.mjs` 更新回归：视频 provider 只返回单独状态、普通网页 URL 或文本 base64 时，必须 `failed` 并返回 `VIDEO_PROVIDER_NO_JOB_OR_ASSET_RESULT`。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新视频 provider strict 的视频 URL 和 base64 资产语义。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "普通 URL 或伪 base64"` 通过。
+
+当前判断：
+
+- 视频 provider strict 从“有 URL 就算资产”收口为“URL / base64 必须像真实视频资产，或退回 job id + 状态证据”，减少把状态页、说明页或文本 payload 当成生成结果的空间。
+
+### 6.89 2026-05-29 视频 provider strict 元数据和魔数再收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 不再把 `type: "video_generation"` 这类任务类型当成视频文件元数据；只有 `video`、`video_asset`、`video-file`、`video-output`、`video-result`、`generated-video` 等明确资产语义才能为无扩展 URL 背书。
+- MPEG-TS base64 判定不再只看首字节 `0x47`；现在还要求 188 字节处存在同步字节，避免普通文本 base64 因首字节巧合被当成视频。
+- `tests/functional/content-flow.test.mjs` 的视频 provider 防伪回归改为返回 `type: "video_generation"`、普通 URL 和以 `G` 开头的文本 base64，确保任务对象、状态页链接和文本 payload 都不能通过 strict gate。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "普通 URL 或伪 base64"` 通过。
+
+当前判断：
+
+- 视频 strict 资产证据继续贴近真实发布验收：任务状态对象可以走 job id + 状态，但不能用任务类型给普通 URL 或文本 payload 冒充成视频文件。
+
+### 6.90 2026-05-29 图片 provider strict 魔数证据收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 不再把任意合法 base64 当成图片；PNG、JPEG 和 WebP 都必须能识别文件头魔数。
+- 图片 data URI 和 Gemini `inlineData.data` 会同时校验 MIME 与魔数匹配；`mimeType: image/png` 但内容是普通文本 base64 时不会计入图片结果。
+- `tests/functional/content-flow.test.mjs` 的图片 provider 防伪回归改为返回合法文本 base64，覆盖 OpenAI Responses 和 Gemini GenerateContent 两条协议。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新图片 provider strict 的图片 payload 语义。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "非图片 payload"` 通过。
+
+当前判断：
+
+- 图片 provider strict 从“base64 格式有效”进一步收口为“图片字节有效”，减少用文本 payload 冒充图片生成成功的空间。
+
+### 6.91 2026-05-29 文字 provider strict 探针语义收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 不再把文字 provider 响应中的任意非空文本当作联调成功；OpenAI / Gemini / Anthropic 响应必须能解析到本次探针要求的 `{"ok":true}`。
+- 兼容模型返回 Markdown 包裹 JSON 的情况，但普通说明文本、服务在线提示或空文本都会返回 `TEXT_PROVIDER_NO_MODEL_OUTPUT`。
+- `tests/functional/content-flow.test.mjs` 新增回归：文字 provider 返回 `provider is online` 时，即使视觉、图片、视频 provider 都返回有效证据，strict gate 也必须失败并把 `text` 计入 `failedChecks`。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新文字 provider strict 的探针语义。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "文字 provider 普通文本"` 通过。
+
+当前判断：
+
+- 文字 provider strict 从“HTTP 成功且有文本”收口为“模型按探针完成了最小结构化输出”，减少用健康检查文案冒充模型联调的空间。
+
+### 6.92 2026-05-29 视觉 provider strict 风险边界收口
+
+已完成：
+
+- `scripts/v2-provider-check.mjs` 的视觉 provider strict 不再只看任意三个结构字段；现在必须同时包含可用 `prompt`、画面分析 `composition / lighting`、`negativePrompt` 和风险 / 质量边界 `risks / qualityChecklist`。
+- 视觉 provider 结构不达标时会把 `responseEvidence` 一起写入 failed 检查，便于真实联调时区分缺画面分析、缺负面约束还是缺风险边界。
+- `tests/functional/content-flow.test.mjs` 新增回归：视觉 provider 返回 prompt、composition、lighting 但缺 negativePrompt / risks / qualityChecklist 时，strict gate 必须失败。
+- `docs/roadmap/v2/implementation-plan.md` 同步更新视觉 provider strict 的字段语义。
+
+验证：
+
+- `node --check scripts/v2-provider-check.mjs` 通过。
+- `npm run test:functional -- --test-name-pattern "缺少风险边界"` 通过。
+
+当前判断：
+
+- 视觉 provider strict 从“字段形状存在”收口为“能支撑真实参考素材拆解和人工审核边界”，减少无风险提示的假拆解通过空间。
 
 ## 7. 剩余工作
 

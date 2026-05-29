@@ -33,6 +33,7 @@ export const V2_UX_COPY_AUDITS = [
     rules: [
       ...prototypeRules(),
       rule('visible-blocked-status', /\bblocked\b/, '静态原型不能把 blocked 当作普通用户可见状态。'),
+      rule('mock-visual-class', /\bmock-img\b|\bfake-input\b/, '静态原型不能继续使用 mock / fake 命名。'),
     ],
   },
   {
@@ -69,10 +70,49 @@ export const V2_UX_COPY_AUDITS = [
       rule('raw-artifact-fallback', /return\s+ref(?:\.length|\s*;)/, '运行详情未知产物不能回退展示内部引用字符串。'),
     ],
   },
+  {
+    path: 'src/renderer/src/components/modules/ImageShowcaseModule.tsx',
+    rules: noDeadStaticButtonRules(),
+  },
+  {
+    path: 'src/renderer/src/components/modules/VideoShowcaseModule.tsx',
+    rules: noDeadStaticButtonRules(),
+  },
+  {
+    path: 'src/renderer/src/components/modules/VideoModule.tsx',
+    rules: [
+      rule('disabled-no-download-button', /<button[^>]*disabled[^>]*>\s*不下载\s*<\/button>/, '处理边界应用状态文本表达，不能做成不可点击按钮。'),
+    ],
+  },
+  {
+    path: 'src/renderer/src/components/SettingsDialog.tsx',
+    rules: [
+      rule('disabled-future-link-button', /<button[^>]*disabled[^>]*>[^<]*后续提供[^<]*<\/button>/, '未配置的外部链接应用状态文本表达，不能做成不可点击按钮。'),
+    ],
+  },
+  {
+    path: 'src/renderer/src/components/modules/SkillsModule.tsx',
+    rules: [
+      rule('disabled-try-chat-button', /<button[^>]*disabled[^>]*>\s*<SkillIcon name=["']message["'] \/>[\s\S]*?Try in chat[\s\S]*?<\/button>/, '未接通的 skill 试聊入口不能作为不可点击按钮展示。'),
+    ],
+  },
+  {
+    path: 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx',
+    rules: v1BusinessModuleRules(),
+  },
+  {
+    path: 'src/renderer/src/components/modules/ContentReviewTasksModule.tsx',
+    rules: v1BusinessModuleRules(),
+  },
+  {
+    path: 'src/renderer/src/components/modules/BrandCommandCenterModule.tsx',
+    rules: v1BusinessModuleRules(),
+  },
 ];
 
 function productDocRules() {
   return [
+    ...flatFeatureListRules(),
     rule('mix-manifest-main-task', /混剪\s+manifest|导出\s+manifest|预览\s+manifest|写入\s+manifest|已入\s+manifest|manifest\s+主任务|manifest\s+导出/, '产品文档应把用户主任务写成“混剪清单 / 清单文件”。'),
     rule('prompt-ref-label', /PromptRef|Prompt 来源/, '产品文档应使用“提示词来源”。'),
     rule('provider-label', /\bprovider\b|Provider 状态|选择 provider|provider 未配置|配置 provider/i, '产品文档应使用“生成服务 / 待配置”。'),
@@ -82,10 +122,36 @@ function productDocRules() {
 
 function prototypeRules() {
   return [
+    ...flatFeatureListRules(),
+    rule('prototype-stage-copy', /服务还没有|探索阶段/, '普通用户界面不能出现内部阶段说明。'),
+    rule('agent-session-label', /Agent 会话/, '普通用户界面应使用“对话”。'),
     rule('mix-manifest-main-task', /混剪\s+manifest|导出\s+manifest|预览\s+manifest|写入\s+manifest|已入\s+manifest|manifest\s+字段|JSON\/CSV.*manifest|badge">manifest|\+\s*manifest/, '普通用户界面应使用“混剪清单 / 清单文件”。'),
     rule('prompt-ref-label', /PromptRef|Prompt 来源/, '普通用户界面应使用“提示词来源”。'),
     rule('provider-label', /Provider 状态|选择 provider|provider 未配置|配置 provider/i, '普通用户界面应使用“生成服务 / 待配置”。'),
     rule('internal-run-id', /\brun_[0-9A-Za-z_-]+/, '普通用户界面不能展示 run_* 内部编号。'),
+  ];
+}
+
+function flatFeatureListRules() {
+  return [
+    rule('flat-feature-overview', /功能概览|能力中心|功能清单|功能罗列|入口合集|入口集合|模块入口清单/, '普通用户页面应围绕业务对象和任务流组织，不能退回功能罗列式 UI。'),
+  ];
+}
+
+function noDeadStaticButtonRules() {
+  return [
+    rule('disabled-copy-button', /<button[^>]*disabled[^>]*>\s*复制\s*<\/button>/, '没有可复制对象时不要展示不可点击的复制按钮。'),
+  ];
+}
+
+function v1BusinessModuleRules() {
+  return [
+    ...flatFeatureListRules(),
+    rule(
+      'visible-ontology-engineering-term',
+      /\b(Ontology|Concept|Relation|CoverageMatrix|PromptGroundingContext|DecisionGate|ActionLog)\b/,
+      'v1 普通用户页面不能暴露 Ontology / Concept / Relation 等工程术语。',
+    ),
   ];
 }
 

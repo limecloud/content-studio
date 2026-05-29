@@ -238,6 +238,15 @@ async function clickButton(page, label) {
   throw new Error(`未找到可点击按钮：${label}`);
 }
 
+async function openPromptSupportDrawer(page) {
+  const drawer = page.locator('.prompt-support-drawer');
+  await expect(drawer).toBeVisible();
+  const isOpen = await drawer.evaluate((element) => element.hasAttribute('open'));
+  if (!isOpen) {
+    await drawer.locator('summary').click();
+  }
+}
+
 async function clickNavItem(page, label) {
   const item = page.locator('.nav-stack button.nav-item').filter({ hasText: label }).first();
   await expect(item, `导航项应存在：${label}`).toBeVisible();
@@ -280,6 +289,9 @@ async function expectCommandCenter(page, selector, density) {
     height,
     `${selector} 顶部高度 ${height}px 超过 ${density} 上限 ${COMMAND_CENTER_MAX_HEIGHT[density]}px`,
   ).toBeLessThanOrEqual(COMMAND_CENTER_MAX_HEIGHT[density]);
+  if (density === 'compact') {
+    await expect(center.locator('.module-command-top p:not(.eyebrow)')).toHaveCount(0);
+  }
 }
 
 async function expectRectNear(locator, expected, tolerance = 3) {
@@ -1118,6 +1130,11 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
     const promptBeforeExample = (await promptTextarea.inputValue()).trim();
     const firstCaseInputImages = await page.locator('.ai-case-card').first().locator('.role-input img').count();
     expect(firstCaseInputImages).toBeGreaterThan(1);
+    const generationLogCountBeforeExample = await page.evaluate(async () => {
+      const settings = await window.contentStudio.getSettings();
+      const logs = await window.contentStudio.listGenerationLogs(settings.workspacePath);
+      return logs.length;
+    });
     await page.locator('.ai-case-card-footer button').filter({ hasText: '尝试示例' }).first().click();
     await expect(page.locator('.ai-showcase-shell')).toBeVisible();
     await expect(page.locator('.ai-refinement-shell')).toHaveCount(0);
@@ -1125,16 +1142,13 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
     await expect(page.locator('.ai-showcase-left')).toContainText('图1');
     await expect(page.locator('.ai-upload-source-card.has-image img')).toHaveCount(firstCaseInputImages);
     await page.locator('.ai-floating-history').click();
-    await expect(page.locator('.ai-history-asset-actions').first()).toContainText('预览');
-    await expect(page.locator('.ai-history-asset-actions').first()).toContainText('下载');
-    await expect(page.locator('.ai-history-asset-actions a').first()).toHaveAttribute('download', /bugu-生成结果/);
-    await page.locator('.ai-history-asset-actions button').first().click();
-    await expect(page.locator('.ai-image-preview-modal')).toBeVisible();
-    await expectOverlayCoversSidebar(page, '.ai-image-preview-modal');
-    await expectOverlayAboveFloatingControl(page, '.ai-image-preview-modal', '.ai-floating-history');
-    await page.locator('.ai-image-preview-close').click();
-    await expect(page.locator('.ai-image-preview-modal')).toHaveCount(0);
+    await expect(page.locator('.ai-history-drawer')).not.toContainText('已套用案例');
     await page.getByRole('button', { name: '关闭历史记录' }).click();
+    await expect.poll(async () => page.evaluate(async () => {
+      const settings = await window.contentStudio.getSettings();
+      const logs = await window.contentStudio.listGenerationLogs(settings.workspacePath);
+      return logs.length;
+    })).toBe(generationLogCountBeforeExample);
     const appliedPrompt = (await promptTextarea.inputValue()).trim();
     expect(appliedPrompt).not.toBe(promptBeforeExample);
     expect(appliedPrompt.length).toBeGreaterThan(20);
@@ -1366,6 +1380,97 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expect(page.locator('.ai-video-left')).not.toContainText('视频大小（宽*高）');
       await expect(page.locator('.ai-video-main-tabs')).toContainText('选择功能');
       await expect(page.locator('.ai-video-main-tabs')).toContainText('生成结果');
+      const videoPromptTextarea = page.locator('.ai-video-left textarea');
+      await page.evaluate(() => window.localStorage.removeItem('buguai:dressingkit-video-prompt-templates'));
+      await expect(page.locator('.ai-video-prompt-actions button')).toHaveCount(3);
+      await page.locator('.ai-video-prompt-actions button').filter({ hasText: '智能扩写' }).click();
+      await expect(videoPromptTextarea).toContainText('补充生成约束');
+      await page.locator('.ai-video-prompt-actions button').filter({ hasText: '提示词列表' }).click();
+      const videoPromptListDialog = page.getByRole('dialog', { name: '提示词列表' });
+      await expect(videoPromptListDialog).toBeVisible();
+      await expectOverlayCoversSidebar(page, '.detail-dialog-backdrop');
+      await expectOverlayAboveFloatingControl(page, '.detail-dialog-backdrop', '.ai-video-floating-history');
+      await expect(videoPromptListDialog.getByLabel('提示词类型')).toBeVisible();
+      await expect(videoPromptListDialog.getByRole('button', { name: '新增' })).toBeVisible();
+      await expect(videoPromptListDialog.getByRole('button', { name: '编辑' })).toBeDisabled();
+      await expect(videoPromptListDialog.getByRole('button', { name: '删除' })).toBeDisabled();
+      await expect(videoPromptListDialog).toContainText('分镜图');
+      await videoPromptListDialog.getByRole('button', { name: '新增' }).click();
+      const createVideoPromptDialog = page.getByRole('dialog', { name: '新增' });
+      await expect(createVideoPromptDialog).toBeVisible();
+      await createVideoPromptDialog.getByLabel('模板名称').fill('Playwright 视频模板');
+      await createVideoPromptDialog.getByLabel('模板提示词').fill('Playwright 视频提示词：模特走位自然，镜头围绕产品卖点推进。');
+      await createVideoPromptDialog.getByRole('button', { name: '确定' }).click();
+      await expect(createVideoPromptDialog).toHaveCount(0);
+      await expect(videoPromptListDialog).toContainText('Playwright 视频模板');
+      await expect.poll(
+        async () => page.evaluate(() => {
+          const templates = JSON.parse(window.localStorage.getItem('buguai:dressingkit-video-prompt-templates') || '[]');
+          return {
+            count: templates.length,
+            title: templates[0]?.title,
+            prompt: templates[0]?.prompt,
+          };
+        }),
+      ).toEqual({
+        count: 1,
+        title: 'Playwright 视频模板',
+        prompt: 'Playwright 视频提示词：模特走位自然，镜头围绕产品卖点推进。',
+      });
+      await videoPromptListDialog.getByRole('button', { name: /Playwright 视频模板/ }).click();
+      await expect(videoPromptListDialog.getByRole('button', { name: '编辑' })).toBeEnabled();
+      await videoPromptListDialog.getByRole('button', { name: '编辑' }).click();
+      const editVideoPromptDialog = page.getByRole('dialog', { name: '编辑' });
+      await expect(editVideoPromptDialog).toBeVisible();
+      await editVideoPromptDialog.getByLabel('模板名称').fill('Playwright 视频模板 已编辑');
+      await editVideoPromptDialog.getByLabel('模板提示词').fill('Playwright 视频提示词已编辑：镜头从产品特写切到人物使用场景。');
+      await editVideoPromptDialog.getByRole('button', { name: '确定' }).click();
+      await expect(videoPromptListDialog).toContainText('Playwright 视频模板 已编辑');
+      await videoPromptListDialog.getByLabel('提示词关键词').fill('已编辑');
+      await videoPromptListDialog.getByRole('button', { name: '查询' }).click();
+      await expect(videoPromptListDialog).toContainText('Playwright 视频模板 已编辑');
+      await videoPromptListDialog.getByRole('button', { name: '确定' }).click();
+      await expect(videoPromptTextarea).toHaveValue('Playwright 视频提示词已编辑：镜头从产品特写切到人物使用场景。');
+      await page.locator('.ai-video-prompt-actions button').filter({ hasText: '提示词列表' }).click();
+      await videoPromptListDialog.getByLabel('提示词类型').selectOption('saved');
+      await videoPromptListDialog.getByRole('button', { name: /Playwright 视频模板 已编辑/ }).click();
+      await videoPromptListDialog.getByRole('button', { name: '删除' }).click();
+      await expect(videoPromptListDialog).not.toContainText('Playwright 视频模板 已编辑');
+      await expect.poll(
+        async () => page.evaluate(() => JSON.parse(window.localStorage.getItem('buguai:dressingkit-video-prompt-templates') || '[]').length),
+      ).toBe(0);
+      await clickButton(page, '关闭');
+      await page.locator('.ai-video-prompt-assistant-fab').click();
+      const videoAssistantDialog = page.getByRole('dialog', { name: '提示词助手' });
+      await expect(videoAssistantDialog).toBeVisible();
+      await expectOverlayCoversSidebar(page, '.ai-assistant-overlay');
+      await videoAssistantDialog.getByRole('button', { name: '开始生成' }).click();
+      await expect(videoAssistantDialog.locator('textarea').nth(1)).toContainText('补充生成约束');
+      await videoAssistantDialog.getByRole('button', { name: '提示词模板' }).click();
+      await videoAssistantDialog.locator('.ai-assistant-toolbar button.primary').click();
+      await expect(videoAssistantDialog.locator('.ai-assistant-template-list')).not.toContainText('暂无模板');
+      await videoAssistantDialog.getByRole('button', { name: '确定' }).click();
+      await expect(videoPromptTextarea).toContainText('补充生成约束');
+      await expect.poll(
+        async () => page.evaluate(() => JSON.parse(window.localStorage.getItem('buguai:dressingkit-video-prompt-templates') || '[]').length),
+      ).toBe(1);
+      const videoFloatingControlsLayout = await page.evaluate(() => {
+        const history = document.querySelector('.ai-video-floating-history');
+        const assistant = document.querySelector('.ai-video-prompt-assistant-fab');
+        if (!(history instanceof HTMLElement) || !(assistant instanceof HTMLElement)) {
+          return { ok: false, reason: 'missing floating controls' };
+        }
+        const historyRect = history.getBoundingClientRect();
+        const assistantRect = assistant.getBoundingClientRect();
+        return {
+          ok: assistantRect.top > historyRect.bottom + 12 && assistantRect.right <= window.innerWidth - 8,
+          historyBottom: Math.round(historyRect.bottom),
+          assistantTop: Math.round(assistantRect.top),
+          assistantRight: Math.round(assistantRect.right),
+          viewportWidth: window.innerWidth,
+        };
+      });
+      expect(videoFloatingControlsLayout.ok, JSON.stringify(videoFloatingControlsLayout)).toBe(true);
       await page.locator('.ai-video-generate-button').click();
       await expect(page.locator('.ai-video-validation-message')).toHaveText('请先上传图片');
       await expect(page.locator('.ai-video-main-tabs button').filter({ hasText: '选择功能' })).toHaveClass(/active/);
@@ -1460,12 +1565,24 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expectOverlayAboveFloatingControl(page, '.ai-video-media-preview-modal', '.ai-video-floating-history');
       await page.locator('.ai-video-media-preview-close').click();
       await expect(page.locator('.ai-video-media-preview-modal')).toHaveCount(0);
+      const videoGenerationLogCountBeforeExample = await page.evaluate(async () => {
+        const settings = await window.contentStudio.getSettings();
+        const logs = await window.contentStudio.listGenerationLogs(settings.workspacePath);
+        return logs.length;
+      });
       await page.locator('.ai-video-case-actions button').filter({ hasText: '尝试示例' }).first().click();
-      await expect(page.locator('.ai-video-main-tabs button').filter({ hasText: '生成结果' })).toHaveClass(/active/);
-      await expect(page.locator('.ai-video-result-board')).toBeVisible();
+      await expect(page.locator('.ai-video-main-tabs button').filter({ hasText: '选择功能' })).toHaveClass(/active/);
+      await expect(page.locator('.ai-video-result-board')).toHaveCount(0);
       await expect(page.locator('.video-replica-workbench')).toHaveCount(0);
       await expect(page.locator('.ai-video-upload-preview-card img')).not.toHaveCount(0);
-      await page.locator('.ai-video-main-tabs button').filter({ hasText: '选择功能' }).click();
+      await page.locator('.ai-video-floating-history').click();
+      await expect(page.locator('.ai-video-history-drawer')).not.toContainText('已套用视频案例');
+      await page.getByLabel('关闭历史记录').click();
+      await expect.poll(async () => page.evaluate(async () => {
+        const settings = await window.contentStudio.getSettings();
+        const logs = await window.contentStudio.listGenerationLogs(settings.workspacePath);
+        return logs.length;
+      })).toBe(videoGenerationLogCountBeforeExample);
       await expect(page.locator('.ai-video-industry-filter button.active')).toHaveText('全部');
       await expect(page.locator('.ai-video-case-card')).toHaveCount(9);
       await expect(page.locator('.ai-video-left textarea')).toHaveValue(/生成图片的6宫格分镜图|服装视觉大片/);
@@ -1582,10 +1699,39 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expect(page.locator('.ai-video-case-card img')).not.toHaveCount(0);
       await expect(page.locator('.ai-video-case-card video')).not.toHaveCount(0);
       await expect(page.locator('.ai-video-case-media.output-only')).toHaveCount(3);
-      await page.locator('.ai-video-case-actions button').filter({ hasText: '尝试示例' }).first().click();
+      const promptOnlyVideoLogCountBeforeExample = await page.evaluate(async () => {
+        const settings = await window.contentStudio.getSettings();
+        const logs = await window.contentStudio.listGenerationLogs(settings.workspacePath);
+        return logs.length;
+      });
+      await page.locator('.ai-video-case-card').filter({ hasText: '男士香薰' }).locator('.ai-video-case-actions button').filter({ hasText: '尝试示例' }).click();
+      await expect(page.locator('.ai-video-upload-preview-card')).toHaveCount(0);
+      await expect(page.locator('.ai-video-left textarea')).toHaveValue(/男士香薰|香薰/);
+      await page.locator('.ai-video-generate-button').click();
+      await expect(page.locator('.ai-video-validation-message')).toHaveCount(0);
       await expect(page.locator('.ai-video-main-tabs button').filter({ hasText: '生成结果' })).toHaveClass(/active/);
-      await expect(page.locator('.ai-video-result-board')).toContainText('无生成结果');
+      await expect.poll(async () => page.evaluate(async (baselineCount) => {
+        const settings = await window.contentStudio.getSettings();
+        const logs = await window.contentStudio.listGenerationLogs(settings.workspacePath);
+        const newLogs = logs.slice(0, Math.max(0, logs.length - baselineCount));
+        const log = newLogs.find((item) => item.kind === 'video');
+        const input = log?.input && typeof log.input === 'object' ? log.input : {};
+        return {
+          status: log?.status,
+          featureTitle: input.featureTitle,
+          selectedCaseTitle: input.selectedCaseTitle,
+          imageCount: Array.isArray(input.imageAssetRefs) ? input.imageAssetRefs.length : -1,
+        };
+      }, promptOnlyVideoLogCountBeforeExample)).toEqual({
+        status: 'blocked',
+        featureTitle: '智能视频',
+        selectedCaseTitle: '男士香薰',
+        imageCount: 0,
+      });
       await page.locator('.ai-video-main-tabs button').filter({ hasText: '选择功能' }).click();
+      await page.locator('.ai-video-case-actions button').filter({ hasText: '尝试示例' }).first().click();
+      await expect(page.locator('.ai-video-main-tabs button').filter({ hasText: '选择功能' })).toHaveClass(/active/);
+      await expect(page.locator('.ai-video-result-board')).toHaveCount(0);
       await expect(page.locator('.ai-video-left textarea')).toHaveValue(/直播带货|小黄车|动态视频/);
       await page.locator('.ai-video-feature-grid button').filter({ hasText: '分镜图' }).click();
       await expect(page.locator('.ai-video-left')).toContainText('生图数量');
@@ -1610,7 +1756,8 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expect(page.locator('.ai-video-case-card.is-wide').first().locator('.ai-video-input-section-title')).toHaveText(['图片', '视频']);
       await page.locator('.ai-video-case-actions button').filter({ hasText: '尝试示例' }).first().click();
       await expect(page.locator('.ai-video-left textarea')).toHaveValue(/爆款复刻|拖把|负面提示词/);
-      await expect(page.locator('.ai-video-main-tabs button').filter({ hasText: '生成结果' })).toHaveClass(/active/);
+      await expect(page.locator('.ai-video-main-tabs button').filter({ hasText: '选择功能' })).toHaveClass(/active/);
+      await expect(page.locator('.ai-video-result-board')).toHaveCount(0);
 
       await page.locator('.ai-video-scene-selector').click();
       await expect(page.locator('.detail-dialog-card')).toHaveCount(0);
@@ -1763,8 +1910,11 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
       '成品视频导入',
       '标题生成',
       '脚本生成',
+      '内容知识地图',
+      '审核任务',
       '输入源 / 文档转换',
       '场景库',
+      '品牌战情室',
       '运行历史',
     ]) {
       await expectNavLabelVisible(page, label);
@@ -1782,16 +1932,90 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expectNavLabelVisible(page, '工作流定义');
     await expectNavLabelVisible(page, 'Canvas 编排');
 
+    await clickNavItem(page, '审核任务');
+    await expect(page.locator('.content-review-workbench')).toBeVisible();
+    await expectCommandCenter(page, '.content-review-workbench > .module-command-center', 'compact');
+    await expect(page.locator('.content-review-workbench > .user-journey-guide')).toHaveCount(0);
+    await expect(page.locator('.content-review-workbench > .agent-session-panel')).toBeVisible();
+    await expect(page.locator('.content-review-workbench > .agent-session-panel .agent-session-footer')).toContainText('生成审核任务');
+    const reviewAgentLayout = await page.evaluate(() => {
+      const workbench = document.querySelector('.content-review-workbench');
+      const panel = document.querySelector('.content-review-workbench > .agent-session-panel');
+      const surface = document.querySelector('.stage-module-surface');
+      const params = document.querySelector('.params-panel');
+      if (!workbench || !panel || !surface || !params) return null;
+      const workbenchRect = workbench.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const surfaceRect = surface.getBoundingClientRect();
+      return {
+        panelHeight: Math.round(panelRect.height),
+        panelWidth: Math.round(panelRect.width),
+        paramsDisplay: window.getComputedStyle(params).display,
+        surfaceWidth: Math.round(surfaceRect.width),
+        workbenchHeight: Math.round(workbenchRect.height),
+      };
+    });
+    expect(reviewAgentLayout?.paramsDisplay, JSON.stringify(reviewAgentLayout)).toBe('none');
+    expect(reviewAgentLayout?.panelWidth ?? 0, JSON.stringify(reviewAgentLayout)).toBeGreaterThanOrEqual((reviewAgentLayout?.surfaceWidth ?? 0) - 40);
+    expect(reviewAgentLayout?.panelHeight ?? 0, JSON.stringify(reviewAgentLayout)).toBeGreaterThanOrEqual((reviewAgentLayout?.workbenchHeight ?? 0) * 0.58);
+    await expectNotStaticV2Page(page);
+
     await clickNavItem(page, 'Prompt 工作台');
     await expect(page.locator('.prompt-workbench')).toBeVisible();
     await expectCommandCenter(page, '.prompt-workbench > .module-command-center', 'compact');
     await expect(page.locator('.prompt-workbench > .v2-feature-hero')).toHaveCount(0);
     await expect(page.locator('.prompt-workbench > .prompt-session-panel')).toHaveCount(0);
+    await expect(page.locator('.prompt-workbench > .agent-session-panel')).toBeVisible();
+    await expect(page.locator('.prompt-workbench > .agent-session-panel .agent-session-footer')).toContainText('这次任务');
+    await expect(page.locator('.prompt-workbench > .agent-session-panel .agent-session-footer textarea')).toBeVisible();
+    const promptAgentLayout = await page.evaluate(() => {
+      const workbench = document.querySelector('.prompt-workbench');
+      const panel = document.querySelector('.prompt-workbench > .agent-session-panel');
+      const surface = document.querySelector('.stage-module-surface');
+      const params = document.querySelector('.params-panel');
+      if (!workbench || !panel || !surface || !params) return null;
+      const workbenchRect = workbench.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const surfaceRect = surface.getBoundingClientRect();
+      return {
+        panelHeight: Math.round(panelRect.height),
+        panelWidth: Math.round(panelRect.width),
+        paramsDisplay: window.getComputedStyle(params).display,
+        surfaceWidth: Math.round(surfaceRect.width),
+        workbenchHeight: Math.round(workbenchRect.height),
+      };
+    });
+    expect(promptAgentLayout?.paramsDisplay, JSON.stringify(promptAgentLayout)).toBe('none');
+    expect(promptAgentLayout?.panelWidth ?? 0, JSON.stringify(promptAgentLayout)).toBeGreaterThanOrEqual((promptAgentLayout?.surfaceWidth ?? 0) - 40);
+    expect(promptAgentLayout?.panelHeight ?? 0, JSON.stringify(promptAgentLayout)).toBeGreaterThanOrEqual((promptAgentLayout?.workbenchHeight ?? 0) * 0.45);
     await expectNotStaticV2Page(page);
     await clickButton(page, '补输入源');
     await expect(page.locator('.input-sources-workbench')).toBeVisible();
     await expectCommandCenter(page, '.input-sources-workbench > .module-command-center', 'compact');
     await expect(page.locator('.input-sources-workbench > .v2-feature-hero')).toHaveCount(0);
+    await expect(page.locator('.input-sources-workbench > .user-journey-guide')).toHaveCount(0);
+    await expect(page.locator('.input-sources-workbench > .agent-session-panel')).toBeVisible();
+    await expect(page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer')).toContainText('登记文本输入源');
+    const inputSourceAgentLayout = await page.evaluate(() => {
+      const workbench = document.querySelector('.input-sources-workbench');
+      const panel = document.querySelector('.input-sources-workbench > .agent-session-panel');
+      const surface = document.querySelector('.stage-module-surface');
+      const params = document.querySelector('.params-panel');
+      if (!workbench || !panel || !surface || !params) return null;
+      const workbenchRect = workbench.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const surfaceRect = surface.getBoundingClientRect();
+      return {
+        panelHeight: Math.round(panelRect.height),
+        panelWidth: Math.round(panelRect.width),
+        paramsDisplay: window.getComputedStyle(params).display,
+        surfaceWidth: Math.round(surfaceRect.width),
+        workbenchHeight: Math.round(workbenchRect.height),
+      };
+    });
+    expect(inputSourceAgentLayout?.paramsDisplay, JSON.stringify(inputSourceAgentLayout)).toBe('none');
+    expect(inputSourceAgentLayout?.panelWidth ?? 0, JSON.stringify(inputSourceAgentLayout)).toBeGreaterThanOrEqual((inputSourceAgentLayout?.surfaceWidth ?? 0) - 40);
+    expect(inputSourceAgentLayout?.panelHeight ?? 0, JSON.stringify(inputSourceAgentLayout)).toBeGreaterThanOrEqual((inputSourceAgentLayout?.workbenchHeight ?? 0) * 0.58);
     await expectNotStaticV2Page(page);
     await page.locator('.input-source-register-panel select').selectOption('product-brief');
     await page.locator('.input-source-register-panel input').first().fill('便携条包产品资料');
@@ -1843,21 +2067,64 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expectCommandCenter(page, '.prompt-workbench > .module-command-center', 'compact');
     await expect(page.locator('.prompt-workbench > .prompt-session-panel')).toHaveCount(0);
     await expectNotStaticV2Page(page);
+    await page.locator('.prompt-workbench > .agent-session-panel .agent-session-footer textarea').fill('基于已解析产品资料，生成小红书种草图 Prompt，强调真实生活场景。');
     await clickButton(page, '仅生成草稿');
     await expect(page.locator('.prompt-draft-editor')).toHaveValue(/Prompt 草稿|任务：/, { timeout: 20_000 });
     await expect(page.locator('.prompt-draft-list .record-card').first()).toBeVisible();
 
     await clickNavItem(page, '场景提示词');
     await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
-    await expectCommandCenter(page, '.scene-prompt-workbench > .module-command-center', 'flow');
+    await expectCommandCenter(page, '.scene-prompt-workbench > .module-command-center', 'compact');
     await expect(page.locator('.scene-prompt-workbench > .v2-feature-flow')).toHaveCount(0);
-    await expect(page.locator('.module-command-center .module-command-flow')).toBeVisible();
+    await expect(page.locator('.scene-prompt-workbench .agent-session-footer')).toBeVisible();
+    await expect(page.locator('.scene-prompt-workbench .agent-session-panel')).toBeVisible();
+    const sceneAgentLayout = await page.evaluate(() => {
+      const workbench = document.querySelector('.scene-prompt-workbench');
+      const panel = document.querySelector('.scene-prompt-workbench .agent-session-panel');
+      const surface = document.querySelector('.stage-module-surface');
+      const params = document.querySelector('.params-panel');
+      if (!workbench || !panel || !surface || !params) return null;
+      const workbenchRect = workbench.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const surfaceRect = surface.getBoundingClientRect();
+      return {
+        panelHeight: Math.round(panelRect.height),
+        panelWidth: Math.round(panelRect.width),
+        paramsDisplay: window.getComputedStyle(params).display,
+        surfaceWidth: Math.round(surfaceRect.width),
+        workbenchHeight: Math.round(workbenchRect.height),
+      };
+    });
+    expect(sceneAgentLayout?.paramsDisplay, JSON.stringify(sceneAgentLayout)).toBe('none');
+    expect(sceneAgentLayout?.panelWidth ?? 0, JSON.stringify(sceneAgentLayout)).toBeGreaterThanOrEqual((sceneAgentLayout?.surfaceWidth ?? 0) - 40);
+    expect(sceneAgentLayout?.panelHeight ?? 0, JSON.stringify(sceneAgentLayout)).toBeGreaterThanOrEqual((sceneAgentLayout?.workbenchHeight ?? 0) * 0.72);
     await expectNotStaticV2Page(page);
 
     await clickNavItem(page, '视频 Prompt');
     await expect(page.locator('.video-prompt-workbench')).toBeVisible();
-    await expectCommandCenter(page, '.video-prompt-workbench > .module-command-center', 'flow');
+    await expectCommandCenter(page, '.video-prompt-workbench > .module-command-center', 'compact');
     await expect(page.locator('.video-prompt-workbench > .v2-feature-flow')).toHaveCount(0);
+    await expect(page.locator('.video-prompt-workbench .agent-session-panel')).toBeVisible();
+    const videoPromptAgentLayout = await page.evaluate(() => {
+      const workbench = document.querySelector('.video-prompt-workbench');
+      const panel = document.querySelector('.video-prompt-builder-panel > .agent-session-panel');
+      const surface = document.querySelector('.stage-module-surface');
+      const params = document.querySelector('.params-panel');
+      if (!workbench || !panel || !surface || !params) return null;
+      const workbenchRect = workbench.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const surfaceRect = surface.getBoundingClientRect();
+      return {
+        panelHeight: Math.round(panelRect.height),
+        panelWidth: Math.round(panelRect.width),
+        paramsDisplay: window.getComputedStyle(params).display,
+        surfaceWidth: Math.round(surfaceRect.width),
+        workbenchHeight: Math.round(workbenchRect.height),
+      };
+    });
+    expect(videoPromptAgentLayout?.paramsDisplay, JSON.stringify(videoPromptAgentLayout)).toBe('none');
+    expect(videoPromptAgentLayout?.panelWidth ?? 0, JSON.stringify(videoPromptAgentLayout)).toBeGreaterThanOrEqual((videoPromptAgentLayout?.surfaceWidth ?? 0) - 40);
+    expect(videoPromptAgentLayout?.panelHeight ?? 0, JSON.stringify(videoPromptAgentLayout)).toBeGreaterThanOrEqual((videoPromptAgentLayout?.workbenchHeight ?? 0) * 0.58);
     await expectNotStaticV2Page(page);
     await page.locator('.video-prompt-scenes-panel .prompt-source-option').filter({ hasText: '便携条包产品资料' }).locator('input').check();
     await clickButton(page, '生成视频 Prompt 组');
@@ -1912,10 +2179,36 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
 
     await clickNavItem(page, '品牌 / 产品知识库');
     await expectCommandCenter(page, '.knowledge-brand-workbench > .module-command-center', 'compact');
+    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel')).toBeVisible();
+    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer textarea')).toBeVisible();
+    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer')).toContainText('开始判断');
+    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer')).toContainText('抽取品牌知识库');
+    await expect(page.locator('.knowledge-brand-workbench > .user-journey-guide')).toHaveCount(0);
     await expect(page.locator('.knowledge-brand-workbench > .v2-feature-hero')).toHaveCount(0);
     await clickNavItem(page, 'IP 知识库');
     await expectCommandCenter(page, '.knowledge-brand-workbench > .module-command-center', 'compact');
+    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel')).toBeVisible();
+    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer textarea')).toBeVisible();
+    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer')).toContainText('开始判断');
+    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer')).toContainText('构建 IP 知识库');
+    await expect(page.locator('.knowledge-brand-workbench > .user-journey-guide')).toHaveCount(0);
     await expect(page.locator('.knowledge-brand-workbench > .v2-feature-hero')).toHaveCount(0);
+
+    await clickNavItem(page, '内容知识地图');
+    await expectCommandCenter(page, '.content-map-workbench > .module-command-center', 'compact');
+    await expect(page.locator('.content-map-workbench > .agent-session-panel')).toBeVisible();
+    await expect(page.locator('.content-map-workbench > .agent-session-panel .agent-session-footer textarea')).toBeVisible();
+    await expect(page.locator('.content-map-workbench > .agent-session-panel .agent-session-footer')).toContainText('开始生成');
+    await expect(page.locator('.content-map-workbench > .agent-session-panel .agent-session-footer')).toContainText('生成内容知识地图');
+    await expect(page.locator('.content-map-workbench > .user-journey-guide')).toHaveCount(0);
+
+    await clickNavItem(page, '品牌战情室');
+    await expectCommandCenter(page, '.brand-command-workbench > .module-command-center', 'compact');
+    await expect(page.locator('.brand-command-workbench > .agent-session-panel')).toBeVisible();
+    await expect(page.locator('.brand-command-workbench > .agent-session-panel .agent-session-footer textarea')).toBeVisible();
+    await expect(page.locator('.brand-command-workbench > .agent-session-panel .agent-session-footer')).toContainText('开始研判');
+    await expect(page.locator('.brand-command-workbench > .agent-session-panel .agent-session-footer')).toContainText('生成战情室');
+    await expect(page.locator('.brand-command-workbench > .user-journey-guide')).toHaveCount(0);
 
     await clickNavItem(page, '成型知识库');
     await expectCommandCenter(page, '.knowledge-workbench > .module-command-center', 'managed');
@@ -1974,6 +2267,673 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     expect(workflowDensity.nodeHeight, JSON.stringify(workflowDensity)).toBeLessThanOrEqual(150);
     await expectNotStaticV2Page(page);
   });
+});
+
+test('审核任务 Agent 支持人工决策并交接 Prompt 工作台', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+    await page.evaluate(async (workspacePath) => {
+      const now = new Date().toISOString();
+      await window.contentStudio.saveSettings({ workspacePath });
+      const source = await window.contentStudio.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'product-brief',
+        title: '防晒产品审核资料',
+        text: '敏感肌表达只能基于斑贴测试摘要，不得承诺适合所有敏感肌。',
+        summary: '防晒产品审核资料',
+        tags: ['review-agent'],
+      });
+      const baseMap = await window.contentStudio.buildContentKnowledgeMap({
+        workspacePath,
+        title: '防晒产品审核地图',
+        inputSourceIds: [source.id],
+      });
+      await window.contentStudio.updateContentKnowledgeMap({
+        ...baseMap,
+        workspacePath,
+        title: '防晒产品审核地图',
+        status: 'needs-review',
+        syncStatus: 'local-only',
+        teamSync: {
+          backend: 'bugu',
+          status: 'local-only',
+          message: '本机审核验证。',
+        },
+        sourceInputSourceIds: [source.id],
+        brandKnowledgeBaseIds: [],
+        sceneCardIds: [],
+        promptDraftIds: [],
+        sellingPoints: [{
+          id: 'selling-sensitive-skin',
+          title: '敏感肌安心可用',
+          summary: '需要确认敏感肌表达是否有测试证据支撑。',
+          tags: ['卖点', '审核'],
+          sourceRefs: ['manual:review-agent'],
+          evidenceRefs: ['evidence-sensitive-skin'],
+          confidence: 58,
+          status: 'needs-review',
+        }],
+        painPoints: [],
+        scenarios: [],
+        evidence: [{
+          id: 'evidence-sensitive-skin',
+          sourceType: 'manual',
+          sourceTitle: '人工上传检测摘要',
+          claim: '敏感肌安心可用',
+          excerpt: '斑贴测试摘要显示目标样本未见明显刺激反馈，仅可表达为测试场景下温和。',
+          status: 'ready',
+        }],
+        constraints: ['不得承诺适合所有敏感肌。'],
+        gaps: [],
+        coverage: {
+          inputSourceCount: 0,
+          brandKnowledgeBaseCount: 0,
+          sceneCardCount: 0,
+          promptDraftCount: 0,
+          evidenceCount: 1,
+          gapCount: 0,
+          readyPercent: 68,
+        },
+        model: 'e2e-review-agent',
+        createdAt: now,
+        updatedAt: now,
+      });
+    }, workspaceDir);
+
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待审核任务 Agent 测试工作区重新加载', timeout: 20_000 },
+    ).toBe(true);
+
+    await clickNavItem(page, '审核任务');
+    await expect(page.locator('.content-review-workbench > .agent-session-panel')).toBeVisible();
+    await page.locator('.content-review-workbench .agent-session-panel button').filter({ hasText: '生成审核任务' }).first().click();
+    const taskCard = page.locator('.content-review-agent-queue .record-card').filter({ hasText: '敏感肌安心可用' }).first();
+    await expect(taskCard).toBeVisible({ timeout: 20_000 });
+    await taskCard.click();
+    await expect(page.locator('.content-review-workbench .agent-session-artifact')).toContainText('敏感肌安心可用');
+    await expect(page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '交给 Prompt 工作台' })).toBeDisabled();
+
+    await page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '通过' }).click();
+    await expect(page.locator('.content-review-workbench .agent-session-panel')).toContainText('已通过', { timeout: 20_000 });
+    const approvedTask = await page.evaluate(async (workspacePath) => {
+      const tasks = await window.contentStudio.listContentReviewTasks(workspacePath);
+      return tasks.find((task) => task.title === '敏感肌安心可用');
+    }, workspaceDir);
+    expect(approvedTask?.status).toBe('approved');
+    expect(approvedTask?.decisions?.[0]?.action).toBe('approve');
+
+    await page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '交给 Prompt 工作台' }).click();
+    await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.prompt-workbench')).toContainText('敏感肌安心可用', { timeout: 20_000 });
+    await expect(page.locator('.prompt-workbench > .agent-session-panel')).toBeVisible();
+  });
+});
+
+test('内容知识地图和品牌战情室能开始真实对话', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async ({ workspacePath, endpoint }) => {
+        const api = window.contentStudio;
+        await api.saveSettings({ workspacePath });
+        await api.saveModelConfig({
+          textProtocol: 'openai-chat',
+          textApiEndpoint: endpoint,
+          textApiKey: 'test-text-key',
+          textModel: 'test-text-model',
+        });
+        const source = await api.registerInputSource({
+          workspacePath,
+          kind: 'manual-note',
+          purpose: 'product-brief',
+          title: '地图测试产品资料',
+          text: [
+            '产品名称：便携条包',
+            '卖点：早餐后和办公室抽屉随手取用，降低坚持门槛。',
+            '禁用表达：不得承诺治疗、见效或替代专业建议。',
+          ].join('\n'),
+          summary: '地图测试产品资料',
+          tags: ['agent-session'],
+        });
+        const map = await api.buildContentKnowledgeMap({
+          workspacePath,
+          title: '地图测试内容知识地图',
+          inputSourceIds: [source.id],
+        });
+        await api.buildBrandCommandCenter({
+          workspacePath,
+          title: '地图测试品牌战情室',
+          contentKnowledgeMapId: map.id,
+        });
+      }, { workspacePath: workspaceDir, endpoint: baseUrl });
+
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待知识地图测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, '内容知识地图');
+      await expect(page.locator('.content-map-workbench > .agent-session-panel')).toBeVisible({ timeout: 20_000 });
+      await page.locator('.content-map-workbench .agent-session-footer textarea').fill('请给出证据缺口和下一步交付建议。');
+      await page.locator('.content-map-workbench .agent-session-footer button').filter({ hasText: '开始生成' }).click();
+      await expect(page.locator('.content-map-workbench .agent-turn.user')).toContainText('证据缺口', { timeout: 20_000 });
+      await expect(page.locator('.content-map-workbench .agent-turn.assistant')).toContainText('图片 Prompt', { timeout: 20_000 });
+      await expect(page.locator('.content-map-workbench .agent-execution-events [data-event-class="artifact.changed"][data-owner="artifact"]')).toHaveCount(1);
+
+      await clickNavItem(page, '品牌战情室');
+      await expect(page.locator('.brand-command-workbench > .agent-session-panel')).toBeVisible({ timeout: 20_000 });
+      await page.locator('.brand-command-workbench .agent-session-footer textarea').fill('请判断当前队列哪些可以交接，哪些需要补资源。');
+      await page.locator('.brand-command-workbench .agent-session-footer button').filter({ hasText: '开始研判' }).click();
+      await expect(page.locator('.brand-command-workbench .agent-turn.user')).toContainText('当前队列', { timeout: 20_000 });
+      await expect(page.locator('.brand-command-workbench .agent-turn.assistant')).toContainText('图片 Prompt', { timeout: 20_000 });
+
+      const sessions = await page.evaluate(async (workspacePath) => {
+        const all = await window.contentStudio.listAgentPromptSessions(workspacePath);
+        return all.map((session) => ({ title: session.title, messageCount: session.messages.length }));
+      }, workspaceDir);
+      expect(sessions.some((session) => session.title.includes('内容知识地图协作') && session.messageCount >= 2)).toBe(true);
+      expect(sessions.some((session) => session.title.includes('品牌战情室协作') && session.messageCount >= 2)).toBe(true);
+    });
+  } finally {
+    await new Promise((resolveClose) => server.close(resolveClose));
+  }
+});
+
+test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战入口', async ({}, testInfo) => {
+  test.setTimeout(120_000);
+
+  await withContentStudio(testInfo, async ({ page, workspaceDir, e2eProductAssetPath }) => {
+    const seedTrace = await page.evaluate(async ({ workspacePath, assetPath }) => {
+      const api = window.contentStudio;
+      await api.saveSettings({ workspacePath });
+
+      const productSource = await api.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'product-brief',
+        title: 'BreezeGo Air 产品资料',
+        text: [
+          '产品：BreezeGo Air 便携风扇',
+          'SKU：Air Mini 218g；Air Pro 低档 9-14h；Air Clip 可夹桌边和通勤包。',
+          '禁用表达：不得使用全网最轻、绝对安全、3 秒降温。',
+        ].join('\n'),
+        summary: 'BreezeGo Air 便携风扇产品资料',
+        tags: ['v1-ui', 'product'],
+      });
+      const feedbackSource = await api.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'user-feedback',
+        title: 'BreezeGo Air 评论原声',
+        text: [
+          '用户：包里东西已经很多，不想再多带很重的风扇。',
+          '客服：低档能撑多久？办公室会不会吵？',
+        ].join('\n'),
+        summary: '评论和客服异议',
+        tags: ['v1-ui', 'feedback'],
+      });
+      const assetSource = await api.registerInputSource({
+        workspacePath,
+        kind: 'image',
+        purpose: 'successful-asset',
+        title: '通勤包内实拍图',
+        sourcePath: assetPath,
+        summary: '已通过审核的通勤包内实拍素材。',
+        tags: ['v1-ui', 'coverage:selling-v1-light', '高收藏'],
+      });
+      const assetReview = await api.reviewAsset({
+        workspacePath,
+        assetKey: `imported:${assetSource.id}:0:${assetPath}`,
+        kind: 'image',
+        sourceType: 'input-source',
+        sourceId: assetSource.id,
+        path: assetPath,
+        title: '通勤包内实拍图',
+        status: 'approved',
+        note: 'E2E 通过素材，用于验证覆盖关系。',
+        tags: ['通勤包内', '高收藏'],
+      });
+
+      const baseMap = await api.buildContentKnowledgeMap({
+        workspacePath,
+        title: 'BreezeGo Air v1 真实工作台地图',
+        inputSourceIds: [productSource.id, feedbackSource.id],
+      });
+      const now = new Date().toISOString();
+      const readyMap = await api.updateContentKnowledgeMap({
+        ...baseMap,
+        workspacePath,
+        title: 'BreezeGo Air v1 真实工作台地图',
+        status: 'ready',
+        syncStatus: 'synced',
+        teamSync: {
+          backend: 'bugu',
+          status: 'synced',
+          message: '已同步到测试团队工作区。',
+          workspaceId: 'workspace-v1-e2e',
+          revision: 'rev-v1-e2e-1',
+        },
+        sourceInputSourceIds: [productSource.id, feedbackSource.id],
+        brandKnowledgeBaseIds: [],
+        ipKnowledgeBaseIds: ['ip-v1-e2e'],
+        sceneCardIds: ['scene-v1-e2e'],
+        promptDraftIds: ['prompt-v1-e2e'],
+        sellingPoints: [{
+          id: 'selling-v1-light',
+          title: '轻量便携不压包',
+          summary: 'Air Mini 218g，适合通勤包、办公室抽屉和随身携带场景。',
+          tags: ['卖点', '通勤', 'SKU: Air Mini'],
+          sourceRefs: [`input-source:${productSource.id}`],
+          evidenceRefs: ['evidence-v1-weight'],
+          materialStatus: 'approved',
+          materialRefs: [assetReview.id],
+          performanceTags: ['高收藏', '通勤包内'],
+          confidence: 92,
+          status: 'ready',
+        }, {
+          id: 'selling-v1-ip',
+          title: '轻量生活方法口播',
+          summary: 'IP 口径强调少带负担、真实体验和轻量生活方法，不夸大降温。',
+          tags: ['IP', '口播', '语言规则'],
+          sourceRefs: ['ip-knowledge-base:ip-v1-e2e'],
+          evidenceRefs: ['evidence-v1-ip'],
+          materialStatus: 'covered',
+          materialRefs: [assetReview.id],
+          confidence: 84,
+          status: 'ready',
+        }],
+        painPoints: [{
+          id: 'pain-v1-bag',
+          title: '包里东西太多',
+          summary: '评论集中担心多带一个风扇会增加通勤负担。',
+          tags: ['痛点', '评论原声'],
+          sourceRefs: [`input-source:${feedbackSource.id}`],
+          evidenceRefs: ['evidence-v1-quote'],
+          materialStatus: 'covered',
+          materialRefs: [assetReview.id],
+          performanceTags: ['收藏率高于均值'],
+          confidence: 86,
+          status: 'ready',
+        }],
+        scenarios: [{
+          id: 'scenario-v1-commute',
+          title: '早高峰轻装通勤',
+          summary: '手持包内实拍图，表达 218g 轻量和低负担携带。',
+          tags: ['场景', '小红书', '通勤'],
+          sourceRefs: [`input-source:${productSource.id}`],
+          evidenceRefs: ['evidence-v1-weight', 'evidence-v1-quote'],
+          materialStatus: 'approved',
+          materialRefs: [assetReview.id],
+          confidence: 88,
+          status: 'ready',
+        }, {
+          id: 'scenario-v1-competitor',
+          title: '竞品超小随身差异化机会',
+          summary: '竞品强调超小随身，本品牌只能用于结构参考，转写为通勤低负担机会。',
+          tags: ['竞品', '差异化机会', '不可搬运'],
+          sourceRefs: ['competitor-observation:v1-e2e'],
+          evidenceRefs: ['evidence-v1-competitor'],
+          materialStatus: 'covered',
+          materialRefs: [assetReview.id],
+          confidence: 78,
+          status: 'ready',
+        }],
+        evidence: [{
+          id: 'evidence-v1-weight',
+          sourceType: 'manual',
+          sourceTitle: '产品 SKU 表',
+          claim: 'Air Mini 218g 净重',
+          excerpt: 'SKU 表记录 Air Mini 净重 218g，可用于轻量便携表达。',
+          status: 'ready',
+        }, {
+          id: 'evidence-v1-quote',
+          sourceType: 'user-quote',
+          sourceTitle: '评论样本',
+          claim: '用户担心包里负担',
+          excerpt: '用户原声：包里东西已经很多，不想再多带很重的风扇。',
+          status: 'ready',
+        }, {
+          id: 'evidence-v1-ip',
+          sourceType: 'ip-knowledge-base',
+          sourceTitle: '林小北 IP 六层资料',
+          claim: '轻量生活方法',
+          excerpt: 'IP 口径强调减负、真实体验和轻量生活方法，不使用夸大承诺。',
+          status: 'ready',
+        }, {
+          id: 'evidence-v1-competitor',
+          sourceType: 'manual',
+          sourceTitle: '竞品公开内容摘要',
+          claim: '竞品强调超小随身',
+          excerpt: '只允许用于内容结构和差异机会参考，不能复制竞品文案或视觉元素。',
+          status: 'ready',
+        }],
+        constraints: [
+          '平台规则：小红书和抖音发布前必须复核禁用表达。',
+          '竞品观察只做差异化结构参考，禁止复制竞品文案或视觉元素。',
+          '不得使用全网最轻、绝对安全、3 秒降温。',
+        ],
+        gaps: [],
+        coverage: {
+          inputSourceCount: 2,
+          brandKnowledgeBaseCount: 0,
+          ipKnowledgeBaseCount: 1,
+          skuRowCount: 3,
+          competitorObservationCount: 1,
+          sceneCardCount: 1,
+          promptDraftCount: 1,
+          evidenceCount: 4,
+          gapCount: 0,
+          readyPercent: 92,
+        },
+        model: 'e2e-v1-ui',
+        createdAt: baseMap.createdAt || now,
+        updatedAt: now,
+      });
+
+      await api.createContentKnowledgeRelease({
+        workspacePath,
+        contentKnowledgeMapId: readyMap.id,
+        title: 'BreezeGo Air 团队知识包',
+        version: 'v1.4',
+      });
+      const commandCenter = await api.buildBrandCommandCenter({
+        workspacePath,
+        contentKnowledgeMapId: readyMap.id,
+        title: 'BreezeGo Air 品牌战情室',
+      });
+      const readyQueueItem = commandCenter.queueItems.find((item) => item.status === 'ready');
+      if (readyQueueItem) {
+        await api.recordBrandCommandAction({
+          workspacePath,
+          commandCenterId: commandCenter.id,
+          queueItemId: readyQueueItem.id,
+          actorLabel: 'E2E 运营',
+          actorRole: 'operator',
+          note: '已交给 Prompt 工作台确认。',
+        });
+      }
+      const [settings, maps, sources, releases, commandCenters, assetReviews] = await Promise.all([
+        api.getSettings(),
+        api.listContentKnowledgeMaps(workspacePath),
+        api.listInputSources(workspacePath),
+        api.listContentKnowledgeReleases(workspacePath),
+        api.listBrandCommandCenters(workspacePath),
+        api.listAssetReviews(workspacePath),
+      ]);
+      return {
+        savedWorkspacePath: settings.workspacePath,
+        mapCount: maps.length,
+        mapTitles: maps.map((item) => item.title),
+        sourceCount: sources.length,
+        sourceTitles: sources.map((item) => item.title),
+        releaseCount: releases.length,
+        releaseTitles: releases.map((item) => `${item.title} ${item.version}`),
+        commandCenterCount: commandCenters.length,
+        commandCenterTitles: commandCenters.map((item) => item.title),
+        assetReviewCount: assetReviews.length,
+      };
+    }, { workspacePath: workspaceDir, assetPath: e2eProductAssetPath });
+    expect(seedTrace.savedWorkspacePath, JSON.stringify(seedTrace)).toBe(workspaceDir);
+    expect(seedTrace.mapTitles, JSON.stringify(seedTrace)).toContain('BreezeGo Air v1 真实工作台地图');
+    expect(seedTrace.sourceCount, JSON.stringify(seedTrace)).toBeGreaterThanOrEqual(3);
+    expect(seedTrace.releaseTitles, JSON.stringify(seedTrace)).toContain('BreezeGo Air 团队知识包 v1.4');
+    expect(seedTrace.commandCenterTitles, JSON.stringify(seedTrace)).toContain('BreezeGo Air 品牌战情室');
+    expect(seedTrace.assetReviewCount, JSON.stringify(seedTrace)).toBeGreaterThanOrEqual(1);
+
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待 v1 工作台测试数据重新加载', timeout: 20_000 },
+    ).toBe(true);
+    await expect.poll(
+      async () => page.evaluate(async (workspacePath) => {
+        const api = window.contentStudio;
+        const [settings, maps, sources] = await Promise.all([
+          api.getSettings(),
+          api.listContentKnowledgeMaps(workspacePath),
+          api.listInputSources(workspacePath),
+        ]);
+        return {
+          workspaceReady: settings.workspacePath === workspacePath,
+          mapTitles: maps.map((item) => item.title),
+          sourceCount: sources.length,
+        };
+      }, workspaceDir),
+      { message: '等待 v1 工作台读取种子数据', timeout: 20_000 },
+    ).toEqual({
+      workspaceReady: true,
+      mapTitles: expect.arrayContaining(['BreezeGo Air v1 真实工作台地图']),
+      sourceCount: 3,
+    });
+    const refreshLoadTrace = await page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      const calls = [
+        ['scanSkills', () => api.scanSkills(workspacePath)],
+        ['listKnowledgeBases', () => api.listKnowledgeBases(workspacePath)],
+        ['searchKnowledge', () => api.searchKnowledge({ workspacePath, query: '', baseType: 'all', sectionType: 'all', tag: '' })],
+        ['getSkillSelection', () => api.getSkillSelection(workspacePath)],
+        ['listPromptPacks', () => api.listPromptPacks(workspacePath)],
+        ['listSceneCards', () => api.listSceneCards(workspacePath)],
+        ['listGenerationLogs', () => api.listGenerationLogs(workspacePath)],
+        ['listGenerationTasks', () => api.listGenerationTasks(workspacePath)],
+        ['listInputSources', () => api.listInputSources(workspacePath)],
+        ['listPromptDrafts', () => api.listPromptDrafts(workspacePath)],
+        ['listAgentPromptSessions', () => api.listAgentPromptSessions(workspacePath)],
+        ['listBrandKnowledgeBases', () => api.listBrandKnowledgeBases(workspacePath)],
+        ['listIpKnowledgeBases', () => api.listIpKnowledgeBases(workspacePath)],
+        ['listContentKnowledgeMaps', () => api.listContentKnowledgeMaps(workspacePath)],
+        ['listContentDraftChanges', () => api.listContentDraftChanges(workspacePath)],
+        ['listContentKnowledgeReleases', () => api.listContentKnowledgeReleases(workspacePath)],
+        ['listContentSyncConflicts', () => api.listContentSyncConflicts(workspacePath)],
+        ['listBrandCommandCenters', () => api.listBrandCommandCenters(workspacePath)],
+        ['listContentReviewTasks', () => api.listContentReviewTasks(workspacePath)],
+        ['listOverlayCards', () => api.listOverlayCards(workspacePath)],
+        ['listAssetReviews', () => api.listAssetReviews(workspacePath)],
+        ['listMixPackages', () => api.listMixPackages(workspacePath)],
+        ['listPlatformDrafts', () => api.listPlatformDrafts(workspacePath)],
+        ['listWorkflowDefinitions', () => api.listWorkflowDefinitions(workspacePath)],
+        ['listWorkflowRuns', () => api.listWorkflowRuns(workspacePath)],
+      ];
+      const results = [];
+      for (const [name, load] of calls) {
+        try {
+          const value = await load();
+          results.push({
+            name,
+            status: 'fulfilled',
+            count: Array.isArray(value) ? value.length : undefined,
+          });
+        } catch (error) {
+          results.push({
+            name,
+            status: 'rejected',
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      return results;
+    }, workspaceDir);
+    expect(
+      refreshLoadTrace.filter((item) => item.status === 'rejected'),
+      JSON.stringify(refreshLoadTrace),
+    ).toEqual([]);
+    expect(
+      refreshLoadTrace.find((item) => item.name === 'listContentKnowledgeMaps')?.count,
+      JSON.stringify(refreshLoadTrace),
+    ).toBeGreaterThanOrEqual(1);
+
+    await clickNavItem(page, '内容知识地图');
+    const mapWorkbench = page.locator('.content-map-workbench');
+    await expect(mapWorkbench).toContainText('BreezeGo Air v1 真实工作台地图');
+    await mapWorkbench.locator('.content-map-table tbody tr').filter({ hasText: '轻量便携不压包' }).click();
+    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('当前组合');
+    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('218g');
+    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('恢复路径');
+    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('去 SOP 输入');
+    await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '去 SOP 输入' }).click();
+    await expect(page.locator('.workflow-feature-workbench')).toBeVisible();
+
+    await clickNavItem(page, '内容知识地图');
+    await page.locator('.content-map-tabs button').filter({ hasText: 'IP 口径' }).click();
+    await expect(mapWorkbench.locator('.content-map-table')).toContainText('轻量生活方法口播');
+    await page.locator('.content-map-tabs button').filter({ hasText: '竞品观察' }).click();
+    await expect(mapWorkbench.locator('.content-map-table')).toContainText('竞品超小随身差异化机会');
+    await page.locator('.content-map-tabs button').filter({ hasText: '团队知识包' }).click();
+    await expect(mapWorkbench.locator('.content-map-package-content')).toContainText('BreezeGo Air 团队知识包 v1.4');
+    await expect(mapWorkbench.locator('.content-map-package-content')).toContainText('产品事实 / 证据');
+    await page.locator('.content-map-tabs button').filter({ hasText: '素材回写' }).click();
+    await expect(mapWorkbench.locator('.content-map-material-panel')).toContainText('轻量便携不压包');
+    await expect(mapWorkbench.locator('.content-map-material-panel')).toContainText('高收藏');
+    await page.locator('.content-map-tabs button').filter({ hasText: '高级导出' }).click();
+    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('包文件');
+    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('KNOWLEDGE.md');
+    await mapWorkbench.locator('.content-map-export-panel button').filter({ hasText: '生成本机预览' }).click();
+    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('本机预览已生成', { timeout: 20_000 });
+
+    await clickNavItem(page, '目标树');
+    await expect(page.locator('.brand-command-workbench > .module-command-center h2')).toHaveText('目标树');
+    await expect(page.locator('.brand-command-view-brief')).toContainText('作战目标');
+    await expect(page.locator('.brand-command-view-brief')).toContainText('目标类型分布');
+    await expect(page.locator('.brand-command-workbench')).toContainText('成功标准');
+    await expect(page.locator('.brand-command-workbench')).toContainText('资源包');
+    await clickNavItem(page, '作战编组');
+    await expect(page.locator('.brand-command-workbench > .module-command-center h2')).toHaveText('作战编组');
+    await expect(page.locator('.brand-command-view-brief')).toContainText('资源包');
+    await expect(page.locator('.brand-command-view-brief')).toContainText('资源包完整度');
+    await expect(page.locator('.brand-command-bundle-list')).toContainText('证据摘录');
+    await expect(page.locator('.brand-command-bundle-list')).toContainText('禁用边界');
+    await clickNavItem(page, '执行队列');
+    await expect(page.locator('.brand-command-workbench > .module-command-center h2')).toHaveText('执行队列');
+    await expect(page.locator('.brand-command-view-brief')).toContainText('队列动作');
+    await expect(page.locator('.brand-command-view-brief')).toContainText('队列状态分布');
+    await expect(page.locator('.brand-command-queue-board')).toContainText('动作：生成 Prompt 草稿');
+    await expect(page.locator('.brand-command-queue-board')).toContainText('交付：Prompt 草稿');
+    await clickNavItem(page, '行动记录');
+    await expect(page.locator('.brand-command-workbench > .module-command-center h2')).toHaveText('行动记录');
+    await expect(page.locator('.brand-command-view-brief')).toContainText('行动记录');
+    await expect(page.locator('.brand-command-view-brief')).toContainText('行动结果分布');
+    await expect(page.locator('.brand-command-log-list')).toContainText('已生成 Prompt 草稿');
+  });
+});
+
+test('对话里的待处理动作可以恢复到真实输入源页面', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+    await page.evaluate(async ({ workspacePath, endpoint }) => {
+      const api = window.contentStudio;
+      await api.saveSettings({ workspacePath });
+      await api.saveModelConfig({
+        textProtocol: 'openai-chat',
+        textApiEndpoint: endpoint,
+        textApiKey: 'test-text-key',
+        textModel: 'test-text-model',
+      });
+    }, { workspacePath: workspaceDir, endpoint: baseUrl });
+
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待待处理动作测试工作区重新加载', timeout: 20_000 },
+    ).toBe(true);
+
+    await clickNavItem(page, 'Prompt 工作台');
+    const promptPanel = page.locator('.prompt-workbench > .agent-session-panel');
+    await expect(promptPanel).toBeVisible({ timeout: 20_000 });
+    await promptPanel.locator('.agent-session-footer textarea').fill('请先判断需要补哪些产品资料和参考素材。');
+    await promptPanel.locator('.agent-session-footer button').filter({ hasText: '开始协作' }).click();
+
+    const actionButton = promptPanel.locator(
+      '.agent-execution-events [data-event-class="action.required"][data-action-kind="add-input-source"] .agent-event-action',
+    );
+    await expect(actionButton).toHaveText('补输入源', { timeout: 20_000 });
+    await actionButton.click();
+
+    await expect(page.locator('.input-sources-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer')).toContainText('登记文本输入源');
+    await expect.poll(
+      async () => page.evaluate(async (workspacePath) => {
+        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+        const session = sessions.find((item) => item.userIntent === '请先判断需要补哪些产品资料和参考素材。');
+        return Boolean(session?.executionEvents?.some((event) => (
+          event.eventClass === 'action.resolved' &&
+          event.payload?.decision === 'open-input-source' &&
+          event.payload?.resolvedFromEventId
+        )));
+      }, workspaceDir),
+      { message: '等待补输入源动作写入运行事实', timeout: 20_000 },
+    ).toBe(true);
+    const resolvedActionEvent = page.locator(
+      '.input-sources-workbench > .agent-session-panel .agent-execution-events [data-event-class="action.required"][data-action-kind="add-input-source"]',
+    ).first();
+    await expect(resolvedActionEvent).toContainText('已处理', { timeout: 20_000 });
+    await expect(resolvedActionEvent.locator('.agent-event-action')).toHaveCount(0);
+    const inputRuntimeSummary = page.locator('.input-sources-workbench > .agent-session-panel .agent-runtime-summary');
+    await expect(inputRuntimeSummary.locator('[data-summary-kind="sources"]')).toContainText('0');
+    await expect(inputRuntimeSummary.locator('[data-summary-kind="actions"]')).toContainText('0');
+
+    const registerPanel = page.locator('.input-source-register-panel');
+    await registerPanel.locator('label').filter({ hasText: '标题' }).locator('input').fill('Playwright 补充产品资料');
+    await registerPanel.locator('label').filter({ hasText: '文本 / 用户意图' }).locator('textarea').fill('产品事实：便携条包。使用场景：早餐后、办公室抽屉。合规边界：不承诺治疗。');
+    await page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer button').filter({ hasText: '登记文本输入源' }).click();
+    await expect.poll(
+      async () => page.evaluate(async (workspacePath) => {
+        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+        const session = sessions.find((item) => item.userIntent === '请先判断需要补哪些产品资料和参考素材。');
+        const sources = await window.contentStudio.listInputSources(workspacePath);
+        const source = sources.find((item) => item.title === 'Playwright 补充产品资料');
+        return {
+          linked: Boolean(source && session?.inputSourceIds.includes(source.id)),
+          evidenceChanged: Boolean(source && session?.executionEvents?.some((event) => (
+            event.eventClass === 'evidence.changed' &&
+            event.evidenceRefs?.includes(`input-source:${source.id}`)
+          ))),
+          noteVisible: Boolean(session?.messages?.some((message) => (
+            message.kind === 'note' &&
+            message.content.includes('Playwright 补充产品资料')
+          ))),
+        };
+      }, workspaceDir),
+      { message: '等待补充输入源绑定回原对话', timeout: 20_000 },
+    ).toEqual({ linked: true, evidenceChanged: true, noteVisible: true });
+    await expect(inputRuntimeSummary.locator('[data-summary-kind="sources"]')).toContainText('1', { timeout: 20_000 });
+    await expect(inputRuntimeSummary.locator('[data-summary-kind="evidence"]')).toContainText('1');
+
+    const inputAgentFooter = page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer');
+    await inputAgentFooter.locator('textarea').fill('资料已补齐，请基于新资料重新生成图片 Prompt。');
+    await inputAgentFooter.locator('button').filter({ hasText: '继续会话' }).click();
+    await expect.poll(
+      async () => page.evaluate(async (workspacePath) => {
+        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+        const session = sessions.find((item) => item.userIntent === '请先判断需要补哪些产品资料和参考素材。');
+        return {
+          hasAdjustment: Boolean(session?.messages?.some((message) => (
+            message.kind === 'adjustment' &&
+            message.content.includes('资料已补齐')
+          ))),
+          hasDraft: Boolean(session?.messages?.some((message) => (
+            message.kind === 'draft' &&
+            message.content.includes('便携条包')
+          ))),
+          modelCompleted: Boolean(session?.executionEvents?.some((event) => event.eventClass === 'model.completed')),
+        };
+      }, workspaceDir),
+      { message: '等待补资料后继续生成草稿', timeout: 20_000 },
+    ).toEqual({ hasAdjustment: true, hasDraft: true, modelCompleted: true });
+    await expect(inputRuntimeSummary.locator('[data-summary-kind="artifacts"]')).toContainText('1', { timeout: 20_000 });
+    }, { requireExplicitTextKey: false });
+  } finally {
+    await new Promise((resolveClose) => server.close(resolveClose));
+  }
 });
 
 test('SOP 执行页显式选择资料并写入运行记录', async ({}, testInfo) => {
@@ -2253,6 +3213,7 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
     ).toBe(true);
 
     await clickNavItem(page, 'Prompt 工作台');
+    await openPromptSupportDrawer(page);
     await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).toBeChecked();
@@ -2292,6 +3253,7 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
     expect(persisted.skillContent).toContain('只使用用户提供的知识库');
 
     await clickNavItem(page, 'Prompt 工作台');
+    await openPromptSupportDrawer(page);
     await page.locator('.prompt-source-panel select').first().selectOption('sop');
     await expect(page.locator('.prompt-source-panel input').first()).toHaveValue('SOP 草案');
     await expect(page.locator('.prompt-source-panel textarea')).toHaveValue(/发布运行的 SOP 草案/);
@@ -2464,6 +3426,7 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     expect(distilledVideoTrace.runHasDistilledDraftRef, JSON.stringify(distilledVideoTrace)).toBe(true);
 
     await clickNavItem(page, 'Prompt 工作台');
+    await openPromptSupportDrawer(page);
     const traceSourceInput = page.locator('.prompt-source-option').filter({ hasText: '追溯源' }).locator('input').first();
     await expect(traceSourceInput).toBeDisabled();
     await expect(traceSourceInput).not.toBeChecked();
@@ -2652,9 +3615,9 @@ test('独立视频 Prompt 复制不会误推进无关联 SOP', async ({}, testIn
     await clickNavItem(page, '视频 Prompt');
     const promptPanel = page.locator('.video-prompt-builder-panel');
     await page.locator('.video-prompt-draft').filter({ hasText: '独立视频 Prompt' }).click();
-    await expect(promptPanel.locator('.panel-title')).toContainText('独立视频 Prompt', { timeout: 20_000 });
+    await expect(promptPanel.locator('.agent-session-head h3')).toContainText('独立视频 Prompt', { timeout: 20_000 });
     await promptPanel.locator('button').filter({ hasText: '复制到第三方平台' }).click();
-    await expect(promptPanel.locator('button').filter({ hasText: '已复制' })).toBeVisible();
+    await expect(promptPanel.getByRole('button', { name: '已复制', exact: true })).toBeVisible();
 
     const result = await page.evaluate(async ({ workspacePath, runId, draftId }) => {
       const [run] = (await window.contentStudio.listWorkflowRuns(workspacePath)).filter((item) => item.id === runId);
@@ -2961,8 +3924,9 @@ test('品牌 SOP 运行详情可以打开知识库、场景库和 Prompt 产物'
       await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
       await artifactPanel.locator('button').filter({ hasText: '打开场景库' }).click();
       await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.scene-prompt-scene-list')).toContainText('早餐后便携场景');
-      await expect(page.locator('.scene-prompt-scenes-panel')).toContainText('1 已选');
+      await expect(page.locator('.agent-session-panel')).toBeVisible();
+      await expect(page.locator('.scene-agent-attachment-list')).toContainText('早餐后便携场景');
+      await expect(page.locator('.scene-prompt-workbench .workflow-summary-stack')).toContainText('已确认');
 
       await clickNavItem(page, 'SOP 工作流');
       await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
@@ -3233,7 +4197,7 @@ test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核
   expect(capturedImageRequest?.tools?.[0]?.model).toBe('test-image-model');
 });
 
-test('IP 长文 SOP 运行详情可以打开 Agent Prompt 并进入文章生成', async ({}, testInfo) => {
+test('IP 长文 SOP 运行详情可以打开文章 Prompt 并进入文章生成', async ({}, testInfo) => {
   test.setTimeout(180_000);
 
   const { server, baseUrl } = await startFakeOpenAITextServer((prompt) => {
@@ -3241,13 +4205,13 @@ test('IP 长文 SOP 运行详情可以打开 Agent Prompt 并进入文章生成'
       return {
         titleCandidates: ['IP 内容工程方法论', '从知识库到内容生产', '把个人 IP 写作变成流程'],
         outline: ['IP 定位', '知识库事实', '方法论展开', '场景案例', '发布检查'],
-        summary: '基于 IP 知识库和 Agent Prompt 生成长文。',
+        summary: '基于 IP 知识库和文章 Prompt 生成长文。',
         markdown: [
           '# IP 内容工程方法论',
           '',
           '个人 IP 内容不是临场发挥，而是从身份、价值观、语言和方法论中抽取稳定表达。',
           '',
-          '这次 SOP 已经先构建 IP 知识库，再让 Agent 读取输入源和用户意图，最后进入文章生成。',
+          '这次 SOP 已经先构建 IP 知识库，再读取输入源和用户意图，最后进入文章生成。',
           '',
           '正文必须保留事实边界，不把缺少资料的案例写成真实经历。',
         ].join('\n'),
@@ -3321,7 +4285,7 @@ test('IP 长文 SOP 运行详情可以打开 Agent Prompt 并进入文章生成'
       await artifactPanel.locator('button').filter({ hasText: '打开 IP 知识库' }).click();
       await expect(page.locator('.knowledge-brand-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.brand-kb-detail')).toContainText('内容工程顾问');
-      await page.getByRole('button', { name: '生成口播延伸库' }).click();
+      await page.locator('.ip-scenario-card').filter({ hasText: /口播/ }).locator('button').filter({ hasText: '生成延伸库' }).click();
       await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.prompt-draft-editor')).toHaveValue(/IP 场景延伸知识库|延伸场景：口播|内容工程顾问/, { timeout: 20_000 });
       const scenarioTrace = await page.evaluate(async (workspacePath) => {
@@ -3476,18 +4440,26 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
       await extractButton.click();
       await expect(page.locator('.knowledge-brand-workbench .prompt-draft-list')).toContainText('便携条包品牌知识库', { timeout: 20_000 });
 
+      await page.locator('.knowledge-brand-workbench .agent-session-footer textarea').fill('请检查品牌事实、合规边界和场景库下一步。');
+      await page.locator('.knowledge-brand-workbench .agent-session-footer button').filter({ hasText: '开始判断' }).click();
+      await expect(page.locator('.knowledge-brand-workbench .agent-turn.user')).toContainText('品牌事实', { timeout: 20_000 });
+      await expect(page.locator('.knowledge-brand-workbench .agent-turn.assistant')).toContainText('图片 Prompt', { timeout: 20_000 });
+
       const sceneButton = page.locator('.knowledge-brand-workbench button').filter({ hasText: '生成场景库' }).first();
       await expect(sceneButton).toBeEnabled();
       await sceneButton.click();
       await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.scene-prompt-scene-list')).toContainText('早餐后便携场景');
+      await expect(page.locator('.agent-session-panel')).toBeVisible();
+      await expect(page.locator('.scene-agent-attachment-list')).toContainText('早餐后便携场景');
+      await page.locator('.scene-agent-form-drawer summary').click();
       const sceneEditor = page.locator('.scene-card-editor');
+      await expect(sceneEditor).toBeVisible();
       await expect(sceneEditor).toContainText('使用场景');
-      await expect(page.locator('.scene-prompt-scenes-panel')).toContainText('待确认');
+      await expect(page.locator('.scene-agent-attachment-list')).toContainText('待确认');
       await sceneEditor.locator('label').filter({ hasText: '使用场景' }).locator('textarea').fill('早餐后准备出门前，家长把便携条包放进孩子书包侧袋。');
       await sceneEditor.locator('label').filter({ hasText: '画面构图' }).locator('textarea').fill('4:5 竖版，书包侧袋在右下三分之一，早餐桌自然光，手部动作真实。');
       await sceneEditor.getByRole('button', { name: '确认场景卡', exact: true }).click();
-      await expect(page.locator('.scene-prompt-scenes-panel')).toContainText('已确认', { timeout: 20_000 });
+      await expect(page.locator('.scene-agent-attachment-list')).toContainText('已确认', { timeout: 20_000 });
 
       await clickNavItem(page, '视频 Prompt');
       await expect(page.locator('.video-prompt-workbench')).toBeVisible();
@@ -3515,34 +4487,39 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
       await clickNavItem(page, '场景提示词');
       await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
 
-      await page.locator('.purpose-tabs button').filter({ hasText: '视频' }).click();
-      await page.locator('.scene-prompt-builder-panel button').filter({ hasText: '生成10 组 15 秒视频 Prompt' }).click();
-      await expect(page.locator('.scene-prompt-preview pre')).toContainText(/视频 Prompt|15 秒/, { timeout: 20_000 });
-      const sceneHandoffPanel = page.locator('.scene-prompt-handoff-panel');
-      await expect(sceneHandoffPanel).toContainText('下游交接');
-      await expect(sceneHandoffPanel).toContainText('准备复制到第三方视频平台');
-      await sceneHandoffPanel.locator('select').selectOption('vidu');
-      await sceneHandoffPanel.locator('button').filter({ hasText: '复制到第三方视频平台' }).click();
-      await expect(sceneHandoffPanel).toContainText('已复制到Vidu，待导入成品', { timeout: 20_000 });
-      await expect(sceneHandoffPanel.locator('button').filter({ hasText: '去导入成品' })).toBeEnabled();
-      await sceneHandoffPanel.locator('button').filter({ hasText: '去导入成品' }).click();
+      await page.locator('.agent-composer-meta label').filter({ hasText: '输出' }).locator('select').selectOption('video');
+      const generateVideoPromptButton = page.locator('.scene-agent-composer button').filter({ hasText: '生成 Prompt' });
+      if (await generateVideoPromptButton.count()) {
+        await generateVideoPromptButton.click();
+      }
+      const sceneAgentArtifact = page.locator('.agent-session-artifact');
+      await expect(sceneAgentArtifact.locator('.agent-turn-details pre')).toContainText(/视频 Prompt|15 秒/, { timeout: 20_000 });
+      await expect(sceneAgentArtifact).toContainText(/准备复制到第三方视频平台|已复制到/);
+      await sceneAgentArtifact.locator('.scene-prompt-target-select select').selectOption('vidu');
+      await sceneAgentArtifact.getByRole('button', { name: '复制到第三方视频平台', exact: true }).click();
+      await expect(sceneAgentArtifact).toContainText('已复制到Vidu', { timeout: 20_000 });
+      await expect(sceneAgentArtifact.getByRole('button', { name: '成品导入', exact: true })).toBeEnabled();
+      await sceneAgentArtifact.getByRole('button', { name: '成品导入', exact: true }).click();
       await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.video-import-handoff-note')).toContainText('Prompt 已复制到第三方平台');
+      await expect(page.locator('.video-import-handoff-note')).toContainText(/Prompt 已复制到第三方平台|已导入成品/);
       await expect(page.locator('.video-import-draft-panel')).toContainText('最近：Vidu');
       await expect(page.locator('.video-import-workbench .module-command-center button').filter({ hasText: '导入并关联提示词' })).toBeEnabled();
 
       await clickNavItem(page, '场景提示词');
       await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
 
-      await page.locator('.purpose-tabs button').filter({ hasText: '图片' }).click();
-      await page.locator('.scene-prompt-builder-panel button').filter({ hasText: '生成10 组 UGC 图片 Prompt' }).click();
-      await expect(page.locator('.scene-prompt-preview pre')).toContainText('图片 Prompt', { timeout: 20_000 });
-      await expect(sceneHandoffPanel).toContainText('准备发送到图片生成');
-      await sceneHandoffPanel.locator('button').filter({ hasText: '外部工具' }).click();
-      await sceneHandoffPanel.locator('button').filter({ hasText: '复制到外部图片工具' }).click();
-      await expect(sceneHandoffPanel).toContainText('已复制到外部图片工具', { timeout: 20_000 });
-      await sceneHandoffPanel.locator('button').filter({ hasText: '内部下游' }).click();
-      await page.locator('.scene-prompt-builder-panel button').filter({ hasText: '发送选中 Prompt 到图片生成' }).click();
+      await page.locator('.agent-composer-meta label').filter({ hasText: '输出' }).locator('select').selectOption('image');
+      const generateImagePromptButton = page.locator('.scene-agent-composer button').filter({ hasText: '生成 Prompt' });
+      if (await generateImagePromptButton.count()) {
+        await generateImagePromptButton.click();
+      }
+      await expect(sceneAgentArtifact.locator('.agent-turn-details pre')).toContainText('图片 Prompt', { timeout: 20_000 });
+      await expect(sceneAgentArtifact).toContainText('准备发送到图片生成');
+      await sceneAgentArtifact.locator('button').filter({ hasText: '外部工具' }).click();
+      await sceneAgentArtifact.getByRole('button', { name: '复制到外部图片工具', exact: true }).click();
+      await expect(sceneAgentArtifact).toContainText('已复制到外部图片工具', { timeout: 20_000 });
+      await sceneAgentArtifact.locator('button').filter({ hasText: '内部下游' }).click();
+      await sceneAgentArtifact.getByRole('button', { name: '发送到图片生成', exact: true }).click();
       await expect(page.locator('.image-workbench-layout')).toBeVisible();
       await expect(page.locator('.image-prompt-panel textarea')).toHaveValue(/早餐桌自然光|便携条包/);
 
@@ -3671,12 +4648,14 @@ test('文章生成不会自动混入未显式选择的场景卡', async ({}, tes
 
       await clickNavItem(page, '场景提示词');
       await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await page.locator('.scene-prompt-builder-panel button').filter({ hasText: '生成10 组 UGC 图片 Prompt' }).click();
-      await expect(page.locator('.scene-prompt-preview pre')).toContainText('图片 Prompt', { timeout: 20_000 });
-      const copyScenePromptButton = page.locator('.scene-prompt-preview button').filter({ hasText: '复制' }).first();
+      const sceneAgentArtifact = page.locator('.agent-session-artifact');
+      await page.locator('.scene-prompt-workbench .scene-agent-composer button').filter({ hasText: '生成 Prompt' }).click();
+      await expect(sceneAgentArtifact.locator('.agent-turn-details pre')).toContainText('图片 Prompt', { timeout: 20_000 });
+      await sceneAgentArtifact.locator('button').filter({ hasText: '外部工具' }).click();
+      const copyScenePromptButton = sceneAgentArtifact.getByRole('button', { name: '复制到外部图片工具', exact: true });
       await expect(copyScenePromptButton).toBeEnabled();
       await copyScenePromptButton.click();
-      await expect(copyScenePromptButton).toContainText('已复制');
+      await expect(sceneAgentArtifact).toContainText('已复制到外部图片工具', { timeout: 20_000 });
       const scenePromptTrace = await page.evaluate(async (workspacePath) => {
         const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
         const draft = drafts.find((item) => item.title === '场景图片 Prompt 草稿');
@@ -3729,6 +4708,10 @@ test('IP 知识库能进入场景延伸库和 PromptPack 引用', async ({}, tes
       await extractButton.click();
       await expect(page.locator('.knowledge-brand-workbench .prompt-draft-list')).toContainText('嘉文老师 IP 知识库', { timeout: 20_000 });
       await expect(page.locator('.brand-kb-detail')).toContainText('内容工程顾问');
+      await page.locator('.knowledge-brand-workbench .agent-session-footer textarea').fill('请检查 IP 六层缺口和口播场景延伸优先级。');
+      await page.locator('.knowledge-brand-workbench .agent-session-footer button').filter({ hasText: '开始判断' }).click();
+      await expect(page.locator('.knowledge-brand-workbench .agent-turn.user')).toContainText('IP 六层缺口', { timeout: 20_000 });
+      await expect(page.locator('.knowledge-brand-workbench .agent-turn.assistant')).toContainText('图片 Prompt', { timeout: 20_000 });
       const scenarioLibrary = page.locator('.ip-scenario-library-panel');
       await expect(scenarioLibrary).toContainText('IP 运营场景库');
       await expect(scenarioLibrary).toContainText('0/3 已生成');
@@ -3744,7 +4727,7 @@ test('IP 知识库能进入场景延伸库和 PromptPack 引用', async ({}, tes
       await expect(sceneButton).toBeEnabled();
       await sceneButton.click();
       await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.scene-prompt-scene-list')).toContainText('早餐后便携场景');
+      await expect(page.locator('.scene-agent-attachment-list')).toContainText('早餐后便携场景');
 
       const persisted = await page.evaluate(async (workspacePath) => {
         const api = window.contentStudio;
@@ -4174,7 +5157,7 @@ test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造�
     await clickVideoAction(page, '打开视频 Prompt 交接');
     const promptPanel = page.locator('.video-prompt-builder-panel');
     await expect(promptPanel).toBeVisible({ timeout: 20_000 });
-    await expect(promptPanel.locator('.panel-title')).toContainText('Prompt 交接');
+    await expect(promptPanel.locator('.agent-session-head h3')).toContainText('Prompt 交接');
     await expect(page.locator('.video-prompt-preview pre')).toContainText('软件只生成可复制到第三方视频平台的视频 Prompt');
     await expect(page.locator('.video-prompt-handoff-card')).toContainText('未复制');
 

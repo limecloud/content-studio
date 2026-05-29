@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react';
 import type { ModuleKey } from '../../app/types';
-import type { InputSourcePurpose, InputSourceRecord, InputSourceStatus } from '../../../../shared/types';
+import type {
+  AgentPromptSession,
+  InputSourcePurpose,
+  InputSourceRecord,
+  InputSourceStatus,
+  PromptDraftPurpose,
+} from '../../../../shared/types';
 import { isPromptDistilledSource } from '../../../../shared/inputSourcePolicy';
 import {
   buildProductBriefPromptPlan,
@@ -9,20 +15,37 @@ import {
 } from '../../../../shared/productBrief';
 import { clusterUserFeedbackSources, type FeedbackPainPointInsight } from '../../../../shared/userFeedbackInsights';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
+import { AgentSessionPanel, type AgentActionResolver, type AgentExecutionStep } from '../agent/AgentSessionPanel';
+import { isAgentInputSourceRecoverySession } from '../agent/agentRuntimeProjection';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
-import { UserJourneyGuide } from '../UserJourneyGuide';
+import { ActionGroup, StatusPill } from '../WorkbenchPrimitives';
 
 interface InputSourcesModuleProps {
   workspaceReady: boolean;
   busy: boolean;
   inputSources: InputSourceRecord[];
-  onImportInputSource: (purpose: InputSourcePurpose) => void;
+  onImportInputSource: (purpose: InputSourcePurpose, agentSessionId?: string) => void;
   onRegisterManualInputSource: (input: {
     title: string;
     purpose: InputSourcePurpose;
     text: string;
     tags?: string[];
+    agentSessionId?: string;
   }) => void;
+  agentPromptSessions: AgentPromptSession[];
+  activeAgentPromptSessionId: string;
+  textModel?: string;
+  onSelectAgentSession: (sessionId: string) => void;
+  onResolveAgentAction?: AgentActionResolver;
+  onStartAgentSession: (input: {
+    title?: string;
+    purpose: PromptDraftPurpose;
+    userIntent: string;
+    inputSourceIds: string[];
+    sceneCardIds?: string[];
+    textModel?: string;
+  }) => void;
+  onContinueAgentSession: (input: { sessionId: string; message: string; textModel?: string }) => void;
   onSelectModule: (module: ModuleKey) => void;
 }
 
@@ -30,6 +53,7 @@ const PURPOSE_OPTIONS: Array<{ value: InputSourcePurpose; label: string }> = [
   { value: 'brand-kb', label: '品牌 / 产品知识库' },
   { value: 'ip-kb', label: 'IP 知识库' },
   { value: 'ip-scenario-kb', label: 'IP 场景延伸库' },
+  { value: 'competitor-observation', label: '竞品观察' },
   { value: 'reference', label: '参考素材' },
   { value: 'product-brief', label: '产品资料' },
   { value: 'user-feedback', label: '评论 / 客服问题' },
@@ -55,10 +79,47 @@ const KIND_LABELS: Record<InputSourceRecord['kind'], string> = {
   'manual-note': '手动记录',
 };
 
+const AGENT_SESSION_STATUS_LABELS: Record<AgentPromptSession['status'], string> = {
+  active: '会话中',
+  'waiting-user': '等你补充',
+  'draft-created': '已输出',
+  blocked: '待配置',
+  closed: '已关闭',
+};
+
+const AGENT_MESSAGE_KIND_LABELS: Record<AgentPromptSession['messages'][number]['kind'], string> = {
+  intent: '任务',
+  draft: '输出',
+  adjustment: '追问',
+  note: '记录',
+};
+
 function statusClass(status: InputSourceStatus): string {
   if (status === 'converted') return 'ready';
   if (status === 'blocked' || status === 'failed') return 'blocked';
   return 'idle';
+}
+
+function agentSessionTone(status?: AgentPromptSession['status']) {
+  if (status === 'blocked' || status === 'closed') return 'blocked';
+  if (status === 'draft-created' || status === 'active') return 'ready';
+  return 'idle';
+}
+
+function agentMessageTitle(message: AgentPromptSession['messages'][number]): string {
+  if (message.role === 'user') return message.kind === 'adjustment' ? '你的补充' : '你的任务';
+  if (message.role === 'assistant') return '分流建议';
+  return '系统记录';
+}
+
+function compactAgentMessage(message: AgentPromptSession['messages'][number]): string {
+  const content = message.content.trim();
+  if (!content) return '无内容';
+  const userIntent = content.match(/用户意图：\n([\s\S]*?)(\n\n输入源快照：|\n\n本轮 skills：|$)/)?.[1]?.trim();
+  if (message.role === 'user' && userIntent) return userIntent.split('\n').filter(Boolean).slice(0, 6).join('\n');
+  const promptDraft = content.match(/Prompt 草稿：\n([\s\S]*?)(\n\n需要追问|\n\n仍需追问|\n\n来源与合规提醒|\n\n下游检查清单|\n\n本轮调整：|$)/)?.[1]?.trim();
+  if (message.role === 'assistant' && promptDraft) return promptDraft.split('\n').filter(Boolean).slice(0, 8).join('\n');
+  return content.split('\n').filter(Boolean).slice(0, 8).join('\n');
 }
 
 function formatTime(value: string): string {
@@ -307,6 +368,13 @@ export function InputSourcesModule({
   inputSources,
   onImportInputSource,
   onRegisterManualInputSource,
+  agentPromptSessions,
+  activeAgentPromptSessionId,
+  textModel,
+  onSelectAgentSession,
+  onResolveAgentAction,
+  onStartAgentSession,
+  onContinueAgentSession,
   onSelectModule,
 }: InputSourcesModuleProps) {
   const feature = V2_FEATURES['knowledge-inputs'];
@@ -314,6 +382,7 @@ export function InputSourcesModule({
   const [title, setTitle] = useState('手动输入源');
   const [text, setText] = useState('');
   const [tags, setTags] = useState('用户意图, SOP');
+  const [agentMessage, setAgentMessage] = useState('请基于当前输入源，判断哪些资料适合进品牌知识库、IP 知识库、产品变量表、评论痛点矩阵或 Prompt 工作台，并列出缺口。');
   const productBrief = useMemo(() => structureProductBriefSources(inputSources), [inputSources]);
   const feedbackInsight = useMemo(() => clusterUserFeedbackSources(inputSources), [inputSources]);
   const stats = useMemo(
@@ -323,6 +392,218 @@ export function InputSourcesModule({
       blocked: inputSources.filter((source) => source.status === 'blocked').length,
     }),
     [inputSources],
+  );
+  const relatedAgentSessions = useMemo(
+    () => {
+      const inputSourceIds = new Set(inputSources.map((source) => source.id));
+      return agentPromptSessions.filter((session) => (
+        session.id === activeAgentPromptSessionId ||
+        isAgentInputSourceRecoverySession(session) ||
+        session.title.includes('输入源分流') ||
+        session.userIntent.includes('输入源分流') ||
+        session.inputSourceIds.some((sourceId) => inputSourceIds.has(sourceId))
+      ));
+    },
+    [activeAgentPromptSessionId, agentPromptSessions, inputSources],
+  );
+  const activeAgentSession =
+    relatedAgentSessions.find((session) => session.id === activeAgentPromptSessionId) ??
+    relatedAgentSessions[0];
+  const reusableInputSourceIds = useMemo(
+    () => inputSources.filter((source) => !isPromptDistilledSource(source)).map((source) => source.id),
+    [inputSources],
+  );
+  const agentSteps: AgentExecutionStep[] = [
+    {
+      key: 'register',
+      title: '登记资料',
+      detail: `${stats.total} 个输入源`,
+      state: stats.total ? 'done' : 'active',
+    },
+    {
+      key: 'convert',
+      title: '确认可读',
+      detail: `${stats.converted} 个可读文本`,
+      state: stats.converted ? 'done' : stats.blocked ? 'blocked' : 'idle',
+    },
+    {
+      key: 'product',
+      title: '产品变量',
+      detail: productBrief.sourceIds.length ? `${productBrief.sourceIds.length} 个产品输入` : '待登记产品资料',
+      state: productBrief.sourceIds.length ? (productBrief.missingFields.length ? 'active' : 'done') : 'idle',
+    },
+    {
+      key: 'feedback',
+      title: '用户反馈',
+      detail: feedbackInsight.sourceIds.length ? `${feedbackInsight.clusters.length} 类痛点` : '待登记评论',
+      state: feedbackInsight.sourceIds.length ? (feedbackInsight.clusters.length ? 'done' : 'active') : 'idle',
+    },
+  ];
+  const registerInputSource = () => {
+    onRegisterManualInputSource({
+      title,
+      purpose,
+      text,
+      tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
+      agentSessionId: activeAgentSession?.id,
+    });
+    setText('');
+  };
+  const startInputAgent = () => {
+    const trimmed = agentMessage.trim();
+    if (!trimmed) return;
+    onStartAgentSession({
+      title: '输入源分流',
+      purpose: 'sop',
+      userIntent: [
+        '输入源分流',
+        `当前已登记输入源：${stats.total} 个；可读文本 ${stats.converted} 个；待解析 ${stats.blocked} 个。`,
+        `产品资料：${productBrief.sourceIds.length} 个输入；待补字段：${productBrief.missingFields.join('、') || '无'}；SKU 行：${productBrief.skuRows.length}。`,
+        `评论 / 客服问题：${feedbackInsight.sourceIds.length} 个输入；痛点分类：${feedbackInsight.clusters.length} 类；原声 ${feedbackInsight.totalLines} 条。`,
+        text.trim() ? `当前表单还有未登记文本：标题 ${title}；用途 ${purposeLabel(purpose)}。请提醒用户先登记后再进入下游追溯。` : '',
+        `用户请求：${trimmed}`,
+        '请只基于真实已登记输入源和当前表单状态给出分流建议；缺资料时列出需要补充的文件、字段或评论证据，不要编造产品卖点、用户评论或解析结果。',
+      ].filter(Boolean).join('\n'),
+      inputSourceIds: reusableInputSourceIds,
+      textModel,
+    });
+  };
+  const continueInputAgent = () => {
+    const trimmed = agentMessage.trim();
+    if (!activeAgentSession || !trimmed) return;
+    onContinueAgentSession({ sessionId: activeAgentSession.id, message: trimmed, textModel });
+  };
+  const inputAgentContext = (
+    <>
+      <div className="agent-turn-head">
+        <strong>登记输入源</strong>
+        <small>{purposeLabel(purpose)} · {stats.total} 个已登记</small>
+      </div>
+      <section className="input-source-register-panel">
+        <div className="workflow-form-grid">
+          <label>
+            <span>用途</span>
+            <select value={purpose} onChange={(event) => setPurpose(event.target.value as InputSourcePurpose)}>
+              {PURPOSE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>标题</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} />
+          </label>
+          <label>
+            <span>标签</span>
+            <input value={tags} onChange={(event) => setTags(event.target.value)} />
+          </label>
+          <label>
+            <span>文本 / 用户意图</span>
+            <textarea
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder="输入用户意图、产品资料摘要、知识库补充说明；保存后会生成可追溯转换稿。"
+            />
+          </label>
+        </div>
+      </section>
+    </>
+  );
+  const inputAgentArtifact = (
+    <>
+      <div className="input-agent-artifact-grid">
+        <ProductBriefStructurePanel
+          brief={productBrief}
+          workspaceReady={workspaceReady}
+          onSelectModule={onSelectModule}
+        />
+
+        <FeedbackInsightPanel
+          insight={feedbackInsight}
+          workspaceReady={workspaceReady}
+          onSelectModule={onSelectModule}
+        />
+      </div>
+
+      <section className="panel input-source-list-panel">
+        <div className="panel-title">
+          <div>
+            <p className="eyebrow">输入源列表</p>
+            <h3>已登记资料</h3>
+          </div>
+          <StatusPill>{stats.total} 个</StatusPill>
+        </div>
+        <div className="input-source-list">
+          {inputSources.map((source) => (
+            <article key={source.id} className="input-source-card">
+              <div className="workflow-run-head">
+                <span className={`status-pill ${statusClass(source.status)}`}>{STATUS_LABELS[source.status]}</span>
+                {isPromptDistilledSource(source) ? (
+                  <span className="status-pill ready">成功素材追溯</span>
+                ) : null}
+                <div>
+                  <strong>{source.title}</strong>
+                  <small>{kindLabel(source.kind)} · {purposeLabel(source.purpose)} · {formatTime(source.createdAt)}</small>
+                </div>
+              </div>
+              <p>{source.summary ?? source.blockedReason ?? '未记录摘要。'}</p>
+              {source.blockedReason ? <em>{source.blockedReason}</em> : null}
+              <div className="workflow-run-steps">
+                {source.tags.map((tag) => (
+                  <span key={tag}>{tag}</span>
+                ))}
+                {source.markdownPath ? <span className="ready">已生成转换稿</span> : null}
+              </div>
+            </article>
+          ))}
+          {inputSources.length === 0 ? (
+            <div className="empty-state">还没有输入源。先登记 DOCX、参考图、参考视频、SKU 或用户意图，再分流到知识库、SOP 和 Prompt 工作台。</div>
+          ) : null}
+        </div>
+      </section>
+    </>
+  );
+  const inputAgentFooter = (
+    <>
+      <label className="prompt-session-adjustment knowledge-agent-composer">
+        <span>{activeAgentSession ? '继续对话' : '分流要求'}</span>
+        <textarea value={agentMessage} onChange={(event) => setAgentMessage(event.target.value)} />
+      </label>
+      <ActionGroup align="left">
+        {activeAgentSession ? (
+          <button className="primary small" disabled={!workspaceReady || busy || !agentMessage.trim()} onClick={continueInputAgent}>
+            继续会话
+          </button>
+        ) : (
+          <button className="primary small" disabled={!workspaceReady || busy || !agentMessage.trim() || (!inputSources.length && !text.trim())} onClick={startInputAgent}>
+            开始分流
+          </button>
+        )}
+        <button
+          className="ghost small"
+          disabled={!workspaceReady || busy || !text.trim()}
+          onClick={registerInputSource}
+        >
+          登记文本输入源
+        </button>
+        <button
+          className="ghost small"
+          disabled={!workspaceReady || busy}
+          onClick={() => onImportInputSource(purpose, activeAgentSession?.id)}
+        >
+          导入文件输入源
+        </button>
+        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('knowledge-brand')}>
+          去品牌知识库
+        </button>
+        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('assets-prompt-workbench')}>
+          去 Prompt 工作台
+        </button>
+        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('image')}>
+          去图片生成
+        </button>
+      </ActionGroup>
+    </>
   );
 
   return (
@@ -341,147 +622,31 @@ export function InputSourcesModule({
         )}
       />
 
-      <UserJourneyGuide
-        title="先把资料登记清楚，再进入对应任务"
-        description="普通用户不用先理解工作流。把 DOCX、Markdown、参考图、参考视频、产品资料或用户意图登记成可追溯输入，后续页面会自动拿这些资料继续生产。"
-        steps={[
-          {
-            key: 'register',
-            title: '登记资料',
-            description: '上传文件或粘贴文本，选择它属于品牌、IP、参考素材、产品资料还是用户反馈。',
-            state: stats.total ? 'done' : 'active',
-          },
-          {
-            key: 'convert',
-            title: '确认可读',
-            description: '文档转成可读文本；图片、视频和失败项保留原文件与原因。',
-            state: stats.converted ? 'done' : stats.blocked ? 'blocked' : 'next',
-          },
-          {
-            key: 'route',
-            title: '进入任务',
-            description: '品牌资料去知识库，参考图和产品资料去图片链路，评论问题去标题或选题生产。',
-            state: stats.total ? 'next' : 'idle',
-          },
-        ]}
-        actions={[
-          { label: '去品牌知识库', module: 'knowledge-brand', disabled: !workspaceReady },
-          { label: '去 IP 知识库', module: 'knowledge-ip', disabled: !workspaceReady },
-          { label: '去拆解素材', module: 'material-breakdown', disabled: !workspaceReady },
-          { label: '去 Prompt 工作台', module: 'assets-prompt-workbench', disabled: !workspaceReady },
-          { label: '去图片生成', module: 'image', disabled: !workspaceReady },
-        ]}
-        onSelectModule={onSelectModule}
+      <AgentSessionPanel
+        eyebrow="输入源助手"
+        title={activeAgentSession?.title ?? '输入源分流'}
+        session={activeAgentSession}
+        sessions={relatedAgentSessions}
+        transcriptLabel={activeAgentSession ? activeAgentSession.title : stats.total ? '输入源追溯与分流' : '等待登记第一条输入源'}
+        statusLabel={activeAgentSession ? AGENT_SESSION_STATUS_LABELS[activeAgentSession.status] : `${stats.total} 个输入源`}
+        statusTone={activeAgentSession ? agentSessionTone(activeAgentSession.status) : stats.blocked ? 'blocked' : stats.total ? 'ready' : 'idle'}
+        steps={agentSteps}
+        runningLabel={busy ? '正在处理输入源任务' : undefined}
+        context={inputAgentContext}
+        artifact={inputAgentArtifact}
+        footer={inputAgentFooter}
+        empty={(
+          <>
+            <strong>等待登记输入源</strong>
+            <span>粘贴文本或导入文件后，系统会把资料转成可追溯输入，再分流到知识库、Prompt、图片和 SOP。</span>
+          </>
+        )}
+        onSelectSession={onSelectAgentSession}
+        onResolveAction={onResolveAgentAction}
+        messageTitle={agentMessageTitle}
+        messageMeta={(message) => `${AGENT_MESSAGE_KIND_LABELS[message.kind]} · ${new Date(message.createdAt).toLocaleString()}`}
+        messagePreview={compactAgentMessage}
       />
-
-      <ProductBriefStructurePanel
-        brief={productBrief}
-        workspaceReady={workspaceReady}
-        onSelectModule={onSelectModule}
-      />
-
-      <FeedbackInsightPanel
-        insight={feedbackInsight}
-        workspaceReady={workspaceReady}
-        onSelectModule={onSelectModule}
-      />
-
-      <div className="input-sources-layout">
-        <section className="panel input-source-register-panel">
-          <div className="panel-title">
-            <div>
-              <p className="eyebrow">登记输入</p>
-              <h3>登记素材和资料</h3>
-            </div>
-          </div>
-          <div className="workflow-form-grid">
-            <label>
-              <span>用途</span>
-              <select value={purpose} onChange={(event) => setPurpose(event.target.value as InputSourcePurpose)}>
-                {PURPOSE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>标题</span>
-              <input value={title} onChange={(event) => setTitle(event.target.value)} />
-            </label>
-            <label>
-              <span>标签</span>
-              <input value={tags} onChange={(event) => setTags(event.target.value)} />
-            </label>
-            <label>
-              <span>文本 / 用户意图</span>
-              <textarea
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                placeholder="输入用户意图、产品资料摘要、知识库补充说明；保存后会生成可追溯转换稿。"
-              />
-            </label>
-          </div>
-          <div className="workflow-actions left">
-            <button
-              className="primary small"
-              disabled={!workspaceReady || busy || !text.trim()}
-              onClick={() => {
-                onRegisterManualInputSource({
-                  title,
-                  purpose,
-                  text,
-                  tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
-                });
-                setText('');
-              }}
-            >
-              登记文本输入源
-            </button>
-            <button
-              className="ghost small"
-              disabled={!workspaceReady || busy}
-              onClick={() => onImportInputSource(purpose)}
-            >
-              导入文件输入源
-            </button>
-          </div>
-        </section>
-
-        <section className="panel input-source-list-panel">
-          <div className="panel-title">
-            <div>
-              <p className="eyebrow">输入源列表</p>
-              <h3>已登记资料</h3>
-            </div>
-          </div>
-          <div className="input-source-list">
-            {inputSources.map((source) => (
-              <article key={source.id} className="input-source-card">
-                <div className="workflow-run-head">
-                  <span className={`status-pill ${statusClass(source.status)}`}>{STATUS_LABELS[source.status]}</span>
-                  {isPromptDistilledSource(source) ? (
-                    <span className="status-pill ready">成功素材追溯</span>
-                  ) : null}
-                  <div>
-                    <strong>{source.title}</strong>
-                    <small>{kindLabel(source.kind)} · {purposeLabel(source.purpose)} · {formatTime(source.createdAt)}</small>
-                  </div>
-                </div>
-                <p>{source.summary ?? source.blockedReason ?? '未记录摘要。'}</p>
-                {source.blockedReason ? <em>{source.blockedReason}</em> : null}
-                <div className="workflow-run-steps">
-                  {source.tags.map((tag) => (
-                    <span key={tag}>{tag}</span>
-                  ))}
-                  {source.markdownPath ? <span className="ready">已生成转换稿</span> : null}
-                </div>
-              </article>
-            ))}
-            {inputSources.length === 0 ? (
-              <div className="empty-state">还没有输入源。先登记 DOCX、参考图、参考视频、SKU 或用户意图，再分流到知识库、SOP 和 Prompt 工作台。</div>
-            ) : null}
-          </div>
-        </section>
-      </div>
     </section>
   );
 }

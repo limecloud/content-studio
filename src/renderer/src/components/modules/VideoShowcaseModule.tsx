@@ -14,10 +14,13 @@ import rawDressingkitVideoShared from "../../data/dressingkit-ai-video-shared.js
 import rawDressingkitMaterials from "../../data/dressingkit-materials.json";
 import { DetailDialog } from "../DetailDialog";
 
-type VideoShowcaseDialog = "feature-picker" | "material-upload" | "preview" | "history" | null;
+type VideoShowcaseDialog = "feature-picker" | "material-upload" | "preview" | "history" | "prompt-list" | "prompt-assistant" | null;
 type VideoShowcaseAssetRole = "input" | "output" | "unknown";
 type VideoShowcaseFeatureId = "storyboard" | "smart-video" | "omni-video";
 type VideoShowcaseMainTab = "features" | "results" | "materials";
+type VideoPromptAssistantTab = "text" | "reverse";
+type VideoPromptListKind = "all" | "default" | "saved";
+type VideoPromptListFormMode = "create" | "edit" | null;
 type VideoMaterialKind = "image" | "video" | "audio";
 type VideoMaterialActor = "virtual" | "real";
 type VideoMaterialStatus = "reported" | "reviewing" | "rejected";
@@ -136,6 +139,17 @@ interface HistoryEntry {
   source?: "local" | "global";
 }
 
+interface SavedVideoPromptTemplate {
+  id: string;
+  title: string;
+  featureId: VideoShowcaseFeatureId;
+  featureTitle: string;
+  prompt: string;
+  mediaRefs?: string[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
 interface VideoMaterialEntry {
   id: string;
   kind: VideoMaterialKind;
@@ -203,11 +217,49 @@ const DEFAULT_PROMPTS: Record<VideoShowcaseFeatureId, string> = {
 };
 const DEFAULT_VIDEO_FEATURE_ID: VideoShowcaseFeatureId = "storyboard";
 const DEFAULT_PROMPT_VALUES = new Set(Object.values(DEFAULT_PROMPTS));
+const VIDEO_PROMPT_TEMPLATE_STORAGE_KEY = "buguai:dressingkit-video-prompt-templates";
 const VIDEO_DURATIONS = ["5s", "10s", "15s"];
 const VIDEO_RESOLUTIONS = ["480P", "720P", "1080P"];
 const STORYBOARD_COUNTS = [1, 2, 3];
 const STORYBOARD_RATIOS = ["3:4", "1:1", "4:3", "9:16", "16:9"];
 const STORYBOARD_QUALITIES = ["1K", "2K", "4K"];
+
+function readSavedVideoPromptTemplates(): SavedVideoPromptTemplate[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(VIDEO_PROMPT_TEMPLATE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is SavedVideoPromptTemplate =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        typeof item.id === "string" &&
+        typeof item.title === "string" &&
+        typeof item.prompt === "string" &&
+        typeof item.featureId === "string" &&
+        FEATURE_IDS.has(item.featureId as VideoShowcaseFeatureId) &&
+        typeof item.featureTitle === "string" &&
+        typeof item.createdAt === "string",
+      )
+      .map((item) => ({
+        ...item,
+        featureId: item.featureId as VideoShowcaseFeatureId,
+        mediaRefs: Array.isArray(item.mediaRefs)
+          ? item.mediaRefs.filter((ref): ref is string => typeof ref === "string" && ref.trim().length > 0).slice(0, 8)
+          : undefined,
+      }))
+      .slice(0, 24);
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedVideoPromptTemplates(templates: SavedVideoPromptTemplate[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(VIDEO_PROMPT_TEMPLATE_STORAGE_KEY, JSON.stringify(templates.slice(0, 24)));
+}
 
 const INDUSTRIES = [
   "全部",
@@ -444,13 +496,17 @@ function isVideoRef(ref: string): boolean {
   return /\.(mp4|mov|webm|m4v)(?:$|[?#\s])/i.test(ref);
 }
 
+function isAudioRef(ref: string): boolean {
+  return /\.(mp3|wav|m4a|aac|ogg|flac)(?:$|[?#\s])/i.test(ref);
+}
+
 function isTraceArtifactRef(ref: string): boolean {
   return /\.(json|md|txt|yaml|yml)(?:$|[?#\s])/i.test(ref);
 }
 
 function previewKindFromRef(ref: string): VideoPreviewState["kind"] {
   if (isVideoRef(ref)) return "video";
-  if (isTraceArtifactRef(ref)) return "artifact";
+  if (isAudioRef(ref) || isTraceArtifactRef(ref)) return "artifact";
   return "image";
 }
 
@@ -472,6 +528,47 @@ function secondsFromDuration(value: string): number {
 
 function uniqueRefs(refs: string[], limit: number): string[] {
   return Array.from(new Set(refs.filter(Boolean))).slice(0, limit);
+}
+
+function featureTitleForPromptTemplate(featureId: VideoShowcaseFeatureId): string {
+  return FEATURE_BY_ID.get(featureId)?.title || "AI 视频";
+}
+
+function buildVideoExpandedPrompt(input: {
+  basePrompt: string;
+  feature: VideoShowcaseFeature;
+  selectedCase?: VideoShowcaseCase | null;
+  imageCount: number;
+  videoCount: number;
+  audioCount: number;
+  duration: string;
+  resolution: string;
+  size: string;
+  storyboardCount: number;
+  storyboardRatio: string;
+  storyboardQuality: string;
+  mode: VideoPromptAssistantTab;
+}): string {
+  const prompt = input.basePrompt.trim() || DEFAULT_PROMPTS[input.feature.id];
+  const constraints = [
+    `功能：${input.feature.title}`,
+    input.selectedCase ? `参考案例：${input.selectedCase.title}` : "",
+    `输入素材：图片 ${input.imageCount} 张，视频 ${input.videoCount} 个，音频 ${input.audioCount} 个`,
+    input.feature.id === "storyboard"
+      ? `分镜数量：${input.storyboardCount}，比例：${input.storyboardRatio}，质量：${input.storyboardQuality}`
+      : `视频时长：${input.duration}，分辨率：${input.resolution}，画面比例：${input.size}`,
+    input.mode === "reverse"
+      ? "根据已上传素材反推镜头、主体动作、场景、光线、运镜和商业卖点。"
+      : "扩写为可直接用于 AI 视频生成的中文提示词，明确镜头节奏、主体动作、背景、光线、质感、字幕/口播约束。",
+  ].filter(Boolean);
+  return [
+    prompt,
+    "",
+    "补充生成约束：",
+    ...constraints.map((item) => `- ${item}`),
+    "- 保持产品主体清晰稳定，避免变形、穿帮、水印、错字和多余肢体。",
+    "- 输出需适合电商展示、社媒投放和后续剪辑复用。",
+  ].join("\n");
 }
 
 function buildBackendCards(cases: OemPublicCase[], assets: OemPublicAsset[]): VideoShowcaseCase[] {
@@ -1204,7 +1301,6 @@ function VideoHistoryDrawer({
               <section className="ai-video-history-section ai-video-history-prompt-section">
                 <header>
                   <h3>提示词</h3>
-                  <button type="button" disabled>复制</button>
                 </header>
                 <textarea value="暂无历史记录。完成一次生成后，这里会展示输入文件、生成结果和提示词。" readOnly />
               </section>
@@ -1562,6 +1658,7 @@ export function VideoShowcaseModule({
   const [backendStatus, setBackendStatus] = useState<"loading" | "ready" | "empty" | "error">("loading");
   const [backendMessage, setBackendMessage] = useState("");
   const [featureUiConfig, setFeatureUiConfig] = useState<VideoShowcaseFeatureUiConfig | null>(null);
+  const [savedPromptTemplates, setSavedPromptTemplates] = useState<SavedVideoPromptTemplate[]>(() => readSavedVideoPromptTemplates());
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [exampleImageRefs, setExampleImageRefs] = useState<string[] | null>(null);
   const [exampleVideoRefs, setExampleVideoRefs] = useState<string[] | null>(null);
@@ -1574,6 +1671,20 @@ export function VideoShowcaseModule({
   const [materialStatus, setMaterialStatus] = useState<VideoMaterialStatusFilter>("all");
   const [materialUploadDraft, setMaterialUploadDraft] = useState<VideoMaterialUploadDraft | null>(null);
   const [generationValidationMessage, setGenerationValidationMessage] = useState("");
+  const [assistantTab, setAssistantTab] = useState<VideoPromptAssistantTab>("text");
+  const [assistantInput, setAssistantInput] = useState("");
+  const [assistantResult, setAssistantResult] = useState("");
+  const [assistantTemplatesOpen, setAssistantTemplatesOpen] = useState(false);
+  const [templateDraftTitle, setTemplateDraftTitle] = useState("");
+  const [editingTemplateId, setEditingTemplateId] = useState("");
+  const [promptListKind, setPromptListKind] = useState<VideoPromptListKind>("all");
+  const [promptListQuery, setPromptListQuery] = useState("");
+  const [promptListDraftTitle, setPromptListDraftTitle] = useState("");
+  const [promptListDraftPrompt, setPromptListDraftPrompt] = useState("");
+  const [promptListEditingId, setPromptListEditingId] = useState("");
+  const [promptListDefaultFeatureId, setPromptListDefaultFeatureId] = useState<VideoShowcaseFeatureId | "">("");
+  const [promptListFormMode, setPromptListFormMode] = useState<VideoPromptListFormMode>(null);
+  const [promptListDraftMediaRefs, setPromptListDraftMediaRefs] = useState<string[]>([]);
   const pendingGenerationRef = useRef<HistoryEntry | null>(null);
   const activeFeature = FEATURE_BY_ID.get(activeFeatureId) || VIDEO_FEATURES[0];
 
@@ -1708,6 +1819,38 @@ export function VideoShowcaseModule({
   const featureVideoRefs = activeFeatureId === "omni-video" ? activeVideoRefs : [];
   const featureAudioRefs = activeFeatureId !== "storyboard" ? activeAudioRefs : [];
   const uploadCount = activeImageRefs.length + featureVideoRefs.length + featureAudioRefs.length;
+  const selectedCaseInputAssetCount = selectedCase?.featureId === activeFeatureId
+    ? assetsForRole(selectedCase, "input").length
+    : 0;
+  const canGenerateFromPromptOnly = activeFeatureId === "smart-video" && Boolean(selectedCase) && selectedCaseInputAssetCount === 0;
+  const assistantMediaRefs = useMemo(
+    () => uniqueRefs([...activeImageRefs, ...featureVideoRefs, ...featureAudioRefs], 8),
+    [activeAudioRefs, activeImageRefs, featureAudioRefs, featureVideoRefs],
+  );
+  const assistantMediaRefsKey = assistantMediaRefs.join("|");
+  const promptListDefaultRows = useMemo(
+    () => VIDEO_FEATURES
+      .filter((feature) => {
+        const query = promptListQuery.trim();
+        const prompt = DEFAULT_PROMPTS[feature.id];
+        if (!query) return true;
+        return feature.title.includes(query) || prompt.includes(query);
+      })
+      .map((feature): [VideoShowcaseFeatureId, string] => [feature.id, DEFAULT_PROMPTS[feature.id]]),
+    [promptListQuery],
+  );
+  const promptListSavedRows = useMemo(
+    () => savedPromptTemplates.filter((template) => {
+      const query = promptListQuery.trim();
+      if (!query) return true;
+      return template.title.includes(query) || template.featureTitle.includes(query) || template.prompt.includes(query);
+    }),
+    [promptListQuery, savedPromptTemplates],
+  );
+  const selectedPromptListTemplate = savedPromptTemplates.find((template) => template.id === promptListEditingId) || null;
+  const promptListVisibleRowCount =
+    (promptListKind !== "saved" ? promptListDefaultRows.length : 0) +
+    (promptListKind !== "default" ? promptListSavedRows.length : 0);
   const resultRefs = mediaResult?.assetRefs ?? [];
   const resultMessage = mediaResult && mediaResult.status !== "succeeded" ? mediaResult.message : "";
   const latestResultKey = mediaResult
@@ -1726,6 +1869,329 @@ export function VideoShowcaseModule({
     if (!mediaResult) return;
     completePendingGeneration(mediaResult);
   }, [latestResultKey]);
+
+  useEffect(() => {
+    if (activeDialog !== "prompt-list" || !promptListFormMode) return;
+    setPromptListDraftMediaRefs((current) =>
+      uniqueRefs([...current, ...assistantMediaRefs], 8),
+    );
+  }, [activeDialog, assistantMediaRefsKey, promptListFormMode]);
+
+  function persistPromptTemplates(nextTemplates: SavedVideoPromptTemplate[]): void {
+    const normalized = nextTemplates.slice(0, 24);
+    setSavedPromptTemplates(normalized);
+    writeSavedVideoPromptTemplates(normalized);
+  }
+
+  function savePromptTemplate(
+    prompt: string,
+    title?: string,
+    templateId = editingTemplateId,
+    mediaRefs?: string[],
+  ): SavedVideoPromptTemplate | null {
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) return null;
+    const now = new Date().toISOString();
+    const draftTitle = title?.trim() || `${activeFeature.title} · 视频提示词`;
+    const normalizedMediaRefs = mediaRefs?.filter(Boolean).slice(0, 8);
+    let saved: SavedVideoPromptTemplate;
+    if (templateId) {
+      const existing = savedPromptTemplates.find((item) => item.id === templateId);
+      saved = {
+        id: templateId,
+        title: draftTitle,
+        featureId: activeFeatureId,
+        featureTitle: activeFeature.title,
+        prompt: trimmedPrompt,
+        mediaRefs: mediaRefs === undefined
+          ? existing?.mediaRefs
+          : normalizedMediaRefs?.length
+          ? normalizedMediaRefs
+          : undefined,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+      };
+      persistPromptTemplates([saved, ...savedPromptTemplates.filter((item) => item.id !== templateId)]);
+    } else {
+      saved = {
+        id: historyId(),
+        title: draftTitle,
+        featureId: activeFeatureId,
+        featureTitle: activeFeature.title,
+        prompt: trimmedPrompt,
+        mediaRefs: normalizedMediaRefs?.length ? normalizedMediaRefs : undefined,
+        createdAt: now,
+        updatedAt: now,
+      };
+      persistPromptTemplates([saved, ...savedPromptTemplates]);
+    }
+    setTemplateDraftTitle(saved.title);
+    setEditingTemplateId(saved.id);
+    appendHistory({
+      title: templateId ? `已更新视频提示词模板：${saved.title}` : `已保存视频提示词模板：${saved.title}`,
+      detail: saved.prompt.slice(0, 90),
+      tone: "ready",
+    });
+    return saved;
+  }
+
+  function applyPromptTemplateMedia(mediaRefs?: string[]): void {
+    const refs = uniqueRefs(mediaRefs || [], 8);
+    if (!refs.length) return;
+    setExampleImageRefs(refs.filter((ref) => previewKindFromRef(ref) === "image").slice(0, 7));
+    setExampleVideoRefs(refs.filter((ref) => previewKindFromRef(ref) === "video").slice(0, 3));
+    setExampleAudioRefs(refs.filter(isAudioRef).slice(0, 1));
+    setGenerationValidationMessage("");
+  }
+
+  function applySavedPromptTemplate(template: SavedVideoPromptTemplate, closeDialog = true): void {
+    setActiveFeatureId(template.featureId);
+    setPromptDraft(template.prompt);
+    setAssistantInput(template.prompt);
+    setAssistantResult(template.prompt);
+    setTemplateDraftTitle(template.title);
+    setEditingTemplateId(template.id);
+    applyPromptTemplateMedia(template.mediaRefs);
+    appendHistory({
+      title: `已应用视频模板：${template.title}`,
+      detail: template.mediaRefs?.length ? `${template.featureTitle} · 已带入 ${template.mediaRefs.length} 个素材` : template.featureTitle,
+      tone: "ready",
+    });
+    if (closeDialog) setActiveDialog(null);
+  }
+
+  function editSavedPromptTemplate(template: SavedVideoPromptTemplate): void {
+    setAssistantTemplatesOpen(true);
+    setTemplateDraftTitle(template.title);
+    setEditingTemplateId(template.id);
+    setAssistantInput(template.prompt);
+    setAssistantResult(template.prompt);
+    setActiveFeatureId(template.featureId);
+  }
+
+  function deleteSavedPromptTemplate(templateId: string): void {
+    const template = savedPromptTemplates.find((item) => item.id === templateId);
+    persistPromptTemplates(savedPromptTemplates.filter((item) => item.id !== templateId));
+    if (editingTemplateId === templateId) {
+      setEditingTemplateId("");
+      setTemplateDraftTitle("");
+    }
+    appendHistory({
+      title: template ? `已删除视频模板：${template.title}` : "已删除视频提示词模板",
+      detail: "模板列表已更新。",
+      tone: "idle",
+    });
+  }
+
+  function saveCurrentPromptAsTemplate(): void {
+    const template = savePromptTemplate(
+      promptDraft,
+      `${activeFeature.title} · 视频提示词`,
+      "",
+      assistantMediaRefs.length ? assistantMediaRefs : undefined,
+    );
+    if (!template) return;
+    setPromptListDraftTitle(template.title);
+    setPromptListDraftPrompt(template.prompt);
+    setPromptListEditingId(template.id);
+    setPromptListDefaultFeatureId("");
+    setPromptListDraftMediaRefs(template.mediaRefs || []);
+    setPromptListKind("saved");
+    setActiveDialog("prompt-list");
+  }
+
+  function openPromptAssistant(tab: VideoPromptAssistantTab = "text"): void {
+    setAssistantTab(tab);
+    setAssistantInput(promptDraft);
+    setAssistantResult("");
+    setAssistantTemplatesOpen(false);
+    setTemplateDraftTitle(`${activeFeature.title} · 视频提示词`);
+    setEditingTemplateId("");
+    setActiveDialog("prompt-assistant");
+  }
+
+  function openPromptListDialog(): void {
+    setPromptListKind("all");
+    setPromptListQuery("");
+    setPromptListDraftTitle(`${activeFeature.title} · 视频提示词`);
+    setPromptListDraftPrompt(promptDraft);
+    setPromptListEditingId("");
+    setPromptListDefaultFeatureId(activeFeatureId);
+    setPromptListDraftMediaRefs(assistantMediaRefs);
+    setPromptListFormMode(null);
+    setActiveDialog("prompt-list");
+  }
+
+  function startPromptListCreate(): void {
+    setPromptListDraftTitle(`${activeFeature.title} · 视频提示词`);
+    setPromptListDraftPrompt(promptDraft);
+    setPromptListEditingId("");
+    setPromptListDefaultFeatureId("");
+    setPromptListDraftMediaRefs(assistantMediaRefs);
+    setPromptListFormMode("create");
+  }
+
+  function startPromptListEdit(template: SavedVideoPromptTemplate): void {
+    setPromptListDraftTitle(template.title);
+    setPromptListDraftPrompt(template.prompt);
+    setPromptListEditingId(template.id);
+    setPromptListDefaultFeatureId("");
+    setPromptListDraftMediaRefs(template.mediaRefs || []);
+    setPromptListFormMode("edit");
+    setActiveFeatureId(template.featureId);
+  }
+
+  function selectPromptListDefault(featureId: VideoShowcaseFeatureId, prompt: string): void {
+    setActiveFeatureId(featureId);
+    setPromptListDraftTitle(`默认视频提示词 · ${featureTitleForPromptTemplate(featureId)}`);
+    setPromptListDraftPrompt(prompt);
+    setPromptListEditingId("");
+    setPromptListDefaultFeatureId(featureId);
+    setPromptListDraftMediaRefs([]);
+  }
+
+  function savePromptListDraft(): void {
+    const template = savePromptTemplate(
+      promptListDraftPrompt || promptDraft,
+      promptListDraftTitle || `${activeFeature.title} · 视频提示词`,
+      promptListEditingId,
+      promptListDraftMediaRefs,
+    );
+    if (!template) return;
+    setPromptListDraftTitle(template.title);
+    setPromptListDraftPrompt(template.prompt);
+    setPromptListEditingId(template.id);
+    setPromptListDefaultFeatureId("");
+    setPromptListDraftMediaRefs(template.mediaRefs || []);
+    setPromptListKind("saved");
+    setPromptListFormMode(null);
+  }
+
+  function deletePromptListDraft(): void {
+    if (!promptListEditingId) return;
+    deleteSavedPromptTemplate(promptListEditingId);
+    setPromptListEditingId("");
+    setPromptListDraftTitle("");
+    setPromptListDraftPrompt(promptDraft);
+    setPromptListDraftMediaRefs(assistantMediaRefs);
+    setPromptListFormMode(null);
+  }
+
+  function cancelPromptListForm(): void {
+    setPromptListFormMode(null);
+    setPromptListDraftTitle("");
+    setPromptListDraftPrompt(promptDraft);
+    setPromptListDraftMediaRefs(assistantMediaRefs);
+  }
+
+  function queryPromptList(): void {
+    appendHistory({
+      title: "已查询视频提示词列表",
+      detail: promptListQuery.trim() || "全部模板",
+      tone: "idle",
+    });
+  }
+
+  function confirmPromptList(): void {
+    const nextPrompt = promptListDraftPrompt.trim();
+    if (nextPrompt) {
+      setPromptDraft(nextPrompt);
+    }
+    if (promptListEditingId) {
+      applyPromptTemplateMedia(promptListDraftMediaRefs);
+      savePromptListDraft();
+      const templateImageRefs = promptListDraftMediaRefs.filter((ref) => previewKindFromRef(ref) === "image").slice(0, 7);
+      const templateVideoRefs = promptListDraftMediaRefs.filter((ref) => previewKindFromRef(ref) === "video").slice(0, 3);
+      const templateAudioRefs = promptListDraftMediaRefs.filter(isAudioRef).slice(0, 1);
+      onUsePromptInVideo(buildVideoHandoff({
+        prompt: nextPrompt,
+        imageRefs: templateImageRefs.length ? templateImageRefs : undefined,
+        videoRefs: templateVideoRefs.length ? templateVideoRefs : undefined,
+        audioRefs: templateAudioRefs.length ? templateAudioRefs : undefined,
+      }));
+    } else if (!promptListDefaultFeatureId && nextPrompt && nextPrompt !== promptDraft.trim()) {
+      savePromptListDraft();
+      onUsePromptInVideo(buildVideoHandoff({ prompt: nextPrompt }));
+    } else if (nextPrompt) {
+      onUsePromptInVideo(buildVideoHandoff({ prompt: nextPrompt }));
+    }
+    appendHistory({
+      title: promptListEditingId ? "已确认视频提示词模板" : "已确认视频提示词",
+      detail: nextPrompt.slice(0, 90),
+      tone: "ready",
+    });
+    setActiveDialog(null);
+  }
+
+  function removePromptListMediaRef(ref: string): void {
+    setPromptListDraftMediaRefs((current) => current.filter((item) => item !== ref));
+  }
+
+  function addPromptListMediaRefs(): void {
+    setPromptListDraftMediaRefs((current) => uniqueRefs([...current, ...assistantMediaRefs], 8));
+  }
+
+  function expandPromptWithCurrentContext(): void {
+    const nextPrompt = buildVideoExpandedPrompt({
+      basePrompt: promptDraft,
+      feature: activeFeature,
+      selectedCase,
+      imageCount: activeImageRefs.length,
+      videoCount: featureVideoRefs.length,
+      audioCount: featureAudioRefs.length,
+      duration: videoDuration,
+      resolution: videoResolution,
+      size: videoSize,
+      storyboardCount,
+      storyboardRatio,
+      storyboardQuality,
+      mode: "text",
+    });
+    setPromptDraft(nextPrompt);
+    appendHistory({
+      title: "视频提示词智能扩写已完成",
+      detail: `${activeFeature.title} · ${selectedCase?.title || "当前素材"}`,
+      tone: "ready",
+    });
+  }
+
+  function generateAssistantPrompt(): void {
+    const nextPrompt = buildVideoExpandedPrompt({
+      basePrompt: assistantInput || promptDraft,
+      feature: activeFeature,
+      selectedCase,
+      imageCount: activeImageRefs.length,
+      videoCount: featureVideoRefs.length,
+      audioCount: featureAudioRefs.length,
+      duration: videoDuration,
+      resolution: videoResolution,
+      size: videoSize,
+      storyboardCount,
+      storyboardRatio,
+      storyboardQuality,
+      mode: assistantTab,
+    });
+    setAssistantResult(nextPrompt);
+    appendHistory({
+      title: assistantTab === "reverse" ? "视频素材反推提示词已生成" : "视频文本提示词已生成",
+      detail: nextPrompt.slice(0, 90),
+      tone: "ready",
+    });
+  }
+
+  function confirmAssistantPrompt(): void {
+    const nextPrompt = (assistantResult || assistantInput).trim();
+    if (nextPrompt) {
+      setPromptDraft(nextPrompt);
+      onUsePromptInVideo(buildVideoHandoff({ prompt: nextPrompt }));
+      appendHistory({
+        title: "已确认视频提示词助手结果",
+        detail: nextPrompt.slice(0, 90),
+        tone: "ready",
+      });
+    }
+    setActiveDialog(null);
+  }
 
   function selectFeature(featureId: VideoShowcaseFeatureId): void {
     const feature = FEATURE_BY_ID.get(featureId) || VIDEO_FEATURES[0];
@@ -1756,7 +2222,7 @@ export function VideoShowcaseModule({
     setGenerationValidationMessage("");
     setSelectedCase(item);
     setActiveFeatureId(item.featureId);
-    setActiveMainTab("results");
+    setActiveMainTab("features");
     const nextPrompt = item.prompt.trim() || DEFAULT_PROMPTS[item.featureId];
     const inputAssets = assetsForRole(item, "input");
     const nextImageRefs = uniqueRefs(
@@ -1767,7 +2233,6 @@ export function VideoShowcaseModule({
       inputAssets.filter((asset) => asset.kind === "video").map((asset) => asset.url),
       3,
     );
-    const outputRefs = assetsForRole(item, "output").map((asset) => asset.url);
     const nextFeature = FEATURE_BY_ID.get(item.featureId) || activeFeature;
     setExampleImageRefs(nextImageRefs);
     setExampleVideoRefs(nextVideoRefs);
@@ -1780,16 +2245,10 @@ export function VideoShowcaseModule({
       videoRefs: nextVideoRefs,
       selectedCaseTitle: item.title,
     }));
-    appendGenerationHistory({
+    appendHistory({
       title: `已套用视频案例：${item.title}`,
       detail: nextPrompt.slice(0, 100),
       tone: "ready",
-      featureTitle: nextFeature.title,
-      jobType: nextFeature.title,
-      statusText: "生成完成",
-      inputRefs: [...nextImageRefs, ...nextVideoRefs],
-      outputRefs,
-      prompt: nextPrompt,
     });
   }
 
@@ -1835,17 +2294,19 @@ export function VideoShowcaseModule({
     feature?: VideoShowcaseFeature;
     imageRefs?: string[];
     videoRefs?: string[];
+    audioRefs?: string[];
     selectedCaseTitle?: string;
   }): ShowcaseVideoHandoff {
     const feature = input?.feature || activeFeature;
     const prompt = (input?.prompt ?? promptDraft).trim();
     const imageRefs = input?.imageRefs ?? activeImageRefs;
     const videoRefs = feature.id === "omni-video" ? input?.videoRefs ?? featureVideoRefs : [];
+    const audioRefs = input?.audioRefs ?? featureAudioRefs;
     return {
       prompt,
       imageAssetRefs: uniqueRefs(imageRefs, 7),
       videoAssetRefs: uniqueRefs(videoRefs, 3),
-      audioAssetRefs: feature.id === "storyboard" ? [] : uniqueRefs(featureAudioRefs, 1),
+      audioAssetRefs: feature.id === "storyboard" ? [] : uniqueRefs(audioRefs, 1),
       featureId: feature.id,
       featureTitle: feature.title,
       durationSeconds: feature.id === "storyboard" ? 5 : secondsFromDuration(videoDuration),
@@ -1864,7 +2325,7 @@ export function VideoShowcaseModule({
       setGenerationValidationMessage("请先上传图片");
       return;
     }
-    if (activeFeatureId === "smart-video" && !activeImageRefs.length) {
+    if (activeFeatureId === "smart-video" && !activeImageRefs.length && !canGenerateFromPromptOnly) {
       setGenerationValidationMessage("请先上传图片");
       return;
     }
@@ -2262,6 +2723,11 @@ export function VideoShowcaseModule({
           <div className="ai-video-section-title">
             <span>提示词</span>
           </div>
+          <div className="ai-video-prompt-actions">
+            <button type="button" onClick={expandPromptWithCurrentContext}>智能扩写</button>
+            <button type="button" onClick={openPromptListDialog}>提示词列表</button>
+            <button type="button" onClick={saveCurrentPromptAsTemplate}>保存到模板</button>
+          </div>
           <textarea
             value={promptDraft}
             onChange={(event) => setPromptDraft(event.target.value)}
@@ -2449,6 +2915,11 @@ export function VideoShowcaseModule({
         <strong>生成记录</strong>
       </button>
 
+      <button type="button" className="ai-prompt-assistant-fab ai-video-prompt-assistant-fab" onClick={() => openPromptAssistant("text")}>
+        <span aria-hidden="true">AI</span>
+        <strong>提示词助手</strong>
+      </button>
+
       {activeDialog === "feature-picker" ? (
         <DetailDialog
           eyebrow="AI 视频"
@@ -2552,6 +3023,384 @@ export function VideoShowcaseModule({
           onPartialRetouch={startPartialRetouchFromHistory}
           onClose={() => setActiveDialog(null)}
         />
+      ) : null}
+
+      {activeDialog === "prompt-list" ? (
+        <DetailDialog
+          className="ai-showcase-dialog ai-prompt-list-dialog"
+          bodyClassName="ai-showcase-dialog-body ai-prompt-list-dialog-body"
+          eyebrow="提示词"
+          title="提示词列表"
+          description="管理 AI 视频提示词模板，查询、选择、增删改后可应用到左侧提示词。"
+          onClose={() => setActiveDialog(null)}
+        >
+          <div className="ai-prompt-list-toolbar">
+            <label>
+              请选择类型
+              <select
+                aria-label="提示词类型"
+                value={promptListKind}
+                onChange={(event) => setPromptListKind(event.target.value as VideoPromptListKind)}
+              >
+                <option value="all">全部</option>
+                <option value="default">默认提示词</option>
+                <option value="saved">已保存模板</option>
+              </select>
+            </label>
+            <label>
+              关键词
+              <input
+                aria-label="提示词关键词"
+                value={promptListQuery}
+                onChange={(event) => setPromptListQuery(event.target.value)}
+                placeholder="请输入标题"
+              />
+            </label>
+            <button type="button" onClick={queryPromptList}>查询</button>
+            <button type="button" onClick={startPromptListCreate}>新增</button>
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedPromptListTemplate) startPromptListEdit(selectedPromptListTemplate);
+              }}
+              disabled={!selectedPromptListTemplate}
+            >
+              编辑
+            </button>
+            <button type="button" className="danger" onClick={deletePromptListDraft} disabled={!promptListEditingId}>删除</button>
+          </div>
+          <div className="ai-prompt-list-table" role="list" aria-label="提示词列表结果">
+            {promptListKind !== "saved" ? (
+              promptListDefaultRows.map(([featureId, prompt]) => (
+                <button
+                  key={featureId}
+                  type="button"
+                  className={promptListDefaultFeatureId === featureId ? "ai-prompt-list-row active" : "ai-prompt-list-row"}
+                  onClick={() => selectPromptListDefault(featureId, prompt)}
+                >
+                  <span className="ai-prompt-list-row-type">默认</span>
+                  <strong>{featureTitleForPromptTemplate(featureId)}</strong>
+                  <span>{prompt}</span>
+                </button>
+              ))
+            ) : null}
+
+            {promptListKind !== "default" ? (
+              promptListSavedRows.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className={promptListEditingId === template.id ? "ai-prompt-list-row active" : "ai-prompt-list-row"}
+                  onClick={() => {
+                    setPromptListDraftTitle(template.title);
+                    setPromptListDraftPrompt(template.prompt);
+                    setPromptListEditingId(template.id);
+                    setPromptListDefaultFeatureId("");
+                    setPromptListDraftMediaRefs(template.mediaRefs || []);
+                    setActiveFeatureId(template.featureId);
+                  }}
+                >
+                  <span className="ai-prompt-list-row-type">模板</span>
+                  <strong>{template.title}</strong>
+                  <span>{template.prompt}</span>
+                  <em>{formatHistoryTime(template.updatedAt || template.createdAt)} · {template.featureTitle}</em>
+                </button>
+              ))
+            ) : null}
+
+            {!promptListVisibleRowCount ? (
+              <div className="ai-dialog-empty">暂无匹配数据</div>
+            ) : null}
+          </div>
+          <div className="ai-prompt-list-pagination" aria-label="提示词列表分页">
+            <button type="button" disabled aria-label="上一页">‹</button>
+            <span>1</span>
+            <button type="button" disabled aria-label="下一页">›</button>
+          </div>
+          <div className="ai-prompt-list-footer">
+            <button type="button" onClick={() => setActiveDialog(null)}>取消</button>
+            <button type="button" className="primary" onClick={confirmPromptList}>确定</button>
+          </div>
+        </DetailDialog>
+      ) : null}
+
+      {activeDialog === "prompt-list" && promptListFormMode ? (
+        <div className="ai-prompt-template-modal-backdrop" role="presentation" onClick={cancelPromptListForm}>
+          <section
+            className="ai-prompt-template-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={promptListFormMode === "create" ? "新增" : "编辑"}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="ai-prompt-template-modal-header">
+              <h2>{promptListFormMode === "create" ? "新增" : "编辑"}</h2>
+              <button type="button" aria-label="关闭提示词模板表单" onClick={cancelPromptListForm}>×</button>
+            </header>
+            <div className="ai-prompt-template-form">
+              <label>
+                标题
+                <input
+                  aria-label="模板名称"
+                  value={promptListDraftTitle}
+                  onChange={(event) => setPromptListDraftTitle(event.target.value)}
+                  placeholder="请输入标题"
+                />
+              </label>
+              <label>
+                类型
+                <select
+                  aria-label="模板类型"
+                  value={activeFeatureId}
+                  onChange={(event) => setActiveFeatureId(event.target.value as VideoShowcaseFeatureId)}
+                >
+                  {VIDEO_FEATURES.map((feature) => (
+                    <option key={feature.id} value={feature.id}>{feature.title}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="ai-prompt-template-upload">
+                <div className="ai-prompt-template-label">引用素材</div>
+                <div className="ai-prompt-template-upload-list">
+                  <button type="button" className="ai-prompt-template-upload-card" onClick={addPromptListMediaRefs}>
+                    <span aria-hidden="true">+</span>
+                  </button>
+                  {promptListDraftMediaRefs.map((ref, index) => {
+                    const kind = previewKindFromRef(ref);
+                    return (
+                      <figure key={`${ref}-${index}`} className="ai-prompt-template-upload-card has-image">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMedia({
+                            url: mediaAssetSource(ref),
+                            kind,
+                            title: `模板素材 ${index + 1}`,
+                            label: "提示词模板素材",
+                          })}
+                        >
+                          {kind === "image" ? (
+                            <img src={mediaAssetSource(ref)} alt={`提示词模板素材${index + 1}`} loading="lazy" />
+                          ) : (
+                            <span>{kind === "video" ? "VID" : "FILE"}</span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="ai-prompt-template-remove"
+                          aria-label={`删除模板素材${index + 1}`}
+                          onClick={() => removePromptListMediaRef(ref)}
+                        >
+                          ×
+                        </button>
+                      </figure>
+                    );
+                  })}
+                </div>
+              </div>
+              <label>
+                提示词内容
+                <textarea
+                  aria-label="模板提示词"
+                  value={promptListDraftPrompt}
+                  onChange={(event) => {
+                    setPromptListDraftPrompt(event.target.value);
+                    setPromptListDefaultFeatureId("");
+                  }}
+                />
+              </label>
+            </div>
+            <footer className="ai-prompt-template-modal-footer">
+              <button type="button" onClick={cancelPromptListForm}>取消</button>
+              <button type="button" className="primary" onClick={savePromptListDraft} disabled={!promptListDraftPrompt.trim()}>
+                确定
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
+      {activeDialog === "prompt-assistant" ? (
+        <div className="ai-assistant-overlay" role="presentation" onClick={() => setActiveDialog(null)}>
+          <section
+            className={assistantTemplatesOpen ? "ai-assistant-dialog has-templates" : "ai-assistant-dialog"}
+            role="dialog"
+            aria-modal="true"
+            aria-label="提示词助手"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="ai-assistant-header">
+              <h2>提示词助手</h2>
+              <button type="button" aria-label="关闭提示词助手" onClick={() => setActiveDialog(null)}>×</button>
+            </header>
+            <div className="ai-assistant-content">
+              <div className="ai-assistant-main">
+                <div className="ai-assistant-tabs" role="tablist" aria-label="提示词助手模式">
+                  <button
+                    type="button"
+                    className={assistantTab === "text" ? "active" : ""}
+                    onClick={() => setAssistantTab("text")}
+                  >
+                    文本生成
+                  </button>
+                  <button
+                    type="button"
+                    className={assistantTab === "reverse" ? "active" : ""}
+                    onClick={() => setAssistantTab("reverse")}
+                  >
+                    素材反推
+                  </button>
+                </div>
+                <div className="ai-assistant-toolbar">
+                  <button type="button" onClick={() => setAssistantTemplatesOpen((current) => !current)}>
+                    提示词模板
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => {
+                      const template = savePromptTemplate(
+                        assistantResult || assistantInput || promptDraft,
+                        templateDraftTitle,
+                        editingTemplateId,
+                        assistantMediaRefs.length ? assistantMediaRefs : undefined,
+                      );
+                      if (template) setAssistantTemplatesOpen(true);
+                    }}
+                  >
+                    保存到模板
+                  </button>
+                </div>
+                <div className={assistantTab === "reverse" ? "ai-assistant-grid is-image-reverse" : "ai-assistant-grid is-text-generation"}>
+                  {assistantTab === "reverse" ? (
+                    <section className="ai-assistant-reverse-input">
+                      <div className="ai-assistant-upload-section">
+                        <div className="ai-assistant-section-title">引用素材</div>
+                        <div className="ai-assistant-upload-list">
+                          <button type="button" className="ai-assistant-upload-card is-upload" onClick={selectImageUpload}>
+                            <span aria-hidden="true">+</span>
+                            <strong>上传</strong>
+                          </button>
+                          {assistantMediaRefs.map((ref, index) => {
+                            const kind = previewKindFromRef(ref);
+                            return (
+                              <div key={`${ref}-${index}`} className="ai-assistant-upload-card has-image">
+                                <button
+                                  type="button"
+                                  className="ai-assistant-upload-image"
+                                  onClick={() => setSelectedMedia({
+                                    url: mediaAssetSource(ref),
+                                    kind,
+                                    title: `素材${index + 1}`,
+                                    label: "提示词助手素材",
+                                  })}
+                                >
+                                  {kind === "image" ? (
+                                    <img src={mediaAssetSource(ref)} alt={`提示词助手素材${index + 1}`} loading="lazy" />
+                                  ) : (
+                                    <span>{kind === "video" ? "VID" : "FILE"}</span>
+                                  )}
+                                </button>
+                                <strong>{kind === "video" ? "视频" : kind === "image" ? "图片" : "素材"}</strong>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <label>输入提示词</label>
+                      <textarea
+                        value={assistantInput}
+                        onChange={(event) => setAssistantInput(event.target.value)}
+                        placeholder="描述参考素材、镜头、动作、主体或需要反推的商业卖点。"
+                      />
+                    </section>
+                  ) : (
+                    <section>
+                      <label>输入提示词</label>
+                      <textarea
+                        value={assistantInput}
+                        onChange={(event) => setAssistantInput(event.target.value)}
+                        placeholder="请输入要扩写或优化的视频提示词。"
+                      />
+                    </section>
+                  )}
+                  <section>
+                    <label>生成结果</label>
+                    <textarea
+                      value={assistantResult}
+                      onChange={(event) => setAssistantResult(event.target.value)}
+                      placeholder="点击开始生成后，这里会出现可编辑结果。"
+                    />
+                  </section>
+                  <div className="ai-assistant-generate-row">
+                    <button type="button" onClick={generateAssistantPrompt}>开始生成</button>
+                  </div>
+                </div>
+              </div>
+              {assistantTemplatesOpen ? (
+                <aside className="ai-assistant-template-panel">
+                  <header>
+                    <strong>提示词模板</strong>
+                    <span>{savedPromptTemplates.length} 个模板</span>
+                  </header>
+                  <label>
+                    模板名称
+                    <input
+                      value={templateDraftTitle}
+                      onChange={(event) => setTemplateDraftTitle(event.target.value)}
+                      placeholder={`${activeFeature.title} · 视频提示词`}
+                    />
+                  </label>
+                  <div className="ai-assistant-template-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTemplateId("");
+                        setTemplateDraftTitle(`${activeFeature.title} · 视频提示词`);
+                        setAssistantResult("");
+                      }}
+                    >
+                      新建
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => savePromptTemplate(
+                        assistantResult || assistantInput || promptDraft,
+                        templateDraftTitle,
+                        editingTemplateId,
+                        assistantMediaRefs.length ? assistantMediaRefs : undefined,
+                      )}
+                    >
+                      {editingTemplateId ? "更新" : "保存"}
+                    </button>
+                  </div>
+                  <div className="ai-assistant-template-list">
+                    {savedPromptTemplates.length ? savedPromptTemplates.map((template) => (
+                      <article key={template.id} className={editingTemplateId === template.id ? "active" : ""}>
+                        <div>
+                          <strong>{template.title}</strong>
+                          <span>{formatHistoryTime(template.updatedAt || template.createdAt)}</span>
+                        </div>
+                        <p>{template.prompt.slice(0, 120)}</p>
+                        <footer>
+                          <button type="button" onClick={() => applySavedPromptTemplate(template, false)}>应用</button>
+                          <button type="button" onClick={() => editSavedPromptTemplate(template)}>编辑</button>
+                          <button type="button" className="danger" onClick={() => deleteSavedPromptTemplate(template.id)}>删除</button>
+                        </footer>
+                      </article>
+                    )) : (
+                      <div className="ai-assistant-template-empty">暂无模板，保存当前结果后会出现在这里。</div>
+                    )}
+                  </div>
+                </aside>
+              ) : null}
+            </div>
+            <footer className="ai-assistant-footer">
+              <button type="button" onClick={() => setActiveDialog(null)}>取消</button>
+              <button type="button" className="primary" onClick={confirmAssistantPrompt}>确定</button>
+            </footer>
+          </section>
+        </div>
       ) : null}
 
       {selectedMedia ? (

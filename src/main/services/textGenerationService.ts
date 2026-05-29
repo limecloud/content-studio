@@ -5,6 +5,7 @@ import {
   TextProviderBlockedError,
   TextProviderFailedError,
   type GenerateJsonInput,
+  type TextGenerationOutput,
   type TextRuntimeConfig,
 } from '../providers/textGenerationProvider';
 
@@ -56,7 +57,7 @@ export class TextGenerationService {
     };
   }
 
-  async generateJson<T>(input: GenerateJsonInput): Promise<{ value: T; model: string; rawText: string; protocol: TextGenerationProtocol }> {
+  async generateJson<T>(input: GenerateJsonInput): Promise<TextGenerationOutput<T>> {
     const runtime = await this.getRuntimeConfig(input.model);
     ensureProtocolModelCompatibility(runtime.protocol, runtime.model);
     return createTextProvider(runtime.protocol).generateJson<T>(input, runtime);

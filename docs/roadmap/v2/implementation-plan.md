@@ -21,7 +21,7 @@
 - 真实 provider 端到端联调仍需按用户配置逐项验证，现有自动化主要覆盖 blocked 分支和 mock 成功分支。
 - 本地总闸 `npm run verify:local` 已通过；后续发布前仍需在最终提交状态重跑一次。
 - 已新增 `npm run verify:v2:providers` 作为真实 provider 联调入口；默认 dry-run 不外发，显式开启 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1` / `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1` 后再调用真实服务。
-- 已新增 `npm run verify:v2:acceptance` 作为 v2 业务验收报告入口；默认 local-sample 不外发，先固化品牌、IP、产品资料结构化、主图 / 卖点图 / 详情页 Prompt 追溯、用户反馈痛点聚类、标题方向、客服异议话术、对标图、参考视频拆解、绿幕文案图、成功素材回炉、混剪包导入说明、平台草稿包、视频成本边界、跨产物 runId 关键覆盖和一致性的验收结构；也支持 `-- --input <json>` 读取真实验收输入，或 `-- --workspace <path>` 直接从 `.content-studio` 读取真实工作区产物，并可从输入源、PromptDraft、审核记录、SOP 运行记录、绿幕文案图、混剪包 / 平台草稿包目录、视频 generation log、manifest 和 `import-guide.md` 自动提取交付证据，真实素材验收复用同一报告 schema；如需把真实第三方混剪导入作为门槛，追加 `-- --require-external-mix-evidence`，验收脚本会读取混剪包目录中的 `import-evidence.json` 并校验证据文件存在；如需证明完整真实工作区闭环，追加 `-- --require-real-workspace-evidence`，该门槛会自动要求真实第三方混剪导入证据，并拒绝 local-sample、手填清单、样例占位和 provider dry-run。
+- 已新增 `npm run verify:v2:acceptance` 作为 v2 业务验收报告入口；默认 local-sample 不外发，先固化品牌、IP、产品资料结构化、主图 / 卖点图 / 详情页 Prompt 追溯、用户反馈痛点聚类、标题方向、客服异议话术、对标图、参考视频拆解、绿幕文案图、成功素材回炉、混剪包导入说明、平台草稿包、视频成本边界、跨产物 runId 关键覆盖和一致性的验收结构；也支持 `-- --input <json>` 读取真实验收输入，或 `-- --workspace <path>` 直接从 `.content-studio` 读取真实工作区产物，并可从输入源、PromptDraft、审核记录、SOP 运行记录、绿幕文案图、混剪包 / 平台草稿包目录、视频 generation log、manifest 和 `import-guide.md` 自动提取交付证据，真实素材验收复用同一报告 schema；如需把真实第三方混剪导入作为门槛，追加 `-- --require-external-mix-evidence`，验收脚本会读取混剪包目录中的 `import-evidence.json` 并校验证据文件真实存在且非空；如需证明完整真实工作区闭环，追加 `-- --require-real-workspace-evidence`，该门槛会自动要求真实第三方混剪导入证据，并拒绝 local-sample、手填清单、sample / mock / 示例占位和 provider dry-run。
 - 功能测试已新增真实服务写工作区的验收护栏：由 `WorkflowEngine` 和各 Store 写出品牌 / IP / 产品 / 评论 / 绿幕 / 视频素材包 / 成功素材 / 平台草稿产物，再通过 `loadWorkspaceAcceptanceInput` 读取同一工作区，避免验收口径只停在手写 JSON fixture。
 - provider 联调和业务验收都支持 `--output <json>` 写入报告文件，真实联调不再只依赖终端输出。
 - 已新增 `npm run verify:v2:evidence` 作为成套证据目录入口，一次性生成 provider 报告、业务验收报告、manifest 和人可读摘要；默认无 Key 本地不失败，只有业务验收失败或显式 `--provider-strict` 时 provider strict 未过才退出非 0。
@@ -156,8 +156,8 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 - `BrandKnowledgeBaseStore` 已能从 `KnowledgeCitation` 生成品牌 / 产品知识库，保留产品事实、卖点、合规边界、场景种子和来源引用。
 - `PromptPackService` 已能从同一批知识引用生成品牌提示词包，供场景库复用。
 - `SceneLibraryStore` 已能基于提示词包生成结构化场景卡。
-- `ReferenceReverseService` 已接入真实视觉理解 endpoint，未配置时 blocked，不伪造对标图反推结果；成功后会生成 `PromptDraft` 和 `generation-log:reference-reverse`。
-- `ReferenceReverseModule` 已在工作台落地，可以把参考图 / 产品源 / 用户意图直接送入 PromptDraft。
+- `ReferenceReverseService` 已接入真实视觉理解 endpoint，未配置时 blocked，不伪造素材拆解结果；成功后会生成 `PromptDraft` 和 `generation-log:reference-reverse`。
+- `MaterialBreakdownModule` 是当前前端事实源，可以把参考图 / 产品源 / 用户意图直接送入 PromptDraft；旧独立页面组件已删除。
 - `WorkflowEngine` 已通过品牌场景 SOP 把 `BrandKnowledgeBaseRecord -> PromptPack -> SceneCard[] -> PromptDraft` 串成同一条可追溯运行记录。
 
 ### P2：Prompt 工作台和 Agent 会话
@@ -193,7 +193,7 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 - Renderer 已展示已解析输入源数量、模型状态、Markdown 转换稿路径、版本列表和确认入口。
 - `AgentPromptSessionStore` 已把“用户意图 + 输入源快照 + 会话消息 + 草稿版本”串成一条可追溯链路。
 
-### P3：对标图反推 Prompt
+### P3：素材拆解 Prompt
 
 写集：
 
@@ -201,21 +201,21 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 - `src/main/services/promptDraftStore.ts`
 - `src/main/ipc.ts`
 - `src/preload/index.ts`
-- `src/renderer/src/components/modules/ReferenceReverseModule.tsx`
+- `src/renderer/src/components/modules/MaterialBreakdownModule.tsx`
 - `src/renderer/src/components/modules/ImageModule.tsx`
 
 任务：
 
 1. 支持参考图输入源进入多模态分析。
 2. 输出构图、光线、文字区域、画幅、风格、负面约束。
-3. 反推图片 Prompt 草稿。
-4. 支持用户多轮调整后调用现有图片 provider 生成同风格图。
+3. 生成图片 Prompt 草稿。
+4. 复用设置 - 模型中的图片 / 多模态配置，支持 OpenAI Responses、Chat Completions data URI 和 Gemini GenerateContent 协议；环境变量仅保留为高级覆盖。
 5. 保存来源引用和生成日志。
 
 验收：
 
-- 无知识库路径能完成 `参考图 -> Prompt 草稿 -> 图片生成 -> 审核入库`。
-- 未配置多模态模型时 blocked。
+- 无知识库路径能完成 `参考图 -> 产品图 / 产品资料 -> Prompt 草稿 -> 复制到外部生图工具`。
+- 未配置多模态模型时 blocked，并引导到设置 - 模型。
 - 生成图片能追溯参考图和 Prompt 版本。
 
 ### P4：工作流定义和内置 SOP
@@ -512,14 +512,15 @@ npm run verify:local
 - 通过 `videoPackage.packageDir`、`videoPackage.manifestPath` 或 `--workspace` 提供真实目录证据时，混剪 manifest 的 `assets[].packagedPath` 必须指向本地真实存在的素材文件；只写 manifest 但文件不存在会失败。
 - `videoPackage.actualReviewStatuses`、混剪 manifest `assets[].reviewStatus` 或 `.content-studio/asset-reviews.json` 必须证明混剪包素材已通过审核，不接受未过审素材进入混剪交付包。
 - `videoPackage.actualGuideTerms` 或混剪包目录中的 `import-guide.md` 必须证明剪辑人员可读导入说明覆盖第三方混剪软件、`manifest.csv`、`videos/`、`overlays/` 和人工审核边界。
-- 如使用 `--require-external-mix-evidence`，`videoPackage.externalImportEvidence` 或混剪包目录 `import-evidence.json` 必须证明真实第三方混剪工具已导入素材；至少包含 `toolName`、`importedAt`、`importedAssetKinds`、`manifestImported=true` 和真实存在的 `evidenceFiles`。示例见 `docs/roadmap/v2/mix-import-evidence.example.json`。
-- 如使用 `--require-real-workspace-evidence --require-external-mix-evidence`，验收必须来自 `--workspace` 真实 App 工作区，并同时证明真实产品资料 / SKU、评论或客服语料、参考图和参考视频、视频拆解和脚本、绿幕图审核、成功素材沉淀、混剪包真实素材文件、真实第三方混剪导入证据、平台草稿包、关键产物 runId 一致性和 provider strict 均成立；该门槛会拒绝 local-sample、外部手填清单、`sample-*` / “示例”占位内容和 provider dry-run。
+- 如使用 `--require-external-mix-evidence`，`videoPackage.externalImportEvidence` 或混剪包目录 `import-evidence.json` 必须证明真实第三方混剪工具已完成导入；至少包含 `toolName`、`importedAt`、`importedAssetKinds`、`importedFileCount`、`manifestImported=true`、`timelineCreated=true`、完成态 `result` 和真实存在且非空的 `evidenceFiles`。`importedFileCount` 必须覆盖所需素材类型数量，`result` 只接受 `verified / completed / complete / imported / succeeded / success / approved`。`import-evidence.json` 只是证据索引，不会被计入 `evidenceFiles`；必须另有截图、录屏说明或 `import-check.md` / 验收记录文件，且这些证据文件必须随混剪包归档，不能指向混剪包目录外的任意非空文件。示例见 `docs/roadmap/v2/mix-import-evidence.example.json`。
+- 如使用 `--require-real-workspace-evidence --require-external-mix-evidence`，验收必须来自 `--workspace` 真实 App 工作区，并同时证明真实产品资料 / SKU、评论或客服语料、参考图和参考视频、视频拆解和脚本、绿幕图审核、成功素材沉淀、混剪包真实素材文件、真实第三方混剪导入证据、平台草稿包、关键产物 runId 一致性和 provider strict 均成立；该门槛会拒绝 local-sample、外部手填清单、`sample-*` / mock / “示例” / “样例”占位内容和 provider dry-run，检测范围覆盖输入源正文、绿幕卡、成功素材沉淀、证据文件路径和 runId。
 - `platformDraft.actualTraceFields` 或平台草稿 manifest 必须证明 `workflowRunId`、`promptDraftId` 和 `sourceLogId`，草稿包需要能回到 SOP、PromptDraft 和来源文章日志。
 - `platformDraft.actualContentFields` 或平台草稿包文件内容必须证明正文、复制稿、格式指南、发布检查清单和 `publishBoundary` 都有可复核内容；`publishBoundary` 要能证明本地草稿包不自动发布且发布前需要人工确认。使用 `--workspace` 时脚本会读取 `draft.md`、`platform-copy.txt`、`format-guide.md` 和 `publish-checklist.md`。
 - `mediaCost.actual` 必须证明视频模型、时长、币种、单价、总成本和可信成本来源；成本来源只接受 `provider-response`、`env` 或 `default-internal-api`，不接受 `manual` 等手填来源伪过。使用 `--workspace` 时脚本会从最新视频 generation log 的 `output.costEstimate` 自动提取。
 - `successfulAsset.actual` 必须证明素材先通过审核，再沉淀为 `successful-asset` 输入源和确认态图片 / 视频 `PromptDraft`；输入源必须带 `prompt-distilled` 标签、原素材路径、原 Prompt 关联和不复制竞品 / 人工确认边界。使用 `--workspace` 时脚本会从 `.content-studio/input-sources.json`、`prompt-drafts.json`、`asset-reviews.json` 和 `workflow-runs.json` 自动提取。
 - `trace.requiredSources` 必须覆盖 `reference-log`、`video-breakdown-log`、`video-script-log`、`video-generation-log`、`mix-package` 和 `platform-draft`；`trace.actualWorkflowRunRefs` 必须能证明这些关键产物没有缺证据，也没有分叉到不同 `workflowRunId`。
 - 使用 `--workspace` 时脚本会优先从 `.content-studio/input-sources.json`、`prompt-drafts.json`、`generation-logs.json`、`overlay-cards.json`、`mix-packages.json`、`platform-drafts.json`、`asset-reviews.json`、`workflow-runs.json`、manifest、`import-guide.md`、可选 `import-evidence.json` 和交付包文件自动提取产品资料、评论反馈、视频拆解、脚本、视频生成、绿幕文案图、成功素材沉淀、`workflowRunId`、审核状态和交付证据；视频拆解、视频脚本和视频生成分别映射到 `video-breakdown-log`、`video-script-log` 和 `video-generation-log`。
+- 混剪包素材实存证据必须来自 manifest `packagedPath` 声明和真实非空文件校验；手工写入 `actualPackagedFilePaths` 的路径只会先进入 `unverifiedPackagedFilePaths`，文件不存在或空文件必须进入 `missingPackagedFilePaths`，不能作为真实工作区发布门槛的通过证据。
 - 如果使用 `--input` 手工提供验收输入，参考 `business-acceptance-input.example.json` 补齐 `productBrief.sources`、`productBrief.expectedPromptTypes`、`feedback.sources`、`feedback.expectedTitleMinimum`、`feedback.expectedObjectionMinimum`、`videoBreakdown.actual`、`videoBreakdown.script`、`greenScreen.actualCards`、`greenScreen.actualReviewStatuses`、`successfulAsset.actual`、`trace.expectedWorkflowRunId`、`trace.requiredSources`、`trace.actualWorkflowRunRefs`、`reference.actualSourceKinds`、`reference.actualBoundaryTerms`、`videoPackage.actualAssetKinds`、`videoPackage.actualReviewStatuses`、`videoPackage.actualGuideTerms`、`platformDraft.actualTraceFields` 和 `platformDraft.actualContentFields`。
 
 真实 provider 联调：
@@ -540,12 +541,16 @@ Provider 报告要求：
 - `checks[].requiredEnv` 必须列出当前 provider 恢复所需的环境变量组合，不输出密钥值。
 - `checks[].configured` 只允许输出布尔状态，证明 endpoint / key / OAuth 是否存在，避免泄漏凭证。
 - `checks[].nextAction` 和 `strictGate.nextActions` 必须给出可执行恢复路径，不能只返回 blocked / failed 状态码。
-- `strictGate.passed` 只有在显式开启网络和媒体联调、且没有 failed / blocked provider 时才允许为 true。
+- `strictGate.passed` 只有在显式开启网络和媒体联调、且没有 failed / blocked / skipped provider 时才允许为 true；任何 provider 检查跳过都必须补真实 App 工作流证据或直接联调证据，不能作为发布通过信号。
+- 图片 provider 在开启网络和媒体联调后必须直接调用协议端点并解析真实图片 payload：OpenAI Responses 需要 `image_generation_call.result` 中带 PNG / JPEG / WebP 魔数的图片 base64 / data URI，OpenAI Chat 需要 MIME 和魔数匹配的有效 `data:image/*;base64`，Gemini 需要 image MIME 且魔数匹配的有效 `inlineData.data`；只返回队列、说明文本、普通字符串、文本 base64 或空结果不能算通过。
+- 文字 provider strict 必须能从响应中解析出本次探针要求的 `{"ok":true}` 模型输出，不能只返回普通说明文本；视觉 provider strict 必须同时解析出可用 `prompt`、画面分析 `composition / lighting`、`negativePrompt` 和风险 / 质量边界 `risks / qualityChecklist`；视频 provider strict 必须能解析出带视频扩展名 / 视频 MIME 或明确视频文件资产元数据的视频 URL、带视频魔数的 base64，或同时包含 job / task / request id 和 queued / processing / completed 等状态证据。视觉 / 图片 / 视频 HTTP 200 但只返回 `{ "ok": true }`、空 JSON、普通网页 URL、任务类型、单独状态、文本 base64 或说明文本不能算通过。
 
 成套证据目录要求：
 
 - `manifest.json` 的 `schema` 必须是 `buguai.v2-acceptance-evidence.v1`，并记录验收模式、输入路径、输出文件和建议重跑命令。
 - `provider-check.json`、`business-acceptance.json` 和 `SUMMARY.md` 必须在同一目录内，便于真实 provider 联调和真实业务素材验收一起归档。
+- `MISSING_EVIDENCE.md` 必须可独立用于发布缺口补齐：provider 的 `blocked / failed / skipped` 都要列入待补；真实工作区门槛发现的 sample / mock / 示例 / 样例污染必须在 Markdown 和 manifest 中直接列出命中项，不能只藏在 JSON 细节里。
+- 混剪包素材缺失必须在 `MISSING_EVIDENCE.md` 和 manifest 中展开具体 `missingPackagedFilePaths` / `unverifiedPackagedFilePaths`；混剪导入证据越界必须展开 `outOfScopeEvidenceFiles`，验收人员不能为了定位缺失文件再打开深层 `business-acceptance.json`。
 - 默认模式只作为本地诊断和业务结构验收；发布门槛必须显式加 `--provider-strict` 并开启网络 / 媒体联调。
 
 ## 5. 风险
@@ -553,7 +558,7 @@ Provider 报告要求：
 | 风险 | 缓解 |
 | --- | --- |
 | 工作流模型过度设计 | P5 先做顺序执行，DAG 后置。 |
-| 先做引擎但玩法没跑通 | P1-P3 先交付输入源、Prompt 工作台和对标图反推。 |
+| 先做引擎但玩法没跑通 | P1-P3 先交付输入源、Prompt 工作台和素材拆解。 |
 | canvas 拖慢核心开发 | canvas 放到 P9，不影响 SOP 执行。 |
 | 视频 API 成本高 | 人工复制视频 Prompt 到第三方平台优先。 |
 | 素材库结构膨胀 | Artifact 只存 metadata 和 refs，不复制无关数据。 |

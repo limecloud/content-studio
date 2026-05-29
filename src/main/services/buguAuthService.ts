@@ -95,6 +95,7 @@ function buildAutomationAuthState(): BuguAuthState {
       id: 'local-automation-user',
       email: 'smoke@bugu.run',
       displayName: '本地验证账号',
+      roles: ['bugu_admin'],
       status: 'active',
     },
     session: {
@@ -187,6 +188,13 @@ export class BuguAuthService {
     }
     await this.clearSession();
     return { authenticated: false, bootstrap: buildLocalBootstrap() };
+  }
+
+  async getAccessToken(): Promise<string | undefined> {
+    if (isAutomationSession()) {
+      return process.env.CONTENT_STUDIO_BUGU_CONTENT_API_TOKEN || process.env.BUGU_OEM_ADMIN_TOKEN || undefined;
+    }
+    return this.readToken();
   }
 
   private async persistAndBuildState(session: BuguCurrentSession): Promise<BuguAuthState> {

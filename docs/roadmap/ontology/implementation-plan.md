@@ -14,7 +14,7 @@
 - 产品资料结构化、评论痛点聚类、参考图 / 视频反推。
 - SOP 工作流、运行记录、素材审核和混剪包导出。
 - 文字 / 视觉 / 图片 / 视频 provider 的显式协议路由。
-- Agent Knowledge v0.7.0 已定义 ontology-aware 知识包标准：`KNOWLEDGE.md`、`ontology/`、`metadata.primaryOntology`、`type: content-ontology` 和 `runtime.mode: data`。
+- Agent Knowledge v0.7.2 已定义 ontology-aware 知识包标准：`KNOWLEDGE.md`、`ontology/`、`metadata.primaryOntology`、`type: content-ontology` 和 `runtime.mode: data`。
 
 Ontology 不需要推翻这些模块。实施重点是补一个“内容生产知识地图”层：将输入源抽取成概念、关系、证据、约束和覆盖矩阵，再把审核通过的结构交给现有场景库、Prompt 工作台、SOP 和素材库。
 
@@ -29,7 +29,7 @@ Ontology 不需要推翻这些模块。实施重点是补一个“内容生产�
 - 固化 Ontology PRD、模型、工作流和实施计划。
 - 明确 MVP、v1 和远景边界。
 - 明确轻量 JSON 事实源优先，RDF / OWL 只作为后续导出。
-- 明确 Content Studio 内部事实源和 Agent Knowledge v0.7.0 发布包之间的边界。
+- 明确 Content Studio 内部事实源和 Agent Knowledge v0.7.2 发布包之间的边界。
 - 明确 Operational Ontology 的边界：内容行动可调度、可审计、可复盘，但不做虚假舆论操控或自动刷量。
 
 写集：
@@ -41,7 +41,7 @@ Ontology 不需要推翻这些模块。实施重点是补一个“内容生产�
 - 文档成套存在。
 - 角色、用例、端到端路径和验收标准清晰。
 - 不和 v2 知识库 / 场景库模型冲突。
-- 不和 Agent Knowledge v0.7.0 ontology-aware 知识包标准冲突。
+- 不和 Agent Knowledge v0.7.2 ontology-aware 知识包标准冲突。
 - Signal、Objective、CampaignCell、ResourceBundle、ActionType、ActionLog 和 DecisionGate 的范围清晰。
 
 ### P1：轻量 Ontology 类型和本地 Store
@@ -192,7 +192,7 @@ Ontology 不需要推翻这些模块。实施重点是补一个“内容生产�
 - SOP 运行记录保留 ontologyId、coverageRowIds 和 sourceRefs。
 - PromptDraft / WorkflowRun 的生成动作可追溯到 ActionLog。
 
-### P5.5：发布 Agent Knowledge v0.7.0 ontology-aware 知识包
+### P5.5：发布 Agent Knowledge v0.7.2 ontology-aware 知识包
 
 目标：
 
@@ -215,7 +215,7 @@ Ontology 不需要推翻这些模块。实施重点是补一个“内容生产�
 
 验收：
 
-- 能从审核通过的 Ontology 导出一个 Agent Knowledge v0.7.0 兼容目录包。
+- 能从审核通过的 Ontology 导出一个 Agent Knowledge v0.7.2 兼容目录包。
 - 包内 `ontology/` 是数据层，不是 Skill、workflow 或 prompt 指令通道。
 - 包校验失败时不覆盖已有发布包。
 - Prompt 工作台消费包时只加载相关子图。
@@ -242,7 +242,7 @@ MVP 范围对应 P1-P5 的最小闭环：
 - 能执行规则校验并生成审核任务。
 - 能人工审核并阻止未审核 / 禁止项进入下游。
 - 能发布到 SceneCard 或 PromptDraft。
-- 能导出 Agent Knowledge v0.7.0 ontology-aware 知识包。
+- 能导出 Agent Knowledge v0.7.2 ontology-aware 知识包。
 - 能记录构建运行、模型配置、来源引用和审核结果。
 - 能记录从 ready coverage row 到 PromptDraft / WorkflowRun 的 ActionLog。
 - `npm run typecheck` 通过。
@@ -399,7 +399,7 @@ npm run test:functional -- ontology
 | UI 复杂 | 普通用户看矩阵和审核任务，不直接编辑图。 |
 | 与 v2 模型重复 | Ontology 只做关系和约束层，下游复用现有 SceneCard / PromptDraft / SOP。 |
 | 标准化过早 | JSON 运行时优先，RDF / OWL 后置导出。 |
-| 与 Agent Knowledge 标准分裂 | Content Studio 只维护内部编辑态，对外发布统一走 v0.7.0 ontology-aware 知识包。 |
+| 与 Agent Knowledge 标准分裂 | Content Studio 只维护内部编辑态，对外发布统一走 v0.7.2 ontology-aware 知识包。 |
 | Operational Ontology 过度扩张 | MVP 只做 ActionLog，v1 只做内容行动相关的 CampaignCell 和 DecisionGate。 |
 | 舆论获客滥用风险 | 禁止虚假互动、自动刷量和绕过审核；所有行动必须过证据、权限和平台规则闸口。 |
 

@@ -57,10 +57,22 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: '知识库',
     items: [
       { key: 'knowledge', label: '成型知识库' },
+      { key: 'knowledge-map', label: '内容知识地图' },
+      { key: 'knowledge-review', label: '审核任务' },
       { key: 'knowledge-brand', label: '品牌 / 产品知识库' },
       { key: 'knowledge-scenes', label: '场景库' },
       { key: 'knowledge-ip', label: 'IP 知识库' },
       { key: 'knowledge-inputs', label: '输入源 / 文档转换' },
+    ],
+  },
+  {
+    title: '作战',
+    items: [
+      { key: 'brand-command-center', label: '品牌战情室' },
+      { key: 'brand-command-objectives', label: '目标树' },
+      { key: 'brand-command-bundles', label: '作战编组' },
+      { key: 'brand-command-queue', label: '执行队列' },
+      { key: 'brand-command-logs', label: '行动记录' },
     ],
   },
   {

@@ -15,10 +15,20 @@ const resourcesDir = join(projectRoot, 'resources');
 const ONE_PIXEL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
 
 function startVisionServer() {
+  let requestCount = 0;
   const server = createServer((request, response) => {
     let body = '';
     request.on('data', (chunk) => { body += chunk.toString(); });
     request.on('end', () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        response.statusCode = 429;
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify({
+          error: { message: '当前分组上游负载已饱和，请稍后再试 (request id: e2e-first-request)' },
+        }));
+        return;
+      }
       const analysis = {
         composition: '竖版 4:5，三分法构图，产品位于右下三分之一区域',
         lighting: '早餐桌自然光，暖色调侧光，柔和阴影',
@@ -37,13 +47,20 @@ function startVisionServer() {
         qualityChecklist: ['产品清晰可辨', '光线自然', '构图平衡', '留白充足'],
       };
       response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify(analysis));
+      response.end(JSON.stringify({
+        output: [{
+          content: [{
+            type: 'output_text',
+            text: JSON.stringify(analysis),
+          }],
+        }],
+      }));
     });
   });
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
-      resolve({ server, baseUrl: `http://127.0.0.1:${addr.port}/v1` });
+      resolve({ server, baseUrl: `http://127.0.0.1:${addr.port}/v1`, getRequestCount: () => requestCount });
     });
   });
 }
@@ -52,7 +69,7 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   test.setTimeout(120_000);
   if (!existsSync(mainEntry)) throw new Error('请先 npm run build');
 
-  const { server, baseUrl } = await startVisionServer();
+  const { server, baseUrl, getRequestCount } = await startVisionServer();
 
   const userDataDir = await mkdtemp(join(tmpdir(), 'cs-breakdown-e2e-'));
   const workspaceDir = await mkdtemp(join(tmpdir(), 'cs-breakdown-ws-'));
@@ -62,6 +79,7 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   await writeFile(productImagePath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
   await writeFile(join(userDataDir, 'model-config.json'), JSON.stringify({
     imageApiKeyPlain: 'test-vision-key',
+    imageApiEndpoint: baseUrl,
     imageOuterModel: 'test-vision-model',
     imageProvider: 'openai-responses',
     imageProtocol: 'openai-responses',
@@ -77,9 +95,6 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
       CONTENT_STUDIO_E2E: '1',
       CONTENT_STUDIO_TEST_SILENT: '1',
       CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '0',
-      CONTENT_STUDIO_VISION_ENDPOINT: `${baseUrl}/chat/completions`,
-      CONTENT_STUDIO_VISION_API_KEY: 'test-vision-key',
-      CONTENT_STUDIO_VISION_MODEL: 'test-vision-model',
       CONTENT_STUDIO_RESOURCES_DIR: resourcesDir,
       CONTENT_STUDIO_E2E_ASSET_SELECTIONS: JSON.stringify({
         'product-image': [productImagePath],
@@ -102,10 +117,28 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
 
   // 验证空态
   await expect(page.locator('.ai-breakdown-empty-state')).toBeVisible();
+  await expect(page.locator('.ai-breakdown-boundary')).toContainText('本页只交付 Prompt');
 
   // Step 2: 上传参考素材（e2e 环境自动选择预设图片）
-  await page.locator('.ai-breakdown-upload-btn').click();
-  await expect(page.locator('.ai-breakdown-source-list')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: '上传参考' }).click();
+  const referenceList = page.locator('.ai-breakdown-source-list').filter({ hasText: '参考源' });
+  await expect(referenceList).toBeVisible({ timeout: 10_000 });
+
+  // 可以从当前工作区移除误上传的参考源，且需要用户确认
+  const removeReferenceButton = page.getByRole('button', { name: /移除 .*reference-sample\.png/ });
+  await expect(removeReferenceButton).toBeVisible();
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await removeReferenceButton.click();
+  await expect(referenceList).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await removeReferenceButton.click();
+  await expect(referenceList).toHaveCount(0);
+  await page.getByRole('button', { name: '上传参考' }).click();
+  await expect(referenceList).toBeVisible({ timeout: 10_000 });
+
+  // 上传产品图（登记为产品输入源，确保服务端能拿到 productSourceIds）
+  await page.getByRole('button', { name: '上传产品图' }).click();
+  await expect(page.locator('.ai-breakdown-source-list').filter({ hasText: '产品源' })).toBeVisible({ timeout: 10_000 });
 
   // 填写产品资料并登记
   await page.locator('.ai-breakdown-brief').fill([
@@ -113,22 +146,30 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
     '卖点：0 蔗糖、膳食纤维丰富',
     '规格：250ml * 12 盒',
   ].join('\n'));
-  const registerBtn = page.locator('button').filter({ hasText: '登记资料' });
+  const registerBtn = page.getByRole('button', { name: '登记产品资料' });
   await expect(registerBtn).toBeVisible({ timeout: 3000 });
   await registerBtn.click();
 
   // 确认拆解意图已有默认值
   const intentTextarea = page.locator('.ai-breakdown-intent');
-  await expect(intentTextarea).toHaveValue(/拆解参考图/);
+  await expect(intentTextarea).toHaveValue(/参考 SOP 示例图/);
 
-  // Step 3: 点击开始拆解（等待按钮 enabled 表示所有条件满足）
-  const breakdownBtn = page.locator('button').filter({ hasText: /开始拆解/ }).first();
+  // Step 3: 点击生成提示词（等待按钮 enabled 表示所有条件满足）
+  const breakdownBtn = page.getByRole('button', { name: /生成提示词|重新生成提示词/ }).first();
   await expect(breakdownBtn).toBeEnabled({ timeout: 10_000 });
   await breakdownBtn.click();
 
-  // Step 4: 等待拆解结果
+  // Step 4: 首次上游 429 时只展示错误和手动重试，不自动再次请求
+  await expect(page.locator('.ai-breakdown-error-state')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.ai-breakdown-error-state')).toContainText('未自动重试');
+  expect(getRequestCount()).toBe(1);
+
+  await page.getByRole('button', { name: '重试生成' }).click();
+
+  // Step 5: 用户手动重试后等待拆解结果
   await expect(page.locator('.ai-breakdown-analysis')).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.ai-breakdown-card-grid')).toBeVisible();
+  expect(getRequestCount()).toBe(2);
 
   // 验证分析卡片出现（至少有构图和光线）
   const cards = page.locator('.ai-breakdown-card');
@@ -141,8 +182,11 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   const promptValue = await page.locator('.ai-breakdown-prompt-textarea').inputValue();
   expect(promptValue.length).toBeGreaterThan(20);
 
-  // 验证生成图片按钮可用
-  await expect(page.locator('.ai-breakdown-prompt-footer .ai-breakdown-primary-btn')).toBeEnabled();
+  // 验证只交付 Prompt，不再暴露图片生成 / 审核入库动作
+  await expect(page.getByRole('button', { name: '复制到外部工具' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '生成图片' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '发送到图片生成' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '通过入库' })).toHaveCount(0);
 
   await electronApp.close();
   await new Promise((resolve) => server.close(resolve));

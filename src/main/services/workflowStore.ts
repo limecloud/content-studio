@@ -132,7 +132,7 @@ function seedDefinitions(workspacePath: string, now: string): WorkflowDefinition
       ],
       steps: [
         step('input_register', '登记输入源', 'input', '记录产品图、参考图、产品资料和用户意图。', [], ['InputSource']),
-        step('reference_reverse', '对标图反推', 'reference-reverse', '反推构图、光线、留白区和可复用风格，不复制竞品元素。', ['input_register'], ['ReferenceAnalysis']),
+        step('reference_reverse', '素材拆解', 'reference-reverse', '拆解构图、光线、留白区和可复用风格，不复制竞品元素。', ['input_register'], ['ReferenceAnalysis']),
         step('prompt_generate', '生成图片 Prompt', 'prompt-generate', '结合品牌事实、场景库和反推结果生成可编辑 Prompt。', ['reference_reverse'], ['PromptVersion']),
         step('image_generate', '图片生成', 'image-generate', '调用真实图片 provider 生成候选图；未配置时必须 blocked。', ['prompt_generate'], ['ImageArtifact']),
         step('human_review', '人工审核', 'review', '检查事实、合规、文字可读性和 AI 味。', ['image_generate'], ['ReviewResult']),
@@ -233,14 +233,14 @@ function seedDefinitions(workspacePath: string, now: string): WorkflowDefinition
       key: 'ip-longform',
       version: 'v0.2',
       title: '公众号 IP 内容 SOP',
-      description: '先抽取 IP 六层知识库，再由 Claude SDK Agent 读取 IP 知识库和用户意图，追问缺口后生成结构化长文草稿。',
+      description: '先抽取 IP 六层知识库，再读取 IP 知识库和用户意图，追问缺口后生成结构化长文草稿。',
       status: 'published',
       priority: 'P0',
       inputSchema: baseInputSchema(),
       steps: [
         step('input_register', '登记输入源', 'input', '记录 IP 知识库、选题、读者和约束。', [], ['InputSource']),
         step('ip_extract', '抽取 IP 知识库', 'build-ip-knowledge-base', '基于 IP 知识引用抽取身份、价值观、语言、判断、素材和创作引擎六层。', ['input_register'], ['IpKnowledgeBase']),
-        step('agent_read', 'Agent 读取知识库', 'agent-read', '读取 IP 六层知识库、输入源和用户意图，识别缺口后生成首版草稿。', ['ip_extract'], ['KnowledgeMap']),
+        step('agent_read', '读取知识库', 'agent-read', '读取 IP 六层知识库、输入源和用户意图，识别缺口后生成首版草稿。', ['ip_extract'], ['KnowledgeMap']),
         step('prompt_generate', '生成文章 Prompt', 'prompt-generate', '结合知识缺口和用户意图生成正文提示词。', ['agent_read'], ['PromptVersion']),
         step('human_review', '人工审核', 'review', '确认人设口吻、观点边界和事实引用。', ['prompt_generate'], ['ReviewResult']),
         step('asset_store', '入历史', 'asset-store', '保存 Prompt、草稿和引用来源。', ['human_review'], ['RunArchive']),
@@ -297,7 +297,7 @@ function customDraftDefinition(workspacePath: string, now: string): WorkflowDefi
     inputSchema: baseInputSchema(),
     steps: [
       step('input_register', '登记输入源', 'input', '记录本次 SOP 需要读取的文档、素材、用户意图和审核责任人。', [], ['InputSource']),
-      step('agent_read', 'Agent 读取和追问', 'agent-read', '读取输入源和用户意图，识别缺口并沉淀可执行方法。', ['input_register'], ['AgentSession']),
+      step('agent_read', '读取和追问', 'agent-read', '读取输入源和用户意图，识别缺口并沉淀可执行方法。', ['input_register'], ['对话记录']),
       step('prompt_generate', '生成提示词 / 执行草稿', 'prompt-generate', '根据已确认的方法生成可下游执行的提示词或操作草稿。', ['agent_read'], ['PromptDraft']),
       step('human_review', '人工审核', 'review', '确认事实来源、步骤顺序、下游边界和交付标准。', ['prompt_generate'], ['ReviewResult']),
       step('asset_store', '归档为可复用 SOP', 'asset-store', '保存输入源、Prompt 版本、审核结论和后续产物引用。', ['human_review'], ['RunArchive']),
@@ -307,7 +307,7 @@ function customDraftDefinition(workspacePath: string, now: string): WorkflowDefi
       '必须保留输入源、用户意图、Prompt 版本和人工审核记录。',
       '如果包含图片、视频或混剪步骤，必须明确真实 provider、手工交接或 blocked 边界。',
     ],
-    outputSpec: ['InputSource', 'AgentSession', 'PromptDraft', 'ReviewResult', 'RunArchive'],
+    outputSpec: ['InputSource', '对话记录', 'PromptDraft', 'ReviewResult', 'RunArchive'],
     tags: ['自定义', '提示词草稿', 'SOP'],
     createdAt: now,
     updatedAt: now,
@@ -515,7 +515,7 @@ function buildStepOutputSnapshot(
 
   if (step.kind === 'agent-read') {
     return {
-      summary: 'Agent 读取知识体系和输入源，提取用于后续 Prompt 生成的事实、限制和风格。',
+      summary: '读取知识体系和输入源，提取用于后续 Prompt 生成的事实、限制和风格。',
       sourceDigest: previewText(inputs.source, 240),
       intentDigest: previewText(inputs.intent, 240),
       outputKeys: step.outputKeys,
@@ -669,6 +669,10 @@ function runSteps(
   });
 
   return { steps, artifactRefs: Array.from(artifactRefs) };
+}
+
+function teamKnowledgeArtifactRefs(input: StartWorkflowRunInput): string[] {
+  return input.teamKnowledgeRelease?.id ? [`team-knowledge-release:${input.teamKnowledgeRelease.id}`] : [];
 }
 
 function outputObject(value: unknown): Record<string, unknown> {
@@ -1356,8 +1360,9 @@ export class WorkflowStore {
       inputs,
       inputSourceIds,
       citations,
+      teamKnowledgeRelease: input.teamKnowledgeRelease,
       steps: stepBundle.steps,
-      artifactRefs: stepBundle.artifactRefs,
+      artifactRefs: [...teamKnowledgeArtifactRefs(input), ...stepBundle.artifactRefs],
       createdAt: now,
       updatedAt: now,
     };

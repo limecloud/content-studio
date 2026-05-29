@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ModuleKey } from '../../app/types';
-import type { PromptDraft, PromptDraftPurpose, PromptPack, SceneCard } from '../../../../shared/types';
+import type { AgentPromptSession, PromptDraft, PromptDraftPurpose, PromptPack, SceneCard } from '../../../../shared/types';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
 import { VIDEO_PROMPT_TARGET_OPTIONS, targetLabel as videoPromptTargetLabel } from '../../app/videoPromptFlow';
+import { AgentSessionPanel, type AgentActionResolver, type AgentExecutionStep } from '../agent/AgentSessionPanel';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
-import { UserJourneyGuide } from '../UserJourneyGuide';
 
 interface ScenePromptModuleProps {
   module: 'knowledge-scenes' | 'image-scene-prompts';
@@ -12,15 +12,34 @@ interface ScenePromptModuleProps {
   busy: boolean;
   sceneCards: SceneCard[];
   promptDrafts: PromptDraft[];
+  agentPromptSessions: AgentPromptSession[];
   activePromptPack?: PromptPack;
+  activeAgentPromptSessionId: string;
+  currentActionLabel?: string | null;
+  textModel?: string;
   citationCount: number;
   selectedSceneIds: string[];
   onSelectSceneIds: (sceneIds: string[]) => void;
+  onSelectAgentSession: (sessionId: string) => void;
+  onResolveAgentAction?: AgentActionResolver;
   onGenerateSceneCards: () => void;
   onGenerateScenePromptDraft: (input: {
     sceneCardIds: string[];
     purpose: PromptDraftPurpose;
     userIntent: string;
+  }) => void;
+  onStartAgentSession: (input: {
+    title?: string;
+    purpose: PromptDraftPurpose;
+    userIntent: string;
+    inputSourceIds: string[];
+    sceneCardIds?: string[];
+    textModel?: string;
+  }) => void;
+  onContinueAgentSession: (input: {
+    sessionId: string;
+    message: string;
+    textModel?: string;
   }) => void;
   onUpdateSceneCard: (scene: SceneCard) => void;
   onUsePromptInImage: (prompt: string, sceneCardIds?: string[]) => void;
@@ -45,6 +64,29 @@ const IMAGE_EXTERNAL_TARGET_OPTIONS = [
 ];
 
 type ScenePromptHandoffMode = 'internal' | 'external';
+
+const AGENT_SESSION_STATUS_LABELS: Record<AgentPromptSession['status'], string> = {
+  active: '会话中',
+  'waiting-user': '待补充',
+  'draft-created': '已生成草稿',
+  blocked: '待配置',
+  closed: '已关闭',
+};
+
+const AGENT_MESSAGE_KIND_LABELS: Record<AgentPromptSession['messages'][number]['kind'], string> = {
+  intent: '意图',
+  draft: '草稿',
+  adjustment: '调整',
+  note: '记录',
+};
+
+function HelpHint({ text }: { text: string }) {
+  return (
+    <span className="scene-prompt-help" title={text} aria-label={text} tabIndex={0}>
+      ?
+    </span>
+  );
+}
 
 function activeContent(draft?: PromptDraft): string {
   if (!draft) return '';
@@ -73,6 +115,13 @@ function statusClass(draft?: PromptDraft): string {
   if (draft.status === 'confirmed' || draft.status === 'materialized') return 'ready';
   if (draft.status === 'archived') return 'blocked';
   return 'idle';
+}
+
+function sessionStatusClass(session?: AgentPromptSession): 'idle' | 'ready' | 'blocked' {
+  if (!session) return 'idle';
+  if (session.status === 'blocked') return 'blocked';
+  if (session.status === 'waiting-user') return 'idle';
+  return 'ready';
 }
 
 function promptPurposeLabel(purpose: PromptDraftPurpose): string {
@@ -136,6 +185,100 @@ function isSceneConfirmed(scene: SceneCard): boolean {
   return scene.updatedAt !== scene.createdAt;
 }
 
+function sceneFieldCompleteness(scene?: SceneCard): { completed: number; total: number; missing: string[] } {
+  const fields = [
+    ['人群', scene?.audience],
+    ['痛点', scene?.painPoint],
+    ['使用场景', scene?.usageScene],
+    ['画面构图', scene?.visualComposition],
+    ['卖点表达', scene?.sellingPoint],
+    ['图片建议', scene?.imageMaterialSuggestion],
+    ['视频建议', scene?.videoMaterialSuggestion],
+  ] as const;
+  const missing = fields.filter(([, value]) => !value?.trim()).map(([label]) => label);
+  return {
+    completed: fields.length - missing.length,
+    total: fields.length,
+    missing,
+  };
+}
+
+function sourceSummary(scene?: SceneCard): string {
+  if (!scene) return '等待场景卡';
+  const parts = ['已关联提示词包'];
+  if (scene.inputSourceIds?.length) parts.push(`输入资料 ${scene.inputSourceIds.length} 份`);
+  if (scene.citations.length) parts.push(`知识引用 ${scene.citations.length} 条`);
+  if (scene.workflowRunId) parts.push('已关联 SOP');
+  return parts.join(' · ');
+}
+
+function sceneContextText(scenes: SceneCard[]): string {
+  if (!scenes.length) return '';
+  return scenes.map((scene, index) => [
+    `${index + 1}. ${scene.title}`,
+    `人群：${scene.audience || '待补'}`,
+    `痛点：${scene.painPoint || '待补'}`,
+    `场景：${scene.usageScene || '待补'}`,
+    `画面：${scene.visualComposition || '待补'}`,
+    `卖点：${scene.sellingPoint || '待补'}`,
+    `图片建议：${scene.imageMaterialSuggestion || '待补'}`,
+    `视频建议：${scene.videoMaterialSuggestion || '待补'}`,
+  ].join('\n')).join('\n\n');
+}
+
+function sectionText(content: string, startLabel: string, endLabels: string[]): string {
+  const startIndex = content.indexOf(startLabel);
+  if (startIndex < 0) return '';
+  const afterStart = content.slice(startIndex + startLabel.length).trim();
+  const endIndexes = endLabels
+    .map((label) => afterStart.indexOf(`\n\n${label}`))
+    .filter((index) => index >= 0);
+  const endIndex = endIndexes.length ? Math.min(...endIndexes) : -1;
+  return (endIndex >= 0 ? afterStart.slice(0, endIndex) : afterStart).trim();
+}
+
+function compactLines(value: string, limit: number): string {
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, limit)
+    .join('\n');
+}
+
+function compactAgentMessage(message: AgentPromptSession['messages'][number]): string {
+  const content = message.content.trim();
+  if (!content) return '无内容';
+  if (message.role === 'user') {
+    return compactLines(
+      sectionText(content, '用户本轮要求：', ['页面生成意图：', '选中场景卡：', '输出要求：'])
+        || sectionText(content, '本轮用户调整要求：', ['当前仍以这些场景卡为边界：'])
+        || sectionText(content, '用户意图：', ['输入源快照：', '本轮 skills：'])
+        || content,
+      5,
+    );
+  }
+  if (message.kind === 'draft') {
+    return compactLines(
+      sectionText(content, 'Prompt 草稿：', ['需要追问 / 人工确认：', '仍需追问 / 人工确认：', '来源与合规提醒：', '下游检查清单：', '本轮调整：'])
+        || content,
+      8,
+    );
+  }
+  return compactLines(content, 6);
+}
+
+function agentMessageTitle(message: AgentPromptSession['messages'][number]): string {
+  if (message.role === 'user') return message.kind === 'adjustment' ? '你的追问' : '你的判断要求';
+  if (message.kind === 'draft') return '执行输出';
+  return message.role === 'system' ? '系统记录' : '助手';
+}
+
+function agentMessageDetailLabel(message: AgentPromptSession['messages'][number]): string {
+  if (message.role === 'user') return '查看上下文';
+  return message.kind === 'draft' ? '查看完整输出' : '查看完整记录';
+}
+
 function emptySceneDraft(scene?: SceneCard): Pick<
   SceneCard,
   | 'title'
@@ -167,12 +310,20 @@ export function ScenePromptModule({
   busy,
   sceneCards,
   promptDrafts,
+  agentPromptSessions,
   activePromptPack,
+  activeAgentPromptSessionId,
+  currentActionLabel,
+  textModel,
   citationCount,
   selectedSceneIds,
   onSelectSceneIds,
+  onSelectAgentSession,
+  onResolveAgentAction,
   onGenerateSceneCards,
   onGenerateScenePromptDraft,
+  onStartAgentSession,
+  onContinueAgentSession,
   onUpdateSceneCard,
   onUsePromptInImage,
   onUsePromptInVideo,
@@ -193,6 +344,7 @@ export function ScenePromptModule({
   const [imageExternalTarget, setImageExternalTarget] = useState(IMAGE_EXTERNAL_TARGET_OPTIONS[0].value);
   const [lastCopiedTarget, setLastCopiedTarget] = useState('');
   const [editingSceneId, setEditingSceneId] = useState('');
+  const [agentMessage, setAgentMessage] = useState('先判断选中场景是否真实，再生成自然可信、可直接交付的 Prompt。');
   const effectiveSceneIds = selectedSceneIds.length
     ? selectedSceneIds
     : sceneCards.slice(0, 2).map((scene) => scene.id);
@@ -209,9 +361,21 @@ export function ScenePromptModule({
     () => promptDrafts.filter((draft) => isScenePromptDraft(draft, effectiveSceneIds, purpose)),
     [effectiveSceneIds, promptDrafts, purpose],
   );
+  const relatedAgentSessions = useMemo(
+    () => agentPromptSessions.filter((session) => {
+      if (session.purpose !== purpose) return false;
+      if (!effectiveSceneIds.length) return false;
+      return session.sceneCardIds?.some((id) => effectiveSceneIds.includes(id));
+    }),
+    [agentPromptSessions, effectiveSceneIds, purpose],
+  );
   const activeDraft =
     relatedDrafts[0] ??
     promptDrafts.find((draft) => draft.purpose === purpose && draft.userIntent.includes('基于已确认场景卡'));
+  const activeAgentSession =
+    relatedAgentSessions.find((session) => session.id === activeAgentPromptSessionId) ??
+    relatedAgentSessions.find((session) => activeDraft?.id && session.promptDraftIds.includes(activeDraft.id)) ??
+    relatedAgentSessions[0];
   const activePrompt = activeContent(activeDraft);
   const promptItems = useMemo(() => splitPromptItems(activePrompt), [activePrompt]);
   const selectedPrompt = promptItems[Math.min(selectedPromptIndex, Math.max(promptItems.length - 1, 0))];
@@ -222,6 +386,17 @@ export function ScenePromptModule({
   const confirmedSceneCount = sceneCards.filter(isSceneConfirmed).length;
   const canUseInternalDownstream = Boolean(selectedPrompt && (purpose === 'image' || activeDraft));
   const canCopyExternal = Boolean(selectedPrompt && (purpose === 'image' || purpose === 'video'));
+  const canOpenKnowledge = workspaceReady && !busy;
+  const sceneInputSourceIds = Array.from(
+    new Set(selectedScenes.flatMap((scene) => scene.inputSourceIds ?? [])),
+  ).slice(0, 12);
+  const canStartAgentSession = workspaceReady && !busy && selectedScenes.length > 0 && agentMessage.trim().length > 0;
+  const canContinueAgentSession = canStartAgentSession && Boolean(activeAgentSession);
+  const isAgentRunning = busy && Boolean(
+    currentActionLabel?.includes('协作') ||
+    currentActionLabel?.includes('对话') ||
+    currentActionLabel?.includes('Prompt 打磨'),
+  );
   const currentExternalTargetLabel = purpose === 'video'
     ? videoPromptTargetLabel(videoTarget)
     : imageTargetLabel(imageExternalTarget);
@@ -235,6 +410,147 @@ export function ScenePromptModule({
         : `准备${internalDestinationLabel(purpose)}`;
   const handoffStatusClass = hasPersistentVideoCopy || copiedPromptIndex === selectedPromptIndex ? 'warning' : 'idle';
   const generatePromptGroup = () => onGenerateScenePromptDraft({ sceneCardIds: effectiveSceneIds, purpose, userIntent });
+  const editingSceneCompleteness = sceneFieldCompleteness(editingScene);
+  const selectedSceneCompleteness = selectedScenes.reduce(
+    (summary, scene) => {
+      const completeness = sceneFieldCompleteness(scene);
+      return {
+        completed: summary.completed + completeness.completed,
+        total: summary.total + completeness.total,
+        missing: [...summary.missing, ...completeness.missing],
+      };
+    },
+    { completed: 0, total: 0, missing: [] as string[] },
+  );
+  const uniqueMissingFields = Array.from(new Set(selectedSceneCompleteness.missing)).slice(0, 4);
+  const primaryActionLabel = !hasScenes
+    ? canGenerateScenes ? '生成场景卡' : '补知识来源'
+    : !hasPromptGroup
+      ? `生成${purposeResult(purpose)}`
+      : purpose === 'video'
+        ? externalCopyLabel(purpose)
+        : internalDestinationLabel(purpose);
+  const primaryActionDisabled = !hasScenes
+    ? canGenerateScenes ? false : !canOpenKnowledge
+    : !hasPromptGroup
+      ? !canGeneratePrompt
+      : purpose === 'video'
+        ? !canCopyExternal
+        : !canUseInternalDownstream;
+  const canUseExternalHandoff = purpose === 'image' || purpose === 'video';
+  const agentSteps: AgentExecutionStep[] = [
+    {
+      key: 'scene',
+      title: '读取场景卡',
+      detail: selectedScenes.length ? `${selectedScenes.length} 张场景，${sceneInputSourceIds.length} 份输入源` : '待选择场景',
+      state: selectedScenes.length ? 'done' : 'blocked',
+    },
+    {
+      key: 'chat',
+      title: '人机对话',
+      detail: activeAgentSession ? `${activeAgentSession.messages.length} 条消息` : '待发送',
+      state: isAgentRunning ? 'active' : activeAgentSession ? 'done' : selectedScenes.length ? 'idle' : 'blocked',
+    },
+    {
+      key: 'draft',
+      title: '生成草稿',
+      detail: activeAgentSession ? AGENT_SESSION_STATUS_LABELS[activeAgentSession.status] : '未生成',
+      state: activeAgentSession?.status === 'blocked' ? 'blocked' : activeAgentSession ? 'done' : 'idle',
+    },
+    {
+      key: 'handoff',
+      title: '人工确认交付',
+      detail: hasPromptGroup ? `${promptItems.length} 条可交付 Prompt` : '待确认 Prompt 组',
+      state: hasPromptGroup ? 'active' : 'idle',
+    },
+  ];
+  const agentQuickMessages = useMemo(() => {
+    if (!hasScenes || selectedScenes.length === 0) return [];
+    const sceneTitle = selectedScenes[0]?.title || '选中场景';
+    const missingText = uniqueMissingFields.length ? uniqueMissingFields.join('、') : '来源边界';
+    return [
+      uniqueMissingFields.length
+        ? `先判断「${sceneTitle}」缺少的${missingText}会影响哪些输出。`
+        : `先判断「${sceneTitle}」是否真实可信，并指出来源风险。`,
+      hasPromptGroup && selectedPrompt
+        ? `基于当前选中 Prompt 继续改写，保留来源边界和下游用途。`
+        : `基于已选 ${selectedScenes.length} 张场景卡生成${purposeResult(purpose)}，先列风险再输出。`,
+      sceneInputSourceIds.length
+        ? `检查本轮输出是否越过 ${sceneInputSourceIds.length} 份输入源的事实边界。`
+        : `先追问需要补充的来源，不要生成没有证据的卖点。`,
+    ];
+  }, [hasPromptGroup, hasScenes, purpose, sceneInputSourceIds.length, selectedPrompt, selectedScenes, uniqueMissingFields]);
+  const agentSourceCount = activeAgentSession?.sourceSnapshots.length ?? sceneInputSourceIds.length;
+  const composerStatus = !hasScenes
+    ? canGenerateScenes ? '可生成场景卡' : workspaceReady ? '缺少来源' : '未选择工作区'
+    : !hasPromptGroup
+      ? canGeneratePrompt ? `可生成${purposeResult(purpose)}` : '待选择场景'
+      : handoffStatusLabel;
+
+  function runPrimaryAction(): void {
+    if (!hasScenes) {
+      if (canGenerateScenes) onGenerateSceneCards();
+      else onSelectModule('knowledge-inputs');
+      return;
+    }
+    if (!hasPromptGroup) {
+      generatePromptGroup();
+      return;
+    }
+    if (purpose === 'video') {
+      void copyPromptItem();
+      return;
+    }
+    useInternalDownstream();
+  }
+
+  function buildAgentUserIntent(message: string): string {
+    return [
+      '任务：围绕已确认场景卡进行人机协作，生成可交付 Prompt。',
+      '',
+      '用户本轮要求：',
+      message.trim(),
+      '',
+      '页面生成意图：',
+      userIntent.trim(),
+      '',
+      '选中场景卡：',
+      sceneContextText(selectedScenes),
+      '',
+      '输出要求：如果资料不足，先明确追问；如果可以生成，输出可直接用于下游的完整 Prompt，并保留来源和合规边界。',
+    ].join('\n');
+  }
+
+  function startAgentSession(message = agentMessage): void {
+    if (!canStartAgentSession || !message.trim()) return;
+    onStartAgentSession({
+      title: `${purposeResult(purpose)}打磨`,
+      purpose,
+      userIntent: buildAgentUserIntent(message),
+      inputSourceIds: sceneInputSourceIds,
+      sceneCardIds: effectiveSceneIds,
+      textModel,
+    });
+  }
+
+  function continueAgentSession(message = agentMessage): void {
+    if (!activeAgentSession || !message.trim() || busy) return;
+    onContinueAgentSession({
+      sessionId: activeAgentSession.id,
+      message: [
+        message.trim(),
+        '',
+        '当前仍以这些场景卡为边界：',
+        sceneContextText(selectedScenes),
+      ].join('\n'),
+      textModel,
+    });
+  }
+
+  function submitAgentMessage(): void {
+    if (activeAgentSession) continueAgentSession();
+    else startAgentSession();
+  }
 
   async function copyPromptItem(
     item = selectedPrompt,
@@ -314,325 +630,53 @@ export function ScenePromptModule({
     });
   }
 
-  return (
-    <section className="scene-prompt-workbench">
-      <ModuleCommandCenter
-        eyebrow={feature.eyebrow}
-        title={feature.title}
-        description={feature.description}
-        density="flow"
-        actions={(
-          <div className="workflow-summary-stack">
-            <span className="status-pill">{sceneCards.length} 张场景卡</span>
-            <span className={`status-pill ${confirmedSceneCount ? 'ready' : 'idle'}`}>
-              已确认 {confirmedSceneCount}
-            </span>
-            <span className={`status-pill ${activePromptPack ? 'ready' : 'blocked'}`}>
-              {activePromptPack ? '提示词包已连接' : citationCount > 0 ? '可自动生成提示词包' : '先导入知识'}
-            </span>
-            <span className={`status-pill ${statusClass(activeDraft)}`}>{statusText(activeDraft)}</span>
-          </div>
-        )}
-      >
-        <div className="module-command-flow">
-          <div>
-            <p className="eyebrow">主链路</p>
-            <h3>品牌 / 产品知识库 → 场景库 → Prompt 组 → 图片 / 视频素材</h3>
-          </div>
-          <div className="workflow-actions">
-            <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('knowledge')}>
-              回到知识库
-            </button>
-            <button className="ghost small" disabled={!canGenerateScenes} onClick={onGenerateSceneCards}>
-              生成场景卡
-            </button>
-          </div>
+  const agentContext = (
+    hasScenes ? (
+      <>
+        <div className="agent-context-chip-row" aria-label="本轮上下文">
+          <span>{selectedScenes.length} 张场景</span>
+          <span>{agentSourceCount} 份来源</span>
+          <span>{purposeResult(purpose)}</span>
+          {uniqueMissingFields.length ? <span className="blocked">待补 {uniqueMissingFields.length} 项</span> : <span className="ready">可生成</span>}
         </div>
-        <div className="v2-flow-steps module-command-steps">
-          {feature.flow.map((step) => (
-            <span key={step}>{step}</span>
+        <div className="scene-agent-attachment-list">
+          {sceneCards.map((scene) => (
+            <label key={scene.id} className={`scene-agent-scene-chip ${effectiveSceneIds.includes(scene.id) ? 'active' : ''}`}>
+              <input
+                type="checkbox"
+                checked={effectiveSceneIds.includes(scene.id)}
+                onChange={(event) => {
+                  onSelectSceneIds(
+                    event.target.checked
+                      ? [...effectiveSceneIds, scene.id].slice(0, 6)
+                      : effectiveSceneIds.filter((id) => id !== scene.id),
+                  );
+                }}
+              />
+              <span>
+                <strong>{scene.title}</strong>
+                <small>{scene.audience || '待补人群'} · {isSceneConfirmed(scene) ? '已确认' : '待确认'}</small>
+              </span>
+              <button
+                type="button"
+                className="ghost small"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setEditingSceneId(scene.id);
+                }}
+              >
+                编辑
+              </button>
+            </label>
           ))}
         </div>
-        {!activePromptPack ? (
-          <div className="inline-warning">
-            需要知识引用才能生成场景库；当前会优先使用已选引用，其次使用成型知识库或已转换输入源的默认引用，并自动补一份提示词包。
-          </div>
-        ) : null}
-      </ModuleCommandCenter>
-
-      <UserJourneyGuide
-        title={module === 'knowledge-scenes' ? '场景库到素材生产' : '场景提示词到图片生产'}
-        description="场景卡是提示词前的中间层。用户先确认场景是否真实，再一次生成多组可复制的图片、视频、文案或绿幕图提示词。"
-        steps={[
-          {
-            key: 'knowledge',
-            title: '连接知识来源',
-            description: '品牌 / 产品知识库或 IP 场景资料提供事实和合规边界。',
-            state: activePromptPack || citationCount > 0 ? 'done' : 'blocked',
-            module: 'knowledge-brand',
-          },
-          {
-            key: 'scene',
-            title: '生成并确认场景卡',
-            description: '确认人群、问题、空间、动作、情绪、镜头和输出用途。',
-            state: hasScenes ? (confirmedSceneCount ? 'done' : 'active') : canGenerateScenes ? 'active' : 'next',
-          },
-          {
-            key: 'prompt',
-            title: '生成提示词组',
-            description: '每条提示词都能直接发送到图片、视频 Prompt、文案或绿幕图。',
-            state: hasPromptGroup ? 'done' : hasScenes ? 'active' : 'idle',
-          },
-          {
-            key: 'deliver',
-            title: '进入下游生产',
-            description: '图片走生成和审核；视频只复制到第三方，成品手动导入。',
-            state: hasPromptGroup ? 'next' : 'idle',
-          },
-        ]}
-        actions={[
-          { label: '生成场景卡', onClick: onGenerateSceneCards, disabled: !canGenerateScenes },
-          { label: `生成${purposeResult(purpose)}`, primary: true, onClick: generatePromptGroup, disabled: !canGeneratePrompt },
-          { label: copiedPromptIndex === selectedPromptIndex ? '已复制选中提示词' : '复制选中提示词', onClick: () => void copyPromptItem(), disabled: !selectedPrompt },
-          { label: '发送到图片生成', onClick: () => selectedPrompt && onUsePromptInImage(selectedPrompt.content, effectiveSceneIds), disabled: !selectedPrompt || purpose !== 'image' },
-          { label: '打开视频 Prompt', onClick: openVideoPromptDraft, disabled: !activeDraft || purpose !== 'video' },
-        ]}
-        onSelectModule={onSelectModule}
-      />
-
-      <div className="scene-prompt-layout">
-        <aside className="panel scene-prompt-scenes-panel">
-          <div className="panel-title">
-            <div>
-              <p className="eyebrow">场景库</p>
-              <h3>选择本次要生产的场景</h3>
-            </div>
-            <span className="status-pill">{selectedScenes.length} 已选</span>
-          </div>
-          <div className="scene-prompt-scene-list">
-            {sceneCards.map((scene) => (
-              <label key={scene.id} className={`scene-prompt-card ${effectiveSceneIds.includes(scene.id) ? 'active' : ''}`}>
-                <input
-                  type="checkbox"
-                  checked={effectiveSceneIds.includes(scene.id)}
-                  onChange={(event) => {
-                    onSelectSceneIds(
-                      event.target.checked
-                        ? [...effectiveSceneIds, scene.id].slice(0, 6)
-                        : effectiveSceneIds.filter((id) => id !== scene.id),
-                    );
-                  }}
-                />
-                <span>
-                  <strong>{scene.title}</strong>
-                  <small>{scene.audience} · {scene.usageScene}</small>
-                  <small>{isSceneConfirmed(scene) ? '已确认' : '待确认'} · 更新于 {formatTime(scene.updatedAt)}</small>
-                  <small>
-                    已关联提示词包
-                    {scene.workflowRunId ? ' · 已关联 SOP' : ''}
-                    {scene.inputSourceIds?.length ? ` · 资料 ${scene.inputSourceIds.length} 份` : ''}
-                    {scene.citations.length ? ` · 引用 ${scene.citations.length}` : ''}
-                  </small>
-                  <em>{scene.painPoint}</em>
-                  <button
-                    type="button"
-                    className="ghost small"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setEditingSceneId(scene.id);
-                    }}
-                  >
-                    编辑确认
-                  </button>
-                </span>
-              </label>
-            ))}
-            {sceneCards.length === 0 ? (
-              <div className="empty-state">
-                还没有场景卡。可直接点击“生成场景卡”，系统会基于当前知识引用自动补提示词包；未配置文字模型时会保留待配置状态，不伪造场景。
-              </div>
-            ) : null}
-          </div>
-        </aside>
-
-        <main className="panel scene-prompt-builder-panel">
-          <div className="panel-title">
-            <div>
-              <p className="eyebrow">提示词生产</p>
-              <h3>{purposeResult(purpose)}</h3>
-            </div>
-            <span className="status-pill">{promptItems.length} 条</span>
-          </div>
-
-          <div className="purpose-tabs" role="tablist" aria-label="下游用途">
-            {PURPOSE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={purpose === option.value ? 'active' : ''}
-                onClick={() => setPurpose(option.value)}
-              >
-                <strong>{option.label}</strong>
-                <small>{option.result}</small>
-              </button>
-            ))}
-          </div>
-
-          <label className="scene-prompt-intent">
-            <span>本次生成意图</span>
-            <textarea value={userIntent} onChange={(event) => setUserIntent(event.target.value)} />
-          </label>
-
-          <div className="workflow-actions left">
-            <button
-              className="primary small"
-              disabled={!canGeneratePrompt}
-              onClick={generatePromptGroup}
-            >
-              生成{purposeResult(purpose)}
-            </button>
-            <button
-              className="ghost small"
-              disabled={!selectedPrompt}
-              onClick={() => void copyPromptItem()}
-            >
-              {copiedPromptIndex === selectedPromptIndex ? '已复制选中提示词' : '复制选中提示词'}
-            </button>
-            <button
-              className="ghost small"
-              disabled={!selectedPrompt || purpose !== 'image'}
-              onClick={() => selectedPrompt && onUsePromptInImage(selectedPrompt.content, effectiveSceneIds)}
-            >
-              发送选中 Prompt 到图片生成
-            </button>
-            <button
-              className="ghost small"
-              disabled={!activeDraft || purpose !== 'video'}
-              onClick={() => activeDraft && onUsePromptInVideo(activeDraft.id)}
-            >
-              打开视频 Prompt
-            </button>
-            <button
-              className="ghost small"
-              disabled={!activeDraft || purpose !== 'green-screen'}
-              onClick={() => activeDraft && onUsePromptInGreenScreen(activeDraft.id)}
-            >
-              打开绿幕文案图
-            </button>
-          </div>
-
-          <section className="scene-prompt-handoff-panel" aria-label="下游交接">
-            <div className="scene-prompt-handoff-head">
-              <div>
-                <p className="eyebrow">下游交接</p>
-                <h4>{handoffMode === 'external' ? externalCopyLabel(purpose) : internalDestinationLabel(purpose)}</h4>
-              </div>
-              <span className={`status-pill ${handoffStatusClass}`}>{handoffStatusLabel}</span>
-            </div>
-            <div className="scene-prompt-handoff-modes" role="tablist" aria-label="交接方式">
-              <button
-                type="button"
-                className={handoffMode === 'internal' ? 'active' : ''}
-                onClick={() => setHandoffMode('internal')}
-              >
-                内部下游
-              </button>
-              <button
-                type="button"
-                className={handoffMode === 'external' ? 'active' : ''}
-                disabled={purpose === 'article' || purpose === 'green-screen'}
-                onClick={() => setHandoffMode('external')}
-              >
-                外部工具
-              </button>
-            </div>
-            {handoffMode === 'external' && purpose === 'video' ? (
-              <label className="scene-prompt-target-select">
-                <span>第三方视频平台</span>
-                <select value={videoTarget} onChange={(event) => setVideoTarget(event.target.value)}>
-                  {VIDEO_PROMPT_TARGET_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            {handoffMode === 'external' && purpose === 'image' ? (
-              <label className="scene-prompt-target-select">
-                <span>外部图片去向</span>
-                <select value={imageExternalTarget} onChange={(event) => setImageExternalTarget(event.target.value)}>
-                  {IMAGE_EXTERNAL_TARGET_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <div className="scene-prompt-handoff-actions">
-              {handoffMode === 'internal' ? (
-                <button className="primary small" disabled={!canUseInternalDownstream} onClick={useInternalDownstream}>
-                  {internalDestinationLabel(purpose)}
-                </button>
-              ) : (
-                <button className="primary small" disabled={!canCopyExternal} onClick={() => void copyPromptItem()}>
-                  {copiedPromptIndex === selectedPromptIndex ? '已复制' : externalCopyLabel(purpose)}
-                </button>
-              )}
-              {purpose === 'video' ? (
-                <button className="ghost small" disabled={!activeDraft} onClick={openVideoImportForDraft}>
-                  去导入成品
-                </button>
-              ) : null}
-            </div>
-            <p>
-              {handoffMode === 'external'
-                ? '外部生成过程不进入软件任务；成品回来后再手动导入并关联原 Prompt。'
-                : internalDestinationDescription(purpose)}
-            </p>
-          </section>
-
-          <div className="scene-prompt-result-grid">
-            <div className="scene-prompt-item-list">
-              {promptItems.map((item, index) => (
-                <button
-                  key={`${item.title}:${index}`}
-                  type="button"
-                  className={index === selectedPromptIndex ? 'active' : ''}
-                  onClick={() => setSelectedPromptIndex(index)}
-                >
-                  <strong>{item.title}</strong>
-                  <small>{item.content.split('\n').slice(1, 3).join(' / ')}</small>
-                  {copiedPromptIndex === index ? <small>{`已复制到${lastCopiedTarget || '剪贴板'}。`}</small> : null}
-                </button>
-              ))}
-              {promptItems.length === 0 ? (
-                <div className="empty-state">选择场景卡并生成 Prompt 组后，这里会出现可单条发送或复制的下游 Prompt。</div>
-              ) : null}
-            </div>
-            <div className="scene-prompt-preview">
-              <div className="scene-prompt-preview-head">
-                <p className="eyebrow">选中提示词</p>
-                <button className="ghost small" disabled={!selectedPrompt} onClick={() => void copyPromptItem()}>
-                  {copiedPromptIndex === selectedPromptIndex ? '已复制' : '复制'}
-                </button>
-              </div>
-              <pre>{selectedPrompt?.content || '暂无可预览 Prompt。'}</pre>
-            </div>
-          </div>
-        </main>
-
-        <aside className="panel scene-prompt-facts-panel">
-          <div className="panel-title">
-            <div>
-              <p className="eyebrow">场景确认</p>
-              <h3>{editingScene?.title ?? '选择场景卡'}</h3>
-            </div>
-            {editingScene ? (
-              <span className={`status-pill ${isSceneConfirmed(editingScene) ? 'ready' : 'idle'}`}>
-                {isSceneConfirmed(editingScene) ? '已确认' : '待确认'}
-              </span>
-            ) : null}
-          </div>
-          {editingScene ? (
-            <div className="scene-card-editor">
+        {editingScene ? (
+          <details className="scene-agent-form-drawer">
+            <summary>
+              <span>人工确认：{editingScene.title}</span>
+              <strong>{editingSceneCompleteness.completed}/{editingSceneCompleteness.total}</strong>
+            </summary>
+            <div className="scene-card-editor conversation">
               <label>
                 <span>场景标题</span>
                 <input value={sceneDraft.title} onChange={(event) => updateSceneDraft('title', event.target.value)} />
@@ -669,81 +713,287 @@ export function ScenePromptModule({
                 <span>视频素材建议</span>
                 <textarea value={sceneDraft.videoMaterialSuggestion} onChange={(event) => updateSceneDraft('videoMaterialSuggestion', event.target.value)} />
               </label>
-              <div className="workflow-actions">
-                <button className="primary small" disabled={!workspaceReady || busy} onClick={confirmEditingScene}>
-                  确认场景卡
-                </button>
+              <div className="scene-agent-turn-actions">
+                {workspaceReady && !busy ? (
+                  <button type="button" className="primary small" onClick={confirmEditingScene}>
+                    确认场景卡
+                  </button>
+                ) : <span className="scene-prompt-inline-recovery">{busy ? '处理中' : '待选择工作区'}</span>}
               </div>
             </div>
-          ) : (
-            <div className="empty-state">选择一张场景卡后，可以在这里确认字段再进入下游生产。</div>
-          )}
-          <div className="scene-facts-divider" />
-          <div className="panel-title compact">
-            <div>
-              <p className="eyebrow">下游与追溯</p>
-              <h3>不要丢失业务边界</h3>
-            </div>
-          </div>
-          <div className="downstream-action-list">
-            <button type="button" disabled={!selectedPrompt} onClick={() => selectedPrompt && onUsePromptInImage(selectedPrompt.content, effectiveSceneIds)}>
-              <strong>图片生成</strong>
-              <small>把选中图片提示词放入现有图片模块，继续走真实图片生成服务或待配置结果。</small>
+          </details>
+        ) : null}
+      </>
+    ) : null
+  );
+
+  const agentArtifact = !hasScenes ? null : !hasPromptGroup ? (
+    null
+  ) : (
+    <>
+      <div className="scene-agent-turn-head">
+        <strong>已生成 {promptItems.length} 条 Prompt</strong>
+        <small>{handoffStatusLabel}</small>
+      </div>
+      <div className="scene-prompt-item-list conversation">
+        {promptItems.map((item, index) => (
+          <button
+            key={`${item.title}:${index}`}
+            type="button"
+            className={index === selectedPromptIndex ? 'active' : ''}
+            onClick={() => setSelectedPromptIndex(index)}
+          >
+            <strong>{item.title}</strong>
+            <small>{item.content.split('\n').slice(1, 3).join(' / ')}</small>
+            {copiedPromptIndex === index ? <small>{`已复制到${lastCopiedTarget || '剪贴板'}。`}</small> : null}
+          </button>
+        ))}
+      </div>
+      <details className="agent-turn-details">
+        <summary>查看选中 Prompt</summary>
+        <pre>{selectedPrompt?.content || '暂无可预览 Prompt。'}</pre>
+      </details>
+      <div className="scene-prompt-handoff-modes" role="tablist" aria-label="交接方式">
+        <button type="button" className={handoffMode === 'internal' ? 'active' : ''} onClick={() => setHandoffMode('internal')}>
+          内部下游
+        </button>
+        {canUseExternalHandoff ? (
+          <button type="button" className={handoffMode === 'external' ? 'active' : ''} onClick={() => setHandoffMode('external')}>
+            外部工具
+          </button>
+        ) : null}
+      </div>
+      {handoffMode === 'external' && purpose === 'video' ? (
+        <label className="scene-prompt-target-select">
+          <span>第三方视频平台</span>
+          <select value={videoTarget} onChange={(event) => setVideoTarget(event.target.value)}>
+            {VIDEO_PROMPT_TARGET_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {handoffMode === 'external' && purpose === 'image' ? (
+        <label className="scene-prompt-target-select">
+          <span>外部图片去向</span>
+          <select value={imageExternalTarget} onChange={(event) => setImageExternalTarget(event.target.value)}>
+            {IMAGE_EXTERNAL_TARGET_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <div className="scene-agent-turn-actions">
+        {handoffMode === 'internal' ? (
+          canUseInternalDownstream ? (
+            <button type="button" className="primary small" onClick={useInternalDownstream}>
+              {internalDestinationLabel(purpose)}
             </button>
-            <button type="button" disabled={!activeDraft} onClick={openVideoPromptDraft}>
-              <strong>视频 Prompt</strong>
-              <small>复制 15 秒视频 Prompt 到第三方平台，软件只记录复制动作。</small>
+          ) : <span className="scene-prompt-inline-recovery">待选择可交付 Prompt</span>
+        ) : (
+          canCopyExternal ? (
+            <button type="button" className="primary small" onClick={() => void copyPromptItem()}>
+              {copiedPromptIndex === selectedPromptIndex ? '已复制' : externalCopyLabel(purpose)}
             </button>
-            <button type="button" disabled={!activeDraft} onClick={openVideoImportForDraft}>
-              <strong>成品导入</strong>
-              <small>第三方生成后只允许用户手动导入视频文件，并关联原 Prompt。</small>
+          ) : <span className="scene-prompt-inline-recovery">待选择可复制 Prompt</span>
+        )}
+        {selectedPrompt && purpose === 'image' ? (
+          <button type="button" className="ghost small" onClick={() => onUsePromptInImage(selectedPrompt.content, effectiveSceneIds)}>
+            图片生成
+          </button>
+        ) : null}
+        {activeDraft && purpose === 'video' ? (
+          <>
+            <button type="button" className="ghost small" onClick={openVideoPromptDraft}>
+              视频 Prompt
             </button>
-            <button type="button" onClick={() => onSelectModule('assets-prompt-workbench')}>
-              <strong>Prompt 工作台</strong>
-              <small>继续人工改写、确认版本，或沉淀为可复用任务。</small>
+            <button type="button" className="ghost small" onClick={openVideoImportForDraft}>
+              成品导入
             </button>
-          </div>
-          <div className="scene-prompt-fact-list">
-            {selectedScenes.map((scene) => (
-              <article key={scene.id}>
-                <strong>{scene.title}</strong>
-                <span>画面：{scene.visualComposition}</span>
-                <span>图片：{scene.imageMaterialSuggestion}</span>
-                <span>视频：{scene.videoMaterialSuggestion}</span>
-                <span>
-                  来源：已关联提示词包
-                  {scene.workflowRunId ? ' · 已关联 SOP' : ''}
-                  {scene.inputSourceIds?.length ? ` · 资料 ${scene.inputSourceIds.length} 份` : ''}
-                </span>
+          </>
+        ) : null}
+        {activeDraft && purpose === 'green-screen' ? (
+          <button type="button" className="ghost small" onClick={() => onUsePromptInGreenScreen(activeDraft.id)}>
+            绿幕文案图
+          </button>
+        ) : null}
+        <button type="button" className="ghost small" onClick={() => onSelectModule('assets-prompt-workbench')}>
+          Prompt 工作台
+        </button>
+      </div>
+      {relatedDrafts.length ? (
+        <details className="scene-agent-history-drawer">
+          <summary>
+            <span>提示词草稿</span>
+            <strong>{relatedDrafts.length} 个版本</strong>
+          </summary>
+          <div className="prompt-version-list conversation">
+            {relatedDrafts.map((draft) => (
+              <article key={draft.id} className={draft.id === activeDraft?.id ? 'active' : ''}>
+                <strong>{draft.title}</strong>
+                <span>{promptPurposeLabel(draft.purpose)} · {draft.versions.length} 个版本 · {statusText(draft)}</span>
+                <small>
+                  来源：{draft.inputSourceIds.length} 份资料
+                  {draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}
+                  {draft.workflowRunId ? ' · 已关联 SOP' : ''}
+                </small>
+                <small>更新于 {formatTime(draft.updatedAt)}</small>
               </article>
             ))}
           </div>
-        </aside>
-      </div>
+        </details>
+      ) : null}
+    </>
+  );
 
-      <section className="panel scene-prompt-draft-strip">
-        <div className="panel-title">
-          <div>
-            <p className="eyebrow">提示词草稿</p>
-            <h3>当前用途的场景提示词版本</h3>
-          </div>
+  const agentFooter = (
+    <>
+      <div className="agent-composer-meta">
+        <label>
+          <span>输出</span>
+          <select value={purpose} onChange={(event) => setPurpose(event.target.value as PromptDraftPurpose)}>
+            {PURPOSE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.result}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>交付</span>
+          <select
+            value={handoffMode}
+            disabled={!hasPromptGroup || !canUseExternalHandoff}
+            onChange={(event) => setHandoffMode(event.target.value as ScenePromptHandoffMode)}
+          >
+            <option value="internal">{internalDestinationLabel(purpose)}</option>
+            {canUseExternalHandoff ? <option value="external">{externalCopyLabel(purpose)}</option> : null}
+          </select>
+        </label>
+        {handoffMode === 'external' && purpose === 'video' ? (
+          <label>
+            <span>平台</span>
+            <select value={videoTarget} onChange={(event) => setVideoTarget(event.target.value)}>
+              {VIDEO_PROMPT_TARGET_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {handoffMode === 'external' && purpose === 'image' ? (
+          <label>
+            <span>去向</span>
+            <select value={imageExternalTarget} onChange={(event) => setImageExternalTarget(event.target.value)}>
+              {IMAGE_EXTERNAL_TARGET_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <div>
+          <span>状态</span>
+          <strong>{composerStatus}</strong>
         </div>
-        <div className="prompt-version-list">
-          {relatedDrafts.map((draft) => (
-            <article key={draft.id} className={draft.id === activeDraft?.id ? 'active' : ''}>
-              <strong>{draft.title}</strong>
-              <span>{promptPurposeLabel(draft.purpose)} · {draft.versions.length} 个版本 · {statusText(draft)}</span>
-              <small>
-                来源：{draft.inputSourceIds.length} 份资料
-                {draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}
-                {draft.workflowRunId ? ' · 已关联 SOP' : ''}
-              </small>
-              <small>更新于 {formatTime(draft.updatedAt)}</small>
-            </article>
+      </div>
+      {agentQuickMessages.length && hasScenes ? (
+        <div className="scene-agent-quick-actions">
+          {agentQuickMessages.map((message) => (
+            <button key={message} type="button" onClick={() => setAgentMessage(message)}>
+              {message}
+            </button>
           ))}
-          {relatedDrafts.length === 0 ? <div className="empty-state">暂无关联提示词草稿。</div> : null}
         </div>
-      </section>
+      ) : null}
+      <div className="scene-agent-composer">
+        <textarea
+          value={agentMessage}
+          onChange={(event) => setAgentMessage(event.target.value)}
+          placeholder={hasScenes ? '输入判断、追问或改写要求。' : '先生成场景卡，或说明你要补的输入源。'}
+        />
+        <div className="agent-composer-actions">
+          {!hasScenes ? (
+            <>
+              <button type="button" className="primary small" disabled={primaryActionDisabled} onClick={runPrimaryAction}>
+                {primaryActionLabel}
+              </button>
+              <button type="button" className="ghost small" disabled={!canOpenKnowledge} onClick={() => onSelectModule('knowledge-inputs')}>
+                输入源
+              </button>
+            </>
+          ) : !hasPromptGroup ? (
+            <>
+              <button type="button" className="primary small" disabled={!canGeneratePrompt} onClick={generatePromptGroup}>
+                生成 Prompt
+              </button>
+              {activeAgentSession ? (
+                <button type="button" className="ghost small" disabled={!canContinueAgentSession} onClick={submitAgentMessage}>发送</button>
+              ) : (
+                <button type="button" className="ghost small" disabled={!canStartAgentSession} onClick={submitAgentMessage}>启动对话</button>
+              )}
+            </>
+          ) : (
+            <>
+              {handoffMode === 'external' ? (
+                <button type="button" className="primary small" disabled={!canCopyExternal} onClick={() => void copyPromptItem()}>
+                  {copiedPromptIndex === selectedPromptIndex ? '已复制' : externalCopyLabel(purpose)}
+                </button>
+              ) : (
+                <button type="button" className="primary small" disabled={!canUseInternalDownstream} onClick={useInternalDownstream}>
+                  {internalDestinationLabel(purpose)}
+                </button>
+              )}
+              <button type="button" className="ghost small" disabled={activeAgentSession ? !canContinueAgentSession : !canStartAgentSession} onClick={submitAgentMessage}>
+                {activeAgentSession ? '发送' : '启动对话'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      <details className="agent-composer-drawer">
+        <summary>
+          <span>生成约束</span>
+          <HelpHint text="仅用于本次输出的边界要求，默认保留来源追溯和合规限制。" />
+        </summary>
+        <textarea value={userIntent} onChange={(event) => setUserIntent(event.target.value)} />
+      </details>
+    </>
+  );
+
+  return (
+    <section className="scene-prompt-workbench">
+      <ModuleCommandCenter
+        eyebrow={feature.eyebrow}
+        title={activeDraft?.title ?? feature.title}
+        density="compact"
+        actions={(
+          <div className="workflow-summary-stack scene-prompt-header-actions">
+            <span className="status-pill">{selectedScenes.length || sceneCards.length} 张场景</span>
+            <span className={`status-pill ${confirmedSceneCount ? 'ready' : 'idle'}`}>
+              确认 {confirmedSceneCount}/{sceneCards.length}
+            </span>
+            <span className={`status-pill ${statusClass(activeDraft)}`}>{statusText(activeDraft)}</span>
+          </div>
+        )}
+      />
+
+      <AgentSessionPanel
+        eyebrow="场景 Prompt"
+        title={activeAgentSession?.title ?? activeDraft?.title ?? '场景卡到可交付 Prompt'}
+        session={activeAgentSession}
+        sessions={relatedAgentSessions}
+        transcriptLabel={null}
+        statusLabel={activeAgentSession ? AGENT_SESSION_STATUS_LABELS[activeAgentSession.status] : undefined}
+        statusTone={sessionStatusClass(activeAgentSession)}
+        steps={activeAgentSession || isAgentRunning ? agentSteps : []}
+        runningLabel={isAgentRunning ? currentActionLabel ?? '正在处理选中场景。' : undefined}
+        context={agentContext}
+        artifact={agentArtifact}
+        footer={agentFooter}
+        empty={null}
+        onSelectSession={onSelectAgentSession}
+        onResolveAction={onResolveAgentAction}
+        messageTitle={agentMessageTitle}
+        messageMeta={(message) => `${AGENT_MESSAGE_KIND_LABELS[message.kind]} · ${formatTime(message.createdAt)}`}
+        messagePreview={compactAgentMessage}
+      />
     </section>
   );
 }

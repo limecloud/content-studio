@@ -31,6 +31,7 @@ export function inputSourcePurposeLabel(purpose: InputSourcePurpose): string {
     'brand-kb': '品牌 / 产品知识库',
     'ip-kb': 'IP 知识库',
     'ip-scenario-kb': 'IP 场景延伸库',
+    'competitor-observation': '竞品观察',
     reference: '参考素材',
     'product-brief': '产品资料',
     'user-feedback': '评论 / 客服问题',
@@ -85,7 +86,7 @@ export function kindLabel(kind: GenerationLogEntry['kind']): string {
     'video-script': '视频脚本',
     'prompt-pack': '提示词包',
     'scene-card': '场景卡',
-    'reference-reverse': '对标反推',
+    'reference-reverse': '素材拆解',
   }[kind];
 }
 

@@ -162,7 +162,7 @@ export function App() {
       <ParamsPanel
         params={app.params}
         textProtocol={app.modelConfig?.textProtocol ?? "claude-sdk"}
-        citations={app.activeModule === "image-reference-reverse" || app.activeModule === "material-breakdown" ? [] : app.citationsForRequest}
+        citations={app.activeModule === "material-breakdown" ? [] : app.selectedCitations}
         logs={app.logs}
         skillSelection={app.skillSelection}
         collapsed={paramsPanelCollapsed}

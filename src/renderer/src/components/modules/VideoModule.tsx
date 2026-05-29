@@ -153,7 +153,7 @@ export function VideoModule({
               <span>视频链接</span>
               <div className="video-inline-field">
                 <input value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="粘贴已授权视频链接，仅作为来源记录" />
-                <button className="ghost small" disabled>不下载</button>
+                <span className="video-inline-status">不下载</span>
               </div>
             </label>
             <div className="video-mode-card">

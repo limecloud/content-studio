@@ -19,9 +19,10 @@
 ## 产品定位
 
 - **面向用户**：品牌运营、新媒体运营、电商运营、短视频团队、个人 IP 内容团队、内容工程师和审核人员。
+- **用户可见命名**：普通用户不需要知道 Ontology；界面使用“内容知识地图、卖点矩阵、场景矩阵、审核任务、团队知识包、内容行动、行动记录”等业务语言。
 - **核心对象**：Ontology Workspace、Concept、Relation、Evidence、Constraint、Coverage Matrix、Signal、Objective、Campaign Cell、Resource Bundle、Action Type、Action Log、Review Task、Prompt Grounding Context。
 - **首要场景**：把产品资料、用户评论、竞品内容和知识库文档变成可复用的内容生产结构，再把市场信号快速编组成内容行动，而不是每次把原始文档直接扔给 LLM。
-- **产品形态**：本地客户端里的内容工程层，事实源优先落在工作区 `.content-studio/`；对外发布时遵循 Agent Knowledge v0.7.0 ontology-aware 知识包标准。
+- **产品形态**：本地客户端里的内容工程层，事实源优先落在工作区 `.content-studio/`；对外发布时遵循 Agent Knowledge v0.7.2 ontology-aware 知识包标准。
 - **工程边界**：先使用 JSON 事实源和规则校验；需要互操作时优先导出 Agent Knowledge 知识包，再导出 JSON-LD / RDF / Turtle，不把 RDF / OWL 存储作为 MVP 前置条件。
 
 ## 为什么需要 Ontology
@@ -72,9 +73,9 @@ Palantir Ontology 的启发不是军用场景本身，而是“把现实资源�
 - v3 的品牌前台和素材中台可以消费已审核的 Ontology 标签、素材关系和案例结构，但 v3 不负责构建 Ontology。
 - `content-studio` 仍是 Ontology 构建和内容生产事实源；站点侧只读取已发布资产和元数据。
 
-## 与 Agent Knowledge v0.7.0 的关系
+## 与 Agent Knowledge v0.7.2 的关系
 
-Agent Knowledge v0.7.0 是 Ontology 发布和消费的标准边界，Content Studio 是 Ontology 构建、审核和内容生产的工作台。
+Agent Knowledge v0.7.2 是 Ontology 发布和消费的标准边界，Content Studio 是 Ontology 构建、审核和内容生产的工作台。
 
 | 层级 | 职责 |
 | --- | --- |
@@ -111,6 +112,7 @@ Agent Knowledge v0.7.0 是 Ontology 发布和消费的标准边界，Content Stu
 | [`ontology-model.md`](./ontology-model.md) | 轻量 Ontology 类型、关系、证据、约束、覆盖矩阵和本地事实源模型。 |
 | [`workflow-model.md`](./workflow-model.md) | LLM 构建 Ontology 的分步流程、五种方法流派、质检和人工审核。 |
 | [`implementation-plan.md`](./implementation-plan.md) | MVP、v1 和远景阶段计划、写集、验证方式和完成标准。 |
+| [`v1/README.md`](./v1/README.md) | 除抖音爆款视频和 GEO / AEO 专项外，通用内容工程 Ontology v1 的落地方案、数据模型、团队共享、用户可见命名、工作流集成和验收计划。 |
 | [`research-douyin-commerce-video-breakdown.md`](./research-douyin-commerce-video-breakdown.md) | 将 Ontology 方法论用于抖音带货爆款视频拆解的 research 文档。 |
 | [`research-geo-aeo-content-ontology.md`](./research-geo-aeo-content-ontology.md) | 将 Ontology 方法论用于 GEO / AEO 内容资产、答案引擎可见性和 AI 搜索监测的 research 文档。 |
 
@@ -124,7 +126,7 @@ Agent Knowledge v0.7.0 是 Ontology 发布和消费的标准边界，Content Stu
 | 卖点拆解和场景穷举矩阵。 | 多人协作权限。 |
 | 主张必须关联证据。 | 自动发布。 |
 | 人工审核后进入场景库、提示词组和 SOP。 | 无人值守全自动内容生成。 |
-| 本地 JSON 事实源、可追溯运行记录和 Agent Knowledge v0.7.0 知识包导出。 | 强制 RDF / OWL 作为运行时事实源。 |
+| 本地 JSON 事实源、可追溯运行记录和 Agent Knowledge v0.7.2 知识包导出。 | 强制 RDF / OWL 作为运行时事实源。 |
 | 最小 ActionLog：记录从矩阵组合到 PromptDraft / SOP 的行动链路。 | 舆论操控、自动发布和跨平台刷量。 |
 
 ## 完成定义
@@ -135,7 +137,7 @@ Ontology MVP 可宣称完成需要同时满足：
 - 能输出稳定的卖点拆解：功能、属性、用户收益、痛点、证据、人群、场景和禁用表达。
 - 能生成覆盖矩阵，并标出已覆盖、缺证据、缺素材和待审核组合。
 - 能从审核通过的矩阵组合生成场景卡、PromptDraft 或 SOP 输入。
-- 能导出 Agent Knowledge v0.7.0 ontology-aware 知识包，包含 `KNOWLEDGE.md`、`ontology/ontology.json` 和 `metadata.primaryOntology`。
+- 能导出 Agent Knowledge v0.7.2 ontology-aware 知识包，包含 `KNOWLEDGE.md`、`ontology/ontology.json` 和 `metadata.primaryOntology`。
 - 能对每条内容主张保留来源引用和证据状态。
 - 能拦截无证据主张、重复概念、孤立概念、过粗 / 过细粒度和敏感表达。
 - 关键路径有本地验证；未配置模型时返回可追溯 blocked，不伪造 Ontology 成功。

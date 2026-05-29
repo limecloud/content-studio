@@ -35,6 +35,7 @@ export function workflowInputPurposesForDefinitionKey(definitionKey: string): In
     pushUnique(purposes, 'reference');
     pushUnique(purposes, 'product-brief');
     pushUnique(purposes, 'user-feedback');
+    pushUnique(purposes, 'competitor-observation');
     pushUnique(purposes, 'brand-kb');
   }
   if (key.includes('product') || key.includes('commercial')) {
@@ -45,6 +46,7 @@ export function workflowInputPurposesForDefinitionKey(definitionKey: string): In
   if (key.includes('feedback') || key.includes('topic')) {
     pushUnique(purposes, 'user-feedback');
     pushUnique(purposes, 'product-brief');
+    pushUnique(purposes, 'competitor-observation');
     pushUnique(purposes, 'brand-kb');
   }
   if (key.includes('green-screen') || key.includes('overlay')) {
@@ -58,6 +60,7 @@ export function workflowInputPurposesForDefinitionKey(definitionKey: string): In
     pushUnique(purposes, 'user-feedback');
     pushUnique(purposes, 'brand-kb');
     pushUnique(purposes, 'ip-kb');
+    pushUnique(purposes, 'competitor-observation');
     pushUnique(purposes, 'reference');
   }
 

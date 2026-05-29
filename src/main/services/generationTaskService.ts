@@ -46,7 +46,7 @@ function queuedTitle(kind: GenerationTaskKind): string {
     'video-breakdown': '视频拆解任务已提交',
     'prompt-pack': '提示词包任务已提交',
     'scene-card': '场景库任务已提交',
-    'reference-reverse': '对标图反推任务已提交',
+    'reference-reverse': '素材拆解任务已提交',
   }[kind];
 }
 
@@ -59,7 +59,7 @@ function queuedSummary(kind: GenerationTaskKind): string {
     'video-breakdown': '已进入后台拆解队列，完成后会同步到历史记录。',
     'prompt-pack': '已进入后台提示词包队列，完成后会同步到历史记录。',
     'scene-card': '已进入后台场景库队列，完成后会同步到历史记录。',
-    'reference-reverse': '已进入后台反推队列，完成后会同步到历史记录。',
+    'reference-reverse': '已进入后台素材拆解队列，完成后会同步到历史记录。',
   }[kind];
 }
 

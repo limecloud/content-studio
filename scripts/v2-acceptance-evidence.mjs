@@ -101,14 +101,7 @@ function businessFailureChecks(businessReport) {
 function businessFailureRows(failures) {
   if (!failures.length) return '| - | - | - | - |';
   return failures.map((check) => {
-    const missing = [
-      ...(check.missing ?? []),
-      ...(check.missingFields ?? []),
-      ...(check.missingSources ?? []),
-      ...(check.missingFiles ?? []),
-      ...(check.missingAssetKinds ?? []),
-      ...(check.missingEvidenceFiles ?? []),
-    ].filter(Boolean);
+    const missing = checkMissingItems(check);
     return `| ${tableCell(check.section)} | ${tableCell(check.title)} | ${tableCell(check.evidence)} | ${tableCell(missing.join('<br>'))} |`;
   }).join('\n');
 }
@@ -128,7 +121,23 @@ function checkMissingItems(check) {
     ...(check.missingFiles ?? []),
     ...(check.missingAssetKinds ?? []),
     ...(check.missingEvidenceFiles ?? []),
+    ...pathItems('混剪导入证据文件不在混剪包目录', check.outOfScopeEvidenceFiles),
+    ...pathItems('缺失混剪素材文件', check.missingPackagedFilePaths),
+    ...pathItems('未验证混剪素材路径', check.unverifiedPackagedFilePaths),
+    ...samplePollutionItems(check),
   ].filter(Boolean).map(String);
+}
+
+function pathItems(label, values) {
+  return Array.from(new Set((values ?? []).map(String).filter(Boolean)))
+    .map((value) => `${label}：${value}`);
+}
+
+function samplePollutionItems(check) {
+  const values = Array.from(new Set((check.sampleLikeValues ?? []).map(String).filter(Boolean)));
+  const visible = values.slice(0, 12).map((value) => `样例/占位污染：${value}`);
+  if (values.length > visible.length) visible.push(`样例/占位污染：另有 ${values.length - visible.length} 项，详见 business-acceptance.json`);
+  return visible;
 }
 
 function checklistItems(items) {
@@ -142,7 +151,7 @@ function missingEvidenceChecklist({ manifest, providerReport, businessReport }) 
   if (!providerReport.networkAllowed) providerTasks.push('开启网络联调：CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1');
   if (!providerReport.mediaAllowed) providerTasks.push('开启媒体联调：CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1');
   for (const check of providerReport.checks) {
-    if (check.status === 'blocked' || check.status === 'failed') {
+    if (check.status === 'blocked' || check.status === 'failed' || check.status === 'skipped') {
       providerTasks.push(`${check.name}: ${check.nextAction || check.reason || check.status}`);
     }
   }
@@ -349,14 +358,7 @@ async function main() {
       id: check.id,
       title: check.title,
       evidence: check.evidence,
-      missing: [
-        ...(check.missing ?? []),
-        ...(check.missingFields ?? []),
-        ...(check.missingSources ?? []),
-        ...(check.missingFiles ?? []),
-        ...(check.missingAssetKinds ?? []),
-        ...(check.missingEvidenceFiles ?? []),
-      ].filter(Boolean),
+      missing: checkMissingItems(check),
     })),
     businessNextActions: businessNextActions(businessFailures),
     nextActions: providerReport.strictGate.nextActions,

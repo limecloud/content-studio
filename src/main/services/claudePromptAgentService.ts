@@ -5,6 +5,7 @@ import {
   TextProviderFailedError,
   type GenerateJsonInput,
   type TextGenerationOutput,
+  type TextProviderRuntimeEvent,
   type TextRuntimeConfig,
 } from '../providers/textGenerationProvider';
 import { getOemRuntimeConfig } from './oemRuntimeConfig';
@@ -43,6 +44,7 @@ function sourcePurposeLabel(purpose: InputSourceRecord['purpose']): string {
     'brand-kb': '品牌 / 产品知识库',
     'ip-kb': 'IP 知识库',
     'ip-scenario-kb': 'IP 场景库',
+    'competitor-observation': '竞品观察',
     reference: '参考素材',
     'product-brief': '产品资料',
     'user-feedback': '评论 / 客服问题',
@@ -137,6 +139,14 @@ function formatModelPromptContent(input: GeneratePromptDraftInput, output: Promp
     output.qualityChecklist.length ? '下游检查清单：' : '',
     ...output.qualityChecklist.map((item, index) => `${index + 1}. ${item}`),
   ].filter((line) => line !== '').join('\n');
+}
+
+function generationNote(model: string): string {
+  return `生成服务完成：${model}`;
+}
+
+function refinementNote(model: string): string {
+  return `对话调整完成：${model}`;
 }
 
 function buildLocalPromptContent(
@@ -258,6 +268,7 @@ export interface GenerateAgentPromptDraftResult {
   note: string;
   model: string;
   protocol?: TextGenerationProtocol;
+  providerEvents?: TextProviderRuntimeEvent[];
 }
 
 export interface GenerateAgentPromptRefinementInput {
@@ -276,9 +287,10 @@ export interface GenerateAgentPromptRefinementResult {
   note: string;
   model: string;
   protocol?: TextGenerationProtocol;
+  providerEvents?: TextProviderRuntimeEvent[];
 }
 
-export class ClaudePromptAgentService {
+export class PromptAgentService {
   private readonly textGeneration: TextGenerationService;
 
   constructor(
@@ -334,12 +346,13 @@ export class ClaudePromptAgentService {
         title: output.title,
         content: formatModelPromptContent(input, output),
         note: [
-          `由 Claude SDK 生成：${result.model}`,
+          generationNote(result.model),
           skillContext.skillRefs.length ? `已应用 ${skillContext.skillRefs.length} 个 skill：${skillContext.summaryText}` : '',
           blockedSources.length ? `包含 ${blockedSources.length} 个未解析输入源，已在提醒中保留人工确认。` : '',
         ].filter(Boolean).join('；'),
         model: result.model,
         protocol: result.protocol,
+        providerEvents: result.providerEvents,
       };
     } catch (error) {
       const reason = error instanceof TextProviderBlockedError
@@ -355,6 +368,9 @@ export class ClaudePromptAgentService {
         ].filter(Boolean).join('；'),
         model: error instanceof TextProviderBlockedError ? 'blocked:text-provider' : 'fallback:local-rule',
         protocol: undefined,
+        providerEvents: error instanceof TextProviderBlockedError || error instanceof TextProviderFailedError
+          ? error.runtimeEvents
+          : undefined,
       };
     }
   }
@@ -398,11 +414,12 @@ export class ClaudePromptAgentService {
       return {
         content: formatRefinedContent(input.previousContent, input.adjustment, result.value),
         note: [
-          `Agent 多轮调整：${result.model}`,
+          refinementNote(result.model),
           skillContext.skillRefs.length ? `已应用 ${skillContext.skillRefs.length} 个 skill：${skillContext.summaryText}` : '',
         ].filter(Boolean).join('；'),
         model: result.model,
         protocol: result.protocol,
+        providerEvents: result.providerEvents,
       };
     } catch (error) {
       const reason = error instanceof TextProviderBlockedError
@@ -412,9 +429,12 @@ export class ClaudePromptAgentService {
           : `文字模型生成异常：${error instanceof Error ? error.message : String(error)}`;
       return {
         content: fallbackRefinedContent(input.previousContent, input.adjustment, reason),
-        note: `Agent 多轮调整未完成，已记录本轮要求：${reason}`,
+        note: `对话调整未完成，已记录本轮要求：${reason}`,
         model: error instanceof TextProviderBlockedError ? 'blocked:text-provider' : 'fallback:local-rule',
         protocol: undefined,
+        providerEvents: error instanceof TextProviderBlockedError || error instanceof TextProviderFailedError
+          ? error.runtimeEvents
+          : undefined,
       };
     }
   }
@@ -451,3 +471,5 @@ export class ClaudePromptAgentService {
     };
   }
 }
+
+export { PromptAgentService as ClaudePromptAgentService };
