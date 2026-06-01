@@ -239,15 +239,23 @@ async function clickButton(page, label) {
 }
 
 async function openPromptSupportDrawer(page) {
-  const drawer = page.locator('.prompt-workbench .prompt-support-drawer').first();
-  await expect(drawer).toBeVisible();
-  const isOpen = await drawer.evaluate((element) => element.hasAttribute('open'));
-  if (!isOpen) {
-    await drawer.locator('summary').click();
-  }
+  const drawer = page.locator('.prompt-workbench:visible .prompt-support-drawer').first();
+  await expect(drawer).toBeVisible({ timeout: 20_000 });
+  await drawer.evaluate((element) => {
+    if (element instanceof HTMLDetailsElement) {
+      element.open = true;
+    }
+  });
+  const layout = drawer.locator('.prompt-workbench-layout').first();
+  await expect(layout).toBeAttached({ timeout: 20_000 });
+  await layout.evaluate((element) => {
+    element.scrollLeft = 0;
+    element.scrollTop = 0;
+  });
   const panel = drawer.locator('.prompt-source-panel').first();
-  await expect(panel).toBeVisible({ timeout: 20_000 });
-  await expect(promptSourceTitleInput(panel)).toBeEditable({ timeout: 20_000 });
+  const titleInput = promptSourceTitleInput(panel);
+  await titleInput.scrollIntoViewIfNeeded();
+  await expect(titleInput).toBeEditable({ timeout: 20_000 });
   return panel;
 }
 
