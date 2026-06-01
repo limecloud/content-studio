@@ -317,7 +317,7 @@ function hasVideoMagicBytes(value) {
   return bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])) ||
     bytes.toString('ascii', 0, 4) === 'OggS' ||
     boxType === 'ftyp' ||
-    (bytes.length > 188 && bytes[0] === 0x47 && bytes[188] === 0x47);
+    (bytes.length > 376 && bytes[0] === 0x47 && bytes[188] === 0x47 && bytes[376] === 0x47);
 }
 
 function isVideoDataUri(value) {
@@ -356,16 +356,12 @@ function hasVideoUrlHint(value) {
   return false;
 }
 
-function recordHasVideoMetadata(record) {
+function recordHasVideoMimeMetadata(record) {
   if (!record || typeof record !== 'object') return false;
   return Object.entries(record).some(([key, value]) => {
     const normalizedKey = key.toLowerCase();
     const text = typeof value === 'string' ? value.trim().toLowerCase() : '';
     if ((normalizedKey === 'mimetype' || normalizedKey === 'mime_type' || normalizedKey === 'contenttype' || normalizedKey === 'content_type') && isVideoMimeType(text)) return true;
-    if (
-      (normalizedKey === 'type' || normalizedKey === 'kind' || normalizedKey === 'assettype' || normalizedKey === 'asset_type' || normalizedKey === 'mediatype' || normalizedKey === 'media_type') &&
-      /^(video|video[-_ ]?(asset|file|output|result)|generated[-_ ]?video)$/i.test(text)
-    ) return true;
     return false;
   });
 }
@@ -380,10 +376,10 @@ function collectVideoAssetUrls(payload) {
       value.forEach(visit);
       return;
     }
-    const hasVideoMetadata = recordHasVideoMetadata(value);
+    const hasVideoMimeMetadata = recordHasVideoMimeMetadata(value);
     for (const [key, entryValue] of Object.entries(value)) {
       if (typeof entryValue === 'string' && urlKeys.has(key) && isHttpUrl(entryValue)) {
-        if (hasVideoUrlHint(entryValue) || hasVideoMetadata) urls.push(entryValue.trim());
+        if (hasVideoUrlHint(entryValue) || hasVideoMimeMetadata) urls.push(entryValue.trim());
         else rejectedUrls.push(entryValue.trim());
       }
     }

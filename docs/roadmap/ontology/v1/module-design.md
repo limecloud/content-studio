@@ -1,7 +1,7 @@
 # 内容知识地图 v1 模块设计
 
-更新时间：2026-05-28
-状态：Draft / Implementation Contract
+更新时间：2026-05-31
+状态：Local Verified / Production Evidence Pending
 
 ## 1. 设计结论
 
@@ -112,6 +112,7 @@ flowchart TB
 | Knowledge Map | 内容知识地图、卖点矩阵、痛点矩阵、场景矩阵、缺口。 | `ContentKnowledgeMapApplicationService` | Application Service + Builder Strategy + Repository | 不做审核决策、不直接发布下游产物。 |
 | Review | 审核任务、证据、来源、禁用表达、风险处理、改名 / 合并 / 拆分。 | `ContentReviewTaskApplicationService` | State Machine + Append Decision + Map Mutation | 不替用户自动通过，不把未通过内容交给生产链路，不在 renderer 中直接改矩阵。 |
 | Production Handoff | 提示词依据、生成 Prompt 草稿、创建场景卡、SOP 输入。 | `ContentProductionHandoffService` | Policy + Assembler + Target Adapter | 不绕过审核，不注入完整原文，不直接自动发布平台。 |
+| Team Knowledge Prompt | 团队知识包详情页生成 Prompt 草稿。 | `ContentTeamKnowledgePromptDraftService` | Application Service + Release Scope Gate + Prompt Assembler | 不在 React 中拼业务依据，不允许其他地图的 release 误绑定当前项目，不把包元数据当产品事实。 |
 | Brand Command | 品牌战情室、信号雷达、资源包、执行队列、行动记录。 | `BrandCommandCenterApplicationService` | Command Pattern + Policy Gate + Action Record | 不做虚假互动、刷量、伪装用户或自动发帖。 |
 | Material Feedback | 素材覆盖、表现标签、待确认补充、高表现组合。 | `ContentMaterialFeedbackService` | Feedback Loop + Supplement Policy | 不把素材表现自动当成产品事实证据，不改写已发布主文案。 |
 | Team Sharing | 团队工作区、未同步草稿、变更包、冲突、影响内容、知识包版本。 | `ContentWorkspaceSyncService` | Port / Adapter + Revision Policy | 不把本地 JSON 或共享目录当团队事实源，不做未审核自动合并。 |
@@ -178,7 +179,7 @@ append(record)      # 只用于审核决策、行动记录等 append-like 数据
 
 ### 4.3 Strategy / Builder
 
-构建逻辑按输入类型拆 strategy，但第一刀允许先放在单个 builder 内的纯函数中，等规则稳定再拆文件，避免过早抽象。
+构建逻辑按输入类型拆 strategy；当前实现先放在单个 builder 内的纯函数中，等规则稳定再拆文件，避免过早抽象。
 
 | Strategy | 输入 | 输出 |
 | --- | --- | --- |
@@ -194,7 +195,7 @@ append(record)      # 只用于审核决策、行动记录等 append-like 数据
 - Builder 只生成候选结构和摘要，不写文件。
 - Builder 输出必须经过 Validator。
 - LLM 推断必须标记为待确认，不能直接进入可发布状态。
-- 当前第一刀仍在 `contentKnowledgeMapBuilder.ts` 内，以纯函数覆盖产品资料、SKU 表、用户反馈、IP 六层知识库、竞品观察、场景卡和 Prompt 草稿；等输入规则稳定后再拆成 strategy 文件。
+- 当前实现仍在 `contentKnowledgeMapBuilder.ts` 内，以纯函数覆盖产品资料、SKU 表、用户反馈、IP 六层知识库、竞品观察、场景卡和 Prompt 草稿；等输入规则稳定后再拆成 strategy 文件。
 
 ### 4.4 Policy / Specification
 
@@ -205,6 +206,7 @@ append(record)      # 只用于审核决策、行动记录等 append-like 数据
 | Policy | 职责 |
 | --- | --- |
 | `ContentMapValidationPolicy` | 判断知识地图质量、证据状态、禁用 / 绝对化表达、IP 漂移、竞品 ready 风险、缺口和 blocked 原因。 |
+| `ContentMatrixRiskPolicy` | 统一识别禁用表达、禁用标记、竞品直交和 IP 口径漂移，供校验、审核任务和生产交接复用。 |
 | `ReviewDecisionPolicy` | 将审核动作转换为任务状态，限制非法状态迁移。 |
 | `ProductionHandoffPolicy` | 只允许审核通过、证据可追溯、无禁用表达、无竞品直交、无 IP 漂移的组合进入 Prompt / 场景 / SOP。 |
 | `BrandCommandExecutionPolicy` | 执行队列动作前检查证据、审核、资源、渠道、权限和疲劳重复。 |
@@ -284,7 +286,7 @@ interface ContentKnowledgeMapSyncPort {
 实现分两类：
 
 - `LocalOnlyContentKnowledgeMapSyncAdapter`：离线兜底，只返回“本机草稿，待同步 Bugu”。
-- `BuguContentWorkspaceSyncAdapter`：已接入 `/Users/coso/Documents/dev/ai/bugu/bugu` 的最小团队工作区、变更包、审核任务、审核结论、同步冲突、执行队列、行动记录、素材覆盖、知识包版本和发布包对象登记 API；Bugu 控制台已完成团队内容工作区面板、同步冲突查看、逐项合并处理清单、清单落库审计、处理方向记录、知识包可分发状态展示、默认版本回滚、待确认版本批准、多步骤确认进度展示和工作区默认确认模板切换；Content Studio 桌面端已完成同步冲突列表、版本差异提示、逐项合并处理清单、处理方向记录、素材覆盖待确认补充、团队知识包可下载状态、Prompt 草稿版本绑定和 SOP 运行记录版本追溯第一刀；后续继续扩展生产公开下载执行报告和真实双账号验收。
+- `BuguContentWorkspaceSyncAdapter`：已接入 `/Users/coso/Documents/dev/ai/bugu/bugu` 的最小团队工作区、变更包、审核任务、审核结论、同步冲突、执行队列、行动记录、素材覆盖、知识包版本和发布包对象登记 API；Bugu 控制台已完成团队内容工作区面板、同步冲突查看、逐项合并处理清单、清单落库审计、处理方向记录、知识包可分发状态展示、默认版本回滚、待确认版本批准、多步骤确认进度展示和工作区默认确认模板切换；Content Studio 桌面端已完成同步冲突列表、版本差异提示、逐项合并处理清单、处理方向记录、素材覆盖待确认补充、团队知识包可下载状态、Prompt 草稿版本绑定和 SOP 运行记录版本追溯；生产公开下载执行报告和真实双账号验收仍属于生产证据待补。
 
 禁止新增 `LimeCoreContentSyncAdapter` 承载业务对象。LimeCore 只能由 Bugu 侧用于租户、账号、权益、模型策略、Gateway、发布中心和 Agent App enablement。
 
@@ -305,7 +307,7 @@ renderer 只消费适合 UI 的业务记录，不直接操作内部图谱对象�
 
 UI 负责选择、展示、筛选和触发动作；矩阵行状态、审核状态和发布检查结果由 main 侧生成。
 
-当前矩阵 View Model 第一刀：
+当前矩阵 View Model：
 
 - `src/shared/contentMatrixPlanning.ts` 负责把矩阵行转换成可展示计划，包含状态 / 素材 / 关键词筛选、优先级 / 可信度 / 证据 / 素材缺口排序、分页、本批摘要和风险计数。
 - `ContentKnowledgeMapModule` 只消费计划结果，负责选择本页条目、显示本批摘要和触发“生成本批审核任务”。
@@ -362,7 +364,7 @@ HTTP Route Adapter
 
 ## 5. 目录规划
 
-### 5.1 已落地或第一刀文件
+### 5.1 已落地文件
 
 ```text
 src/shared/types.ts
@@ -549,6 +551,28 @@ Bugu 业务后端需要提供：
 - `knowledge releases`
 
 Content Studio 只通过 main 进程同步服务调用 Bugu API。renderer 不直接拼 URL，不直接写服务端状态。
+
+当前收敛口径：
+
+- `content-knowledge-maps` 是团队内容知识地图 current 服务端事实源，承载可审核矩阵快照、覆盖摘要、质量摘要和服务端版本。
+- `content-build-runs` 是生成流程 current 服务端事实源，承载模型、输入集合、步骤、blocked 原因和质量问题。
+- `content-command-centers` 是品牌内容作战系统 current 服务端事实源，承载信号、目标、资源包、作战单元、执行队列摘要、行动记录摘要和服务端版本。
+- `content-draft-changes` 是 compat 变更包入口，只用于提交本机变更、冲突检测和离线协作，不再承载团队主快照。
+- `content-execution-queue` 和 `content-action-records` 是 compat 旁路事实：前者同步队列条目状态，后者追加行动审计和交付物引用；完整品牌作战系统快照必须回到 `content-command-centers`。
+- `.content-studio/content-knowledge-maps.json`、`.content-studio/content-knowledge-map-build-runs.json` 和 `.content-studio/brand-command-centers.json` 是桌面本机缓存和离线草稿，不是团队共享事实源。
+
+构建链路：
+
+```text
+Renderer
+-> IPC contentKnowledgeMaps:build
+-> ContentKnowledgeMapApplicationService
+-> ContentKnowledgeMapStore / ContentKnowledgeMapBuildRunStore
+-> BuguContentWorkspaceSyncAdapter
+-> /api/v1/oem/content-knowledge-maps
+-> /api/v1/oem/content-build-runs
+-> /api/v1/oem/content-command-centers
+```
 
 LimeCore 只在 Bugu 侧作为 OEM 云底座被调用，典型场景包括租户、账号、权益、模型策略、Gateway、发布中心和 Agent App enablement。
 

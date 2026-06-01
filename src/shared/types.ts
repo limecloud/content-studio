@@ -625,6 +625,7 @@ export interface ContentKnowledgeMapEvidence {
     | 'ip-knowledge-base'
     | 'scene-card'
     | 'prompt-draft'
+    | 'asset-review'
     | 'manual';
   sourceId?: string;
   sourceTitle: string;
@@ -662,11 +663,21 @@ export interface ContentKnowledgeMapCoverageSummary {
   ipKnowledgeBaseCount?: number;
   skuRowCount?: number;
   competitorObservationCount?: number;
+  assetReviewCount?: number;
   sceneCardCount: number;
   promptDraftCount: number;
   evidenceCount: number;
   gapCount: number;
   readyPercent: number;
+}
+
+export type InputSourceSensitivity = 'public' | 'internal' | 'confidential' | 'restricted';
+
+export interface ContentKnowledgeMapSourceSensitivitySummary {
+  highest: InputSourceSensitivity;
+  counts: Record<InputSourceSensitivity, number>;
+  restrictedSourceTitles: string[];
+  confidentialSourceTitles: string[];
 }
 
 export interface ContentKnowledgeMapTeamSyncSummary {
@@ -703,6 +714,7 @@ export interface ContentKnowledgeMapRecord {
   constraints: string[];
   gaps: string[];
   coverage: ContentKnowledgeMapCoverageSummary;
+  sourceSensitivity?: ContentKnowledgeMapSourceSensitivitySummary;
   model?: string;
   createdAt: string;
   updatedAt: string;
@@ -788,8 +800,14 @@ export type BrandCommandActionType =
   | 'launch-sop-run'
   | 'create-material-gap-list'
   | 'write-back-material-coverage'
+  | 'confirm-objectives'
+  | 'confirm-resource-bundles'
+  | 'sync-execution-queue'
+  | 'review-action-records'
+  | 'export-action-records'
   | 'content-production-blocked';
 export type BrandCommandActionOutcome = 'recorded' | 'blocked' | 'handoff' | 'needs-review' | 'needs-resource' | 'written-back';
+export type BrandCommandConfirmStage = 'objectives' | 'bundles' | 'queue';
 
 export interface BrandCommandSignal {
   id: string;
@@ -899,8 +917,10 @@ export interface BrandCommandActionRecord {
   promptDraftId?: string;
   sceneCardId?: string;
   workflowRunId?: string;
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
   materialCoverageChangeId?: string;
   reviewTaskId?: string;
+  artifactRefs?: string[];
   syncStatus?: ContentKnowledgeMapSyncStatus;
   teamSync?: ContentKnowledgeMapTeamSyncSummary;
   createdAt: string;
@@ -942,6 +962,40 @@ export interface RecordBrandCommandActionInput {
   note?: string;
 }
 
+export interface RecordBrandCommandReviewInput {
+  workspacePath: string;
+  commandCenterId: string;
+  summary: string;
+  actorLabel?: string;
+  actorRole?: ContentTeamRole;
+}
+
+export interface ConfirmBrandCommandStageInput {
+  workspacePath: string;
+  commandCenterId: string;
+  stage: BrandCommandConfirmStage;
+  actorLabel?: string;
+  actorRole?: ContentTeamRole;
+}
+
+export interface ExportBrandCommandActionRecordsInput {
+  workspacePath: string;
+  commandCenterId: string;
+  actorLabel?: string;
+  actorRole?: ContentTeamRole;
+}
+
+export interface BrandCommandActionRecordsExportResult {
+  status: 'exported' | 'blocked';
+  commandCenter?: BrandCommandCenterRecord;
+  packageDir?: string;
+  manifestPath?: string;
+  markdownPath?: string;
+  jsonPath?: string;
+  files: string[];
+  issues: string[];
+}
+
 export interface RefreshBrandCommandActionsInput {
   workspacePath: string;
   commandCenterId: string;
@@ -961,7 +1015,32 @@ export interface ContentKnowledgePackExportResult {
   packageArchiveFileName?: string;
   packageArchiveSha256?: string;
   packageArchiveSize?: number;
+  preview?: {
+    agentKnowledgeVersion: string;
+    readyRowCount: number;
+    readyEvidenceCount: number;
+    materialCoverageCount: number;
+    interopFormats: string[];
+    answerQuestionCount: number;
+    promptGroundingFile: string;
+  };
   files: string[];
+  issues: string[];
+}
+
+export interface ReadContentKnowledgePackFileInput {
+  workspacePath: string;
+  packageDir?: string;
+  relativePath: string;
+  maxBytes?: number;
+}
+
+export interface ContentKnowledgePackFilePreview {
+  status: 'loaded' | 'blocked';
+  relativePath: string;
+  content?: string;
+  size?: number;
+  truncated?: boolean;
   issues: string[];
 }
 
@@ -1132,6 +1211,12 @@ export interface CreateContentKnowledgeReleaseInput {
   title?: string;
   version?: string;
   authorLabel?: string;
+}
+
+export interface CreateTeamKnowledgePromptDraftInput {
+  workspacePath: string;
+  contentKnowledgeMapId?: string;
+  contentKnowledgeReleaseId?: string;
 }
 
 export interface ResolveContentSyncConflictInput {
@@ -1378,6 +1463,7 @@ export interface InputSourceRecord {
   kind: InputSourceKind;
   status: InputSourceStatus;
   purpose: InputSourcePurpose;
+  sensitivity: InputSourceSensitivity;
   title: string;
   sourcePath?: string;
   sourceUrl?: string;
@@ -1398,6 +1484,7 @@ export interface RegisterInputSourceInput {
   workflowRunId?: string;
   kind: InputSourceKind;
   purpose: InputSourcePurpose;
+  sensitivity?: InputSourceSensitivity;
   title: string;
   sourcePath?: string;
   sourceUrl?: string;
@@ -1413,6 +1500,7 @@ export interface ImportInputSourceFromFileOptions {
   relatedPromptDraftId?: string;
   relatedSceneCardIds?: string[];
   tags?: string[];
+  sensitivity?: InputSourceSensitivity;
 }
 
 export type PromptDraftPurpose = 'image' | 'video' | 'article' | 'green-screen' | 'sop' | 'skill';
@@ -1461,6 +1549,7 @@ export interface GeneratePromptDraftInput {
   purpose: PromptDraftPurpose;
   userIntent: string;
   inputSourceIds: string[];
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
   sceneCardIds?: string[];
   selectedSkills?: SkillRef[];
   selectedSkillSlugs?: string[];
@@ -1620,6 +1709,7 @@ export interface AgentPromptSession {
   id: string;
   workspacePath: string;
   workflowRunId?: string;
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
   title: string;
   purpose: PromptDraftPurpose;
   status: AgentPromptSessionStatus;
@@ -1644,6 +1734,7 @@ export interface StartAgentPromptSessionInput {
   purpose: PromptDraftPurpose;
   userIntent: string;
   inputSourceIds: string[];
+  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
   sceneCardIds?: string[];
   selectedSkills?: SkillRef[];
   selectedSkillSlugs?: string[];
@@ -2428,8 +2519,12 @@ export interface ContentStudioApi {
   listBrandCommandCenters(workspacePath: string): Promise<BrandCommandCenterRecord[]>;
   buildBrandCommandCenter(input: BuildBrandCommandCenterInput): Promise<BrandCommandCenterRecord>;
   recordBrandCommandAction(input: RecordBrandCommandActionInput): Promise<BrandCommandCenterRecord>;
+  recordBrandCommandReview(input: RecordBrandCommandReviewInput): Promise<BrandCommandCenterRecord>;
+  confirmBrandCommandStage(input: ConfirmBrandCommandStageInput): Promise<BrandCommandCenterRecord>;
+  exportBrandCommandActionRecords(input: ExportBrandCommandActionRecordsInput): Promise<BrandCommandActionRecordsExportResult>;
   refreshBrandCommandActions(input: RefreshBrandCommandActionsInput): Promise<BrandCommandCenterRecord>;
   exportContentKnowledgePack(input: ExportContentKnowledgePackInput): Promise<ContentKnowledgePackExportResult>;
+  readContentKnowledgePackFile(input: ReadContentKnowledgePackFileInput): Promise<ContentKnowledgePackFilePreview>;
   listContentReviewTasks(workspacePath: string): Promise<ContentReviewTask[]>;
   generateContentReviewTasks(input: GenerateContentReviewTasksInput): Promise<ContentReviewTask[]>;
   submitContentReviewDecision(input: SubmitContentReviewDecisionInput): Promise<ContentReviewTask>;
@@ -2448,6 +2543,7 @@ export interface ContentStudioApi {
   listPromptDrafts(workspacePath: string): Promise<PromptDraft[]>;
   generatePromptDraft(input: GeneratePromptDraftInput): Promise<PromptDraft>;
   createPromptDraftFromContent(input: CreatePromptDraftFromContentInput): Promise<PromptDraft>;
+  createTeamKnowledgePromptDraft(input: CreateTeamKnowledgePromptDraftInput): Promise<PromptDraft>;
   updatePromptDraft(input: UpdatePromptDraftInput): Promise<PromptDraft>;
   recordPromptDraftCopy(input: RecordPromptDraftCopyInput): Promise<PromptDraft>;
   listAgentPromptSessions(workspacePath: string): Promise<AgentPromptSession[]>;

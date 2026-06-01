@@ -65,6 +65,7 @@ export const V2_UX_COPY_AUDITS = [
   {
     path: 'src/renderer/src/components/modules/WorkflowFeatureModule.tsx',
     rules: [
+      ...v1BusinessModuleRules(),
       rule('workflow-step-key-label', /步骤快照\s*\//, '运行详情产物线索不能展示步骤 key。'),
       rule('raw-artifact-title', /title=\{ref\}/, '运行详情产物线索 title 不能暴露原始 artifactRef。'),
       rule('raw-artifact-fallback', /return\s+ref(?:\.length|\s*;)/, '运行详情未知产物不能回退展示内部引用字符串。'),
@@ -106,6 +107,10 @@ export const V2_UX_COPY_AUDITS = [
   },
   {
     path: 'src/renderer/src/components/modules/BrandCommandCenterModule.tsx',
+    rules: v1BusinessModuleRules(),
+  },
+  {
+    path: 'src/renderer/src/components/modules/PromptWorkbenchModule.tsx',
     rules: v1BusinessModuleRules(),
   },
 ];

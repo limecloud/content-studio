@@ -144,6 +144,8 @@ async function countImagePayloads(sources: InputSourceRecord[]): Promise<number>
 }
 
 function normalizeAnalysis(output: ReferenceReverseProviderOutput): ReferenceReverseAnalysis {
+  const replacementRules = compactList(output.replacementRules);
+  const generationControls = compactList(output.generationControls);
   const analysis: ReferenceReverseAnalysis = {
     composition: requiredText(output, 'composition', '构图说明'),
     lighting: requiredText(output, 'lighting', '光线说明'),
@@ -154,8 +156,12 @@ function normalizeAnalysis(output: ReferenceReverseProviderOutput): ReferenceRev
     camera: compactText(output.camera),
     platformFit: compactText(output.platformFit),
     reusableElements: requiredList(output, 'reusableElements', '可复用元素'),
-    replacementRules: requiredList(output, 'replacementRules', '产品替换规则'),
-    generationControls: requiredList(output, 'generationControls', '生成建议'),
+    replacementRules: replacementRules.length
+      ? replacementRules
+      : ['将参考图中的品牌、包装、文字、人物肖像和可识别创意元素替换为本方产品事实。'],
+    generationControls: generationControls.length
+      ? generationControls
+      : ['按用户目标保持平台画幅、主体位置、留白区域和自然光风格，生成前人工复核素材授权。'],
     risks: requiredList(output, 'risks', '风险边界'),
     prompt: requiredText(output, 'prompt', '可执行 Prompt'),
     negativePrompt: requiredText(output, 'negativePrompt', '负面约束'),

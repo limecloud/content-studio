@@ -11,6 +11,7 @@ import type {
   ContentReviewTask,
   CreateContentProductionHandoffInput,
   StartWorkflowRunInput,
+  WorkflowRunRecord,
 } from '../../shared/types';
 import { ContentKnowledgeMapStore } from './contentKnowledgeMapStore';
 import { ContentKnowledgeReleaseStore } from './contentKnowledgeReleaseStore';
@@ -19,7 +20,6 @@ import { checkContentProductionHandoff } from './contentProductionHandoffPolicy'
 import { ContentReviewTaskStore } from './contentReviewTaskStore';
 import { PromptDraftStore } from './promptDraftStore';
 import { SceneLibraryStore } from './sceneLibraryStore';
-import { WorkflowStore } from './workflowStore';
 import { buildPromptGroundingSummary } from './promptGroundingAssembler';
 import { buildSceneCardFromKnowledgeMap } from './sceneCardAssembler';
 import type { ContentProductionHandoffActionSyncAdapter } from './buguContentWorkspaceSyncAdapter';
@@ -34,6 +34,10 @@ const localOnlyHandoffActionSync: ContentProductionHandoffActionSyncAdapter = {
     };
   },
 };
+
+export interface ContentWorkflowRunStarter {
+  startRun(input: StartWorkflowRunInput): Promise<WorkflowRunRecord>;
+}
 
 function rowsForTarget(map: ContentKnowledgeMapRecord, targetType: ContentReviewTask['targetType']): ContentKnowledgeMapMatrixRow[] {
   if (targetType === 'selling-point') return map.sellingPoints;
@@ -184,7 +188,7 @@ function selectTeamRelease(
     );
     if (matched) return matched;
   }
-  return published.find((release) => release.contentKnowledgeMapId === map.id) || published[0];
+  return published.find((release) => release.contentKnowledgeMapId === map.id);
 }
 
 function buildWorkflowRunInput(input: {
@@ -229,7 +233,7 @@ export class ContentProductionHandoffService {
     private readonly handoffs: ContentProductionHandoffStore,
     private readonly actionSync: ContentProductionHandoffActionSyncAdapter = localOnlyHandoffActionSync,
     private readonly commandCenters?: BrandCommandCenterStore,
-    private readonly workflows?: WorkflowStore,
+    private readonly workflows?: ContentWorkflowRunStarter,
   ) {}
 
   async create(input: CreateContentProductionHandoffInput): Promise<ContentProductionHandoffResult> {
@@ -505,7 +509,28 @@ export class ContentProductionHandoffService {
       action.workflowRunId ? `workflow-run:${action.workflowRunId}` : '',
     ]).filter(Boolean);
     const blockedReason = actions.find((action) => action.outcome === 'blocked')?.outputSummary;
-    const nextResourceBundles = commandCenter.resourceBundles.map((bundle) => {
+    const targetBundles = commandCenter.resourceBundles.some((bundle) => bundle.sourceKnowledgeMapId === sourceKnowledgeMapId)
+      ? commandCenter.resourceBundles
+      : [{
+          id: `${actions[0]?.batchId ?? sourceKnowledgeMapId}:resource-bundle`,
+          title: `${actions[0]?.title ?? commandCenter.title} 交接资源包`,
+          objectiveId: actions[0]?.batchId ?? sourceKnowledgeMapId,
+          sourceKnowledgeMapId,
+          coverageRowIds: actions.flatMap((action) => action.coverageRowIds),
+          approvedCoverageRowIds: actions.flatMap((action) => action.coverageRowIds),
+          sellingPointRefs: actions.flatMap((action) => action.coverageRowIds),
+          evidenceRefs: Array.from(new Set(actions.flatMap((action) => action.evidenceRefs))),
+          sceneRefs: [],
+          sceneCardIds: [],
+          promptDraftIds: [],
+          materialRefs: [],
+          sopRefs: [],
+          constraints: [],
+          gaps: blockedReason ? [blockedReason] : [],
+          handoffStatus: 'none' as const,
+          readyPercent: blockedReason ? 0 : 100,
+        }, ...commandCenter.resourceBundles];
+    const nextResourceBundles = targetBundles.map((bundle) => {
       if (bundle.sourceKnowledgeMapId !== sourceKnowledgeMapId) return bundle;
       return {
         ...bundle,

@@ -1,7 +1,7 @@
 # 服务端集成方案
 
-更新时间：2026-05-29
-状态：Draft / First API + Console + Field Supplement Cut
+更新时间：2026-05-31
+状态：Local Verified / Production Evidence Pending
 
 ## 1. 设计结论
 
@@ -123,6 +123,9 @@ v1 业务后端应在 Bugu 新增或扩展以下事实对象：
 
 ```text
 /api/v1/oem/content-workspaces/*
+/api/v1/oem/content-knowledge-maps/*
+/api/v1/oem/content-build-runs/*
+/api/v1/oem/content-command-centers/*
 /api/v1/oem/content-draft-changes/*
 /api/v1/oem/content-review-tasks/*
 /api/v1/oem/content-review-decisions/*
@@ -171,14 +174,19 @@ Route Adapter
 | `contentMaterialCoverageService` | 素材覆盖、表现标签和回写。 | Feedback Policy |
 | `contentKnowledgeReleaseService` | 团队知识包版本、发布检查和对象存储登记。 | Publish Policy + Repository |
 
-当前第一刀已覆盖工作区、变更包、审核、执行队列、行动记录、素材覆盖、素材补充审核任务、同步冲突、逐项合并处理清单、服务端清单落库审计、知识包 release、发布包对象存储登记、默认版本回滚、发布审批、工作区默认确认模板、桌面端 release 拉取、两账号只读在线验收入口、知识包下载验收入口和 v1 在线验收总报告输出的最小纵向闭环；后续重点转向真实生产下载执行报告和真实账号报告归档。
+当前实现已覆盖工作区、知识地图快照、构建运行摘要、品牌内容作战系统快照、变更包、审核、执行队列、行动记录、素材覆盖、素材补充审核任务、同步冲突、逐项合并处理清单、服务端清单落库审计、知识包 release、发布包对象存储登记、默认版本回滚、发布审批、工作区默认确认模板、桌面端 release 拉取、两账号只读在线验收入口、知识包下载验收入口和 v1 在线验收总报告输出的最小纵向闭环；生产证据重点转向真实生产下载执行报告和真实账号报告归档。
 
 当前落地状态：
 
-- Bugu 业务后端已新增最小团队事实源 API：`content-workspaces`、`content-draft-changes`、`content-review-tasks`、`content-review-decisions`、`content-sync-conflicts`、`content-execution-queue`、`content-action-records`、`content-material-coverage`、`content-knowledge-releases`。
-- Content Studio 已通过 `BuguContentWorkspaceSyncAdapter` 提交变更包、同步审核任务、提交审核结论、同步执行队列、追加行动记录、同步素材覆盖并发布团队知识包版本。
+- Bugu 业务后端已新增最小团队事实源 API：`content-workspaces`、`content-knowledge-maps`、`content-build-runs`、`content-command-centers`、`content-draft-changes`、`content-review-tasks`、`content-review-decisions`、`content-sync-conflicts`、`content-execution-queue`、`content-action-records`、`content-material-coverage`、`content-knowledge-releases`。
+- Content Studio 已通过 `BuguContentWorkspaceSyncAdapter` 同步知识地图快照、同步构建运行摘要、提交变更包、同步审核任务、提交审核结论、同步执行队列、追加行动记录、同步素材覆盖并发布团队知识包版本。
+- Bugu `content-knowledge-maps` 是团队版内容知识地图 current 服务端事实源，保存标题、状态、模型、来源 ID、质量摘要、覆盖摘要和可审核矩阵快照；桌面端本地 JSON 只是本机缓存，`content-draft-changes` 只承担变更包和冲突处理，不再承担读取主快照的职责。
+- Bugu `content-build-runs` 是生成流程 current 服务端事实源，保存模型、输入集合、质量问题和步骤摘要；重复提交同一构建运行 ID 保持幂等，不推进 revision。
+- Bugu `content-command-centers` 是品牌内容作战系统 current 服务端事实源，保存信号、目标、资源包、作战单元、执行队列摘要和行动记录摘要；桌面端 `brand-command-centers.json` 是本机缓存，`content-execution-queue` 和 `content-action-records` 是队列 / 行动旁路事实，不再代替完整作战系统快照。
 - Bugu `content-review-decisions` 已保存审核调整 payload 和 before / after 快照；Content Studio 会先提交知识地图变更包再提交审核结论，团队成员既能拿到调整后的矩阵，也能追溯调整输入。
-- Bugu `content-action-records` 已保留 Prompt 草稿、场景卡、SOP 运行、素材覆盖变更、审核任务引用和操作者角色 `actorRole`，团队刷新行动记录时不会丢失下游产物 ID 或权限审计字段；追加行动记录时会按认证角色做服务端权限校验。
+- Bugu `content-action-records` 已保留 Prompt 草稿、场景卡、SOP 运行、素材覆盖变更、审核任务引用、补素材交付文件引用和操作者角色 `actorRole`，团队刷新行动记录时不会丢失下游产物 ID、交付包线索或权限审计字段；追加行动记录时会按认证角色做服务端权限校验。
+- Bugu `content-action-records` 已把交付物引用安全校验前移到服务端：直接写入本机绝对路径、`file://`、临时目录路径或带 `api_key / token / secret / password` 查询参数的 `artifactRefs` 会返回 `400`，不能只依赖桌面端脱敏或验收脚本事后拦截。
+- Bugu `content-action-records` 已补品牌战情室主动作保真：`confirm-objectives`、`confirm-resource-bundles` 和 `sync-execution-queue` 可以保存、分页筛选和返回；控制台文案显示为“确认目标优先级 / 保存作战单元 / 同步执行队列”，不降级成泛化“内容动作”。
 - Bugu 团队高频列表已支持服务端分页和筛选：审核任务可按状态 / 目标类型筛选，行动记录可按战情室 / 结果 / 动作类型筛选，执行队列可按战情室 / 状态 / 动作类型筛选；Content Studio 刷新品牌战情室行动记录时已按当前对象传入筛选和分页参数，多人工作区不需要一次全量拉取。
 - Bugu 服务端会把旧 `baseRevision` 提交记录到同步冲突队列，同时保持 `409` 返回，禁止静默覆盖团队当前版本。
 - Bugu 控制台已新增团队内容工作区面板：内容负责人可查看当前工作区、团队版本、待处理审核、同步冲突、生产交接、最近行动记录、素材覆盖和团队知识包版本；主动作是刷新团队工作区，空态提示回到客户端同步。
@@ -186,14 +194,14 @@ Route Adapter
 - Bugu 服务端处理冲突时会接收合并处理清单，保存到冲突记录和行动记录，并推进团队工作区 revision；当前不直接改写卖点、痛点、场景或证据字段。
 - Content Studio 素材覆盖回写会把低风险字段补充转为 Bugu 审核任务：目标是补证据、补规则或补素材标签，状态为待确认；服务端继续通过审核任务承接，不在回写时改写团队知识地图主字段。
 - Bugu `content-review-tasks` 已保留审核任务业务类型：发布审核、补证据和补素材可以共存；补素材任务以 `taskPurpose=material-supplement`、`status=needs-material`、`suggestedAction=request-material` 写入服务端，控制台按待处理任务展示，避免把补拍 / 补图需求压成普通审核。
-- Agent Knowledge 发布包已形成端到端第一刀：Content Studio 导出 zip，提交 release 时发送包摘要；Bugu 使用对象存储端口登记 `packageObjectKey`、`packagePublicUrl`、`packageUploadStatus` 和包校验摘要；未配置公开对象存储时保留 metadata-only 登记，不伪造公开下载成功。
+- Agent Knowledge 发布包已形成端到端链路：Content Studio 导出 zip，提交 release 时发送包摘要；Bugu 使用对象存储端口登记 `packageObjectKey`、`packagePublicUrl`、`packageUploadStatus` 和包校验摘要；未配置公开对象存储时保留 metadata-only 登记，不伪造公开下载成功。
 - Bugu 控制台已支持团队知识包旧版本回滚为默认版本；Bugu 服务端通过 `content-knowledge-release-actions` 记录默认版本切换和回滚审计。
-- Bugu 服务端已支持团队知识包审批第一刀：发布可进入待确认状态，低权限角色不能批准，负责人批准后才会成为默认团队知识包；控制台展示待确认 / 已确认 / 已驳回状态。
+- Bugu 服务端已支持团队知识包审批：发布可进入待确认状态，低权限角色不能批准，负责人批准后才会成为默认团队知识包；控制台展示待确认 / 已确认 / 已驳回状态。
 - Content Studio 已能从 Bugu 拉取已同步工作区的团队知识包版本，并把服务端包地址、对象 key、上传状态和本机预览路径合并到本机缓存。
 - Content Studio 后续写入会优先携带 Bugu `workspaceId`，避免服务端工作区身份被本机路径 hash 绑定；本机路径派生 key 只作为首次创建和离线兜底。
 - Content Studio 已把团队知识包引用写入 PromptDraft 和 WorkflowRun，Prompt 工作台与 SOP 运行记录能追溯实际消费的团队版本。
 - 桌面端仍保留本机缓存和本机预览；普通用户 UI 不显示本机绝对路径。
-- 尚未落地的服务端事实源：使用真实生产 R2 / OSS、真实账号和两台设备运行 v1 在线验收总入口后的报告归档。
+- 生产证据待补：使用真实生产 R2 / OSS、真实账号和两台设备运行 v1 在线验收总入口后的报告归档。
 
 服务端路由只做：
 
@@ -217,7 +225,7 @@ Route Adapter
 | `RevisionPolicy` | `baseRevision` 不匹配返回 `409 conflict`，不 silent last-write-wins。 |
 | `IdempotencyPolicy` | 同一个 `idempotencyKey` 或对象 `id` 重复提交返回既有结果。 |
 | `PublishPolicy` | 未审核、缺证据、含禁用表达或敏感数据的内容不能发布为团队知识包。 |
-| `SecurityPolicy` | 不接受 API Key、登录凭证、本机绝对路径进入团队事实源或 release。 |
+| `SecurityPolicy` | 不接受 API Key、登录凭证、本机绝对路径、`file://`、临时目录路径、带凭证查询参数的交付物引用或内网公开包地址进入团队事实源或 release。 |
 | `RolePolicy` | owner、content-engineer、reviewer、operator、viewer 权限分离。 |
 
 ## 6. 桌面端同步模型
@@ -405,13 +413,15 @@ flowchart LR
   - `POST /api/v1/oem/content-execution-queue`
   - `GET /api/v1/oem/content-action-records`
   - `POST /api/v1/oem/content-action-records`
+  - `GET /api/v1/oem/content-command-centers`
+  - `POST /api/v1/oem/content-command-centers`
   - `GET /api/v1/oem/content-material-coverage`
   - `POST /api/v1/oem/content-material-coverage`
   - `GET /api/v1/oem/content-knowledge-releases`
   - `POST /api/v1/oem/content-knowledge-releases`
   - `POST /api/v1/oem/content-knowledge-release-actions`
-- Bugu smoke 覆盖：工作区创建、变更包提交、重复提交幂等、旧 revision 冲突、冲突队列登记、冲突处理结论记录、审核任务同步、带结构化 payload 的审核结论、知识包发布、发布包登记、新版本默认、默认版本回滚、行动记录、行动记录 `actorRole` 保留、只读角色追加行动记录被拒绝、素材覆盖、执行队列同步 / 状态更新和列表读取。
-- Bugu 控制台第一刀：
+- Bugu smoke 覆盖：工作区创建、变更包提交、重复提交幂等、旧 revision 冲突、冲突队列登记、冲突处理结论记录、审核任务同步、带结构化 payload 的审核结论、知识包发布、知识包 release 创建权限、release 重复提交幂等、旧 `baseRevision` 发布冲突、不安全 release payload 拦截、内网公开包地址拦截、只读角色创建 release 被拒绝、发布包登记、新版本默认、默认版本回滚、行动记录、行动记录 `actorRole` 和 `artifactRefs` 保留、目标确认 / 作战单元保存 / 执行队列同步行动类型保存和筛选、只读角色追加行动记录被拒绝、素材覆盖、执行队列同步 / 状态更新和列表读取。
+- Bugu 控制台当前实现：
   - `lib/oem-site.ts` 新增团队内容工作区读取函数和摘要类型。
   - `components/account/content-workspace-panel.tsx` 新增“团队内容工作区”业务面板。
   - `components/account/bugu-account-client.tsx` 将面板接入控制台主路径。
@@ -426,10 +436,10 @@ flowchart LR
 - Content Studio `buildContentSyncConflictMergeDraft` 和 Bugu `content-sync-conflict-merge`：把同步冲突影响内容组装为逐项合并处理清单，桌面端和控制台展示本机提交、团队当前内容、建议处理方式和下一步；Bugu resolve 接口会保存清单、追加行动记录并推进 revision，当前不直接改写业务字段。
 - Bugu `content-knowledge-release-actions`：支持将任一已发布团队知识包设为默认版本，控制台用它完成回滚到旧版本。
 - Content Studio `scripts/verify-content-knowledge-release-online.mjs`：提供只读在线验收入口，只执行 Bugu release 查询和公开包 HEAD / GET 校验；可验证公开地址、大小、sha256，并阻止 metadata-only 版本被当成可分发成功。
-- Content Studio `scripts/verify-content-team-sharing-online.mjs`：提供两账号只读团队共享验收，除工作区、默认知识包和接口可读外，还比对审核任务 ID 清单与执行队列 ID 清单，避免只证明“接口可读”却没有证明两端看到同一批业务对象。
-- Content Studio `scripts/verify-content-ontology-v1-report.mjs`：生产归档门禁会拒绝 localhost / mock、公开包不可访问、sha256 缺失、两账号 revision 不一致，以及审核任务 / 执行队列清单不一致的报告。
+- Content Studio `scripts/verify-content-team-sharing-online.mjs`：提供两账号只读团队共享验收，除工作区、默认知识包和接口可读外，还分页拉取并比对 `content-knowledge-maps`、`content-build-runs`、`content-command-centers`、审核任务、执行队列、行动记录和团队知识包版本 ID 清单，避免只证明“接口可读”却没有证明两端看到同一批业务对象。
+- Content Studio `scripts/verify-content-ontology-v1-report.mjs`：生产归档门禁会拒绝 localhost、内网地址、链路本地地址、mock、公开包不可访问、sha256 缺失、两账号 revision 不一致，以及三类 current 主事实源、审核任务、执行队列、行动记录和团队知识包版本清单不一致或未完整分页拉取的报告。
 
-仍未完成的服务端切片：
+生产证据待补：
 
-- 两台设备或两个用户的端到端团队共享、默认知识包拉取和下游消费真实报告。
-- 真实生产 R2 / OSS 公开下载地址执行报告。
+- 使用真实 Bugu 团队工作区、两个真实用户和两台设备跑通团队共享、默认知识包拉取和下游消费，并归档线上验收报告。
+- 使用真实生产 R2 / OSS 公开下载地址执行报告，校验 size、sha256 和公开访问。

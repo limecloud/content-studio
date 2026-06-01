@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AssetReviewRecord, GenerationLogEntry, InputSourcePurpose, InputSourceRecord, InputSourceStatus, PlatformDraftRecord, WorkflowDefinition, WorkflowInputField, WorkflowRunRecord, WorkflowRunStatus } from '../../../../shared/types';
+import type { AssetReviewRecord, ContentKnowledgeRelease, ContentKnowledgeReleaseReference, GenerationLogEntry, InputSourcePurpose, InputSourceRecord, InputSourceStatus, PlatformDraftRecord, WorkflowDefinition, WorkflowInputField, WorkflowRunRecord, WorkflowRunStatus } from '../../../../shared/types';
 import { inputSourceMatchesWorkflowDefinitionKey, selectWorkflowInputSourceIdsForDefinition, workflowInputPurposesForDefinitionKey } from '../../../../shared/inputSourcePolicy';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
 import { sectionLabel } from '../../app/formatters';
@@ -43,6 +43,7 @@ interface WorkflowFeatureModuleProps {
   inputSources: InputSourceRecord[];
   assetReviews: AssetReviewRecord[];
   platformDrafts: PlatformDraftRecord[];
+  teamKnowledgePackageVersions: ContentKnowledgeRelease[];
   copiedPlatformDraftId: string | null;
   activeDefinitionId: string;
   activeRunId: string;
@@ -51,7 +52,12 @@ interface WorkflowFeatureModuleProps {
   onCreateDraft: () => void;
   onPublishDefinition: (definitionId?: string) => void;
   onUpdateDefinition: (definition: WorkflowDefinition) => void;
-  onStartRun: (definitionId?: string, inputs?: Record<string, string>, inputSourceIds?: string[]) => void;
+  onStartRun: (
+    definitionId?: string,
+    inputs?: Record<string, string>,
+    inputSourceIds?: string[],
+    teamKnowledgeRelease?: ContentKnowledgeReleaseReference | null,
+  ) => void;
   onOpenInputSources: () => void;
   onRunAction: (action: WorkflowRunAction, runId: string) => void;
   onRevealPath: (path: string) => void;
@@ -259,6 +265,27 @@ function isPathLike(value: string): boolean {
 function fileNameFromPath(value: string): string {
   const parts = value.replace(/\\/g, '/').split('/').filter(Boolean);
   return parts[parts.length - 1] ?? '本地文件';
+}
+
+function teamKnowledgeReleaseReference(release?: ContentKnowledgeRelease): ContentKnowledgeReleaseReference | undefined {
+  if (!release) return undefined;
+  return {
+    id: release.serverReleaseId || release.id,
+    title: release.title,
+    version: release.version,
+    contentKnowledgeMapId: release.contentKnowledgeMapId,
+    contentKnowledgeMapTitle: release.contentKnowledgeMapTitle,
+    packageObjectKey: release.packageObjectKey,
+    packagePublicUrl: release.packagePublicUrl,
+    packageUploadStatus: release.packageUploadStatus,
+    approvalStatus: release.approvalStatus,
+  };
+}
+
+function teamKnowledgeReleaseLabel(release: ContentKnowledgeRelease): string {
+  const mapTitle = release.contentKnowledgeMapTitle ? ` · ${release.contentKnowledgeMapTitle}` : '';
+  const upload = release.packageUploadStatus ? ` · ${release.packageUploadStatus}` : '';
+  return `${release.title} ${release.version}${mapTitle}${upload}`;
 }
 
 function inputSourceTimestamp(source: InputSourceRecord): string {
@@ -1368,6 +1395,7 @@ function SopRunner({
   definition,
   latestRun,
   inputSources,
+  teamKnowledgePackageVersions,
   workspaceReady,
   busy,
   onStartRun,
@@ -1379,9 +1407,15 @@ function SopRunner({
   definition?: WorkflowDefinition;
   latestRun?: WorkflowRunRecord;
   inputSources: InputSourceRecord[];
+  teamKnowledgePackageVersions: ContentKnowledgeRelease[];
   workspaceReady: boolean;
   busy: boolean;
-  onStartRun: (definitionId?: string, inputs?: Record<string, string>, inputSourceIds?: string[]) => void;
+  onStartRun: (
+    definitionId?: string,
+    inputs?: Record<string, string>,
+    inputSourceIds?: string[],
+    teamKnowledgeRelease?: ContentKnowledgeReleaseReference | null,
+  ) => void;
   onSelectRun: (runId: string) => void;
   onRunAction: (action: WorkflowRunAction, runId: string) => void;
   onOpenInputSources: () => void;
@@ -1389,7 +1423,24 @@ function SopRunner({
 }) {
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [selectedInputSourceIds, setSelectedInputSourceIds] = useState<string[]>([]);
+  const [selectedTeamReleaseId, setSelectedTeamReleaseId] = useState('');
   const inputSourcesSignature = useMemo(() => sourceSignature(inputSources), [inputSources]);
+  const publishedTeamKnowledgeReleases = useMemo(
+    () => teamKnowledgePackageVersions.filter((release) => release.status === 'published'),
+    [teamKnowledgePackageVersions],
+  );
+  const selectedTeamRelease = useMemo(
+    () => publishedTeamKnowledgeReleases.find((release) => (
+      release.id === selectedTeamReleaseId || release.serverReleaseId === selectedTeamReleaseId
+    )),
+    [publishedTeamKnowledgeReleases, selectedTeamReleaseId],
+  );
+  const selectedTeamReleaseRef =
+    selectedTeamReleaseId === 'none'
+      ? null
+      : selectedTeamReleaseId
+        ? teamKnowledgeReleaseReference(selectedTeamRelease)
+        : undefined;
   const matchingInputSources = useMemo(
     () => definition
       ? inputSources
@@ -1406,6 +1457,14 @@ function SopRunner({
   useEffect(() => {
     setSelectedInputSourceIds(definition ? selectWorkflowInputSourceIdsForDefinition(definition, inputSources) : []);
   }, [definition?.id, inputSourcesSignature]);
+
+  useEffect(() => {
+    if (!selectedTeamReleaseId || selectedTeamReleaseId === 'none') return;
+    const stillAvailable = publishedTeamKnowledgeReleases.some((release) => (
+      release.id === selectedTeamReleaseId || release.serverReleaseId === selectedTeamReleaseId
+    ));
+    if (!stillAvailable) setSelectedTeamReleaseId('');
+  }, [publishedTeamKnowledgeReleases, selectedTeamReleaseId]);
 
   if (!definition) {
     return (
@@ -1463,7 +1522,7 @@ function SopRunner({
         <button
           className="primary small"
           disabled={!canRun || !canRunInputs || !canRunSources}
-          onClick={() => onStartRun(definition.id, inputs, selectedInputSources.map((source) => source.id))}
+          onClick={() => onStartRun(definition.id, inputs, selectedInputSources.map((source) => source.id), selectedTeamReleaseRef)}
         >
           运行 SOP
         </button>
@@ -1498,6 +1557,39 @@ function SopRunner({
             )}
           </label>
         ))}
+      </div>
+      <div className="workflow-team-release-picker">
+        <div>
+          <p className="eyebrow">团队知识包</p>
+          <h4>
+            {selectedTeamRelease
+              ? `${selectedTeamRelease.title} ${selectedTeamRelease.version}`
+              : selectedTeamReleaseId === 'none'
+                ? '本次不绑定团队知识包'
+                : publishedTeamKnowledgeReleases.length
+                  ? '自动匹配当前项目版本'
+                  : '暂无已发布团队知识包'}
+          </h4>
+          <span>
+            {selectedTeamRelease
+              ? '本次 SOP 会沿用所选团队版本，并在运行记录中保留追溯。'
+              : selectedTeamReleaseId === 'none'
+                ? '本次只使用表单输入和所选资料来源，不写入团队知识包版本。'
+                : '系统会优先匹配当前内容知识地图的已发布版本，避免误用其他项目口径。'}
+          </span>
+        </div>
+        <label>
+          <span>本次 SOP 口径版本</span>
+          <select value={selectedTeamReleaseId} onChange={(event) => setSelectedTeamReleaseId(event.target.value)}>
+            <option value="">自动匹配当前项目已发布版本</option>
+            <option value="none">不绑定团队知识包</option>
+            {publishedTeamKnowledgeReleases.map((release) => (
+              <option key={release.serverReleaseId || release.id} value={release.serverReleaseId || release.id}>
+                {teamKnowledgeReleaseLabel(release)}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <div className="workflow-input-source-picker">
         <div className="workflow-input-source-picker-head">
@@ -2085,6 +2177,7 @@ export function WorkflowFeatureModule({
   inputSources,
   assetReviews,
   platformDrafts,
+  teamKnowledgePackageVersions,
   copiedPlatformDraftId,
   activeDefinitionId,
   activeRunId,
@@ -2222,6 +2315,7 @@ export function WorkflowFeatureModule({
               definition={runnerDefinition}
               latestRun={latestRun}
               inputSources={inputSources}
+              teamKnowledgePackageVersions={teamKnowledgePackageVersions}
               workspaceReady={workspaceReady}
               busy={busy}
               onStartRun={onStartRun}

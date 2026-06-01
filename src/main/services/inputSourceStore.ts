@@ -5,6 +5,7 @@ import type {
   InputSourceKind,
   InputSourcePurpose,
   InputSourceRecord,
+  InputSourceSensitivity,
   ImportInputSourceFromFileOptions,
   RegisterInputSourceInput,
 } from '../../shared/types';
@@ -39,6 +40,51 @@ function compactTags(tags?: string[]): string[] {
   return Array.from(
     new Set((tags ?? []).map((tag) => tag.trim()).filter(Boolean)),
   ).slice(0, 12);
+}
+
+function normalizeSensitivity(value: unknown): InputSourceSensitivity | undefined {
+  return value === 'public' || value === 'internal' || value === 'confidential' || value === 'restricted'
+    ? value
+    : undefined;
+}
+
+function inferSensitivity(input: {
+  sensitivity?: unknown;
+  purpose: InputSourcePurpose;
+  title?: string;
+  tags?: string[];
+  summary?: string;
+  text?: string;
+  extractedText?: string;
+}): InputSourceSensitivity {
+  const explicit = normalizeSensitivity(input.sensitivity);
+  if (explicit) return explicit;
+  const text = [
+    input.title,
+    input.summary,
+    input.text,
+    input.extractedText,
+    ...(input.tags ?? []),
+  ].filter(Boolean).join('\n');
+  if (/仅本机|禁止共享|不能共享|只在本机|restricted|do not share/i.test(text)) return 'restricted';
+  if (/私有客户|客户资料|用户手机号|微信号|客服记录|未公开|内部投放|投放数据|保密|confidential|合同|报价/i.test(text)) {
+    return 'confidential';
+  }
+  if (input.purpose === 'user-feedback') return 'confidential';
+  if (/公开资料|官网|已发布|public|published/i.test(text)) return 'public';
+  return 'internal';
+}
+
+function normalizeRecord(source: InputSourceRecord): InputSourceRecord {
+  const sensitivity = inferSensitivity({
+    sensitivity: (source as InputSourceRecord & { sensitivity?: unknown }).sensitivity,
+    purpose: source.purpose,
+    title: source.title,
+    tags: source.tags,
+    summary: source.summary,
+    extractedText: source.extractedText,
+  });
+  return source.sensitivity === sensitivity ? source : { ...source, sensitivity };
 }
 
 function normalizeText(value?: string): string | undefined {
@@ -77,7 +123,7 @@ function buildSummary(input: RegisterInputSourceInput, kind: InputSourceKind): s
 export class InputSourceStore {
   async list(workspacePath: string): Promise<InputSourceRecord[]> {
     const sources = await readJsonFile<InputSourceRecord[]>(inputSourcesFilePath(workspacePath), []);
-    return sortSources(sources);
+    return sortSources(sources.map(normalizeRecord));
   }
 
   async remove(workspacePath: string, sourceId: string): Promise<InputSourceRecord | null> {
@@ -110,6 +156,7 @@ export class InputSourceStore {
       kind,
       status: statusFor(kind, text),
       purpose: input.purpose,
+      sensitivity: inferSensitivity(input),
       title: input.title.trim() || (sourcePath ? basename(sourcePath) : '未命名输入源'),
       sourcePath,
       sourceUrl,
@@ -177,6 +224,7 @@ export class InputSourceStore {
       workflowRunId: options?.workflowRunId,
       relatedPromptDraftId: options?.relatedPromptDraftId,
       relatedSceneCardIds: options?.relatedSceneCardIds,
+      sensitivity: options?.sensitivity,
     });
   }
 }

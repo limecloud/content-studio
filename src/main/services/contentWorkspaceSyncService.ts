@@ -23,6 +23,7 @@ import type { ContentWorkspaceSyncAdapter } from './buguContentWorkspaceSyncAdap
 import { ContentDraftChangeStore } from './contentDraftChangeStore';
 import { ContentKnowledgeMapStore } from './contentKnowledgeMapStore';
 import { ContentKnowledgeReleaseStore } from './contentKnowledgeReleaseStore';
+import { contentKnowledgeMapSensitiveIssues } from './contentKnowledgeMapSensitivityPolicy';
 import { writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 
@@ -109,23 +110,6 @@ function affectedObjects(map: ContentKnowledgeMapRecord): ContentSyncConflictAff
   })));
 
   return details.slice(0, 16);
-}
-
-function sensitiveIssues(map: ContentKnowledgeMapRecord): string[] {
-  const values = [
-    map.title,
-    ...map.gaps,
-    ...map.constraints,
-    ...map.evidence.map((item) => `${item.sourceTitle} ${item.excerpt}`),
-  ];
-  return [
-    values.some((value) => /api[_-]?key|secret|token|password|sk-[A-Za-z0-9]/i.test(value))
-      ? '检测到疑似密钥或凭证文本，不能同步或发布。'
-      : '',
-    values.some((value) => /\/Users\/|C:\\\\|\/home\//.test(value))
-      ? '检测到本机绝对路径，请先脱敏后再同步或发布。'
-      : '',
-  ].filter(Boolean);
 }
 
 function releaseVersion(): string {
@@ -245,7 +229,7 @@ export class ContentWorkspaceSyncService {
   async createDraftChange(input: CreateContentDraftChangeInput): Promise<ContentWorkspaceSyncResult> {
     const map = await this.findMap(input.workspacePath, input.contentKnowledgeMapId);
     if (!map) return { status: 'blocked', issues: ['请先生成内容知识地图。'] };
-    const issues = sensitiveIssues(map);
+    const issues = contentKnowledgeMapSensitiveIssues(map);
     const now = new Date().toISOString();
     const draftChange: ContentDraftChange = {
       id: randomUUID(),
@@ -427,7 +411,7 @@ export class ContentWorkspaceSyncService {
   async createKnowledgeRelease(input: CreateContentKnowledgeReleaseInput): Promise<ContentWorkspaceSyncResult> {
     const map = await this.findMap(input.workspacePath, input.contentKnowledgeMapId);
     if (!map) return { status: 'blocked', issues: ['请先生成内容知识地图。'] };
-    const issues = sensitiveIssues(map);
+    const issues = contentKnowledgeMapSensitiveIssues(map);
     if (issues.length) return { status: 'blocked', issues };
     const exported = await this.exporter.exportPack({ workspacePath: input.workspacePath, contentKnowledgeMapId: map.id });
     const now = new Date().toISOString();
@@ -522,6 +506,24 @@ export class ContentWorkspaceSyncService {
   private async markResolvedSyncConflict(workspacePath: string, conflict: ContentSyncConflict): Promise<void> {
     const maps = await this.maps.list(workspacePath);
     const affectedObjectIds = new Set(conflict.affectedObjectIds);
+    const mapAffectedByConflict = (map: ContentKnowledgeMapRecord): boolean => {
+      const rowIds = [
+        ...map.sellingPoints.map((row) => row.id),
+        ...map.painPoints.map((row) => row.id),
+        ...map.scenarios.map((row) => row.id),
+      ];
+      const candidateIds = new Set([
+        map.id,
+        `content-map:${map.id}`,
+        ...rowIds,
+        ...map.sellingPoints.map((row) => `selling-point:${row.id}`),
+        ...map.painPoints.map((row) => `pain-point:${row.id}`),
+        ...map.scenarios.map((row) => `scenario:${row.id}`),
+        ...map.evidence.flatMap((item) => [item.id, `evidence:${item.id}`]),
+      ]);
+      if ([...affectedObjectIds].some((id) => candidateIds.has(id))) return true;
+      return affectedObjectIds.size === 0 && Boolean(conflict.workspaceId && map.teamSync.workspaceId === conflict.workspaceId);
+    };
     const action = conflict.resolutionAction as ContentSyncConflictResolutionAction | undefined;
     const message = action === 'keep-team-version'
       ? '已选择以团队版本为准，请刷新团队工作区后再继续生产。'
@@ -529,12 +531,7 @@ export class ContentWorkspaceSyncService {
         ? '已选择保留本机修改，请重新生成变更包并提交团队工作区。'
         : '冲突处理已记录，请重新生成变更包并提交团队工作区。';
     await Promise.all(maps
-      .filter((map) => map.syncStatus === 'conflict')
-      .filter((map) => {
-        if (affectedObjectIds.has(map.id)) return true;
-        if (conflict.workspaceId && map.teamSync.workspaceId === conflict.workspaceId) return true;
-        return false;
-      })
+      .filter(mapAffectedByConflict)
       .map((map) => this.maps.update({
         ...map,
         syncStatus: 'pending-sync',

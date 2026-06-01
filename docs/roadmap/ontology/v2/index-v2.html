@@ -1,0 +1,2768 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>布谷AI内容工厂 · 电商短视频制造流水线 Ontology v2</title>
+  <link rel="icon" href="data:," />
+  <style>
+    :root {
+      --bg: #eef3f1;
+      --bg-2: #e6efeb;
+      --surface: #ffffff;
+      --surface-2: #f4f8f6;
+      --surface-3: #eaf2ef;
+      --ink: #0c1d23;
+      --ink-2: #2f474f;
+      --muted: #65797f;
+      --faint: #93a6a9;
+      --line: #e0ece7;
+      --line-2: #d3e3dd;
+      --brand: #087b6d;
+      --brand-strong: #055d52;
+      --brand-bright: #16b094;
+      --brand-soft: #def3ec;
+      --brand-glow: rgba(8, 123, 109, 0.16);
+      --blue: #2563c9;
+      --blue-soft: #e2edfb;
+      --amber: #b8730a;
+      --amber-soft: #fbeed3;
+      --red: #c0344c;
+      --red-soft: #fbe1e6;
+      --green: #117a4e;
+      --green-soft: #d8f1e3;
+      --slate: #4a626c;
+      --slate-soft: #e9f0ee;
+      --shadow-sm: 0 1px 2px rgba(13, 40, 36, 0.06);
+      --shadow: 0 2px 4px rgba(13, 40, 36, 0.05), 0 16px 40px rgba(13, 40, 36, 0.07);
+      --shadow-lg: 0 30px 80px rgba(7, 28, 24, 0.22);
+      --r-sm: 10px;
+      --r: 16px;
+      --r-lg: 20px;
+      --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", system-ui, sans-serif;
+      --mono: "SF Mono", "JetBrains Mono", "Cascadia Code", "Liberation Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      background:
+        radial-gradient(1100px 540px at 6% -8%, rgba(22, 176, 148, 0.10), transparent 60%),
+        radial-gradient(900px 520px at 102% 0%, rgba(37, 99, 201, 0.07), transparent 55%),
+        linear-gradient(180deg, #f1f6f4 0%, var(--bg) 46%, var(--bg-2) 100%);
+    }
+
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    h1, h2, h3, h4 { margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+    p { margin: 0; }
+    ::selection { background: var(--brand-glow); }
+
+    .app {
+      display: grid;
+      grid-template-columns: 264px minmax(0, 1fr) 372px;
+      min-height: 100vh;
+    }
+
+    /* ===== scrollbars ===== */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: rgba(80, 110, 105, 0.28); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(80, 110, 105, 0.45); background-clip: padding-box; }
+    .sidebar ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); background-clip: padding-box; }
+
+    /* ============ SIDEBAR ============ */
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 20px 16px 28px;
+      color: #cfe5e0;
+      background:
+        radial-gradient(420px 220px at 20% -4%, rgba(22, 176, 148, 0.22), transparent 60%),
+        linear-gradient(176deg, #0d2b32 0%, #0a232a 52%, #07181d 100%);
+      border-right: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 4px 6px 16px;
+    }
+    .logo {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 13px;
+      color: #03332d;
+      font-weight: 900;
+      font-size: 19px;
+      background: linear-gradient(145deg, #2fd1ad, #0c8a78);
+      box-shadow: 0 10px 24px rgba(22, 176, 148, 0.34), inset 0 1px 0 rgba(255,255,255,0.45);
+    }
+    .brand strong { display: block; font-size: 15px; color: #f1faf7; letter-spacing: 0.01em; }
+    .brand span { display: block; margin-top: 2px; color: #7ba39c; font-size: 11px; letter-spacing: 0.04em; }
+
+    .batch-card {
+      margin: 6px 4px 16px;
+      padding: 14px 14px 13px;
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 14px;
+      background: linear-gradient(160deg, rgba(22,176,148,0.16), rgba(255,255,255,0.03));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.07);
+    }
+    .batch-card .batch-tag {
+      display: inline-flex; align-items: center; gap: 5px;
+      margin-bottom: 8px; padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.06em;
+      color: #061f1c; background: #5fd7bb;
+    }
+    .batch-card h2 { font-size: 15px; color: #f1faf7; line-height: 1.4; }
+    .batch-card p { margin-top: 6px; color: #93b6af; font-size: 11.5px; line-height: 1.55; }
+    .batch-card .batch-id { margin-top: 9px; font-family: var(--mono); font-size: 10.5px; color: #5f8983; word-break: break-all; }
+
+    .nav-label {
+      margin: 6px 12px 9px;
+      color: #6f968f;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .stage-rail { display: grid; gap: 3px; position: relative; }
+    .stage-btn {
+      position: relative;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      gap: 11px;
+      align-items: center;
+      padding: 9px 11px;
+      border: 0;
+      border-radius: 11px;
+      color: #c2ddd7;
+      background: transparent;
+      text-align: left;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .stage-btn:hover { background: rgba(255,255,255,0.06); }
+    .stage-btn.active {
+      color: #062520;
+      background: linear-gradient(120deg, #c7f1e6, #a6e6d4);
+      box-shadow: 0 6px 16px rgba(22,176,148,0.22);
+    }
+    .stage-num {
+      display: grid; place-items: center;
+      width: 28px; height: 28px;
+      border-radius: 9px;
+      font-family: var(--mono);
+      font-size: 12px; font-weight: 800;
+      color: #9fd0c6;
+      background: rgba(255,255,255,0.07);
+      transition: all 0.15s ease;
+    }
+    .stage-btn.active .stage-num { color: #03332d; background: rgba(3,51,45,0.14); }
+    .stage-info { min-width: 0; }
+    .stage-name { display: block; font-size: 13px; font-weight: 700; }
+    .stage-owner { display: block; margin-top: 1px; font-size: 10.5px; opacity: 0.72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stage-dot { width: 8px; height: 8px; border-radius: 99px; flex-shrink: 0; }
+    .dot-ok { background: #34c98a; }
+    .dot-warn { background: #e7a33a; }
+    .dot-bad { background: #e2607a; }
+    .dot-info { background: #5b9be8; }
+
+    .side-note {
+      margin: 18px 4px 0;
+      padding: 13px 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 13px;
+      background: rgba(255,255,255,0.035);
+      color: #8caaa4;
+      font-size: 11.5px;
+      line-height: 1.65;
+    }
+    .side-note b { color: #b9d6cf; font-weight: 700; }
+
+    /* ============ MAIN ============ */
+    main {
+      min-width: 0;
+      padding: 22px 26px 48px;
+    }
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 20px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 11px;
+      border: 1px solid var(--line-2);
+      border-radius: 999px;
+      color: var(--brand-strong);
+      background: var(--brand-soft);
+      font-size: 11.5px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .kicker::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: var(--brand-bright); box-shadow: 0 0 0 3px var(--brand-glow); }
+    .topbar h1 { margin: 11px 0 7px; font-size: 27px; line-height: 1.2; }
+    .topbar .lede { max-width: 720px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+    .actions { display: flex; gap: 9px; align-items: center; }
+    .btn-primary {
+      border: 0;
+      color: #fff;
+      background: linear-gradient(135deg, #0a8676, #066055);
+      padding: 11px 18px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 13px;
+      box-shadow: 0 10px 22px rgba(6, 96, 85, 0.26), inset 0 1px 0 rgba(255,255,255,0.18);
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(6, 96, 85, 0.32), inset 0 1px 0 rgba(255,255,255,0.22); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-ghost {
+      border: 1px solid var(--line-2);
+      color: var(--slate);
+      background: var(--surface);
+      padding: 10px 15px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 13px;
+      box-shadow: var(--shadow-sm);
+      transition: border-color 0.12s ease, background 0.12s ease;
+    }
+    .btn-ghost:hover { border-color: var(--brand); background: var(--surface-2); }
+
+    /* ===== status pills ===== */
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 11px; font-weight: 700;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+    }
+    .pill::before { content: ""; width: 5px; height: 5px; border-radius: 99px; background: currentColor; }
+    .pill.ok { color: var(--green); background: var(--green-soft); }
+    .pill.warn { color: var(--amber); background: var(--amber-soft); }
+    .pill.bad { color: var(--red); background: var(--red-soft); }
+    .pill.info { color: var(--blue); background: var(--blue-soft); }
+    .pill.neutral { color: var(--slate); background: var(--slate-soft); }
+
+    /* ===== intake band ===== */
+    .intake {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 15px 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.9), rgba(244,248,246,0.9)),
+        radial-gradient(420px 120px at 0% 0%, var(--brand-glow), transparent 70%);
+      box-shadow: var(--shadow);
+    }
+    .intake-text h2 { font-size: 16px; display: flex; align-items: center; gap: 9px; }
+    .intake-text > p { margin-top: 5px; color: var(--muted); font-size: 12.5px; max-width: 560px; line-height: 1.55; }
+    .intake-metrics { display: flex; gap: 22px; margin-top: 13px; flex-wrap: wrap; }
+    .intake-metric { display: flex; flex-direction: column; gap: 2px; }
+    .intake-metric b { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+    .intake-metric span { font-size: 11px; color: var(--faint); font-weight: 600; }
+    .intake-actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; min-width: 150px; }
+    .intake-actions .pill { justify-content: center; padding: 6px; }
+
+    /* ===== pipeline track ===== */
+    .pipeline-wrap {
+      margin-bottom: 18px;
+      padding: 16px 16px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .pipeline-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 13px; }
+    .pipeline-head h3 { font-size: 13px; color: var(--ink-2); letter-spacing: 0.01em; }
+    .pipeline-head .legend { display: flex; gap: 13px; font-size: 11px; color: var(--muted); }
+    .pipeline-head .legend i { display: inline-flex; align-items: center; gap: 5px; font-style: normal; }
+    .pipeline-head .legend i::before { content: ""; width: 7px; height: 7px; border-radius: 99px; }
+    .lg-ok::before { background: var(--green); }
+    .lg-warn::before { background: var(--amber); }
+    .lg-bad::before { background: var(--red); }
+    .lg-info::before { background: var(--blue); }
+
+    .pipeline {
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .pstage {
+      position: relative;
+      flex: 1 0 0;
+      min-width: 116px;
+      padding: 12px 12px 13px;
+      border: 1px solid transparent;
+      border-radius: 13px;
+      background: transparent;
+      text-align: left;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+    }
+    .pstage:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 26px; right: -4px;
+      width: 8px; height: 8px;
+      border-top: 2px solid var(--line-2);
+      border-right: 2px solid var(--line-2);
+      transform: rotate(45deg);
+      z-index: 2;
+    }
+    .pstage:hover { background: var(--surface-2); transform: translateY(-2px); }
+    .pstage.active {
+      border-color: var(--line-2);
+      background: linear-gradient(180deg, var(--brand-soft), rgba(222,243,236,0.4));
+      box-shadow: inset 0 0 0 1px rgba(8,123,109,0.12);
+    }
+    .pstage-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+    .pstage-num {
+      display: grid; place-items: center;
+      width: 24px; height: 24px;
+      border-radius: 8px;
+      font-family: var(--mono); font-size: 11px; font-weight: 800;
+      color: var(--brand); background: var(--brand-soft);
+    }
+    .pstage.active .pstage-num { color: #fff; background: linear-gradient(135deg, #0a8676, #066055); }
+    .pstage h4 { font-size: 13.5px; margin-bottom: 4px; }
+    .pstage p { font-size: 11px; color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .pstage .pstage-out { display: block; margin-top: 8px; font-family: var(--mono); font-size: 10px; color: var(--brand-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ===== metrics strip ===== */
+    .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 11px; margin-bottom: 18px; }
+    .metric {
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+    }
+    .metric:hover { transform: translateY(-2px); border-color: var(--line-2); box-shadow: var(--shadow); }
+    .metric span { display: block; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+    .metric b { display: block; margin-top: 5px; font-size: 26px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+    .metric.accent b { color: var(--brand); }
+
+    /* ===== layout grid ===== */
+    .work { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(330px, 0.85fr); gap: 16px; align-items: start; }
+    .stack { display: grid; gap: 16px; }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;
+      padding: 15px 17px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff, var(--surface-2));
+    }
+    .panel-head h2 { font-size: 16px; display: flex; align-items: center; gap: 9px; }
+    .panel-head p { margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.5; max-width: 480px; }
+    .panel-head .ix { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-size: 13px; }
+    .panel-body { padding: 15px 17px 17px; }
+
+    /* ===== task list ===== */
+    .tasks { display: grid; gap: 9px; }
+    .task {
+      display: grid; grid-template-columns: 26px 1fr auto; gap: 12px; align-items: start;
+      padding: 12px 13px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+    }
+    .task:hover, .task.active { border-color: var(--brand); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--brand-glow); }
+    .task .tnum { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-family: var(--mono); font-size: 12px; font-weight: 800; color: var(--brand); background: var(--brand-soft); }
+    .task h3 { font-size: 13.5px; }
+    .task p { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    /* ===== gates ===== */
+    .gates { display: grid; gap: 8px; }
+    .gate {
+      display: grid; grid-template-columns: 84px 1fr auto; gap: 12px; align-items: center;
+      padding: 11px 13px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--surface-2);
+      transition: border-color 0.12s ease, background 0.12s ease;
+    }
+    .gate:hover, .gate.active { border-color: var(--brand); background: var(--surface); }
+    .gate b { font-size: 12.5px; color: var(--ink-2); }
+    .gate span { font-size: 12px; color: var(--muted); line-height: 1.45; }
+
+    /* ===== artifacts ===== */
+    .artifacts { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .artifact {
+      padding: 12px 13px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-2);
+      border-left: 3px solid var(--brand);
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .artifact:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+    .artifact b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .artifact span { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
+    /* ===== detail cards ===== */
+    .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .dcard {
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-2);
+      transition: border-color 0.12s ease, background 0.12s ease, transform 0.12s ease;
+    }
+    .dcard:hover, .dcard.active { border-color: var(--brand); background: var(--surface); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+    .dcard h3 { font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 7px; }
+    .dcard h3::before { content: ""; width: 6px; height: 6px; border-radius: 2px; background: var(--brand); transform: rotate(45deg); }
+    .dcard p { font-size: 11.5px; color: var(--muted); line-height: 1.55; }
+
+    /* ===== tables ===== */
+    .tbl-wrap { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; vertical-align: top; font-size: 12px; line-height: 1.5; border-bottom: 1px solid var(--line); }
+    th { color: var(--slate); background: var(--surface-3); font-size: 11px; font-weight: 800; letter-spacing: 0.02em; }
+    tbody tr { transition: background 0.1s ease; }
+    tbody tr:hover, tbody tr.active { background: var(--brand-soft); }
+    tbody tr:last-child td { border-bottom: 0; }
+    td strong { font-weight: 700; color: var(--ink); }
+    td code, .tbl-wrap code { font-family: var(--mono); font-size: 11px; color: var(--brand-strong); background: var(--brand-soft); padding: 1px 5px; border-radius: 5px; }
+
+    .example-note { margin-bottom: 11px; color: var(--muted); font-size: 12px; line-height: 1.55; padding: 9px 12px; background: var(--surface-3); border-radius: 9px; border-left: 3px solid var(--brand-bright); }
+
+    /* ===== contract block ===== */
+    .contract {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #143037;
+      background: linear-gradient(180deg, #102a31, #0c2228);
+    }
+    .contract-bar { display: flex; align-items: center; gap: 7px; padding: 9px 13px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+    .contract-bar i { width: 10px; height: 10px; border-radius: 99px; display: inline-block; }
+    .contract-bar i:nth-child(1) { background: #e2607a; }
+    .contract-bar i:nth-child(2) { background: #e7a33a; }
+    .contract-bar i:nth-child(3) { background: #34c98a; }
+    .contract-bar span { margin-left: 6px; font-family: var(--mono); font-size: 11px; color: #7fa8a0; }
+    .contract pre { margin: 0; padding: 14px 16px; overflow: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.7; color: #cfeae3; white-space: pre; }
+    .contract .k { color: #6fd3bb; }
+    .contract .s { color: #e0c98a; }
+    .contract .n { color: #8fc0f0; }
+
+    /* ============ RIGHT BAR ============ */
+    .rightbar {
+      position: sticky; top: 0;
+      height: 100vh; overflow: auto;
+      padding: 22px 18px 32px;
+      border-left: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(248,251,250,0.96), rgba(240,246,243,0.96));
+      backdrop-filter: blur(12px);
+    }
+    .rcard {
+      margin-bottom: 13px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    .rcard-head { padding: 12px 14px 0; }
+    .rcard-head h3 { font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+    .rcard-head h3 .rix { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 12px; background: var(--brand-soft); color: var(--brand); }
+    .rcard-body { padding: 11px 14px 13px; }
+    .kv { display: grid; grid-template-columns: 78px 1fr; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+    .kv:last-child { border-bottom: 0; }
+    .kv .k { color: var(--faint); font-weight: 600; }
+    .kv .v { font-weight: 600; color: var(--ink-2); overflow-wrap: anywhere; }
+    .kv .v.mono { font-family: var(--mono); font-size: 11px; }
+    .rcard .desc { margin-top: 9px; font-size: 12px; color: var(--muted); line-height: 1.55; }
+    .rlist { margin: 0; padding-left: 16px; }
+    .rlist li { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 4px; }
+    .rlist li::marker { color: var(--brand-bright); }
+    .selected-banner { padding: 8px 11px; border-radius: 9px; background: var(--brand-soft); border: 1px solid var(--line-2); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--brand-strong); }
+
+    /* ============ MODALS ============ */
+    .modal {
+      position: fixed; inset: 0; z-index: 50;
+      display: grid; place-items: center;
+      padding: 32px;
+      background: rgba(8, 28, 26, 0.42);
+      backdrop-filter: blur(6px);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .modal.open { opacity: 1; pointer-events: auto; }
+    .modal-panel {
+      width: min(960px, 100%);
+      max-height: calc(100vh - 64px);
+      display: flex; flex-direction: column;
+      border-radius: 18px;
+      background: var(--surface);
+      box-shadow: var(--shadow-lg);
+      border: 1px solid var(--line);
+      overflow: hidden;
+      transform: translateY(12px) scale(0.99);
+      transition: transform 0.2s ease;
+    }
+    .modal.open .modal-panel { transform: translateY(0) scale(1); }
+    .modal-head {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 18px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--surface), var(--surface-2));
+    }
+    .modal-head h2 { font-size: 18px; display: flex; align-items: center; gap: 9px; }
+    .modal-head p { margin-top: 6px; color: var(--muted); font-size: 12.5px; line-height: 1.55; max-width: 640px; }
+    .icon-btn { width: 34px; height: 34px; flex-shrink: 0; border: 1px solid var(--line-2); border-radius: 9px; background: var(--surface); color: var(--slate); font-size: 18px; line-height: 1; display: grid; place-items: center; transition: all 0.12s ease; }
+    .icon-btn:hover { background: var(--red-soft); color: var(--red); border-color: var(--red-soft); }
+    .modal-scroll { overflow: auto; padding: 18px 22px; }
+    .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--line); background: var(--surface-2); }
+
+    .modal-2col { display: grid; grid-template-columns: minmax(0,1fr) minmax(280px, 0.72fr); gap: 18px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+    .field { display: grid; gap: 6px; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { font-size: 11.5px; font-weight: 700; color: var(--slate); }
+    .field input, .field select, .field textarea {
+      width: 100%; min-width: 0;
+      border: 1px solid var(--line-2); border-radius: 9px;
+      padding: 9px 11px; background: var(--surface-2);
+      font-size: 12.5px; transition: border-color 0.12s ease, box-shadow 0.12s ease;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-glow); background: #fff; }
+    .field textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
+    .drop {
+      display: grid; place-items: center; gap: 4px;
+      min-height: 112px; padding: 14px;
+      border: 1.5px dashed var(--line-2); border-radius: 11px;
+      background: var(--brand-soft);
+      color: var(--brand-strong); text-align: center; font-size: 12.5px; line-height: 1.55;
+    }
+    .drop small { color: var(--muted); font-size: 11px; }
+    .mbox { padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
+    .mbox + .mbox { margin-top: 10px; }
+    .mbox h3 { font-size: 12.5px; margin-bottom: 8px; color: var(--ink-2); }
+    .mbox ul { margin: 0; padding-left: 16px; }
+    .mbox li, .mbox p { font-size: 11.5px; color: var(--muted); line-height: 1.6; margin-bottom: 4px; }
+    .mbox pre { margin: 0; font-family: var(--mono); font-size: 11px; line-height: 1.6; color: var(--brand-strong); white-space: pre-wrap; word-break: break-word; }
+
+    /* ============ TABS ============ */
+    .tabbar {
+      display: flex; gap: 4px;
+      margin-bottom: 16px; padding: 4px;
+      border: 1px solid var(--line); border-radius: 13px;
+      background: var(--surface); box-shadow: var(--shadow-sm);
+      position: sticky; top: 12px; z-index: 12;
+    }
+    .tab {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 9px 12px; border: 0; border-radius: 10px;
+      background: transparent; color: var(--muted);
+      font-size: 13px; font-weight: 700;
+      transition: all 0.14s ease;
+    }
+    .tab:hover { background: var(--surface-2); color: var(--ink-2); }
+    .tab.active { background: linear-gradient(135deg, #0a8676, #066055); color: #fff; box-shadow: 0 6px 14px rgba(6,96,85,0.22); }
+    .tab .tab-badge { padding: 1px 7px; border-radius: 99px; font-size: 11px; font-weight: 800; background: var(--surface-3); color: var(--slate); }
+    .tab.active .tab-badge { background: rgba(255,255,255,0.22); color: #fff; }
+
+    .tabview { display: none; animation: fade 0.22s ease; }
+    .tabview.active { display: block; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    /* ============ COVERAGE MODE BANNER ============ */
+    .cov {
+      display: none; align-items: center; gap: 18px;
+      margin-bottom: 16px; padding: 14px 18px;
+      border: 1px solid var(--line); border-radius: var(--r);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.92), rgba(244,248,246,0.92)),
+        radial-gradient(420px 120px at 100% 0%, var(--brand-glow), transparent 70%);
+      box-shadow: var(--shadow);
+    }
+    .cov.show { display: flex; }
+    .cov-text { flex: 1; min-width: 0; }
+    .cov-text h3 { font-size: 14.5px; display: flex; align-items: center; gap: 9px; }
+    .cov-text p { margin-top: 5px; font-size: 12.5px; color: var(--muted); line-height: 1.55; max-width: 620px; }
+    .cov-bar { display: flex; height: 28px; border-radius: 9px; overflow: hidden; margin-top: 12px; border: 1px solid var(--line-2); }
+    .cov-seg { display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 800; color: #fff; min-width: 0; white-space: nowrap; }
+    .cov-seg.premium { background: linear-gradient(135deg, #0a8676, #066055); }
+    .cov-seg.standard { background: linear-gradient(135deg, #2563c9, #1b478f); }
+    .cov-seg.template { background: linear-gradient(135deg, #b8730a, #8a5607); }
+    .cov-seg.aiq { background: linear-gradient(135deg, #5a7a86, #3e5660); }
+    .cov-toggle { display: flex; flex-shrink: 0; border: 1px solid var(--line-2); border-radius: 11px; overflow: hidden; background: var(--surface); }
+    .cov-opt { padding: 9px 14px; font-size: 12.5px; font-weight: 700; color: var(--muted); background: transparent; border: 0; white-space: nowrap; transition: all 0.14s ease; }
+    .cov-opt.on { background: linear-gradient(135deg, #0a8676, #066055); color: #fff; }
+    .cov-opt:not(.on):hover { background: var(--surface-2); color: var(--ink-2); }
+
+    /* ============ RECORD WORKBENCH ============ */
+    .wb-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 13px; }
+    .wb-search {
+      flex: 1; min-width: 180px;
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 13px; border: 1px solid var(--line-2); border-radius: 11px;
+      background: var(--surface); box-shadow: var(--shadow-sm);
+    }
+    .wb-search input { flex: 1; border: 0; background: transparent; font-size: 13px; }
+    .wb-search input:focus { outline: none; }
+    .wb-search .mag { color: var(--faint); font-size: 14px; }
+    .wb-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip-btn {
+      padding: 7px 13px; border: 1px solid var(--line-2); border-radius: 999px;
+      background: var(--surface); color: var(--slate); font-size: 12px; font-weight: 700;
+      transition: all 0.12s ease;
+    }
+    .chip-btn:hover { border-color: var(--brand); color: var(--brand); }
+    .chip-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+    .rec-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; }
+    .rec {
+      position: relative;
+      padding: 14px 15px; border: 1px solid var(--line); border-radius: 14px;
+      background: var(--surface); box-shadow: var(--shadow-sm); cursor: pointer; overflow: hidden;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+    }
+    .rec::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--brand); opacity: 0.7; }
+    .rec.s-bad::before { background: var(--red); }
+    .rec.s-warn::before { background: var(--amber); }
+    .rec.s-ok::before { background: var(--green); }
+    .rec.s-info::before { background: var(--blue); }
+    .rec:hover { transform: translateY(-3px); border-color: var(--line-2); box-shadow: var(--shadow); }
+    .rec-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+    .rec-id { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+    .rec h3 { font-size: 14.5px; margin: 2px 0 0; line-height: 1.35; }
+    .rec .rec-sub { font-size: 12px; color: var(--muted); margin-top: 5px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .rec-foot { display: flex; align-items: center; gap: 12px; margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--line); }
+    .rec-stat { display: flex; flex-direction: column; }
+    .rec-stat b { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+    .rec-stat span { font-size: 10px; color: var(--faint); margin-top: 3px; font-weight: 600; }
+    .rec-arrow { margin-left: auto; color: var(--faint); font-size: 16px; transition: transform 0.12s ease, color 0.12s ease; }
+    .rec:hover .rec-arrow { color: var(--brand); transform: translateX(3px); }
+
+    /* ============ DRILL DRAWER ============ */
+    .drawer-scrim {
+      position: fixed; inset: 0; z-index: 60;
+      background: rgba(8,28,26,0.4); backdrop-filter: blur(4px);
+      opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+    }
+    .drawer-scrim.open { opacity: 1; pointer-events: auto; }
+    .drawer {
+      position: fixed; top: 0; right: 0; bottom: 0; z-index: 61;
+      width: min(720px, 94vw);
+      display: flex; flex-direction: column;
+      background: var(--surface);
+      box-shadow: -30px 0 80px rgba(7,28,24,0.26);
+      transform: translateX(102%);
+      transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .drawer.open { transform: none; }
+    .drawer-head {
+      padding: 20px 24px 18px;
+      border-bottom: 1px solid var(--line);
+      background:
+        radial-gradient(420px 130px at 0% 0%, var(--brand-glow), transparent 70%),
+        linear-gradient(180deg, var(--surface), var(--surface-2));
+    }
+    .drawer-crumb { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted); margin-bottom: 11px; }
+    .drawer-crumb .sep { color: var(--faint); }
+    .drawer-crumb code { font-family: var(--mono); font-size: 11px; color: var(--brand-strong); background: var(--brand-soft); padding: 1px 6px; border-radius: 5px; }
+    .drawer-titlerow { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    .drawer-head h2 { font-size: 21px; line-height: 1.25; letter-spacing: -0.02em; }
+    .drawer-head .sub { margin-top: 7px; color: var(--muted); font-size: 13px; line-height: 1.55; max-width: 540px; }
+    .drawer-meta { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; }
+    .dm { display: flex; flex-direction: column; gap: 3px; }
+    .dm b { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+    .dm span { font-size: 11px; color: var(--faint); font-weight: 600; }
+    .drawer-body { flex: 1; overflow: auto; padding: 22px 24px 36px; }
+    .drawer-foot { padding: 14px 24px; border-top: 1px solid var(--line); background: var(--surface-2); display: flex; justify-content: flex-end; gap: 10px; }
+
+    .dsec { margin-bottom: 24px; }
+    .dsec-h { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; color: var(--slate); text-transform: uppercase; }
+    .dsec-h::before { content: ""; width: 4px; height: 14px; border-radius: 2px; background: var(--brand); }
+    .dsec-h .count { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 700; color: var(--faint); }
+
+    /* score bars (selection) */
+    .scorebar { display: grid; grid-template-columns: 92px 1fr 44px; gap: 12px; align-items: center; margin-bottom: 11px; }
+    .scorebar .lbl { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+    .scorebar .track { height: 9px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+    .scorebar .fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #16b094, #0a8676); transition: width 0.6s cubic-bezier(0.22,1,0.36,1); }
+    .scorebar .fill.neg { background: linear-gradient(90deg, #e88aa0, #c0344c); }
+    .scorebar .val { font-family: var(--mono); font-size: 12.5px; font-weight: 700; text-align: right; }
+
+    /* timeline (manufacturing) */
+    .vtimeline { display: flex; border-radius: 12px; overflow: hidden; border: 1px solid var(--line-2); margin-bottom: 14px; }
+    .vseg { position: relative; padding: 12px 11px 13px; border-right: 2px solid #fff; color: #fff; min-width: 0; }
+    .vseg:last-child { border-right: 0; }
+    .vseg.hook { background: linear-gradient(160deg, #0a8676, #066055); }
+    .vseg.pain { background: linear-gradient(160deg, #b8730a, #8a5607); }
+    .vseg.proof { background: linear-gradient(160deg, #2563c9, #1b478f); }
+    .vseg.scenario { background: linear-gradient(160deg, #5a7a86, #3e5660); }
+    .vseg.offer { background: linear-gradient(160deg, #117a4e, #0a5536); }
+    .vseg .vt { font-family: var(--mono); font-size: 10px; opacity: 0.85; }
+    .vseg .vn { font-size: 13px; font-weight: 800; margin-top: 3px; }
+    .vseg .vd { font-size: 10.5px; opacity: 0.9; margin-top: 2px; }
+    .vseg .goldmark { position: absolute; top: -1px; left: -1px; padding: 2px 6px; font-size: 9px; font-weight: 800; background: #ffd45e; color: #5a3c00; border-radius: 0 0 7px 0; }
+
+    /* shot rows */
+    .shot { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); margin-bottom: 9px; }
+    .shot .stime { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--brand-strong); }
+    .shot h4 { font-size: 13px; }
+    .shot p { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+    .shot .smeta { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 7px; }
+    .tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 700; font-family: var(--mono); background: var(--brand-soft); color: var(--brand-strong); }
+    .tag.warnt { background: var(--amber-soft); color: var(--amber); }
+    .tag.badt { background: var(--red-soft); color: var(--red); }
+
+    /* gate chain (review) */
+    .gchain { display: grid; gap: 10px; }
+    .gnode { display: grid; grid-template-columns: 40px 1fr; gap: 13px; }
+    .gnode .gicon { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-size: 17px; font-weight: 800; }
+    .gnode.pass .gicon { background: var(--green-soft); color: var(--green); }
+    .gnode.fail .gicon { background: var(--red-soft); color: var(--red); }
+    .gnode.wait .gicon { background: var(--amber-soft); color: var(--amber); }
+    .gnode .gbody { padding-bottom: 14px; }
+    .gnode h4 { font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+    .gnode p { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+    .recovery { margin-top: 9px; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--red); background: var(--red-soft); }
+    .recovery b { font-size: 11px; color: var(--red); font-weight: 800; }
+    .recovery p { font-size: 12px; color: var(--ink-2); margin-top: 4px; }
+
+    /* lineage flow */
+    .lineage { display: flex; align-items: center; gap: 0; flex-wrap: wrap; }
+    .ln-node { padding: 9px 13px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-2); font-size: 12px; font-weight: 700; }
+    .ln-node .lk { display: block; font-size: 10px; color: var(--faint); font-weight: 600; margin-top: 2px; font-family: var(--mono); }
+    .ln-arrow { padding: 0 11px; color: var(--brand); font-size: 16px; }
+
+    /* field grid (drawer) */
+    .fgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .fgrid .fc { padding: 12px 14px; background: var(--surface); }
+    .fgrid .fc .fk { font-size: 11px; color: var(--faint); font-weight: 600; }
+    .fgrid .fc .fv { font-size: 13.5px; font-weight: 700; color: var(--ink); margin-top: 4px; word-break: break-word; }
+    .fgrid .fc.full { grid-column: 1 / -1; }
+
+    /* ============ INTAKE WORKBENCH ============ */
+    .ik-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+    .ik-sum { padding: 15px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-sm); }
+    .ik-sum b { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; display: block; }
+    .ik-sum span { font-size: 11.5px; color: var(--faint); font-weight: 600; margin-top: 4px; display: block; }
+    .ik-sum.accent { background: linear-gradient(135deg, #0a8676, #066055); color: #fff; border: 0; }
+    .ik-sum.accent span { color: rgba(255,255,255,0.8); }
+
+    .resp-legend { display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 16px; }
+    .resp-tag { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid var(--line-2); background: var(--surface); }
+    .resp-tag .rd { width: 9px; height: 9px; border-radius: 99px; }
+    .resp-tag.ok .rd { background: var(--green); } .resp-tag.warn .rd { background: var(--amber); } .resp-tag.info .rd { background: var(--blue); }
+
+    .src-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 13px; }
+    .src {
+      position: relative; padding: 16px 17px; border: 1px solid var(--line); border-radius: 15px;
+      background: var(--surface); box-shadow: var(--shadow-sm); cursor: pointer; overflow: hidden;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+    }
+    .src:hover { transform: translateY(-3px); border-color: var(--line-2); box-shadow: var(--shadow); }
+    .src::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+    .src.s-ok::before { background: var(--green); } .src.s-warn::before { background: var(--amber); }
+    .src.s-bad::before { background: var(--red); } .src.s-info::before { background: var(--blue); }
+    .src-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .src-top h3 { font-size: 15px; }
+    .src-top .src-out { font-family: var(--mono); font-size: 10px; color: var(--faint); margin-top: 4px; display: block; }
+    .lvl-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 7px; font-size: 11px; font-weight: 800; font-family: var(--mono); }
+    .lvl-badge.l0 { background: var(--green-soft); color: var(--green); }
+    .lvl-badge.l1 { background: var(--blue-soft); color: var(--blue); }
+    .lvl-badge.l2 { background: var(--amber-soft); color: var(--amber); }
+    .src-sub { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 10px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .src-stats { display: flex; gap: 16px; margin: 11px 0; }
+    .src-stat b { font-size: 13.5px; font-weight: 800; } .src-stat span { font-size: 10px; color: var(--faint); display: block; margin-top: 2px; font-weight: 600; }
+    .cover-track { height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin-top: 4px; }
+    .cover-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #16b094, #0a8676); }
+    .cover-fill.lowc { background: linear-gradient(90deg, #e8a33a, #b8730a); } .cover-fill.zeroc { background: var(--red); }
+    .src-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 11px; border-top: 1px dashed var(--line); }
+    .src-resp { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 6px; }
+    .src-resp.自助 { background: var(--green-soft); color: var(--green); }
+    .src-resp.实施顾问 { background: var(--amber-soft); color: var(--amber); }
+    .src-resp.系统自动 { background: var(--blue-soft); color: var(--blue); }
+    .src-foot .rec-arrow { margin-left: auto; color: var(--faint); font-size: 16px; transition: transform 0.12s ease, color 0.12s ease; }
+    .src:hover .rec-arrow { color: var(--brand); transform: translateX(3px); }
+
+    /* maturity ladder */
+    .ladder { display: flex; gap: 0; margin: 4px 0 2px; }
+    .ladder-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; position: relative; }
+    .ladder-step::after { content: ""; position: absolute; top: 9px; left: 50%; width: 100%; height: 2px; background: var(--line-2); z-index: 0; }
+    .ladder-step:last-child::after { display: none; }
+    .ladder-dot { width: 18px; height: 18px; border-radius: 99px; background: var(--surface-3); border: 2px solid var(--line-2); z-index: 1; display: grid; place-items: center; font-size: 9px; font-weight: 800; color: var(--faint); }
+    .ladder-step.done .ladder-dot { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .ladder-step.cur .ladder-dot { background: var(--brand-strong); border-color: var(--brand-strong); color: #fff; box-shadow: 0 0 0 4px var(--brand-soft); }
+    .ladder-lbl { font-size: 10px; font-weight: 700; color: var(--muted); }
+    .ladder-step.cur .ladder-lbl { color: var(--brand-strong); }
+
+    /* mapping table */
+    .map-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .map-tbl th { text-align: left; padding: 8px 11px; font-size: 11px; color: var(--faint); font-weight: 700; border-bottom: 1px solid var(--line); }
+    .map-tbl td { padding: 9px 11px; border-bottom: 1px solid var(--line); }
+    .map-tbl td code { font-family: var(--mono); font-size: 11px; color: var(--brand-strong); }
+    .map-arrow { color: var(--faint); }
+    .map-st { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 6px; white-space: nowrap; }
+    .map-st.done { background: var(--green-soft); color: var(--green); }
+    .map-st.ai { background: var(--blue-soft); color: var(--blue); }
+    .map-st.miss { background: var(--red-soft); color: var(--red); }
+
+    /* adapter cards */
+    .ad-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; }
+    .ad-card { padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+    .ad-card h4 { font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .ad-reuse { font-size: 11px; font-weight: 800; color: var(--brand-strong); background: var(--brand-soft); padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+    .ad-card .ad-cov { font-size: 11px; color: var(--muted); margin-top: 6px; } .ad-card .ad-cov code { font-family: var(--mono); font-size: 10.5px; }
+    .ad-card p { font-size: 11.5px; color: var(--muted); margin-top: 7px; line-height: 1.5; }
+
+    /* sidebar intake nav + view toggle */
+    .src-nav {
+      display: flex; align-items: center; gap: 11px; width: 100%;
+      padding: 12px 13px; margin-bottom: 6px;
+      border: 1px solid var(--line-2); border-radius: 13px;
+      background: var(--surface); cursor: pointer; text-align: left;
+      transition: all 0.14s ease;
+    }
+    .src-nav:hover { border-color: var(--brand); background: var(--brand-soft); }
+    .src-nav.active { background: linear-gradient(135deg, #0a8676, #066055); border-color: transparent; box-shadow: 0 6px 16px rgba(6,96,85,0.24); }
+    .src-nav.active * { color: #fff !important; }
+    .src-nav .sn-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-strong); font-size: 15px; flex-shrink: 0; }
+    .src-nav .sn-name { font-size: 13px; font-weight: 700; }
+    .src-nav .sn-sub { font-size: 11px; color: var(--faint); margin-top: 2px; }
+    .src-nav .sn-badge { margin-left: auto; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; background: var(--amber-soft); color: var(--amber); }
+
+    #intakeWorkbench { display: none; }
+    body.intake-mode #intakeWorkbench { display: block; animation: fade 0.24s ease; }
+    body.intake-mode .intake,
+    body.intake-mode .pipeline-wrap,
+    body.intake-mode .metrics,
+    body.intake-mode .tabbar,
+    body.intake-mode .tabview { display: none !important; }
+    .iw-head { margin-bottom: 18px; }
+    .iw-head h2 { font-size: 20px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
+    .iw-head p { margin-top: 7px; color: var(--muted); font-size: 13px; line-height: 1.55; max-width: 720px; }
+    .iw-sec-h { display: flex; align-items: center; gap: 9px; margin: 22px 0 13px; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; color: var(--slate); text-transform: uppercase; }
+    .iw-sec-h::before { content: ""; width: 4px; height: 14px; border-radius: 2px; background: var(--brand); }
+    .iw-sec-h .h-note { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--faint); font-size: 11.5px; }
+
+    /* ===== 模板自助接入 ===== */
+    .tpl-band { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center;
+      margin-bottom: 16px; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r);
+      background: linear-gradient(120deg, var(--brand-soft), rgba(222,243,236,0.3)); box-shadow: var(--shadow-sm); }
+    .tpl-band h3 { font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .tpl-band p { margin-top: 6px; font-size: 12.5px; color: var(--muted); line-height: 1.55; max-width: 600px; }
+    .tpl-steps { display: flex; gap: 8px; margin-top: 11px; flex-wrap: wrap; }
+    .tpl-step { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); }
+    .tpl-step b { width: 18px; height: 18px; border-radius: 99px; background: var(--brand); color: #fff; display: grid; place-items: center; font-size: 10px; }
+    .tpl-step .arr { color: var(--faint); margin-left: 2px; }
+    .tpl-acts { display: flex; flex-direction: column; gap: 8px; min-width: 150px; }
+
+    .tpl-sheets { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }
+    .tpl-sheet { padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; transition: all .12s ease; }
+    .tpl-sheet:hover { border-color: var(--brand); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+    .tpl-sheet .tsh { display: flex; align-items: center; justify-content: space-between; }
+    .tpl-sheet h4 { font-size: 13.5px; }
+    .tpl-sheet .req { font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 99px; }
+    .tpl-sheet .req.must { background: var(--red-soft); color: var(--red); }
+    .tpl-sheet .req.opt { background: var(--slate-soft); color: var(--slate); }
+    .tpl-sheet .freq { font-size: 10.5px; color: var(--brand-strong); font-weight: 700; margin-top: 6px; }
+    .tpl-sheet p { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
+
+    /* 体检结果 */
+    .chk-row { display: grid; grid-template-columns: 86px 60px 1fr; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+    .chk-row:last-child { border-bottom: 0; }
+    .chk-row .cs { font-weight: 700; color: var(--ink-2); }
+    .chk-lvl { font-size: 10.5px; font-weight: 800; padding: 1px 8px; border-radius: 99px; text-align: center; }
+    .chk-lvl.ok { background: var(--green-soft); color: var(--green); }
+    .chk-lvl.auto { background: var(--blue-soft); color: var(--blue); }
+    .chk-lvl.warn { background: var(--amber-soft); color: var(--amber); }
+    .chk-verdict { margin-top: 14px; padding: 13px 15px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--brand-soft); }
+    .chk-verdict b { color: var(--brand-strong); font-size: 14px; }
+    .chk-verdict p { font-size: 12px; color: var(--ink-2); margin-top: 6px; line-height: 1.55; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- ========== SIDEBAR ========== -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">谷</div>
+        <div>
+          <strong>布谷AI内容工厂</strong>
+          <span>短视频制造流水线 · v2</span>
+        </div>
+      </div>
+      <div class="batch-card" data-batch="1" style="cursor:pointer">
+        <span class="batch-tag">● 当前批次 · 点击查看总览</span>
+        <h2 id="batchTitle"></h2>
+        <p id="batchObjective"></p>
+        <div class="batch-id" id="batchId"></div>
+      </div>
+      <div class="nav-label">数据基座</div>
+      <button class="src-nav" id="intakeNav">
+        <span class="sn-ic">⇲</span>
+        <span><span class="sn-name">我的数据就绪度</span><span class="sn-sub">6 源 · 缺口可补齐</span></span>
+        <span class="sn-badge" id="intakeNavBadge">2 瓶颈</span>
+      </button>
+      <div class="nav-label">批次 SOP · 9 阶段</div>
+      <nav class="stage-rail" id="stageRail"></nav>
+      <div class="side-note"><b>SOP 是运行轨道。</b>商品事实、规则、素材账本和审核结论才是流水线的事实源。页面只围绕当前批次、当前阶段和下一步动作展开。</div>
+    </aside>
+
+    <!-- ========== MAIN ========== -->
+    <main>
+      <div class="topbar">
+        <div>
+          <span class="kicker">批次工作台</span>
+          <h1 id="pageTitle"></h1>
+          <p class="lede" id="pageDesc"></p>
+        </div>
+        <div class="actions">
+          <button class="btn-ghost" id="gateAction">查看阶段门禁</button>
+          <button class="btn-primary" id="primaryAction">推进当前阶段</button>
+        </div>
+      </div>
+
+      <!-- ===== INTAKE WORKBENCH (independent view) ===== -->
+      <div id="intakeWorkbench">
+        <div class="iw-head">
+          <h2><span class="ix">⇲</span> 我的数据就绪度 <span class="pill" id="iwStatus"></span></h2>
+          <p>这里只关心「我的数据够不够、还差什么、怎么补」。接入不是上线门槛，缺数据用基线兜底先跑、补齐后回填升档，绝不阻塞制造。<b>自助源</b>可自己补齐；<b>实施顾问 / 系统自动</b>的源由布谷在后台运维，这里只看状态。</p>
+        </div>
+
+        <div class="ik-summary" id="iwSummary"></div>
+
+        <div class="iw-sec-h">没有系统？填一张表就行<span class="h-note">下载模板 → 填 → 上传 → 体检入库，缺口不阻塞</span></div>
+        <section class="tpl-band">
+          <div>
+            <h3>📋 <span id="tplName"></span></h3>
+            <p id="tplIntro"></p>
+            <div class="tpl-steps">
+              <span class="tpl-step"><b>1</b>下载模板<span class="arr">→</span></span>
+              <span class="tpl-step"><b>2</b>按 Sheet 填写<span class="arr">→</span></span>
+              <span class="tpl-step"><b>3</b>上传<span class="arr">→</span></span>
+              <span class="tpl-step"><b>4</b>体检入库</span>
+            </div>
+          </div>
+          <div class="tpl-acts">
+            <button class="btn-ghost" id="tplDownload">下载 Excel 模板</button>
+            <button class="btn-primary" id="tplUpload">上传已填模板</button>
+          </div>
+        </section>
+        <div class="tpl-sheets" id="tplSheets"></div>
+
+        <div class="iw-sec-h">数据源 · 就绪状态<span class="h-note">点击任一源查看就绪详情；自助源可直接补齐</span></div>
+        <div class="src-grid" id="iwSources"></div>
+      </div>
+
+      <!-- intake band -->
+      <section class="intake">
+        <div class="intake-text">
+          <h2>资料接入中心 <span class="pill warn" id="intakeStatus">待补齐</span></h2>
+          <p>全局唯一输入中枢。阶段只引用它产出的 InputBundle / inputRefs，不在每个阶段重复一套资料系统。</p>
+          <div class="intake-metrics" id="intakeMetrics"></div>
+        </div>
+        <div class="intake-actions">
+          <button class="btn-ghost" id="openIntake">打开接入中心</button>
+          <button class="btn-primary" id="openMissing">补齐缺口</button>
+        </div>
+      </section>
+
+      <!-- pipeline -->
+      <section class="pipeline-wrap">
+        <div class="pipeline-head">
+          <h3>制造流水线 · 商品规划 → 复盘</h3>
+          <div class="legend">
+            <i class="lg-ok">通过 / 完成</i>
+            <i class="lg-warn">进行 / 待处理</i>
+            <i class="lg-bad">阻塞 / 拦截</i>
+            <i class="lg-info">就绪</i>
+          </div>
+        </div>
+        <div class="pipeline" id="pipeline"></div>
+      </section>
+
+      <!-- metrics -->
+      <section class="metrics" id="metrics"></section>
+
+      <!-- stage tabs -->
+      <div class="tabbar" id="tabbar">
+        <button class="tab active" data-tab="overview">概览</button>
+        <button class="tab" data-tab="workbench">对象工作台 <span class="tab-badge" id="wbCount">0</span></button>
+        <button class="tab" data-tab="example">样例与契约</button>
+        <button class="tab" data-tab="detail">细节包 <span class="tab-badge" id="dcCount">6</span></button>
+      </div>
+
+      <!-- TAB: overview -->
+      <div class="tabview active" data-view="overview">
+        <section class="cov" id="covBanner">
+          <div class="cov-text">
+            <h3>全量覆盖 · 无淘汰 <span class="pill ok" id="covCount">286 / 286 商品</span></h3>
+            <p id="covDesc">每个商品都进入推广，潜力只决定制造档位和上线波次。爆款精做，长尾用 AI 兜底，没有任何商品被排除。</p>
+            <div class="cov-bar" id="covBar"></div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--faint);font-weight:700;margin-bottom:7px;text-align:right">覆盖策略</div>
+            <div class="cov-toggle">
+              <button class="cov-opt on" data-cov="brand">品牌全量</button>
+              <button class="cov-opt" data-cov="agency">代运营产能</button>
+            </div>
+          </div>
+        </section>
+        <div class="work">
+          <div class="stack">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2><span class="ix">▤</span> <span id="stageTitle"></span></h2>
+                  <p id="stageSummary"></p>
+                </div>
+                <span class="pill" id="stageStatus"></span>
+              </div>
+              <div class="panel-body"><div class="tasks" id="taskList"></div></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2><span class="ix">⛨</span> 阶段门禁</h2><p>门禁失败时必须返回恢复动作，不能把风险带到下游。点击门禁查看判定与恢复路径。</p></div>
+              </div>
+              <div class="panel-body"><div class="gates" id="gateList"></div></div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div><h2><span class="ix">⬡</span> 阶段交付物</h2><p>每个阶段都产出下游对象，而不是停留在说明或对话。</p></div>
+            </div>
+            <div class="panel-body"><div class="artifacts" id="artifactGrid"></div></div>
+          </section>
+        </div>
+      </div>
+
+      <!-- TAB: workbench -->
+      <div class="tabview" data-view="workbench">
+        <section class="panel">
+          <div class="panel-head">
+            <div><h2><span class="ix">▦</span> <span id="wbTitle">对象工作台</span></h2><p id="wbDesc">当前阶段正在处理的真实业务记录。点击任一条进入深度详情。</p></div>
+          </div>
+          <div class="panel-body">
+            <div class="wb-toolbar">
+              <div class="wb-search"><span class="mag">⌕</span><input id="wbSearch" placeholder="搜索记录 ID、名称或关键词…"></div>
+              <div class="wb-filters" id="wbFilters"></div>
+            </div>
+            <div class="rec-grid" id="recGrid"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB: example & contract -->
+      <div class="tabview" data-view="example">
+        <div class="stack">
+          <section class="panel">
+            <div class="panel-head"><div><h2><span class="ix">✦</span> <span id="exampleTitle">阶段工作样例</span></h2><p id="exampleSummary"></p></div></div>
+            <div class="panel-body" id="exampleBlock"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><div><h2><span class="ix">▦</span> 业务对象明细</h2><p>当前阶段真正处理的对象、字段、来源和下游去向。</p></div></div>
+            <div class="panel-body"><div class="tbl-wrap" id="objectTable"></div></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><div><h2><span class="ix">{ }</span> 输出契约</h2><p>阶段交付给下游前必须满足的结构化数据形态。</p></div></div>
+            <div class="panel-body"><div id="contractBlock"></div></div>
+          </section>
+        </div>
+      </div>
+
+      <!-- TAB: detail pack -->
+      <div class="tabview" data-view="detail">
+        <section class="panel">
+          <div class="panel-head"><div><h2><span class="ix">◇</span> 阶段细节包</h2><p>细节挂在当前阶段下：对象、规则、Agent、变量和恢复路径都服务当前批次。</p></div></div>
+          <div class="panel-body"><div class="detail-grid" id="detailCards"></div></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- ========== RIGHT ========== -->
+    <aside class="rightbar" id="rightbar"></aside>
+  </div>
+
+  <!-- DRILL DRAWER -->
+  <div class="drawer-scrim" id="drawerScrim"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-head" id="drawerHead"></div>
+    <div class="drawer-body" id="drawerBody"></div>
+    <div class="drawer-foot" id="drawerFoot"></div>
+  </aside>
+
+    <!-- 补齐资料弹窗 -->
+  <div class="modal" id="fillModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-head">
+        <div>
+          <h2><span class="ix" style="background:var(--brand-soft);color:var(--brand);border-radius:7px;width:24px;height:24px;display:inline-grid;place-items:center;font-size:13px;">＋</span> <span id="fillTitle">补齐资料</span></h2>
+          <p id="fillSummary"></p>
+        </div>
+        <button class="icon-btn" id="fillClose" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-scroll">
+        <div class="modal-2col">
+          <div class="form-grid" id="fillForm"></div>
+          <aside id="fillSide"></aside>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-ghost" id="fillCancel">取消</button>
+        <button class="btn-ghost" id="fillDraft">保存草稿</button>
+        <button class="btn-primary" id="fillSubmit">生成输入包</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 资料接入中心弹窗 -->
+  <div class="modal" id="intakeModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-head">
+        <div>
+          <h2><span class="ix" style="background:var(--brand-soft);color:var(--brand);border-radius:7px;width:24px;height:24px;display:inline-grid;place-items:center;font-size:13px;">⊞</span> 资料接入中心</h2>
+          <p>全局输入层：连接系统、上传文件、补齐证据、创建人工确认，阶段只消费它生成的输入包。</p>
+        </div>
+        <button class="icon-btn" id="intakeClose" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-scroll" id="intakeScroll"></div>
+    </div>
+  </div>
+
+  <script>
+  // ============ DATA ============
+  var batch = {
+    id: "batch-summer-fan-202606",
+    title: "夏季便携风扇 A 组",
+    objective: "从 286 个候选 SKU 中筛出可制造商品，生成一批抖音转化短视频制造单。",
+    target: "7 天内产出 18 条可审核视频制造单，首批发布 6 条 A/B 实验视频。",
+    owner: "电商运营 + 内容导演 + 审核负责人"
+  };
+
+  var intake = {
+    status: "待补齐",
+    metrics: [["已接入数据源", "4/7"], ["待补齐", "4"], ["输入包", "11"], ["可追溯", "78%"]],
+    cards: [
+      { id: "shop", title: "商品与库存", status: "已接入", output: "RawProductCandidate / NormalizedSku / SkuCluster", detail: "来自店铺、ERP、库存和活动表，决定哪些 SKU 进入商品规划与分档排期。" },
+      { id: "content", title: "素材与证据", status: "部分接入", output: "ClipAsset / Evidence / AssetUsageLedger", detail: "来自详情页、实拍、测试、说明书和历史素材，决定什么能支撑主张。" },
+      { id: "search", title: "搜索与评论", status: "已接入", output: "SearchSignal / IntentCluster / PainPoint", detail: "来自站内搜索、平台搜索、评论、客服和达人脚本，决定用户为什么会买。" },
+      { id: "ads", title: "投放与流量", status: "待同步", output: "DeliveryMetric / BudgetPlan / KeywordFeedback", detail: "来自投放表现、预算、词包和点击数据，用来调优而不是改写产品事实。" },
+      { id: "rules", title: "平台与品牌规则", status: "已接入", output: "ForbiddenExpression / ReviewGate / RulePatch", detail: "来自平台合规、品牌口径、审核记录和红线清单，约束所有阶段的表达。" },
+      { id: "manual", title: "人工确认", status: "待同步", output: "HumanApproval / RecoveryTask", detail: "来自运营、审核、拍摄和投放人工判断，负责活动边界、风险例外和恢复动作。" }
+    ],
+    actions: [
+      { title: "连接系统", output: "SourceConnector", detail: "连接店铺、ERP、素材库、广告后台或评论系统，适合持续同步商品、库存、投放和评论。" },
+      { title: "上传文件", output: "IntakePacket", detail: "上传 SKU 表、说明书、检测报告、素材包、历史成片、投放 CSV，保留原始文件和解析结果。" },
+      { title: "粘贴文本 / 链接", output: "SearchSignal / PainPoint", detail: "粘贴搜索词、评论、客服问答、竞品标题和达人脚本，进入意图识别和痛点聚类。" },
+      { title: "人工录入 / 确认", output: "HumanApproval", detail: "录入活动价边界、预算阈值、风险例外、拍摄确认和审核意见，形成可追溯人工确认。" },
+      { title: "导入历史项目", output: "InputBundle", detail: "导入历史视频、审核结论、素材账本和投放表现，作为矩阵、调优和复盘的历史依据。" },
+      { title: "创建补拍 / 补证据任务", output: "MissingInputTask", detail: "当缺证明镜头、缺测试、缺授权或缺活动边界时，直接创建补齐任务并分配负责人。" }
+    ],
+    missingTasks: [
+      { title: "投放报表未同步", status: "待同步", output: "DeliveryMetric", detail: "入口：连接广告后台或上传投放 CSV。补齐后交付给调优阶段，用于预算和词包动作。" },
+      { title: "活动价边界待确认", status: "待人工", output: "HumanApproval", detail: "入口：人工录入活动时间、券后价和适用 SKU。补齐后交付审核和调优阶段。" },
+      { title: "低噪测试证据缺失", status: "待补证据", output: "Evidence", detail: "入口：上传检测报告或创建补测试任务。补齐后交付建模和卖点阶段。" },
+      { title: "通勤侧脸镜头缺失", status: "待补拍", output: "ClipAsset", detail: "入口：创建补拍任务或上传素材包。补齐后交付制造阶段和素材账本。" }
+    ],
+    contract: '{\n  "batchId": "batch-summer-fan-202606",\n  "intakeSources": ["shop", "content", "search", "ads", "rules", "manual"],\n  "missingSources": ["ads", "manual", "low-noise-evidence", "commute-side-shot"],\n  "factsReady": ["product-facts", "evidence", "intent-clusters", "forbidden-expressions"],\n  "fillActions": ["connect_system", "upload_file", "paste_text", "manual_approval", "import_history", "create_missing_task"],\n  "nextSyncTasks": ["同步投放指标", "确认活动价边界", "补低噪测试证据", "补拍通勤侧脸镜头"]\n}'
+  };
+  //INTAKE_MODEL
+  // ============ 独立接入工作台数据模型 ============
+  var intakeModel = {
+    responsibilities: [
+      ["自助", "ok", "甲方自己完成：上传 Excel、粘贴文本、拍照说明书、人工确认。零对接，第一天即可用。"],
+      ["实施顾问", "warn", "需布谷实施团队：API 直连、ERP 对接、字段映射调试。成本高，只对大甲方值得做。"],
+      ["系统自动", "info", "系统自动完成：解析、字段映射、去重、新鲜度监控、缺口检测，无需人工。"]
+    ],
+    ladder: [
+      ["L0", "手动", "粘贴 / 上传 Excel / 拍照说明书。零对接，任何甲方第一天就能用。", "ok"],
+      ["L1", "半自动", "定期导出 CSV + 模板映射。中等成本，中小甲方主力档位。", "info"],
+      ["L2", "直连", "API 实时同步。高成本高新鲜度，只有大甲方值得做。", "warn"]
+    ],
+    adapters: [
+      { id: "ad-taobao-v3", name: "淘宝/天猫商品模板 v3", cover: "标题、价格、规格、库存、活动、主图", reuse: 41, owner: "系统自动", note: "覆盖淘系商品结构，新甲方选模板即用，仅需微调活动字段。" },
+      { id: "ad-douyin-v2", name: "抖音商品模板 v2", cover: "商品卡、达人挂车、短视频字段", reuse: 23, owner: "系统自动", note: "抖店商品与达人挂车结构，自动识别短视频关联字段。" },
+      { id: "ad-yonyou-erp", name: "用友 ERP 适配器", cover: "SKU、成本、实时库存、采购在途", reuse: 12, owner: "实施顾问", note: "用友 U8/NC 标准接口，需实施团队配置连接与权限。" },
+      { id: "ad-excel-generic", name: "通用 Excel 映射器", cover: "任意表头 → 本体字段", reuse: 88, owner: "系统自动", note: "甲方传任意 Excel，AI 猜列名映射，人工确认即可，覆盖最广。" },
+      { id: "ad-feishu-asset", name: "飞书/网盘素材适配器", cover: "素材文件、文件夹结构、命名规则", reuse: 19, owner: "自助", note: "甲方授权飞书或百度网盘目录，系统按命名规则归集素材。" },
+      { id: "ad-oceanengine", name: "巨量引擎投放适配器", cover: "投放表现、预算、词包、转化", reuse: 9, owner: "实施顾问", note: "巨量/千川投放后台直连，需广告账户授权，供调优阶段使用。" }
+    ],
+    //INTAKE_SOURCES
+    sources: [
+      { id: "shop", name: "商品与库存", level: "L1", levelName: "半自动", resp: "实施顾问", health: "ok",
+        output: "RawProductCandidate / NormalizedSku / SkuCluster", adapter: "ad-taobao-v3",
+        fresh: "T+1 每日", cover: 92, conf: "高", skus: "286",
+        sub: "淘系商品 + 用友库存，CSV 每日导出。库存 T+1 非实时，活动价仍需人工确认。",
+        ladder: { cur: 1, next: "升 L2 直连用友 ERP，库存实时、采购在途可见", blocker: "需实施团队配置 U8 接口与权限（约 2 人日）" },
+        mapping: [["商品标题", "NormalizedSku.title", "已映射"], ["销售价", "NormalizedSku.price", "已映射"], ["规格(写在标题里)", "NormalizedSku.spec", "AI 抽取"], ["库存数", "NormalizedSku.stock", "已映射 · T+1"], ["活动价", "—", "缺：需人工确认"]],
+        impact: "覆盖 92%，支撑全部 286 SKU 进入商品规划。升 L2 后库存实时，可放开预售类目精品档。" },
+      { id: "content", name: "素材与证据", level: "L0", levelName: "手动", resp: "自助", health: "warn",
+        output: "ClipAsset / Evidence / AssetUsageLedger", adapter: "ad-feishu-asset",
+        fresh: "手动上传", cover: 54, conf: "中", skus: "—",
+        sub: "详情页图 + 部分实拍，靠人工上传。测试报告多为 PDF 扫描件，说明书需 OCR，覆盖率偏低。",
+        ladder: { cur: 0, next: "升 L1 授权飞书素材目录，按命名规则自动归集", blocker: "甲方需整理素材目录命名规范（自助，约 0.5 人日）" },
+        mapping: [["详情页主图", "ClipAsset", "已上传"], ["实拍视频", "ClipAsset", "部分"], ["检测报告 PDF", "Evidence", "OCR 待校"], ["说明书扫描件", "Evidence.spec", "OCR 待校"], ["历史成片", "—", "缺：未上传"]],
+        impact: "覆盖仅 54%，是当前制造档位的主要瓶颈。素材不足的 SKU 只能落 AI 快产档，补素材后可升标准/精品档。" },
+      { id: "search", name: "搜索与评论", level: "L2", levelName: "直连", resp: "系统自动", health: "ok",
+        output: "SearchSignal / IntentCluster / PainPoint", adapter: "ad-douyin-v2",
+        fresh: "实时", cover: 88, conf: "高", skus: "316 词",
+        sub: "抖店 + 站内搜索 API 直连，评论与客服问答实时拉取。已自动聚成 42 个意图簇。",
+        ladder: { cur: 2, next: "已达最高档 L2", blocker: "无，保持监控新鲜度即可" },
+        mapping: [["搜索词", "SearchSignal.term", "已映射"], ["搜索量", "SearchSignal.volume", "已映射"], ["评论正文", "PainPoint.raw", "已映射"], ["客服问答", "IntentCluster", "已映射"], ["达人脚本", "SearchSignal", "已映射"]],
+        impact: "覆盖 88% 且实时，意图阶段质量天花板高。无需额外投入。" },
+      { id: "ads", name: "投放与流量", level: "L0", levelName: "手动", resp: "实施顾问", health: "bad",
+        output: "DeliveryMetric / BudgetPlan / KeywordFeedback", adapter: "ad-oceanengine",
+        fresh: "未接入", cover: 0, conf: "无", skus: "—",
+        sub: "巨量投放后台尚未授权，调优阶段暂用行业基线兜底。回填后调优动作才有真实依据。",
+        ladder: { cur: 0, next: "升 L2 直连巨量引擎，投放表现实时回写", blocker: "需甲方授权广告账户 + 实施团队配置（约 1.5 人日）" },
+        mapping: [["投放花费", "DeliveryMetric.cost", "缺：未接入"], ["3秒留存", "DeliveryMetric.retention", "缺：未接入"], ["点击率", "DeliveryMetric.ctr", "缺：未接入"], ["转化", "DeliveryMetric.cvr", "缺：未接入"], ["词包表现", "KeywordFeedback", "缺：未接入"]],
+        impact: "覆盖 0%，调优阶段当前用行业基线（低置信）。回填后预算与词包动作切换为真实数据驱动。" },
+      { id: "rules", name: "平台与品牌规则", level: "L1", levelName: "半自动", resp: "自助", health: "ok",
+        output: "ForbiddenExpression / ReviewGate / RulePatch", adapter: "ad-excel-generic",
+        fresh: "按需更新", cover: 79, conf: "高", skus: "—",
+        sub: "平台红线 + 品牌口径，甲方维护 Excel 清单。违规反馈会形成 RulePatch 前置到审核门禁。",
+        ladder: { cur: 1, next: "升 L2 订阅平台合规变更推送，规则自动更新", blocker: "平台合规 API 准入审核（实施顾问，周期较长）" },
+        mapping: [["禁用词", "ForbiddenExpression", "已映射"], ["功效边界", "ReviewGate.rule", "已映射"], ["品牌口径", "RulePatch", "已映射"], ["价格表达规则", "ReviewGate", "已映射 · 新增"], ["类目特殊规则", "—", "部分缺失"]],
+        impact: "覆盖 79%，约束全阶段表达。Offer 必须含活动时间的新规已前置到审核门禁。" },
+      { id: "manual", name: "人工确认", level: "L0", levelName: "手动", resp: "自助", health: "warn",
+        output: "HumanApproval / RecoveryTask", adapter: "ad-excel-generic",
+        fresh: "事件触发", cover: 61, conf: "中", skus: "11 待办",
+        sub: "活动边界、风险例外、拍摄与审核确认。本质是人工档，无法也不应自动化，但需流程化收口。",
+        ladder: { cur: 0, next: "升 L1 模板化确认表单 + 待办提醒，减少遗漏", blocker: "配置确认表单模板（自助，约 0.5 人日）" },
+        mapping: [["活动价边界", "HumanApproval.offer", "待确认"], ["预算阈值", "HumanApproval.budget", "已确认"], ["风险例外", "HumanApproval.risk", "待确认"], ["拍摄确认", "HumanApproval.shoot", "已确认"], ["审核意见", "RecoveryTask", "已映射"]],
+        impact: "覆盖 61%，11 项待办。人工档不追求自动化，目标是表单化、不遗漏、可追溯。" }
+    ],
+    summary: { coveredAvg: 62, selfServeRatio: "4 / 6 源可自助", l2Count: 1, blocking: "投放(0%) + 素材(54%) 是制造档位瓶颈" },
+    // ===== 模板化 Excel 自助接入（无系统甲方主路径）=====
+    template: {
+      name: "布谷内容工厂_数据模板.xlsx",
+      intro: "没有 ERP / API 也能跑：下载这一份模板，按 Sheet 填好上传即可。库存价格变了就改、有新品就加一行、定期重传——人工维护一张表，就是你的数据源。",
+      sheets: [
+        { id: "sku", name: "商品SKU", required: true, freq: "常改 · L1 主体", desc: "标题、价格、规格、库存、活动。流水线的事实底座。",
+          cols: [
+            ["商品名称", "必填", "文本", "冰感挂脖风扇 二代"],
+            ["SKU编码", "必填", "文本·唯一", "fan-neck-ice-02"],
+            ["售价", "必填", "数字", "129"],
+            ["规格", "选填", "可写标题里·系统自动拆", "白色/三档/2000mAh"],
+            ["库存", "选填", "数字·留空按充足兜底", "1680"],
+            ["活动价", "选填", "数字+起止日期", "99 (6.1-6.18)"]
+          ] },
+        { id: "evidence", name: "卖点证据", required: false, freq: "偶尔加", desc: "卖点 + 对应证据来源，决定能不能强表达。无证据的卖点自动降级为体验表达。",
+          cols: [
+            ["卖点", "必填", "文本", "续航适合通勤"],
+            ["关联SKU", "必填", "对应SKU编码", "fan-neck-ice-02"],
+            ["证据来源", "选填", "说明书/检测报告/实拍", "说明书第2页 2000mAh"],
+            ["证据等级", "选填", "下拉:已验证/待验证/无", "已验证"]
+          ] },
+        { id: "rules", name: "平台规则", required: false, freq: "很少改", desc: "禁用词、品牌口径、红线。约束所有阶段表达，违规会前置拦截。",
+          cols: [
+            ["禁用词", "必填", "文本", "三秒降温 / 全网最低"],
+            ["适用范围", "选填", "下拉:全部/标题/口播/封面", "全部"],
+            ["原因", "选填", "文本", "强功效无测试" ]
+          ] },
+        { id: "approval", name: "人工确认", required: false, freq: "按事件", desc: "活动边界、风险例外。本质是人工判断，无法自动化，填表即留痕可追溯。",
+          cols: [
+            ["确认事项", "必填", "文本", "夏季大促活动价边界"],
+            ["结论", "必填", "下拉:通过/驳回/待补充", "通过"],
+            ["边界说明", "选填", "文本", "6.1-6.18 券后99 限挂脖款"],
+            ["确认人", "选填", "文本", "运营-张" ]
+          ] }
+      ],
+      // 上传后体检（宽松：能跑先跑）
+      checkExample: {
+        file: "夏季风扇_数据.xlsx", rows: 286, sheets: 4,
+        results: [
+          { sheet: "商品SKU", level: "ok", msg: "286 行全部识别 · SKU 编码无重复" },
+          { sheet: "商品SKU", level: "auto", msg: "「规格」写在标题里 → 系统自动拆出 颜色/档位/容量 3 字段" },
+          { sheet: "商品SKU", level: "auto", msg: "12 行「库存」留空 → 暂按充足兜底（低置信），补填后自动校正" },
+          { sheet: "商品SKU", level: "warn", msg: "8 行「活动价」缺起止日期 → 进缺口队列，不阻塞上线" },
+          { sheet: "卖点证据", level: "warn", msg: "5 条卖点无证据来源 → 自动降级为体验表达，可补检测后升级" },
+          { sheet: "平台规则", level: "ok", msg: "23 条禁用词已载入门禁" },
+          { sheet: "人工确认", level: "ok", msg: "11 条确认已留痕" }
+        ],
+        verdict: { coverage: 92, status: "可上线", note: "宽松体检：能识别的已入库，缺口进队列但不阻塞。商品源覆盖率 92%，可推进商品规划。" }
+      }
+    }
+  };
+  //STAGES_DATA
+  var stages = [
+    {
+      id: "selection", no: "01", name: "商品规划", status: "当前", owner: "规划 Agent + 运营",
+      input: "店铺商品、ERP、库存、广告、评论、客服、达人反馈", output: "ProductPlan[]", primary: "生成全量排期",
+      summary: "每个商品都进入推广，不做淘汰。按潜力分配制造档位（精品/标准/模板/AI快产）和推广波次（W1/W2/W3），把资源用在刀刃上，长尾用 AI 兜底。",
+      metrics: [["候选 SKU", "286"], ["全量覆盖", "286"], ["精品+标准", "50"], ["模板+AI快产", "236"], ["待补条件", "12"]],
+      tasks: [["SKU 标准化", "清洗标题、价格、规格、库存和活动条件，合并同款变体。", "进行中"], ["潜力分档", "按需求、毛利、库存、证据、素材计算潜力分，决定制造档位而非是否制造。", "当前"], ["波次排期", "全部商品按潜力和产能排入 W1/W2/W3，没有商品被排除。", "待处理"]],
+      gates: [["全量覆盖", "每个 SKU 必须有制造档位与波次，无淘汰", "通过"], ["产能", "当期产能优先分配给高潜力档位", "待处理"], ["风险", "高风险品自动降级为合规模板，待条件满足再升档", "通过"], ["补条件", "缺库存/证据/价格的商品进入补齐队列，补完自动回排", "待处理"]],
+      artifacts: [["全量排期表", "ProductPlan，每个商品的制造档位、推广波次和投入预算。"], ["制造任务", "ManufacturingTask，按档位交付给建模与卖点（精品深建模、AI快产走模板）。"], ["补条件任务", "缺证据、缺素材、价格不清商品进入补齐队列，补完自动回排，不淘汰。"], ["档位分布图", "TierDistribution，呈现资源如何在全量商品间分配。"]]
+    },
+    {
+      id: "intent", no: "02", name: "意图", status: "进行中", owner: "意图 Agent + 增长运营",
+      input: "搜索词、站内搜索、评论、客服问答、达人脚本、投放词包、竞品标题", output: "IntentCluster[] / TrafficIntent[]", primary: "聚类流量意图",
+      summary: "把搜索词和用户表达翻译成购买意图、使用场景和隐含担忧，让商品建模不只理解参数，也理解为什么买。",
+      metrics: [["搜索词", "316"], ["意图簇", "42"], ["高意图", "18"], ["新客词", "26"], ["噪声", "74"]],
+      tasks: [["词面清洗", "合并同义词、错别字、品牌词和无关词，保留原始表达。", "完成"], ["意图聚类", "把搜索词、评论和问答聚成场景、痛点、购买角色和使用对象。", "进行中"], ["意图证据", "标注每个意图来自搜索、评论、客服还是投放反馈。", "待处理"]],
+      gates: [["来源", "每个意图必须有 sourceSignalId", "通过"], ["噪声", "无购买意图或无商品相关性的词不进入卖点", "待处理"], ["隐私", "不能推断敏感人群属性", "通过"], ["边界", "意图不能直接写成产品事实", "通过"]],
+      artifacts: [["意图簇", "IntentCluster，交付给商品事实和卖点阶段。"], ["流量意图", "TrafficIntent，记录搜索词背后的购买动机。"], ["新客词包", "KeywordSignal，供 Hook 和投放调优使用。"], ["噪声清单", "IntentNoise，避免无关词污染内容矩阵。"]]
+    },
+    {
+      id: "modeling", no: "03", name: "建模", status: "进行中", owner: "知识抽取 Agent + 本体规则",
+      input: "DeepModelingTask、商品资料、SKU 表、素材清单、平台规则", output: "ProjectOntologyPatch", primary: "生成商品事实模型",
+      summary: "把入选商品变成可执行对象：产品事实、SKU、证据、素材覆盖、禁用表达和平台风险。",
+      metrics: [["商品", "32"], ["事实", "118"], ["证据", "67"], ["风险", "19"], ["缺口", "21"]],
+      tasks: [["事实抽取", "只从来源材料抽取参数、结构、SKU 和适用边界。", "进行中"], ["来源隔离", "商品资料、评论、竞品观察和复盘反馈分图保存。", "完成"], ["规则预校验", "先跑证据、平台、品牌和素材规则。", "待处理"]],
+      gates: [["来源", "所有事实必须有 sourceGraphId", "通过"], ["竞品", "竞品观察不能支撑自家主张", "通过"], ["强主张", "必须绑定 verified 证据", "待处理"], ["SKU", "价格、组合、活动条件必须清晰", "待处理"]],
+      artifacts: [["商品事实卡", "ProductFact / SkuFact，进入卖点抽取。"], ["证据包", "Evidence，标注 verified / weak / pending / forbidden。"], ["风险预审", "PreReviewRisk，提前标注强功效、价格和儿童风险。"], ["素材覆盖图", "ClipAssetCoverage，告诉视频阶段缺什么镜头。"]]
+    },
+    {
+      id: "selling", no: "04", name: "卖点", status: "待处理", owner: "卖点 Agent + 审核规则",
+      input: "ProductFact、PainPoint、Evidence、Scenario、Offer", output: "SellingPoint[] / Claim[]", primary: "抽取可发布卖点",
+      summary: "把事实、痛点和证据组合成可发布主张、弱表达和禁用表达，而不是让模型自由发挥。",
+      metrics: [["候选卖点", "42"], ["可发布", "12"], ["待补证据", "8"], ["弱表达", "14"], ["禁用", "21"]],
+      tasks: [["痛点聚类", "从评论和客服中抽痛点、异议和原话。", "完成"], ["卖点罗列", "每条卖点必须关联事实、痛点和证据。", "待处理"], ["主张分级", "强主张、弱表达、禁用表达分开进入下游。", "待处理"]],
+      gates: [["事实", "评论不能升级为产品事实", "通过"], ["证据", "强主张必须 verified", "待处理"], ["表达", "禁用词不能进入 Hook、字幕和封面", "通过"], ["场景", "卖点必须绑定适用场景和不适用边界", "待处理"]],
+      artifacts: [["卖点知识包", "SellingPointPackage，交付给矩阵。"], ["主张库", "ClaimLibrary，区分可发布、弱表达和禁用表达。"], ["补证据任务", "MissingEvidenceTask，回到建模或人工补录。"], ["Hook 供料", "HookInput，提供痛点、卖点、风险和首镜要求。"]]
+    },
+    {
+      id: "matrix", no: "05", name: "矩阵", status: "待处理", owner: "策略 Agent + 变量库",
+      input: "SellingPointPackage、变量字典、素材账本、历史表现", output: "MatrixRow[]", primary: "生成视频组合",
+      summary: "把人群、痛点、卖点、Hook、素材、Offer 和实验变量排成可制造任务。矩阵不是脚本。",
+      metrics: [["原始组合", "864"], ["规则过滤", "513"], ["可制造", "126"], ["待实验", "32"], ["阻塞", "18"]],
+      tasks: [["组合生成", "按人群、痛点、卖点、Hook、素材和 Offer 生成候选。", "待处理"], ["规则过滤", "过滤缺证据、缺素材、高风险和变量冲突组合。", "待处理"], ["优先级排序", "按内容可制造性、历史表现和风险扣分排序。", "待处理"]],
+      gates: [["证据", "MatrixRow 不能引用待验证强主张", "通过"], ["素材", "首镜素材不能复用超限", "待处理"], ["实验", "单实验最多改 1-3 个关键变量", "通过"], ["交易", "Offer 和 SKU 条件必须清晰", "待处理"]],
+      artifacts: [["矩阵行", "MatrixRow，定义每条视频的变量组合。"], ["视频种子", "VideoSeed，交付给视频制造台。"], ["阻塞原因", "BlockedReason，用于补素材、补证据和改写。"], ["实验计划", "ExperimentPlan，定义 A/B 变量和观察指标。"]]
+    },
+    {
+      id: "manufacturing", no: "06", name: "制造", status: "待素材", owner: "导演 Agent + 素材 Agent",
+      input: "VideoSeed、ClipAsset、VoiceDirection、ReviewRules", output: "VideoManufacturingJob", primary: "生成视频制造单",
+      summary: "输出可审核制造单，不伪造成片成功；每条视频拆成 4-5 个 15 秒片段和镜头需求。",
+      metrics: [["制造单", "18"], ["片段", "90"], ["镜头", "414"], ["缺素材", "16"], ["待确认", "3"]],
+      tasks: [["片段蓝图", "生成 Hook、Pain、Proof、Scenario、Offer / CTA。", "待处理"], ["镜头清单", "为每段指定画面主体、时长、素材和证明方式。", "待素材"], ["口播字幕", "生成口播、字幕、语气、语速和表演指令。", "待处理"]],
+      gates: [["结构", "4-5 段，总时长 60-75 秒", "通过"], ["黄金三秒", "首 0-3 秒必须有 Hook 和商品线索", "待处理"], ["素材", "同一素材最多 4 次混剪", "阻塞"], ["证据", "证明镜头必须引用 Evidence", "待处理"]],
+      artifacts: [["视频制造单", "VideoManufacturingJob，进入审核闸口。"], ["分镜表", "ShotPlan，包含镜头时长、素材 ID、证明目标。"], ["素材缺口", "MaterialGapTask，交付给素材补拍。"], ["发布包草稿", "ReviewPackageDraft，等待审核。"]]
+    },
+    {
+      id: "review", no: "07", name: "审核", status: "阻塞", owner: "审核 Agent + 人工审核",
+      input: "VideoManufacturingJob、Claim、Evidence、AssetLedger、Offer", output: "ReviewDecision[]", primary: "提交审核结论",
+      summary: "审核是质量门禁；高风险会反向创建改写、补证据、补素材和人工确认任务。",
+      metrics: [["待审", "28"], ["拦截", "9"], ["需改写", "14"], ["人工确认", "11"], ["可交付", "37"]],
+      tasks: [["结构审核", "检查片段数量、黄金三秒、商品首显和 CTA。", "完成"], ["证据合规", "检查强主张、价格、竞品、儿童和平台表达。", "阻塞"], ["素材真实性", "检查素材来源、复用上限和 AI 生成标注。", "待处理"]],
+      gates: [["强功效", "3 秒降温缺测试条件", "阻塞"], ["价格", "券后价缺活动边界", "待处理"], ["素材", "asset-commute-bag-b 已 4/4", "阻塞"], ["竞品", "竞品观察不能作为自家证据", "通过"]],
+      artifacts: [["审核结论", "ReviewDecision，标注放行、改写、阻塞和人工确认。"], ["改写任务", "RewriteTask，回到卖点或脚本。"], ["补证据任务", "MissingEvidenceTask，回到建模。"], ["可交付包", "ApprovedReviewPackage，进入发布或生成。"]]
+    },
+    {
+      id: "optimization", no: "08", name: "调优", status: "待发布", owner: "投放 Agent + 增长运营",
+      input: "ApprovedReviewPackage、KeywordSignal、AudienceSignal、BudgetPlan、DeliveryMetric", output: "OptimizationAction[]", primary: "生成调优动作",
+      summary: "把审核通过的创意连接到搜索词、人群、预算和投放表现，决定加预算、停投、换 Hook、补素材或扩展词包。",
+      metrics: [["投放组", "6"], ["关键词", "84"], ["待加预算", "11"], ["待停投", "7"], ["待扩展", "18"]],
+      tasks: [["投放映射", "把视频制造单映射到关键词、意图、人群和预算组。", "待发布"], ["实时巡航", "按 3 秒留存、点击、成交、花费和违规监控创意。", "待处理"], ["动作生成", "生成加预算、降预算、停投、换首镜、换 Hook 和补素材任务。", "待处理"]],
+      gates: [["预算", "单日预算和 ROI 阈值必须清晰", "待处理"], ["归因", "调优动作必须绑定创意变量和投放指标", "通过"], ["合规", "违规或审核未通过素材不得投放", "通过"], ["人工", "预算提升超过阈值需要人工确认", "待处理"]],
+      artifacts: [["预算计划", "BudgetPlan，定义关键词、人群和预算边界。"], ["投放指标", "DeliveryMetric，记录留存、点击、成交、ROI 和花费。"], ["调优动作", "OptimizationAction，交付给投放或内容重写。"], ["词包反馈", "KeywordFeedback，回写意图和矩阵。"]]
+    },
+    {
+      id: "feedback", no: "09", name: "复盘", status: "待发布", owner: "复盘 Agent + 运营",
+      input: "发布表现、评论、商品点击、成交、违规、素材表现", output: "KnowledgeUpdate[]", primary: "回写复盘结果",
+      summary: "复盘只写回变量权重、素材疲劳、痛点发现和审核规则，不能把转化表现当成产品事实。",
+      metrics: [["实验组", "24"], ["表现回写", "156"], ["高表现模板", "18"], ["反例", "31"], ["缺数据", "6"]],
+      tasks: [["指标回收", "收集完播、点击、成交、评论、退款和违规。", "待发布"], ["变量归因", "只改 1-3 个变量，避免表现变化无法归因。", "待处理"], ["知识回写", "更新变量权重、素材疲劳、痛点异议和审核规则。", "待处理"]],
+      gates: [["归因", "一次实验不能改太多变量", "通过"], ["事实边界", "表现数据不能替代产品证据", "通过"], ["素材疲劳", "高重复素材需降权", "待处理"], ["违规反馈", "平台风险必须回写规则", "待处理"]],
+      artifacts: [["实验复盘", "ExperimentReport，记录变量、指标和结论。"], ["变量权重", "VariableWeightUpdate，影响下一轮矩阵排序。"], ["素材疲劳", "AssetFatigueUpdate，影响素材账本。"], ["规则更新", "RulePatch，进入规则和质量集。"]]
+    }
+  ];
+  //STAGE_DETAILS
+  var stageDetails = {
+    selection: {
+      cards: [
+        ["全量覆盖", "每个商品都进入推广，不做淘汰。286 个 SKU 全部获得制造档位和推广波次，区别只在投入多重资源、多快上线。"],
+        ["四档制造", "精品定制（真人拍摄+深建模）、标准产出（半定制）、批量模板（套用结构）、AI 快产（全自动生成）。爆款精做，长尾用 AI 兜底。"],
+        ["潜力分档模型", "Opportunity 需求热度、Margin 毛利、Inventory 库存、Evidence 证据、Asset 素材、Risk 风险共同决定档位与波次，而不是决定做不做。"],
+        ["波次排期", "全部商品按潜力和当期产能排入 W1 立即 / W2 本周 / W3 排队，先打高潜力，长尾依次跟上，没有商品被排除。"],
+        ["待条件不淘汰", "缺库存、缺证据、价格不清、高风险的商品不拦截，而是降级为合规模板先推，并进入补齐队列，补完自动升档回排。"],
+        ["双模式开关", "品牌全量模式：长尾自动落 AI 快产，永不淘汰；代运营产能模式：可设产能上限，超出降到最低档仍推，资源极紧时才可选开启真淘汰。"]
+      ],
+      objects: [
+        ["RawProductCandidate", "原始商品", "店铺、ERP、广告后台、达人反馈", "标准化成 NormalizedSku"],
+        ["NormalizedSku", "规范 SKU", "标题、价格、库存、活动、规格", "按同款和场景聚成 SkuCluster"],
+        ["SkuCluster", "商品簇", "同款、替代款、组合款、价格带", "进入潜力分档和主推款选择"],
+        ["ProductPlan", "商品规划", "潜力分、制造档位、推广波次、投入预算", "每个商品都有，交付建模与卖点"],
+        ["ManufacturingTask", "制造任务", "档位、波次、优先级、负责人", "精品走深建模，AI快产走模板"]
+      ],
+      example: {
+        title: "全量排期样例", summary: "每个商品都进入推广，潜力只决定制造档位和上线波次，没有一个 SKU 被淘汰。",
+        columns: ["商品簇 / SKU", "输入信号", "档位 / 波次", "下一步"],
+        rows: [
+          ["cluster-neck-fan / fan-neck-ice-02", "潜力 74，库存 1680，毛利 42%，素材覆盖 3 类", "精品定制 · W1 立即", "深建模 + 补降噪证据并行，先上"],
+          ["cluster-desk-fan / fan-desk-mini-01", "潜力 48，库存 320，素材仅详情页图", "批量模板 · W2 本周", "套用结构 AI 出片，补库存后可升档"],
+          ["cluster-clip-fan / fan-clip-baby-03", "潜力 60，儿童场景，安全证据缺失", "合规模板 · W3 排队", "先出合规版，待安全确认后升档"],
+          ["cluster-handheld / fan-handheld-pro-04", "潜力 71，历史 CTR 高，退货评论涉噪音", "标准产出 · W1 立即", "建模标记噪音异议，正常排产"]
+        ]
+      },
+      contract: '{\n  "planBatchId": "plan-summer-fan-202606",\n  "coverageMode": "brand_full",\n  "totalSku": 286,\n  "coveredSku": 286,\n  "tierDistribution": { "premium": 14, "standard": 36, "template": 92, "ai_quick": 144 },\n  "plan": {\n    "skuId": "fan-neck-ice-02",\n    "clusterId": "cluster-neck-fan",\n    "scores": { "opportunity": 86, "margin": 74, "inventory": 91, "evidence": 63, "asset": 58, "risk": -12 },\n    "potential": 74,\n    "tier": "premium",\n    "wave": "W1",\n    "pendingConditions": ["补降噪测试证据"]\n  },\n  "blockedReasons": [],\n  "nextTasks": ["深建模 fan-neck-ice-02", "补降噪证据并行不阻塞上线"]\n}'
+    },
+    intent: {
+      cards: [
+        ["搜索意图", "把用户搜索词、站内搜索、评论和客服问答转成购买意图，避免只按商品参数生成内容。"],
+        ["隐含需求", "识别词面背后的真实任务，例如分开洗、怕闷热、怕噪音、送礼、宿舍限制和通勤便携。"],
+        ["新客词包", "把高意图搜索词沉淀为 KeywordSignal，供 Hook、矩阵和投放调优使用。"],
+        ["噪声过滤", "无购买意图、无商品相关性、敏感属性推断和竞品误导词不进入卖点阶段。"],
+        ["意图证据", "每个 IntentCluster 必须关联 sourceSignalId，标明来自搜索、评论、客服还是投放反馈。"],
+        ["事实边界", "意图只能解释用户为什么买，不能替代产品事实，也不能支撑强主张。"]
+      ],
+      objects: [
+        ["SearchSignal", "搜索信号", "站内搜索、投放词、平台关键词", "聚类成 IntentCluster"],
+        ["IntentCluster", "意图簇", "搜索词、评论、客服问答", "交付给商品建模和卖点阶段"],
+        ["TrafficIntent", "流量意图", "搜索量、竞争度、购买阶段", "供矩阵和调优阶段引用"],
+        ["KeywordSignal", "关键词信号", "新客词、长尾词、转化词", "进入 Hook 和投放映射"],
+        ["IntentNoise", "噪声词", "无关词、敏感推断、竞品误导", "进入过滤清单"]
+      ],
+      example: {
+        title: "意图识别样例", summary: "同一个搜索词背后可能是购买角色、使用对象和隐含担忧，意图阶段负责把这些内容结构化。",
+        columns: ["搜索 / 评论信号", "隐含意图", "可用方式", "禁止动作"],
+        rows: [
+          ["便携风扇 地铁 排队", "通勤闷热，想要随手可用", "进入 Hook 和首镜场景", "不能写成产品降温事实"],
+          ["办公室风扇 吵不吵", "低噪担忧，怕影响同事", "进入 Objection 和 Proof 镜头", "没有测试不能强说静音"],
+          ["宿舍不能装空调", "空间限制和价格敏感", "进入场景变量和 Offer", "不能夸大替代空调"],
+          ["儿童风扇 安全", "安全边界和使用对象", "进入人工确认和风险规则", "不能默认儿童适用"]
+        ]
+      },
+      contract: '{\n  "intentBatchId": "intent-summer-fan-202606",\n  "sourceSignals": ["kw-douyin-search-001", "comment-hot-018", "cs-faq-007"],\n  "intentClusters": [\n    { "id": "intent-commute-heat", "audience": "通勤人群", "job": "排队和地铁里缓解闷热", "confidence": 0.84 },\n    { "id": "intent-office-noise", "audience": "办公室人群", "job": "不打扰同事地使用小风扇", "confidence": 0.72 }\n  ],\n  "keywordSignals": ["便携风扇 地铁 排队", "办公室风扇 吵不吵"],\n  "blockedSignals": ["儿童适用需要安全证据"]\n}'
+    },
+    modeling: {
+      cards: [
+        ["来源隔离", "商品资料、客服评论、竞品观察、历史复盘分图保存；竞品只能启发表达结构，不能支撑自家主张。"],
+        ["Shape 校验", "产品事实、SKU、Offer、Evidence、素材覆盖必须符合结构，缺字段只能 blocked 或 pending。"],
+        ["证据等级", "verified 可支撑强主张，weak 只能弱表达，pending 需要人工补证，forbidden 不得下发。"],
+        ["规则预审", "提前标注功效、安全、儿童、价格、极限词和竞品比较风险，卖点阶段不再重新猜边界。"],
+        ["素材覆盖", "按 Hook、Proof、Scenario、Offer、CTA 检查镜头库存，少哪类镜头就创建素材补拍任务。"],
+        ["边界声明", "建模输出事实和约束，不输出营销话术；LLM 只能抽取、归类、补问，不能把评论升级成事实。"]
+      ],
+      objects: [
+        ["ProductFact", "产品事实", "说明书、详情页、检测报告、人工录入", "供 SellingPoint 和 Claim 引用"],
+        ["SkuFact", "SKU 事实", "规格、价格、套餐、库存、活动条件", "供 Offer 和矩阵过滤引用"],
+        ["Evidence", "证据", "测试、图片、报告、人工确认", "决定主张可用级别"],
+        ["ForbiddenExpression", "禁用表达", "平台规则、品牌口径、审核历史", "阻止进入 Hook、字幕、封面"],
+        ["ClipAssetCoverage", "素材覆盖", "素材库、拍摄记录、AI 生成资产", "供矩阵和制造阶段判断可制造性"]
+      ],
+      example: {
+        title: "事实建模样例", summary: "建模阶段只写事实、证据和边界，所有强表达都要等卖点阶段按证据等级再生成。",
+        columns: ["抽取项", "来源", "写入方式", "门禁"],
+        rows: [
+          ["电池容量 2000mAh", "说明书第 2 页", "ProductFact verified", "可支撑续航相关主张"],
+          ["三档风力", "商品详情页和实拍按钮", "ProductFact verified", "可进入卖点和脚本"],
+          ["三秒降温", "评论原话", "PainPoint weak，不写 ProductFact", "禁止作为强功效主张"],
+          ["办公室低噪", "缺少测试条件", "Evidence pending", "需要补测试或降级表达"]
+        ]
+      },
+      contract: '{\n  "ontologyPatchId": "patch-fan-a-20260601",\n  "sourceGraphs": ["product-docs", "sku-table", "asset-ledger", "platform-rules"],\n  "facts": [\n    { "factId": "fact-battery-2000mah", "type": "ProductFact", "evidenceLevel": "verified" },\n    { "factId": "fact-quiet-mode", "type": "ProductFact", "evidenceLevel": "pending" }\n  ],\n  "evidence": ["ev-manual-01", "ev-test-noise-02"],\n  "blockedWrites": ["评论里的三秒降温不能写成产品事实"]\n}'
+    },
+    selling: {
+      cards: [
+        ["卖点罗列", "LLM 先穷举事实到痛点的组合，再按证据和场景过滤；输出卖点、弱表达、禁用表达和补证据项。"],
+        ["主张分级", "强主张必须 verified，弱表达可用于体验描述，禁用表达只能留在风险列表，不进入下游创意。"],
+        ["痛点来源", "评论和客服只提供怕闷、怕吵、怕续航短、通勤不方便等痛点，不直接证明产品能力。"],
+        ["竞品边界", "竞品爆款只能抽结构：开场、情绪、节奏、镜头关系，不能复制文案或把竞品数据当证据。"],
+        ["Hook 供料", "每条 HookInput 至少包含目标人群、痛点、卖点、商品线索、风险词和首镜要求。"],
+        ["降级策略", "证据不足时自动降级为体验表达或待补证据，不让模型把 pending 事实写进口播。"]
+      ],
+      objects: [
+        ["SellingPoint", "卖点", "ProductFact + PainPoint + Evidence", "进入矩阵组合和 Hook 生成"],
+        ["Claim", "主张", "卖点、证据等级、表达强度", "供审核和脚本生成引用"],
+        ["PainPoint", "痛点", "评论、客服、达人反馈", "供 Hook 和人群变量引用"],
+        ["Objection", "异议", "评论、售前问答、退货原因", "供反驳结构和证明镜头引用"],
+        ["HookInput", "Hook 供料", "人群、痛点、卖点、禁用词、首镜", "交付给矩阵阶段"]
+      ],
+      example: {
+        title: "LLM 卖点罗列样例", summary: "LLM 负责穷举组合，但每条候选都必须绑定事实、痛点、证据等级和下游限制。",
+        columns: ["痛点 / 事实", "候选卖点", "证据处理", "下游结果"],
+        rows: [
+          ["通勤怕闷 / 三档风力", "排队、等车、走路时可以按场景切风力", "verified，可做弱承诺", "进入 HookInput"],
+          ["外出怕没电 / 2000mAh", "半天出门不用一直找充电口", "verified，但不能承诺具体小时数", "进入 Claim"],
+          ["办公室怕吵 / 低噪评论", "开会旁边也不突兀", "pending，缺测试条件", "降级为体验表达"],
+          ["夏天怕热 / 三秒降温评论", "三秒明显降温", "forbidden", "进入 blockedClaims"]
+        ]
+      },
+      contract: '{\n  "sellingPointPackageId": "sp-fan-a-20260601",\n  "sellingPoints": [\n    { "id": "sp-commute-light", "painPoint": "通勤怕闷", "claimLevel": "weak", "evidenceId": "ev-user-comments" },\n    { "id": "sp-long-battery", "painPoint": "外出怕没电", "claimLevel": "verified", "evidenceId": "ev-manual-01" }\n  ],\n  "claims": ["续航适合通勤", "三档风力覆盖办公室和地铁排队"],\n  "blockedClaims": ["三秒降温", "全网最低价"]\n}'
+    },
+    matrix: {
+      cards: [
+        ["组合空间", "人群、痛点、卖点、Hook、首镜素材、场景、Offer、语气和节奏组成 MatrixRow，先穷举再过滤。"],
+        ["Hook 穷举", "按反常识、痛点直击、场景代入、数字承诺、对比误区、问题提问、风险提醒、优惠刺激生成候选。"],
+        ["过滤链路", "缺证据、缺素材、素材复用超限、Offer 不清、变量冲突和平台风险都会变成 BlockedReason。"],
+        ["评分模型", "优先级由可制造性、证据强度、历史 CTR、素材新鲜度、风险扣分和实验价值共同计算。"],
+        ["实验控制", "同一实验只改 1-3 个关键变量，例如 Hook 模式、首镜、卖点顺序，避免复盘无法归因。"],
+        ["矩阵边界", "矩阵只产生可制造种子，不直接写完整脚本；制造阶段再展开分段、镜头、语气和字幕。"]
+      ],
+      objects: [
+        ["MatrixRow", "矩阵行", "人群、痛点、卖点、Hook、素材、Offer", "进入可制造任务排序"],
+        ["HookPattern", "Hook 模式", "爆款拆解、历史表现、平台规则", "供 HookCandidate 穷举使用"],
+        ["VariableDictionary", "变量字典", "人群、场景、语气、镜头、价格、CTA", "约束实验变量和复盘归因"],
+        ["BlockedReason", "阻塞原因", "规则过滤、素材账本、证据缺口", "回到补素材、补证据或改写"],
+        ["ExperimentPlan", "实验计划", "矩阵行、变量差异、观察指标", "发布后交付复盘阶段"]
+      ],
+      example: {
+        title: "Hook 穷举样例", summary: "Hook 不是一句话灵感，而是模式、首镜、痛点、商品线索、风险过滤后的候选集合。",
+        columns: ["Hook 模式", "0-3 秒候选", "首镜 / 语气", "过滤结果"],
+        rows: [
+          ["痛点直击", "地铁口排队最怕这三分钟", "手持风扇入镜，语速快，轻微喘气", "通过，商品线索明确"],
+          ["反常识", "风扇不是越大越适合通勤", "包内拿出小风扇，近景对比", "通过，适合通勤人群"],
+          ["问题提问", "办公室开风扇为什么还是闷", "桌面场景，低声口播", "待证据，低噪需补测试"],
+          ["数字承诺", "三秒把热气压下去", "字幕强刺激", "拦截，强功效无证据"]
+        ]
+      },
+      contract: '{\n  "matrixRowId": "mx-fan-042",\n  "variables": {\n    "audience": "地铁通勤女性",\n    "painPoint": "夏天排队闷热",\n    "hookPattern": "痛点直击",\n    "firstShotAssetId": "asset-subway-handheld-03",\n    "tone": "快节奏真实口播"\n  },\n  "scores": { "manufacturable": 82, "evidence": 71, "novelty": 64, "risk": -8 },\n  "decision": "manufacturing_seed",\n  "blockedReasons": []\n}'
+    },
+    //MORE_DETAILS
+    manufacturing: {
+      cards: [
+        ["结构约束", "一条视频拆成 4-5 个约 15 秒片段：Hook、Pain、Proof、Scenario、Offer 或 CTA，总时长 60-75 秒。"],
+        ["黄金三秒", "0-3 秒必须同时出现 Hook、商品线索和首镜动作；禁止只有抽象情绪、纯字幕或无商品画面。"],
+        ["镜头级计划", "每个片段拆成 ShotPlan：画面主体、景别、动作、时长、素材 ID、证明目标、字幕和口播。"],
+        ["素材账本", "同一 ClipAsset 最多进入 4 条混剪；超过上限必须替换、补拍或人工确认，不能悄悄复用。"],
+        ["语气姿态", "VoiceDirection 记录语气、语速、停顿、表情、手势、站姿、走位和商品展示方式，服务拍摄和生成。"],
+        ["不伪造成片", "系统输出 VideoManufacturingJob 和 ReviewPackageDraft；真实视频生成未接入时只保留 blocked 任务。"]
+      ],
+      objects: [
+        ["VideoManufacturingJob", "视频制造单", "VideoSeed、素材账本、审核规则", "提交审核阶段"],
+        ["VideoBlueprint", "视频蓝图", "片段结构、节奏、卖点顺序", "生成 SegmentPlan 和 ShotPlan"],
+        ["SegmentPlan", "片段计划", "Hook、Pain、Proof、Scenario、Offer", "约束每段约 15 秒"],
+        ["ShotPlan", "镜头计划", "画面、动作、素材、证据、字幕、口播", "交付拍摄、混剪或生成服务"],
+        ["AssetRequirement", "素材需求", "缺首镜、缺证明镜头、缺场景镜头", "回到素材补拍和资产库"]
+      ],
+      example: {
+        title: "4-5 段视频制造样例", summary: "制造阶段把矩阵行展开成可审核的分段、镜头、口播、语气、姿态和素材使用记录。",
+        columns: ["时间段", "片段功能", "画面 / 语气 / 姿态", "素材 / 门禁"],
+        rows: [
+          ["0-3s", "Hook", "地铁口排队，手从包里拿出风扇，语速快，先露商品", "asset-subway-handheld-03，通过黄金三秒"],
+          ["3-18s", "Pain", "边走边说通勤闷热，手持风扇贴近脸侧，表情真实", "需要同场景补一个侧脸镜头"],
+          ["18-36s", "Proof", "展示三档风力按钮和说明书参数，语速放慢", "引用 ev-manual-01，禁止三秒降温"],
+          ["36-54s", "Scenario", "办公室桌面、排队、户外三连镜头，姿态自然", "asset-commute-bag-b 已 4/4，阻塞"],
+          ["54-68s", "Offer / CTA", "说明套餐和活动边界，语气收束，不夸张催促", "Offer 需人工确认券后价"]
+        ]
+      },
+      contract: '{\n  "videoJobId": "vj-fan-018",\n  "durationSec": 68,\n  "segments": [\n    { "type": "Hook", "start": 0, "end": 3, "hook": "地铁口排队最怕这三分钟", "assetId": "asset-subway-handheld-03" },\n    { "type": "Pain", "start": 3, "end": 18, "voice": "真实口播，语速偏快，手持展示" },\n    { "type": "Proof", "start": 18, "end": 36, "evidenceId": "ev-manual-01" },\n    { "type": "Scenario", "start": 36, "end": 54, "pose": "边走边展示风向和握持" },\n    { "type": "Offer", "start": 54, "end": 68, "cta": "说明套餐和活动边界" }\n  ],\n  "assetIssues": ["asset-commute-bag-b usage 4/4"]\n}'
+    },
+    review: {
+      cards: [
+        ["四轮审核", "先审结构，再审证据，再审素材，再审平台表达；任一失败都要回写具体恢复动作。"],
+        ["风险类型", "强功效、价格边界、竞品比较、儿童安全、极限词、AI 标注、素材授权和复用上限分开处理。"],
+        ["人工确认", "价格、活动、测试条件和高风险表达需要 HumanApproval，不能只靠 Agent 自动放行。"],
+        ["反向任务", "审核失败不是终点，会创建 RewriteTask、MissingEvidenceTask、MaterialGapTask 或 OfferConfirmTask。"],
+        ["不可绕过", "发布包必须引用 ReviewDecision，脚本、字幕、封面和镜头都通过后才进入可交付状态。"],
+        ["可交付条件", "所有强主张 verified、素材未超限、Offer 条件清晰、平台高风险清零，才生成 ApprovedReviewPackage。"]
+      ],
+      objects: [
+        ["ReviewGate", "审核门禁", "结构、证据、素材、平台规则", "产出通过、改写、阻塞或人工确认"],
+        ["ReviewDecision", "审核结论", "VideoJob、Claim、Evidence、AssetLedger", "决定是否进入交付包"],
+        ["HumanApproval", "人工确认", "价格、测试条件、授权、风险例外", "作为放行证据或阻塞记录"],
+        ["RewriteTask", "改写任务", "风险表达、缺证据主张、结构问题", "回到卖点、矩阵或制造阶段"],
+        ["ApprovedReviewPackage", "可交付包", "通过审核的视频制造单和发布资料", "交付发布或生成队列"]
+      ],
+      example: {
+        title: "审核反向任务样例", summary: "审核不是只给通过或失败，而是把每个问题反向变成明确的改写、补证据、补素材或人工确认任务。",
+        columns: ["审核项", "发现问题", "处理结论", "反向任务"],
+        rows: [
+          ["黄金三秒", "首镜有商品，但 Hook 口播缺商品线索", "改写", "RewriteTask：0-3 秒补商品线索"],
+          ["强功效", "三秒降温缺测试条件", "阻塞", "MissingEvidenceTask：补测试条件或删除表达"],
+          ["素材复用", "asset-commute-bag-b 已 4/4", "阻塞", "MaterialGapTask：补拍通勤侧脸镜头"],
+          ["价格", "券后价缺活动时间", "人工确认", "HumanApproval：运营确认活动边界"]
+        ]
+      },
+      contract: '{\n  "reviewPackageId": "rp-fan-018",\n  "status": "blocked",\n  "issues": [\n    { "gate": "evidence", "level": "high", "message": "三秒降温缺测试条件", "nextTask": "MissingEvidenceTask" },\n    { "gate": "asset", "level": "medium", "message": "asset-commute-bag-b 已达 4/4", "nextTask": "MaterialGapTask" }\n  ],\n  "requiredHumanApprovals": ["活动价边界确认", "测试条件确认"],\n  "deliverable": null\n}'
+    },
+    optimization: {
+      cards: [
+        ["投放映射", "把 ApprovedReviewPackage 映射到关键词、人群、预算组和创意变量，知道每条视频为什么投给谁。"],
+        ["实时巡航", "监控 3 秒留存、完播、点击、成交、花费、ROI 和违规，不等人工每天手动拉报表。"],
+        ["预算动作", "根据 ROI、学习期和风险生成加预算、降预算、停投和转人工确认动作。"],
+        ["创意动作", "当预算没问题但表现低时，反向创建换 Hook、换首镜、换卖点顺序和补素材任务。"],
+        ["词包扩展", "把高转化长尾词、搜索词和评论词回写到 KeywordFeedback，驱动下一轮意图识别。"],
+        ["调优边界", "投放表现只能调内容变量和预算，不能改写产品事实或绕过审核。"]
+      ],
+      objects: [
+        ["BudgetPlan", "预算计划", "投放目标、ROI 阈值、日预算、人群", "约束投放动作"],
+        ["DeliveryMetric", "投放指标", "留存、点击、成交、花费、违规", "触发 OptimizationAction"],
+        ["OptimizationAction", "调优动作", "预算、创意、素材、词包、人工确认", "交付投放或上游阶段"],
+        ["KeywordFeedback", "词包反馈", "搜索词、转化词、低效词", "回到意图和矩阵阶段"],
+        ["AudienceFeedback", "人群反馈", "新客、老客、转化阶段、场景偏好", "影响下一轮矩阵排序"]
+      ],
+      example: {
+        title: "投放调优样例", summary: "调优阶段把创意表现变成动作，不只是记录数据；每个动作都必须能回到变量、预算或人工确认。",
+        columns: ["投放信号", "系统判断", "调优动作", "回写去向"],
+        rows: [
+          ["地铁通勤词 3 秒留存 71%，ROI 2.4", "Hook 和首镜有效", "预算 +20%，扩展相近长尾词", "KeywordFeedback + MatrixScore"],
+          ["办公室低噪词点击高，成交低", "证据不足影响转化", "补低噪测试证据，改 Proof 镜头", "MissingEvidenceTask"],
+          ["同一首镜 CTR 连续下降", "素材疲劳", "降低素材权重，创建补拍任务", "AssetFatigueUpdate"],
+          ["预算提升超过阈值", "需要人工确认", "暂停自动加预算", "HumanApproval"]
+        ]
+      },
+      contract: '{\n  "optimizationRunId": "opt-fan-a-20260608",\n  "budgetPlanId": "budget-fan-a-001",\n  "deliveryMetrics": [\n    { "videoJobId": "vj-fan-018", "keyword": "便携风扇 地铁 排队", "threeSecondRetention": 0.71, "roi": 2.4, "spend": 320 },\n    { "videoJobId": "vj-fan-022", "keyword": "办公室风扇 吵不吵", "clickRate": 0.118, "roi": 0.9, "spend": 180 }\n  ],\n  "actions": [\n    { "type": "increase_budget", "target": "vj-fan-018", "requiresHuman": false },\n    { "type": "missing_evidence", "target": "低噪测试", "requiresHuman": true }\n  ],\n  "factWrites": []\n}'
+    },
+    feedback: {
+      cards: [
+        ["反馈信号", "完播、3 秒留存、点击、成交、评论、退款、违规和素材表现分开记录，不混成一个爆款分。"],
+        ["归因原则", "只对本轮实验改动变量做归因，不能把多个变量同时变化的结果写成确定结论。"],
+        ["变量回写", "HookPattern、首镜、语气、卖点顺序、Offer 和 CTA 按表现更新权重，影响下一轮矩阵排序。"],
+        ["事实边界", "转化好只能说明内容策略有效，不能证明产品功效；产品事实仍必须来自 Evidence。"],
+        ["素材疲劳", "同素材高频出现、CTR 下降或评论识别重复时降权，进入 AssetFatigueUpdate。"],
+        ["规则更新", "违规、审核误杀、用户误解和平台新规会形成 RulePatch，前置到建模、卖点和审核阶段。"]
+      ],
+      objects: [
+        ["ExperimentReport", "实验复盘", "发布表现、变量差异、观察窗口", "沉淀高表现模板和反例"],
+        ["PerformanceFeedback", "表现反馈", "完播、点击、成交、评论、违规", "更新变量权重和风险提示"],
+        ["KnowledgeUpdate", "知识更新", "痛点、异议、表达、规则、素材疲劳", "回写知识库和规则层"],
+        ["AssetFatigueUpdate", "素材疲劳", "素材使用次数、表现衰减、评论重复", "影响素材账本和矩阵过滤"],
+        ["RulePatch", "规则更新", "平台反馈、人工审核、违规样例", "交付规则层和审核门禁"]
+      ],
+      example: {
+        title: "复盘回写样例", summary: "复盘只回写内容变量和规则，不把转化表现写成产品事实，避免知识库被表现数据污染。",
+        columns: ["反馈信号", "观察结果", "可回写内容", "禁止写入"],
+        rows: [
+          ["3 秒留存", "痛点直击 Hook 留存 71%，问题提问 54%", "HookPattern 权重上调", "不能证明产品更降温"],
+          ["点击率", "地铁首镜 CTR 高于办公室首镜", "firstShotAssetId 权重上调", "不能证明通勤人群一定购买"],
+          ["评论", "多次问噪音大不大", "新增 Objection：办公室噪音担忧", "不能写成低噪事实"],
+          ["违规反馈", "价格表达缺活动边界被拦", "RulePatch：Offer 必须包含活动时间", "不能绕过人工确认"]
+        ]
+      },
+      contract: '{\n  "experimentId": "exp-fan-a-006",\n  "changedVariables": ["hookPattern", "firstShotAssetId"],\n  "metrics": { "threeSecondRetention": 0.71, "completionRate": 0.38, "clickRate": 0.094, "violation": 0 },\n  "knowledgeUpdates": [\n    { "type": "VariableWeightUpdate", "target": "痛点直击 Hook", "delta": 0.18 },\n    { "type": "AssetFatigueUpdate", "target": "asset-subway-handheld-03", "delta": -0.09 }\n  ],\n  "factWrites": []\n}'
+    }
+  };
+  //RECORDS
+  // ============ STAGE RECORDS (drill-down data) ============
+  var records = {
+    selection: {
+      filters: ["全部", "精品定制", "标准产出", "批量模板", "AI快产"],
+      kind: "ProductPlan",
+      items: [
+        { id: "fan-neck-ice-02", name: "冰感挂脖风扇 二代", cluster: "cluster-neck-fan", status: "精品定制", flt: "精品定制", stat: ["W1", "波次"], sub: "潜力 74 · 库存 1680 · 毛利 42% · 通勤痛点集中，素材覆盖 3 类，列入精品立即上线。",
+          scores: [["机会", 86], ["毛利", 74], ["库存", 91], ["证据", 63], ["素材", 58], ["风险", -12]],
+          fields: [["商品簇", "cluster-neck-fan"], ["潜力分", "74"], ["制造档位", "精品定制"], ["推广波次", "W1 立即"], ["投入预算", "高"], ["待补条件", "降噪证据（不阻塞）"]],
+          reasons: ["潜力分 74，进入最高制造档位", "通勤痛点密集，适合真人精拍", "补降噪证据与上线并行，不阻塞推广"],
+          recovery: [["补降噪测试证据", "Evidence", "升级低噪强主张，并行不阻塞上线"], ["补拍通勤首镜", "ClipAsset", "精品档配真人首镜素材"]] },
+        { id: "fan-handheld-pro-04", name: "手持涡轮风扇 Pro", cluster: "cluster-handheld", status: "标准产出", flt: "标准产出", stat: ["W1", "波次"], sub: "潜力 71 · 历史 CTR 高，退货评论涉噪音，标准档正常排产并标记异议。",
+          scores: [["机会", 82], ["毛利", 68], ["库存", 77], ["证据", 70], ["素材", 74], ["风险", -28]],
+          fields: [["商品簇", "cluster-handheld"], ["潜力分", "71"], ["制造档位", "标准产出"], ["推广波次", "W1 立即"], ["投入预算", "中高"], ["标记", "噪音异议"]],
+          reasons: ["潜力分 71，历史表现优异", "退货噪音需建模标记异议", "风险扣分较高但全量覆盖下仍正常排产"],
+          recovery: [["抽取噪音异议", "Objection", "建模阶段把退货噪音沉淀为异议"]] },
+        { id: "fan-desk-mini-01", name: "桌面静音小风扇", cluster: "cluster-desk-fan", status: "批量模板", flt: "批量模板", stat: ["W2", "波次"], sub: "潜力 48 · 库存 320 · 素材仅详情页图，套用模板 AI 出片，补库存后可升档。",
+          scores: [["机会", 61], ["毛利", 35], ["库存", 28], ["证据", 40], ["素材", 22], ["风险", -8]],
+          fields: [["商品簇", "cluster-desk-fan"], ["潜力分", "48"], ["制造档位", "批量模板"], ["推广波次", "W2 本周"], ["投入预算", "低"], ["升档条件", "补库存 + 场景素材"]],
+          reasons: ["潜力分 48，落入模板档由 AI 兜底产出", "不淘汰，套用现成结构先上线", "补库存与场景素材后自动升标准档"],
+          recovery: [["补库存确认", "HumanApproval", "补完后自动升档，不阻塞当前模板出片"], ["补场景视频素材", "ClipAsset", "升标准档所需场景镜头"]] },
+        { id: "fan-clip-baby-03", name: "婴儿车夹扇 安全款", cluster: "cluster-clip-fan", status: "AI快产", flt: "AI快产", stat: ["W3", "波次"], sub: "潜力 60 · 儿童场景，安全证据缺失，先出合规版（不触及儿童主张），待确认后升档。",
+          scores: [["机会", 70], ["毛利", 52], ["库存", 64], ["证据", 18], ["素材", 44], ["风险", -64]],
+          fields: [["商品簇", "cluster-clip-fan"], ["潜力分", "60"], ["制造档位", "AI快产（合规版）"], ["推广波次", "W3 排队"], ["投入预算", "低"], ["合规降级", "回避儿童适用主张"]],
+          reasons: ["不拦截，先出合规版规避儿童安全主张", "AI 快产兜底，待安全确认后升档", "高风险通过降级而非淘汰来管理"],
+          recovery: [["人工确认安全边界", "HumanApproval", "确认后升档并解锁儿童场景表达"], ["补安全检测报告", "Evidence", "补齐后可升标准档"]] },
+        { id: "fan-tower-bldless-07", name: "无叶塔扇 家用", cluster: "cluster-tower-fan", status: "AI快产", flt: "AI快产", stat: ["W3", "波次"], sub: "潜力 55 · 毛利好但属大件非便携，AI 快产先覆盖，建议另排家用大件批次精做。",
+          scores: [["机会", 58], ["毛利", 80], ["库存", 70], ["证据", 55], ["素材", 30], ["风险", -18]],
+          fields: [["商品簇", "cluster-tower-fan"], ["潜力分", "55"], ["制造档位", "AI快产"], ["推广波次", "W3 排队"], ["投入预算", "低"], ["建议", "另排家用批次精做"]],
+          reasons: ["与便携批次定位偏离，但仍全量覆盖", "AI 快产先出片，不漏掉任何商品", "建议在家用大件批次中升精品档"],
+          recovery: [["建家用批次", "ProductPlan", "在家用大件批次中精做，本批次保持 AI 兜底"]] }
+      ]
+    },
+    intent: {
+      filters: ["全部", "高意图", "新客词", "噪声"],
+      kind: "IntentCluster",
+      items: [
+        { id: "intent-commute-heat", name: "通勤闷热缓解", status: "高意图", flt: "高意图", stat: ["0.84", "置信度"], sub: "排队、地铁、走路场景下随手缓解闷热，购买角色为通勤人群。",
+          fields: [["人群", "通勤人群"], ["购买阶段", "decision"], ["来源信号", "kw-douyin-search-001"], ["流量价值", "高"], ["可用于", "Hook / 首镜 / 场景"], ["禁止", "降温事实"]],
+          signals: ["便携风扇 地铁 排队", "上班路上 太热 小风扇", "通勤 随身 风扇 推荐"],
+          reasons: ["搜索量大且转化暗示强", "评论与客服问答一致指向通勤场景", "禁止升级为产品降温事实"],
+          recovery: [] },
+        { id: "intent-office-noise", name: "办公室低噪担忧", status: "高意图", flt: "高意图", stat: ["0.72", "置信度"], sub: "怕影响同事，关注是否静音，属异议型意图，需测试证据支撑。",
+          fields: [["人群", "办公室人群"], ["购买阶段", "comparison"], ["来源信号", "cs-faq-007"], ["流量价值", "中"], ["可用于", "Objection / Proof"], ["禁止", "无测试强说静音"]],
+          signals: ["办公室风扇 吵不吵", "静音 小风扇 办公桌", "开会 风扇 声音 大不大"],
+          reasons: ["低噪是核心异议，影响转化", "缺测试证据时只能弱表达", "进入 Proof 镜头需引用 Evidence"],
+          recovery: [["补低噪测试证据", "Evidence", "缺分贝测试条件，需补检测"]] },
+        { id: "intent-dorm-nospace", name: "宿舍无空调替代", status: "新客词", flt: "新客词", stat: ["0.66", "置信度"], sub: "空间限制 + 价格敏感，关注小风扇能否替代空调降温。",
+          fields: [["人群", "学生人群"], ["购买阶段", "awareness"], ["来源信号", "comment-hot-018"], ["流量价值", "中"], ["可用于", "场景 / Offer"], ["禁止", "夸大替代空调"]],
+          signals: ["宿舍不能装空调 怎么办", "学生党 便宜 风扇", "上铺 风扇 不占地方"],
+          reasons: ["价格敏感，适合 Offer 钩子", "不能夸大替代空调能力", "适合新客拉新词包"],
+          recovery: [] },
+        { id: "intent-child-safe", name: "儿童使用安全", status: "噪声", flt: "噪声", stat: ["—", "待证据"], sub: "涉及儿童适用，缺安全证据，进入风险规则与人工确认，暂不进卖点。",
+          fields: [["人群", "家长人群"], ["购买阶段", "comparison"], ["来源信号", "comment-risk-031"], ["流量价值", "受限"], ["处理", "人工确认 + 风险规则"], ["禁止", "默认儿童适用"]],
+          signals: ["儿童风扇 安全吗", "宝宝 推车 风扇 会不会卷头发"],
+          reasons: ["儿童安全意图需证据，不能默认适用", "进入风险规则与人工确认", "暂不进入卖点阶段"],
+          recovery: [["人工确认安全边界", "HumanApproval", "确认是否标注儿童适用边界"]] }
+      ]
+    },
+    modeling: {
+      filters: ["全部", "verified", "pending", "forbidden"],
+      kind: "ProductFact",
+      items: [
+        { id: "fact-battery-2000mah", name: "电池容量 2000mAh", status: "verified", flt: "verified", stat: ["verified", "证据等级"], sub: "来自说明书第 2 页，可支撑续航相关弱承诺，但不得承诺具体小时数。",
+          fields: [["事实类型", "spec"], ["来源图", "product-docs"], ["证据", "ev-manual-01"], ["等级", "verified"], ["可支撑", "续航弱承诺"], ["限制", "不写具体小时"]],
+          reasons: ["说明书原始参数，来源可追溯", "verified 可进入卖点和脚本", "禁止演绎成具体续航时长"], recovery: [] },
+        { id: "fact-three-speed", name: "三档风力调节", status: "verified", flt: "verified", stat: ["verified", "证据等级"], sub: "来自商品详情页与实拍按钮，可进入卖点与脚本。",
+          fields: [["事实类型", "feature"], ["来源图", "product-docs"], ["证据", "ev-detail-02"], ["等级", "verified"], ["可支撑", "场景切换卖点"], ["限制", "—"]],
+          reasons: ["详情页 + 实拍双重佐证", "可进入 Hook 与脚本", "适合通勤/办公场景切换表达"], recovery: [] },
+        { id: "fact-quiet-mode", name: "办公室低噪模式", status: "pending", flt: "pending", stat: ["pending", "证据等级"], sub: "缺少分贝测试条件，只能 pending，需补测试或降级为体验表达。",
+          fields: [["事实类型", "feature"], ["来源图", "product-docs"], ["证据", "缺测试"], ["等级", "pending"], ["可支撑", "仅弱表达"], ["限制", "禁止强说静音"]],
+          reasons: ["缺测试条件，不能升级为强主张", "卖点阶段需降级为体验表达", "补测试后可升级"],
+          recovery: [["补低噪测试", "Evidence", "上传分贝检测报告或创建补测任务"]] },
+        { id: "fact-3s-cooldown", name: "三秒降温（评论原话）", status: "forbidden", flt: "forbidden", stat: ["forbidden", "证据等级"], sub: "来自评论原话，只能进 PainPoint，禁止写成 ProductFact 或强功效主张。",
+          fields: [["事实类型", "（拦截）"], ["来源", "评论原话"], ["证据", "无"], ["等级", "forbidden"], ["可支撑", "无"], ["处理", "进 PainPoint"]],
+          reasons: ["评论不能升级为产品事实", "强功效无测试，列入禁用表达", "不得进入 Hook/字幕/封面"],
+          recovery: [["登记禁用表达", "ForbiddenExpression", "写入禁用词库，阻断下游引用"]] },
+        { id: "ev-test-noise-02", name: "降噪测试报告（待补）", status: "pending", flt: "pending", stat: ["pending", "证据等级"], sub: "建模缺口：低噪表达依赖此证据，当前未接入。",
+          fields: [["对象", "Evidence"], ["来源类型", "test"], ["主张范围", "办公室低噪"], ["等级", "pending"], ["目标", "升级 fact-quiet-mode"], ["状态", "缺口"]],
+          reasons: ["低噪卖点的关键证据缺失", "补齐后 fact-quiet-mode 可升级 verified", "影响办公室人群转化"],
+          recovery: [["创建补测任务", "MissingInputTask", "去资料接入中心创建补证据任务"]] }
+      ]
+    },
+    //RECORDS_2
+    selling: {
+      filters: ["全部", "可发布", "弱表达", "禁用"],
+      kind: "SellingPoint",
+      items: [
+        { id: "sp-commute-light", name: "通勤随手切风力", status: "可发布", flt: "可发布", stat: ["weak", "主张等级"], sub: "排队、等车、走路时按场景切风力，绑定三档风力事实，可做弱承诺。",
+          fields: [["痛点", "通勤怕闷"], ["关联事实", "fact-three-speed"], ["证据", "ev-detail-02"], ["主张等级", "weak"], ["适用场景", "通勤 / 户外"], ["去向", "HookInput"]],
+          reasons: ["事实+痛点+证据三者齐备", "弱承诺不夸大降温", "进入 Hook 供料"], recovery: [] },
+        { id: "sp-long-battery", name: "半天出门不用找充电", status: "可发布", flt: "可发布", stat: ["verified", "主张等级"], sub: "绑定 2000mAh 续航事实，verified 可强表达，但不承诺具体小时数。",
+          fields: [["痛点", "外出怕没电"], ["关联事实", "fact-battery-2000mah"], ["证据", "ev-manual-01"], ["主张等级", "verified"], ["适用场景", "外出 / 通勤"], ["去向", "Claim"]],
+          reasons: ["verified 证据支撑强主张", "禁止承诺具体续航时长", "进入主张库"], recovery: [] },
+        { id: "sp-office-quiet", name: "开会旁边也不突兀", status: "弱表达", flt: "弱表达", stat: ["weak", "降级"], sub: "低噪卖点缺测试，自动降级为体验表达，等证据补齐再升级。",
+          fields: [["痛点", "办公室怕吵"], ["关联事实", "fact-quiet-mode"], ["证据", "pending"], ["主张等级", "weak"], ["适用场景", "办公室"], ["去向", "降级体验表达"]],
+          reasons: ["证据 pending，强主张被拦", "降级为体验表达可用", "补测后可升级 verified"],
+          recovery: [["补低噪测试证据", "Evidence", "回到建模或人工补录"]] },
+        { id: "sp-3s-cooldown", name: "三秒明显降温", status: "禁用", flt: "禁用", stat: ["blocked", "禁用"], sub: "强功效无证据，列入 blockedClaims，禁止进入任何创意环节。",
+          fields: [["痛点", "夏天怕热"], ["来源", "评论原话"], ["证据", "forbidden"], ["主张等级", "blocked"], ["处理", "blockedClaims"], ["去向", "禁用库"]],
+          reasons: ["强功效主张无测试证据", "禁止进入 Hook/字幕/封面/口播", "登记进禁用主张库"],
+          recovery: [["登记禁用主张", "ForbiddenExpression", "写入禁用库阻断引用"]] },
+        { id: "sp-cheap-replace-ac", name: "宿舍替代空调", status: "禁用", flt: "禁用", stat: ["blocked", "禁用"], sub: "夸大替代空调能力，越界，列入禁用，仅保留空间/价格场景表达。",
+          fields: [["痛点", "宿舍无空调"], ["来源", "意图推断"], ["证据", "无"], ["主张等级", "blocked"], ["处理", "blockedClaims"], ["保留", "空间/价格场景"]],
+          reasons: ["夸大替代空调，违反事实边界", "保留空间限制与价格场景表达", "强降温替代被拦"],
+          recovery: [["改写为场景表达", "RewriteTask", "改为不占地方/省电的场景卖点"]] }
+      ]
+    },
+    matrix: {
+      filters: ["全部", "可制造", "待证据", "阻塞"],
+      kind: "MatrixRow",
+      items: [
+        { id: "mx-fan-042", name: "通勤痛点直击 × 地铁首镜", status: "可制造", flt: "可制造", stat: ["82", "可制造分"], sub: "地铁通勤女性 + 排队闷热 + 痛点直击 Hook + 地铁手持首镜，组合达标。",
+          scores: [["可制造", 82], ["证据", 71], ["新颖度", 64], ["历史CTR", 68], ["风险", -8]],
+          fields: [["人群", "地铁通勤女性"], ["痛点", "夏天排队闷热"], ["Hook 模式", "痛点直击"], ["首镜素材", "asset-subway-handheld-03"], ["语气", "快节奏真实口播"], ["决策", "manufacturing_seed"]],
+          reasons: ["商品线索明确，证据充分", "首镜素材未超复用上限", "进入视频制造种子"], recovery: [] },
+        { id: "mx-fan-051", name: "反常识 × 包内取扇", status: "可制造", flt: "可制造", stat: ["78", "可制造分"], sub: "风扇不是越大越适合通勤，包内拿出小风扇近景对比，适合通勤人群。",
+          scores: [["可制造", 78], ["证据", 66], ["新颖度", 80], ["历史CTR", 54], ["风险", -10]],
+          fields: [["人群", "通勤人群"], ["痛点", "便携 vs 体积"], ["Hook 模式", "反常识"], ["首镜素材", "asset-bag-takeout-05"], ["语气", "对比解说"], ["决策", "manufacturing_seed"]],
+          reasons: ["新颖度高，差异化角度", "证据支撑便携卖点", "进入实验队列"], recovery: [] },
+        { id: "mx-fan-066", name: "问题提问 × 办公室低噪", status: "待证据", flt: "待证据", stat: ["—", "待证据"], sub: "办公室开风扇为什么还是闷？低噪需补测试，证据未齐暂不可制造。",
+          scores: [["可制造", 44], ["证据", 22], ["新颖度", 58], ["历史CTR", 50], ["风险", -20]],
+          fields: [["人群", "办公室人群"], ["痛点", "低噪担忧"], ["Hook 模式", "问题提问"], ["首镜素材", "asset-desk-quiet-09"], ["语气", "低声口播"], ["决策", "needs_evidence"]],
+          reasons: ["低噪主张证据 pending", "缺测试不可进入制造", "补证后重新评分"],
+          recovery: [["补低噪测试证据", "Evidence", "回到建模补检测报告"]] },
+        { id: "mx-fan-073", name: "数字承诺 × 三秒降温", status: "阻塞", flt: "阻塞", stat: ["拦截", "状态"], sub: "三秒把热气压下去 + 字幕强刺激，强功效无证据，规则过滤拦截。",
+          scores: [["可制造", 0], ["证据", 0], ["新颖度", 62], ["历史CTR", 71], ["风险", -80]],
+          fields: [["人群", "泛人群"], ["痛点", "夏天怕热"], ["Hook 模式", "数字承诺"], ["首镜素材", "—"], ["语气", "字幕强刺激"], ["决策", "blocked"]],
+          reasons: ["引用禁用主张 sp-3s-cooldown", "强功效无证据，规则拦截", "不进入制造队列"],
+          recovery: [["改写 Hook", "RewriteTask", "改为有证据的卖点角度"]] },
+        { id: "mx-fan-088", name: "优惠刺激 × 宿舍人群", status: "可制造", flt: "可制造", stat: ["69", "可制造分"], sub: "学生党便宜 + 不占地方 + Offer 钩子，需 Offer 与活动边界清晰。",
+          scores: [["可制造", 69], ["证据", 60], ["新颖度", 52], ["历史CTR", 58], ["风险", -14]],
+          fields: [["人群", "学生人群"], ["痛点", "价格 + 空间"], ["Hook 模式", "优惠刺激"], ["首镜素材", "asset-dorm-clip-12"], ["语气", "轻松种草"], ["决策", "manufacturing_seed"]],
+          reasons: ["价格场景合规可用", "Offer 需人工确认活动边界", "进入制造但标记 Offer 待确认"],
+          recovery: [["确认活动边界", "HumanApproval", "运营确认券后价与活动时间"]] }
+      ]
+    },
+    //RECORDS_3
+    manufacturing: {
+      filters: ["全部", "可提交", "缺素材", "待确认"],
+      kind: "VideoManufacturingJob",
+      items: [
+        { id: "vj-fan-018", name: "通勤痛点 · 地铁手持 68s", status: "缺素材", flt: "缺素材", stat: ["68s", "时长"], sub: "5 段结构，黄金三秒达标，但 asset-commute-bag-b 已达 4/4 复用上限，Scenario 段阻塞。",
+          fields: [["矩阵行", "mx-fan-042"], ["时长", "68s / 60-75s"], ["片段", "5 段"], ["黄金三秒", "通过"], ["素材问题", "1 项超限"], ["状态", "blocked"]],
+          timeline: [
+            { type: "hook", t: "0-3s", name: "Hook", desc: "地铁口排队，手从包里拿出风扇，先露商品", gold: true, w: 4 },
+            { type: "pain", t: "3-18s", name: "Pain", desc: "边走边说通勤闷热，手持贴近脸侧", w: 22 },
+            { type: "proof", t: "18-36s", name: "Proof", desc: "展示三档风力按钮与说明书参数", w: 26 },
+            { type: "scenario", t: "36-54s", name: "Scenario", desc: "办公室/排队/户外三连镜头", w: 26 },
+            { type: "offer", t: "54-68s", name: "Offer", desc: "说明套餐与活动边界，语气收束", w: 22 }
+          ],
+          shots: [
+            { time: "0-3s", h: "Hook · 商品首显", p: "地铁口排队，手从包里拿出风扇，语速快，先露商品", tags: [["asset-subway-handheld-03", ""], ["黄金三秒 ✓", "ok"]] },
+            { time: "3-18s", h: "Pain · 通勤闷热", p: "边走边说通勤闷热，手持风扇贴近脸侧，表情真实", tags: [["需补侧脸镜头", "warn"]] },
+            { time: "18-36s", h: "Proof · 三档风力", p: "展示三档风力按钮和说明书参数，语速放慢", tags: [["ev-manual-01", ""], ["禁止三秒降温", "bad"]] },
+            { time: "36-54s", h: "Scenario · 三连场景", p: "办公室桌面、排队、户外三连镜头，姿态自然", tags: [["asset-commute-bag-b 4/4", "bad"]] },
+            { time: "54-68s", h: "Offer · CTA", p: "说明套餐和活动边界，语气收束，不夸张催促", tags: [["Offer 待人工确认", "warn"]] }
+          ],
+          reasons: ["结构 5 段 / 68s，符合 60-75s 约束", "黄金三秒同时含 Hook + 商品线索", "Scenario 段素材已 4/4，必须替换或补拍"],
+          recovery: [["补拍通勤侧脸镜头", "MaterialGapTask", "Pain 段缺同场景侧脸镜头"], ["替换超限素材", "AssetRequirement", "asset-commute-bag-b 已达复用上限"], ["确认券后价", "HumanApproval", "Offer 段需活动边界确认"]] },
+        { id: "vj-fan-022", name: "反常识 · 包内取扇 64s", status: "可提交", flt: "可提交", stat: ["64s", "时长"], sub: "4 段结构，素材未超限，证据齐备，可提交审核闸口。",
+          fields: [["矩阵行", "mx-fan-051"], ["时长", "64s / 60-75s"], ["片段", "4 段"], ["黄金三秒", "通过"], ["素材问题", "无"], ["状态", "ready"]],
+          timeline: [
+            { type: "hook", t: "0-3s", name: "Hook", desc: "反常识：风扇不是越大越适合通勤", gold: true, w: 4 },
+            { type: "proof", t: "3-24s", name: "Proof", desc: "包内拿出小风扇，近景对比体积", w: 30 },
+            { type: "scenario", t: "24-48s", name: "Scenario", desc: "通勤多场景便携演示", w: 34 },
+            { type: "offer", t: "48-64s", name: "Offer", desc: "套餐说明与 CTA", w: 22 }
+          ],
+          shots: [
+            { time: "0-3s", h: "Hook · 反常识", p: "反常识开场，包内小风扇入镜", tags: [["asset-bag-takeout-05", ""], ["黄金三秒 ✓", "ok"]] },
+            { time: "3-24s", h: "Proof · 体积对比", p: "近景对比大风扇与小风扇体积", tags: [["ev-detail-02", ""]] },
+            { time: "24-48s", h: "Scenario · 便携演示", p: "地铁、步行、等车多场景便携", tags: [["asset-commute-walk-07", ""]] },
+            { time: "48-64s", h: "Offer · CTA", p: "套餐说明，语气自然收束", tags: [["Offer 已确认", "ok"]] }
+          ],
+          reasons: ["4 段 / 64s 结构合规", "全部素材在复用上限内", "证据齐备可进入审核"],
+          recovery: [] },
+        { id: "vj-fan-031", name: "优惠刺激 · 宿舍夹扇 61s", status: "待确认", flt: "待确认", stat: ["61s", "时长"], sub: "结构合规，但 Offer 段券后价缺活动边界，待运营人工确认。",
+          fields: [["矩阵行", "mx-fan-088"], ["时长", "61s / 60-75s"], ["片段", "4 段"], ["黄金三秒", "通过"], ["素材问题", "无"], ["状态", "needs_human"]],
+          timeline: [
+            { type: "hook", t: "0-3s", name: "Hook", desc: "学生党宿舍降温神器", gold: true, w: 5 },
+            { type: "pain", t: "3-20s", name: "Pain", desc: "宿舍不能装空调，上铺闷热", w: 28 },
+            { type: "scenario", t: "20-44s", name: "Scenario", desc: "夹在床栏的使用场景", w: 39 },
+            { type: "offer", t: "44-61s", name: "Offer", desc: "学生价 Offer 与 CTA", w: 28 }
+          ],
+          shots: [
+            { time: "0-3s", h: "Hook · 场景钩子", p: "宿舍上铺，夹扇入镜", tags: [["asset-dorm-clip-12", ""], ["黄金三秒 ✓", "ok"]] },
+            { time: "3-20s", h: "Pain · 空间限制", p: "宿舍不能装空调，强调不占地方", tags: [["不夸大替代空调", "bad"]] },
+            { time: "20-44s", h: "Scenario · 夹床演示", p: "夹在床栏，省空间使用", tags: [["asset-dorm-bed-15", ""]] },
+            { time: "44-61s", h: "Offer · 学生价", p: "学生价说明，券后价 CTA", tags: [["券后价缺活动边界", "warn"]] }
+          ],
+          reasons: ["结构 4 段 / 61s 合规", "价格场景表达合规", "Offer 段券后价需活动边界确认"],
+          recovery: [["确认活动边界", "HumanApproval", "运营确认券后价与活动时间"]] }
+      ]
+    },
+    review: {
+      filters: ["全部", "阻塞", "需改写", "可交付"],
+      kind: "ReviewDecision",
+      items: [
+        { id: "rp-fan-018", name: "vj-fan-018 审核结论", status: "阻塞", flt: "阻塞", stat: ["blocked", "结论"], sub: "证据合规与素材真实性双重失败，反向创建补证据、补素材与人工确认任务。",
+          fields: [["视频", "vj-fan-018"], ["结构审核", "通过"], ["证据合规", "阻塞"], ["素材真实性", "阻塞"], ["人工确认", "2 项待办"], ["可交付", "否"]],
+          gateChain: [
+            { st: "pass", name: "结构审核", msg: "5 段 / 68s，黄金三秒含商品线索，通过。" },
+            { st: "fail", name: "证据合规 · 强功效", msg: "Proof 段疑似引用三秒降温表达，缺测试条件。", rec: "MissingEvidenceTask：补测试条件或删除表达" },
+            { st: "fail", name: "素材真实性 · 复用上限", msg: "asset-commute-bag-b 已达 4/4 复用上限。", rec: "MaterialGapTask：补拍通勤侧脸镜头替换" },
+            { st: "wait", name: "平台表达 · 价格", msg: "券后价缺活动边界，需人工确认。", rec: "HumanApproval：运营确认活动价边界" }
+          ],
+          reasons: ["证据与素材任一失败即阻塞", "高风险反向创建恢复任务", "全部通过后才生成可交付包"],
+          recovery: [["补测试条件", "MissingEvidenceTask", "回到建模补降噪/降温测试"], ["补拍替换素材", "MaterialGapTask", "通勤侧脸镜头补拍"], ["确认活动价", "HumanApproval", "运营确认券后价边界"]] },
+        { id: "rp-fan-022", name: "vj-fan-022 审核结论", status: "可交付", flt: "可交付", stat: ["approved", "结论"], sub: "四轮审核全通过，强主张 verified，素材未超限，生成可交付包。",
+          fields: [["视频", "vj-fan-022"], ["结构审核", "通过"], ["证据合规", "通过"], ["素材真实性", "通过"], ["人工确认", "无需"], ["可交付", "是"]],
+          gateChain: [
+            { st: "pass", name: "结构审核", msg: "4 段 / 64s，黄金三秒达标。" },
+            { st: "pass", name: "证据合规", msg: "便携卖点引用 verified 证据 ev-detail-02。" },
+            { st: "pass", name: "素材真实性", msg: "全部素材在复用上限内，来源清晰。" },
+            { st: "pass", name: "平台表达", msg: "无强功效、无价格越界，表达合规。" }
+          ],
+          reasons: ["四轮门禁全通过", "生成 ApprovedReviewPackage", "进入调优投放队列"],
+          recovery: [] },
+        { id: "rp-fan-031", name: "vj-fan-031 审核结论", status: "需改写", flt: "需改写", stat: ["rewrite", "结论"], sub: "结构与素材通过，但 Hook 口播缺商品线索，Offer 缺活动边界，回写改写任务。",
+          fields: [["视频", "vj-fan-031"], ["结构审核", "通过"], ["证据合规", "通过"], ["素材真实性", "通过"], ["人工确认", "1 项待办"], ["可交付", "否"]],
+          gateChain: [
+            { st: "pass", name: "结构审核", msg: "4 段 / 61s 合规。" },
+            { st: "fail", name: "黄金三秒 · 口播", msg: "首镜有商品，但 Hook 口播缺商品线索。", rec: "RewriteTask：0-3 秒补商品线索口播" },
+            { st: "pass", name: "素材真实性", msg: "素材来源清晰，未超限。" },
+            { st: "wait", name: "平台表达 · 价格", msg: "券后价缺活动时间。", rec: "HumanApproval：确认活动边界" }
+          ],
+          reasons: ["口播线索不足触发改写", "价格边界需人工确认", "改写+确认后可复审"],
+          recovery: [["改写 Hook 口播", "RewriteTask", "0-3 秒补商品线索"], ["确认活动边界", "HumanApproval", "运营确认券后价"]] }
+      ]
+    },
+    //RECORDS_4
+    optimization: {
+      filters: ["全部", "加预算", "改创意", "人工"],
+      kind: "OptimizationAction",
+      items: [
+        { id: "opt-fan-018-a", name: "vj-fan-018 加预算 +20%", status: "加预算", flt: "加预算", stat: ["2.4", "ROI"], sub: "地铁通勤词 3 秒留存 71%，ROI 2.4，Hook 与首镜有效，扩展相近长尾词。",
+          scores: [["3秒留存", 71], ["完播", 38], ["点击", 94], ["ROI×10", 24]],
+          fields: [["投放视频", "vj-fan-018"], ["关键词", "便携风扇 地铁 排队"], ["花费", "¥320"], ["动作", "increase_budget +20%"], ["需人工", "否"], ["回写", "KeywordFeedback"]],
+          reasons: ["ROI 2.4 高于阈值，学习期已过", "3 秒留存 71%，Hook 有效", "未超人工确认阈值，自动加预算"],
+          recovery: [] },
+        { id: "opt-fan-022-b", name: "办公室低噪词 补证据", status: "改创意", flt: "改创意", stat: ["0.9", "ROI"], sub: "办公室低噪词点击高但成交低，证据不足影响转化，补测试证据并改 Proof 镜头。",
+          scores: [["3秒留存", 58], ["完播", 30], ["点击", 118], ["ROI×10", 9]],
+          fields: [["投放视频", "vj-fan-022"], ["关键词", "办公室风扇 吵不吵"], ["花费", "¥180"], ["动作", "missing_evidence + 改 Proof"], ["需人工", "是"], ["回写", "MissingEvidenceTask"]],
+          reasons: ["点击高但成交低，转化卡在证据", "补低噪测试证据后改 Proof 镜头", "回写补证据任务到建模"],
+          recovery: [["补低噪测试证据", "MissingEvidenceTask", "回到建模补检测"], ["改 Proof 镜头", "RewriteTask", "证据补齐后重做证明段"]] },
+        { id: "opt-fatigue-03", name: "asset-subway 素材疲劳降权", status: "改创意", flt: "改创意", stat: ["↓", "CTR趋势"], sub: "同一首镜 CTR 连续下降，判定素材疲劳，降低权重并创建补拍任务。",
+          scores: [["首日CTR", 92], ["当前CTR", 61], ["疲劳分", 78], ["出现次数", 100]],
+          fields: [["素材", "asset-subway-handheld-03"], ["现象", "CTR 连续下降"], ["动作", "降权 + 补拍"], ["疲劳分", "0.78"], ["需人工", "否"], ["回写", "AssetFatigueUpdate"]],
+          reasons: ["CTR 从 92 降至 61，素材疲劳", "降低素材权重，影响矩阵排序", "创建补拍任务补充新首镜"],
+          recovery: [["创建补拍任务", "MaterialGapTask", "补充新通勤首镜素材"]] },
+        { id: "opt-budget-hold", name: "预算提升超阈值 转人工", status: "人工", flt: "人工", stat: ["待确认", "状态"], sub: "自动加预算请求超过 maxAutoIncreasePct 阈值，暂停自动加预算转人工确认。",
+          scores: [["请求增幅", 65], ["阈值", 40], ["当前ROI×10", 22], ["花费", 100]],
+          fields: [["投放组", "budget-fan-a-001"], ["请求增幅", "+65%"], ["阈值", "+40%"], ["动作", "human_approval"], ["需人工", "是"], ["状态", "pending"]],
+          reasons: ["增幅 65% 超过自动阈值 40%", "暂停自动加预算", "需运营人工确认后执行"],
+          recovery: [["人工确认预算", "HumanApproval", "运营确认是否批准超额预算"]] }
+      ]
+    },
+    feedback: {
+      filters: ["全部", "变量权重", "素材疲劳", "规则更新"],
+      kind: "KnowledgeUpdate",
+      items: [
+        { id: "ku-hook-weight", name: "痛点直击 Hook 权重 +0.18", status: "变量权重", flt: "变量权重", stat: ["+0.18", "权重Δ"], sub: "痛点直击 Hook 留存 71% vs 问题提问 54%，上调权重影响下一轮矩阵排序。",
+          fields: [["更新类型", "VariableWeightUpdate"], ["目标", "痛点直击 Hook"], ["增量", "+0.18"], ["来源实验", "exp-fan-a-006"], ["影响", "矩阵排序"], ["事实写入", "禁止"]],
+          reasons: ["3 秒留存对比显著", "只回写变量权重，不写产品事实", "影响下一轮矩阵优先级"], recovery: [] },
+        { id: "ku-asset-fatigue", name: "asset-subway 疲劳 -0.09", status: "素材疲劳", flt: "素材疲劳", stat: ["-0.09", "疲劳Δ"], sub: "高频出现且 CTR 下降，降权进入素材账本，影响矩阵过滤。",
+          fields: [["更新类型", "AssetFatigueUpdate"], ["目标", "asset-subway-handheld-03"], ["增量", "-0.09"], ["来源", "投放表现衰减"], ["影响", "素材账本 + 矩阵过滤"], ["事实写入", "禁止"]],
+          reasons: ["CTR 衰减 + 高重复", "降权进入素材账本", "矩阵阶段降低该素材优先级"], recovery: [] },
+        { id: "ku-objection-noise", name: "新增异议：办公室噪音担忧", status: "变量权重", flt: "变量权重", stat: ["新增", "Objection"], sub: "评论多次询问噪音大不大，沉淀为异议，供反驳结构与证明镜头使用。",
+          fields: [["更新类型", "Objection"], ["目标", "办公室噪音担忧"], ["来源", "评论高频问询"], ["去向", "卖点反驳结构"], ["影响", "Proof 镜头"], ["事实写入", "禁止（不写低噪事实）"]],
+          reasons: ["评论高频异议值得沉淀", "供反驳结构和证明镜头引用", "不能直接写成低噪事实"], recovery: [] },
+        { id: "ku-rule-offer", name: "规则更新：Offer 必须含活动时间", status: "规则更新", flt: "规则更新", stat: ["RulePatch", "类型"], sub: "价格表达缺活动边界被平台拦截，形成 RulePatch 前置到审核与卖点阶段。",
+          fields: [["更新类型", "RulePatch"], ["规则", "Offer 必须含活动时间"], ["来源", "违规反馈"], ["前置到", "审核 + 卖点"], ["影响", "门禁"], ["人工确认", "不可绕过"]],
+          reasons: ["价格违规反馈触发规则更新", "前置到卖点和审核门禁", "不能绕过人工确认"],
+          recovery: [["同步规则到门禁", "RulePatch", "更新审核与卖点阶段门禁"]] }
+      ]
+    }
+  };
+  //RENDER
+  // ============ HELPERS ============
+  var $ = function(id){ return document.getElementById(id); };
+  function esc(v){ return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function attr(v){ return esc(v).replace(/"/g,"&quot;"); }
+  function statusClass(v){
+    v = String(v);
+    if (v.indexOf("阻塞")>=0 || v.indexOf("拦截")>=0 || v.indexOf("禁用")>=0 || v.indexOf("forbidden")>=0 || v.indexOf("blocked")>=0) return "bad";
+    if (v.indexOf("批量模板")>=0 || v.indexOf("待")>=0 || v.indexOf("当前")>=0 || v.indexOf("进行")>=0 || v.indexOf("需改写")>=0 || v.indexOf("rewrite")>=0 || v.indexOf("pending")>=0 || v.indexOf("暂缓")>=0 || v.indexOf("缺素材")>=0 || v.indexOf("人工")>=0 || v.indexOf("改创意")>=0) return "warn";
+    if (v.indexOf("精品定制")>=0 || v.indexOf("通过")>=0 || v.indexOf("完成")>=0 || v.indexOf("已接入")>=0 || v.indexOf("可")>=0 || v.indexOf("verified")>=0 || v.indexOf("approved")>=0 || v.indexOf("深建模")>=0 || v.indexOf("高意图")>=0 || v.indexOf("加预算")>=0) return "ok";
+    if (v.indexOf("标准产出")>=0 || v.indexOf("就绪")>=0 || v.indexOf("部分")>=0 || v.indexOf("新客")>=0 || v.indexOf("弱表达")>=0 || v.indexOf("weak")>=0 || v.indexOf("变量权重")>=0) return "info";
+    return "neutral";
+  }
+  function dotClass(v){
+    var c = statusClass(v);
+    return c==="ok"?"dot-ok":c==="bad"?"dot-bad":c==="info"?"dot-info":"dot-warn";
+  }
+  function pill(v){ return '<span class="pill '+statusClass(v)+'">'+esc(v)+'</span>'; }
+  function highlightJson(s){
+    return esc(s)
+      .replace(/&quot;([^&]*?)&quot;(\s*:)/g, '<span class="k">&quot;$1&quot;</span>$2')
+      .replace(/:\s*&quot;([^&]*?)&quot;/g, ': <span class="s">&quot;$1&quot;</span>')
+      .replace(/:\s*(-?\d+\.?\d*)/g, ': <span class="n">$1</span>');
+  }
+  function activeStage(){ for(var i=0;i<stages.length;i++){ if(stages[i].id===activeStageId) return stages[i]; } return stages[0]; }
+
+  var activeStageId = "selection";
+  var selected = null;
+  var activeTab = "overview";
+  var wbFilter = "全部";
+  var wbQuery = "";
+  var drillItem = null;
+  //RENDER_FNS
+  // ============ INTAKE METRICS ============
+  function renderIntakeMetrics(){
+    $("intakeStatus").textContent = intake.status;
+    $("intakeStatus").className = "pill " + statusClass(intake.status);
+    $("intakeMetrics").innerHTML = intake.metrics.map(function(m){
+      return '<div class="intake-metric"><b>'+esc(m[1])+'</b><span>'+esc(m[0])+'</span></div>';
+    }).join("");
+  }
+
+  // ============ INTAKE WORKBENCH (independent view) ============
+  var intakeMode = false;
+  function srcHealthClass(s){ return s.health; }
+  function coverClass(c){ return c===0?"zeroc":(c<70?"lowc":""); }
+  function renderLadder(curIdx){
+    return '<div class="ladder">'+intakeModel.ladder.map(function(l,i){
+      var cls = i<curIdx?"done":(i===curIdx?"cur":"");
+      return '<div class="ladder-step '+cls+'"><div class="ladder-dot">'+l[0]+'</div><div class="ladder-lbl">'+esc(l[1])+'</div></div>';
+    }).join("")+'</div>';
+  }
+  function renderIntakeWorkbench(){
+    var m = intakeModel;
+    $("iwStatus").textContent = "数据就绪 "+m.summary.coveredAvg+"%";
+    $("iwStatus").className = "pill warn";
+    // 甲方视角汇总：就绪度 / 待我补齐 / 已就绪 / 在补会升档
+    var selfPending = m.sources.filter(function(s){ return s.resp==="自助" && s.cover<70; }).length;
+    var ready = m.sources.filter(function(s){ return s.cover>=70; }).length;
+    $("iwSummary").innerHTML =
+      '<div class="ik-sum accent"><b>'+m.summary.coveredAvg+'%</b><span>数据就绪度</span></div>'
+      + '<div class="ik-sum"><b>'+selfPending+' 项</b><span>待我自助补齐</span></div>'
+      + '<div class="ik-sum"><b>'+ready+' / 6</b><span>已就绪数据源</span></div>'
+      + '<div class="ik-sum"><b>2 项</b><span>补齐后可升制造档位</span></div>';
+    // sources（按甲方视角：自助源给"去补齐"，其余标"后台运维"）
+    $("iwSources").innerHTML = m.sources.map(function(s){
+      var isSelf = s.resp==="自助";
+      var foot = isSelf
+        ? '<span class="src-resp 自助">自助可补齐</span><span style="font-size:11px;color:var(--brand-strong);font-weight:700">去补齐 →</span>'
+        : '<span class="src-resp '+s.resp+'">'+esc(s.resp)+'</span><span style="font-size:11px;color:var(--muted)">布谷后台运维 →</span>';
+      return '<div class="src s-'+srcHealthClass(s)+'" data-src="'+attr(s.id)+'">'
+        + '<div class="src-top"><div><h3>'+esc(s.name)+'</h3><span class="src-out">'+esc(s.output)+'</span></div>'
+        + '<span class="lvl-badge l'+s.ladder.cur+'">'+esc(s.level)+' · '+esc(s.levelName)+'</span></div>'
+        + '<p class="src-sub">'+esc(s.sub)+'</p>'
+        + renderLadder(s.ladder.cur)
+        + '<div class="src-stats"><div class="src-stat"><b>'+s.cover+'%</b><span>覆盖率</span><div class="cover-track"><div class="cover-fill '+coverClass(s.cover)+'" style="width:'+s.cover+'%"></div></div></div>'
+        + '<div class="src-stat"><b>'+esc(s.fresh)+'</b><span>新鲜度</span></div>'
+        + '<div class="src-stat"><b>'+esc(s.conf)+'</b><span>置信度</span></div></div>'
+        + '<div class="src-foot">'+foot+'<span class="rec-arrow">→</span></div></div>';
+    }).join("");
+    renderTemplate();
+  }
+  // ===== 模板自助接入 =====
+  function renderTemplate(){
+    var t = intakeModel.template;
+    $("tplName").textContent = t.name;
+    $("tplIntro").textContent = t.intro;
+    $("tplSheets").innerHTML = t.sheets.map(function(sh){
+      return '<div class="tpl-sheet" data-sheet="'+attr(sh.id)+'">'
+        + '<div class="tsh"><h4>'+esc(sh.name)+'</h4><span class="req '+(sh.required?'must':'opt')+'">'+(sh.required?'必填':'选填')+'</span></div>'
+        + '<div class="freq">'+esc(sh.freq)+'</div>'
+        + '<p>'+esc(sh.desc)+'</p></div>';
+    }).join("");
+  }
+  function openSheetDrill(id){
+    var sh = intakeModel.template.sheets.filter(function(x){return x.id===id;})[0]; if(!sh) return;
+    var head = crumb([{t:'数据模板'},{t:sh.name,code:0}])
+      + '<div class="drawer-titlerow"><div><h2>'+esc(sh.name)+' Sheet</h2><p class="sub">'+esc(sh.desc)+'</p></div><span class="pill '+(sh.required?'bad':'neutral')+'">'+(sh.required?'必填':'选填')+'</span></div>'
+      + '<div class="drawer-meta"><div class="dm"><b>'+sh.cols.length+'</b><span>字段</span></div><div class="dm"><b>'+esc(sh.freq)+'</b><span>维护频率</span></div></div>';
+    var body = dsec("列定义", sh.cols.length+" 列",
+      '<table class="map-tbl"><thead><tr><th>列名</th><th>要求</th><th>填写说明</th><th>样例</th></tr></thead><tbody>'
+      + sh.cols.map(function(c){
+        var st = c[1].indexOf("必填")>=0?'<span class="map-st miss">必填</span>':'<span class="map-st done">选填</span>';
+        return '<tr><td><strong>'+esc(c[0])+'</strong></td><td>'+st+'</td><td style="font-size:11.5px;color:var(--muted)">'+esc(c[2])+'</td><td><code>'+esc(c[3])+'</code></td></tr>';
+      }).join("")+'</tbody></table>');
+    body += dsec("填写提示", null, '<div class="recovery" style="border-style:solid;border-color:var(--line-2);background:var(--surface-2)"><b style="color:var(--brand-strong)">能填多少填多少</b><p>规格写在标题里没关系，系统会自动拆；库存留空按充足兜底；缺的字段进缺口队列但不阻塞上线。补齐后自动校正升档。</p></div>');
+    showDrawer(head, body, '<button class="btn-ghost" id="dGenClose">关闭</button><button class="btn-primary" id="dGenAct">下载模板填这张表</button>');
+    var act = $("dGenAct"); if(act) act.addEventListener("click", function(){ closeDrill(); });
+  }
+  function openUploadCheck(){
+    var c = intakeModel.template.checkExample;
+    var head = crumb([{t:'数据模板'},{t:'上传体检',code:0}])
+      + '<div class="drawer-titlerow"><div><h2>体检报告 · '+esc(c.file)+'</h2><p class="sub">'+c.rows+' 行 · '+c.sheets+' 个 Sheet · 宽松体检：能识别的已入库，缺口进队列不阻塞</p></div><span class="pill ok">'+esc(c.verdict.status)+'</span></div>'
+      + '<div class="drawer-meta"><div class="dm"><b>'+c.rows+'</b><span>识别行数</span></div><div class="dm"><b>'+c.verdict.coverage+'%</b><span>商品源覆盖</span></div><div class="dm"><b>'+c.results.filter(function(r){return r.level==="auto";}).length+'</b><span>自动归一</span></div><div class="dm"><b>'+c.results.filter(function(r){return r.level==="warn";}).length+'</b><span>进缺口队列</span></div></div>';
+    var body = dsec("体检明细", c.results.length+" 项",
+      c.results.map(function(r){
+        var lbl = r.level==="ok"?"已识别":r.level==="auto"?"自动处理":"待补";
+        return '<div class="chk-row"><span class="cs">'+esc(r.sheet)+'</span><span class="chk-lvl '+r.level+'">'+lbl+'</span><span style="color:var(--ink-2)">'+esc(r.msg)+'</span></div>';
+      }).join(""));
+    body += '<div class="chk-verdict"><b>✓ '+esc(c.verdict.status)+'</b><p>'+esc(c.verdict.note)+'</p></div>';
+    showDrawer(head, body, '<button class="btn-ghost" id="dGenClose">关闭</button><button class="btn-primary" id="dGenAct">确认入库并推进商品规划</button>');
+    var act = $("dGenAct"); if(act) act.addEventListener("click", function(){ closeDrill(); });
+  }
+  function enterIntakeMode(){ intakeMode = true; document.body.classList.add("intake-mode"); $("intakeNav").classList.add("active"); renderIntakeWorkbench(); window.scrollTo(0,0); }
+  function exitIntakeMode(){ intakeMode = false; document.body.classList.remove("intake-mode"); $("intakeNav").classList.remove("active"); }
+
+  // intake source drill drawer（甲方就绪度视角，非运维视角）
+  function openSrcDrill(id){
+    var s = intakeModel.sources.filter(function(x){return x.id===id;})[0];
+    if(!s) return;
+    var isSelf = s.resp==="自助";
+    // 从字段映射提炼"还缺什么"，不暴露映射调试内部（那是后台运维的事）
+    var missing = s.mapping.filter(function(mp){ return mp[2].indexOf("缺")>=0 || mp[2].indexOf("待")>=0 || mp[2].indexOf("OCR")>=0; });
+    var head = crumb([{t:'我的数据就绪度'},{t:s.name,code:0}])
+      + '<div class="drawer-titlerow"><div><h2>'+esc(s.name)+'</h2><p class="sub">'+esc(s.sub)+'</p></div><span class="lvl-badge l'+s.ladder.cur+'" style="font-size:13px;padding:5px 11px">'+esc(s.level)+' · '+esc(s.levelName)+'</span></div>'
+      + '<div class="drawer-meta"><div class="dm"><b>'+s.cover+'%</b><span>覆盖率</span></div><div class="dm"><b>'+esc(s.fresh)+'</b><span>新鲜度</span></div><div class="dm"><b>'+esc(s.conf)+'</b><span>置信度</span></div><div class="dm"><b>'+(isSelf?'我自己':'布谷后台')+'</b><span>由谁补齐</span></div></div>';
+    var body = "";
+    // 数据→质量因果（最重要，放最前）
+    body += dsec("这份数据影响什么", null, '<p style="font-size:13.5px;color:var(--ink-2);line-height:1.6">'+esc(s.impact)+'</p>');
+    // 还缺什么
+    if (missing.length){
+      body += dsec("还缺什么", missing.length+" 项", missing.map(function(mp){
+        var tag = mp[2].indexOf("缺")>=0?'<span class="map-st miss">缺失</span>':'<span class="map-st ai">待处理</span>';
+        return '<div class="recovery" style="border-style:solid;border-color:var(--line-2);background:var(--surface-2);margin-bottom:8px"><b style="color:var(--ink-2)">'+esc(mp[0])+'</b> '+tag+'</div>';
+      }).join(""));
+    } else {
+      body += dsec("数据完整度", null, '<div class="recovery" style="border-style:solid;border-color:var(--green-soft);background:var(--green-soft)"><b style="color:var(--green)">✓ 数据齐备</b><p>该源无缺口，可支撑更高制造档位。</p></div>');
+    }
+    // 怎么补 / 谁来补
+    if (isSelf){
+      body += dsec("怎么补齐（自助）", null,
+        '<div class="recovery" style="border-style:solid;border-color:var(--line-2);background:var(--surface-2)"><b style="color:var(--brand-strong)">'+esc(s.ladder.next)+'</b><p>'+esc(s.ladder.blocker)+'</p></div>');
+    } else {
+      body += dsec("由布谷后台运维", null,
+        '<div class="recovery" style="border-style:dashed;border-color:var(--line-2);background:var(--surface-2)"><b style="color:var(--slate)">'+esc(s.resp)+' · 在服务端完成</b><p>'+esc(s.ladder.next)+'。门槛：'+esc(s.ladder.blocker)+'。字段映射与连接配置由布谷在后台控制台运维，你无需操作。</p></div>');
+    }
+    var foot = '<button class="btn-ghost" id="dGenClose">关闭</button>'
+      + (isSelf
+          ? '<button class="btn-primary" id="dGenAct">去补齐这份数据</button>'
+          : '<button class="btn-primary" id="dGenAct">通知布谷加急</button>');
+    showDrawer(head, body, foot);
+    var act = $("dGenAct"); if(act) act.addEventListener("click", function(){ closeDrill(); });
+  }
+
+  // ============ MAIN RENDER ============
+  function renderAll(){
+    var s = activeStage();
+    $("batchTitle").textContent = batch.title;
+    $("batchObjective").textContent = batch.objective;
+    $("batchId").textContent = batch.id;
+    $("pageTitle").textContent = batch.title;
+    $("pageDesc").textContent = batch.target;
+
+    // sidebar rail
+    $("stageRail").innerHTML = stages.map(function(it){
+      return '<button class="stage-btn'+(it.id===s.id?' active':'')+'" data-stage="'+it.id+'">'
+        + '<span class="stage-num">'+it.no+'</span>'
+        + '<span class="stage-info"><span class="stage-name">'+esc(it.name)+'</span><span class="stage-owner">'+esc(it.owner)+'</span></span>'
+        + '<span class="stage-dot '+dotClass(it.status)+'"></span></button>';
+    }).join("");
+
+    // pipeline track
+    $("pipeline").innerHTML = stages.map(function(it){
+      return '<button class="pstage'+(it.id===s.id?' active':'')+'" data-stage="'+it.id+'">'
+        + '<div class="pstage-top"><span class="pstage-num">'+it.no+'</span>'+pill(it.status)+'</div>'
+        + '<h4>'+esc(it.name)+'</h4><p>'+esc(it.summary)+'</p>'
+        + '<span class="pstage-out">'+esc(it.output)+'</span></button>';
+    }).join("");
+
+    // metrics
+    $("metrics").innerHTML = s.metrics.map(function(m, i){
+      return '<div class="metric'+(i===0?' accent':'')+'" data-select="指标" data-title="'+attr(m[0])+'" data-status="实时" data-output="'+attr(m[1])+'" data-detail="'+attr(s.name+'阶段指标：'+m[0]+' = '+m[1])+'"><span>'+esc(m[0])+'</span><b>'+esc(m[1])+'</b></div>';
+    }).join("");
+
+    // stage header
+    $("stageTitle").textContent = s.no + " · " + s.name;
+    $("stageSummary").textContent = s.summary;
+    $("stageStatus").className = "pill " + statusClass(s.status);
+    $("stageStatus").textContent = s.status;
+
+    // tasks
+    $("taskList").innerHTML = s.tasks.map(function(t, i){
+      return '<div class="task" data-select="任务" data-title="'+attr(t[0])+'" data-status="'+attr(t[2])+'" data-output="'+attr(s.output)+'" data-detail="'+attr(t[1])+'">'
+        + '<span class="tnum">'+(i+1)+'</span>'
+        + '<div><h3>'+esc(t[0])+'</h3><p>'+esc(t[1])+'</p></div>'+pill(t[2])+'</div>';
+    }).join("");
+
+    // gates
+    $("gateList").innerHTML = s.gates.map(function(g){
+      return '<div class="gate" data-select="门禁" data-title="'+attr(g[0])+'" data-status="'+attr(g[2])+'" data-output="门禁结论" data-detail="'+attr(g[1])+'">'
+        + '<b>'+esc(g[0])+'</b><span>'+esc(g[1])+'</span>'+pill(g[2])+'</div>';
+    }).join("");
+
+    // artifacts
+    $("artifactGrid").innerHTML = s.artifacts.map(function(a){
+      return '<div class="artifact" data-select="交付物" data-title="'+attr(a[0])+'" data-status="可追溯" data-output="'+attr(a[0])+'" data-detail="'+attr(a[1])+'">'
+        + '<b>'+esc(a[0])+'</b><span>'+esc(a[1])+'</span></div>';
+    }).join("");
+
+    renderIntakeMetrics();
+    renderDetails(s);
+    renderWorkbench();
+    renderCoverage();
+    $("dcCount").textContent = stageDetails[s.id].cards.length;
+    if(!selected) selected = { kind:"阶段", title:s.name, status:s.status, output:s.output, detail:s.summary };
+    renderRight();
+  }
+
+  // ============ COVERAGE MODE (商品规划阶段) ============
+  var covMode = "brand"; // brand_full | agency_capacity
+  var tierDist = [["精品定制","premium",14],["标准产出","standard",36],["批量模板","template",92],["AI快产","aiq",144]];
+  function renderCoverage(){
+    var banner = $("covBanner");
+    if (activeStageId !== "selection"){ banner.classList.remove("show"); return; }
+    banner.classList.add("show");
+    document.querySelectorAll("[data-cov]").forEach(function(b){ b.classList.toggle("on", b.dataset.cov===covMode); });
+    var total = tierDist.reduce(function(a,t){return a+t[2];},0);
+    if (covMode === "brand"){
+      $("covCount").textContent = total + " / 286 商品";
+      $("covCount").className = "pill ok";
+      $("covDesc").textContent = "品牌全量模式：每个商品都进入推广，潜力只决定制造档位和上线波次。爆款精做，长尾用 AI 兜底，没有任何商品被排除。";
+      $("covBar").innerHTML = tierDist.map(function(t){
+        return '<div class="cov-seg '+t[1]+'" style="flex:'+t[2]+'">'+(t[2]>20?esc(t[0])+' '+t[2]:t[2])+'</div>';
+      }).join("");
+    } else {
+      // agency: 产能上限假设当期只能精做+标准 80 个，其余降 AI 兜底但仍推
+      $("covCount").textContent = "50 精做 · 236 AI兜底";
+      $("covCount").className = "pill info";
+      $("covDesc").textContent = "代运营产能模式：当期产能优先分配给高潜力商品（精品+标准 50 个），其余自动降为 AI 快产仍然全部推广。资源极紧时可在设置中开启真淘汰。";
+      var agency = [["精品定制","premium",14],["标准产出","standard",36],["AI快产兜底","aiq",236]];
+      $("covBar").innerHTML = agency.map(function(t){
+        return '<div class="cov-seg '+t[1]+'" style="flex:'+t[2]+'">'+(t[2]>20?esc(t[0])+' '+t[2]:t[2])+'</div>';
+      }).join("");
+    }
+  }
+
+  // ============ WORKBENCH (records) ============
+  function currentRecords(){ return records[activeStageId] || { filters:["全部"], kind:"", items:[] }; }
+  function filteredItems(){
+    var rs = currentRecords();
+    var q = wbQuery.trim().toLowerCase();
+    return rs.items.filter(function(it){
+      var okF = (wbFilter === "全部") || (it.flt === wbFilter);
+      var okQ = !q || (it.id+" "+it.name+" "+(it.sub||"")).toLowerCase().indexOf(q) >= 0;
+      return okF && okQ;
+    });
+  }
+  function renderWorkbench(){
+    var rs = currentRecords();
+    $("wbCount").textContent = rs.items.length;
+    $("wbTitle").textContent = rs.kind + " · 对象工作台";
+    $("wbDesc").textContent = "当前阶段正在处理的 " + rs.items.length + " 条 " + rs.kind + " 记录。点击任一条进入深度详情，可搜索与筛选。";
+    $("wbFilters").innerHTML = rs.filters.map(function(f){
+      return '<button class="chip-btn'+(f===wbFilter?' active':'')+'" data-filter="'+attr(f)+'">'+esc(f)+'</button>';
+    }).join("");
+    var items = filteredItems();
+    if (!items.length){ $("recGrid").innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:var(--faint)">没有匹配的记录</div>'; return; }
+    $("recGrid").innerHTML = items.map(function(it){
+      return '<div class="rec s-'+statusClass(it.status)+'" data-rec="'+attr(it.id)+'">'
+        + '<div class="rec-top"><div><div class="rec-id">'+esc(it.id)+'</div><h3>'+esc(it.name)+'</h3></div>'+pill(it.status)+'</div>'
+        + '<p class="rec-sub">'+esc(it.sub||"")+'</p>'
+        + '<div class="rec-foot"><div class="rec-stat"><b>'+esc(it.stat[0])+'</b><span>'+esc(it.stat[1])+'</span></div>'
+        + '<span class="rec-arrow">→</span></div></div>';
+    }).join("");
+  }
+
+  function findRecord(id){
+    var its = currentRecords().items;
+    for(var i=0;i<its.length;i++){ if(its[i].id===id) return its[i]; }
+    return null;
+  }
+  //DETAIL_FNS
+  // ============ DETAIL PACK ============
+  function renderDetails(s){
+    var d = stageDetails[s.id];
+    $("detailCards").innerHTML = d.cards.map(function(c){
+      return '<div class="dcard" data-select="细节" data-title="'+attr(c[0])+'" data-status="阶段规则" data-output="'+attr(s.output)+'" data-detail="'+attr(c[1])+'"><h3>'+esc(c[0])+'</h3><p>'+esc(c[1])+'</p></div>';
+    }).join("");
+
+    $("objectTable").innerHTML = '<table><thead><tr><th>对象</th><th>职责</th><th>来源</th><th>下游</th></tr></thead><tbody>'
+      + d.objects.map(function(r){
+        return '<tr data-select="对象" data-title="'+attr(r[0])+'" data-status="'+attr(r[1])+'" data-output="'+attr(r[3])+'" data-detail="'+attr(r[2])+'">'
+          + '<td><code>'+esc(r[0])+'</code></td><td><strong>'+esc(r[1])+'</strong></td><td>'+esc(r[2])+'</td><td>'+esc(r[3])+'</td></tr>';
+      }).join("") + '</tbody></table>';
+
+    renderExample(s, d.example);
+    $("contractBlock").innerHTML = '<div class="contract"><div class="contract-bar"><i></i><i></i><i></i><span>'+esc(s.output)+'.schema.json</span></div><pre>'+highlightJson(d.contract)+'</pre></div>';
+  }
+
+  function renderExample(s, ex){
+    $("exampleTitle").textContent = ex.title;
+    $("exampleSummary").textContent = "把阶段规则落成可执行样例，方便判断 Agent 应该生成什么、阻塞什么、交付什么。";
+    var html = '<p class="example-note">'+esc(ex.summary)+' 点击任一行可在右侧查看交付和门禁含义。</p>';
+    html += '<div class="tbl-wrap"><table><thead><tr>' + ex.columns.map(function(c){ return '<th>'+esc(c)+'</th>'; }).join("") + '</tr></thead><tbody>';
+    html += ex.rows.map(function(r){
+      return '<tr data-select="样例" data-title="'+attr(r[0])+'" data-status="'+attr(r[2])+'" data-output="'+attr(s.output)+'" data-detail="'+attr(r[1]+' / '+r[3])+'">'
+        + r.map(function(cell, i){ return '<td>'+(i===0?'<strong>'+esc(cell)+'</strong>':esc(cell))+'</td>'; }).join("") + '</tr>';
+    }).join("");
+    html += '</tbody></table></div>';
+    $("exampleBlock").innerHTML = html;
+  }
+
+  // ============ RIGHT PANEL ============
+  function renderRight(){
+    var s = activeStage();
+    var it = selected || { kind:"阶段", title:s.name, status:s.status, output:s.output, detail:s.summary };
+    var html = '';
+    html += '<div class="rcard"><div class="rcard-head"><h3><span class="rix">◎</span> 当前业务对象</h3></div><div class="rcard-body">'
+      + '<div class="kv"><span class="k">批次</span><span class="v mono">'+esc(batch.id)+'</span></div>'
+      + '<div class="kv"><span class="k">阶段</span><span class="v">'+esc(s.no+' '+s.name)+'</span></div>'
+      + '<div class="kv"><span class="k">负责人</span><span class="v">'+esc(s.owner)+'</span></div>'
+      + '<div class="kv"><span class="k">状态</span><span class="v">'+pill(s.status)+'</span></div></div></div>';
+
+    html += '<div class="rcard"><div class="rcard-head"><h3><span class="rix">⊞</span> 数据入口状态</h3></div><div class="rcard-body">'
+      + '<div class="kv"><span class="k">状态</span><span class="v">'+pill(intake.status)+'</span></div>'
+      + '<div class="kv"><span class="k">已接入</span><span class="v">'+esc(intake.metrics[0][1])+'</span></div>'
+      + '<div class="kv"><span class="k">待补齐</span><span class="v">'+esc(intake.metrics[1][1])+'</span></div>'
+      + '<div class="kv"><span class="k">输入包</span><span class="v">'+esc(intake.metrics[2][1])+'</span></div>'
+      + '<p class="desc">先把输入接通，后面的阶段才有可信事实源。</p></div></div>';
+
+    html += '<div class="rcard"><div class="rcard-head"><h3><span class="rix">▣</span> 选中项</h3></div><div class="rcard-body">'
+      + '<div class="selected-banner">'+esc(it.kind)+'</div>'
+      + '<div class="kv"><span class="k">对象</span><span class="v">'+esc(it.title)+'</span></div>'
+      + '<div class="kv"><span class="k">状态</span><span class="v">'+pill(it.status)+'</span></div>'
+      + '<div class="kv"><span class="k">交付</span><span class="v mono">'+esc(it.output)+'</span></div>'
+      + '<p class="desc">'+esc(it.detail)+'</p></div></div>';
+
+    html += '<div class="rcard"><div class="rcard-head"><h3><span class="rix">⇄</span> 输入 / 输出</h3></div><div class="rcard-body">'
+      + '<div class="kv"><span class="k">输入</span><span class="v">'+esc(s.input)+'</span></div>'
+      + '<div class="kv"><span class="k">输出</span><span class="v mono">'+esc(s.output)+'</span></div>'
+      + '<div class="kv"><span class="k">主动作</span><span class="v">'+esc(s.primary)+'</span></div></div></div>';
+
+    html += '<div class="rcard"><div class="rcard-head"><h3><span class="rix">⚑</span> 系统定位</h3></div><div class="rcard-body"><ul class="rlist">'
+      + '<li>SOP 是阶段轨道，不是最终产品形态。</li>'
+      + '<li>知识库和规则负责事实、约束和门禁。</li>'
+      + '<li>意图识别解释用户任务，不能替代产品证据。</li>'
+      + '<li>投放调优只生成预算、词包和创意动作，不能绕过审核。</li>'
+      + '<li>所有产物都必须有下游对象和恢复路径。</li></ul></div></div>';
+
+    $("rightbar").innerHTML = html;
+  }
+  //MODAL_FNS
+  // ============ DRILL DRAWER ============
+  function openDrill(id){
+    var it = findRecord(id);
+    if(!it) return;
+    drillItem = it;
+    var s = activeStage();
+    var rs = currentRecords();
+
+    // head
+    var meta = "";
+    if (it.scores){ // numeric summary from scores
+      meta = it.scores.slice(0,4).map(function(sc){ return '<div class="dm"><b>'+esc(sc[1])+'</b><span>'+esc(sc[0])+'</span></div>'; }).join("");
+    } else {
+      meta = '<div class="dm"><b>'+esc(it.stat[0])+'</b><span>'+esc(it.stat[1])+'</span></div>';
+    }
+    $("drawerHead").innerHTML =
+      '<div class="drawer-crumb">'+esc(s.no+' '+s.name)+'<span class="sep">›</span><code>'+esc(rs.kind)+'</code><span class="sep">›</span><code>'+esc(it.id)+'</code></div>'
+      + '<div class="drawer-titlerow"><div><h2>'+esc(it.name)+'</h2><p class="sub">'+esc(it.sub||"")+'</p></div>'+pill(it.status)+'</div>'
+      + '<div class="drawer-meta">'+meta+'</div>';
+
+    // body
+    var body = "";
+    // fields
+    if (it.fields){
+      body += '<div class="dsec"><div class="dsec-h">对象字段<span class="count">'+it.fields.length+' 项</span></div><div class="fgrid">'
+        + it.fields.map(function(f){ return '<div class="fc"><div class="fk">'+esc(f[0])+'</div><div class="fv">'+esc(f[1])+'</div></div>'; }).join("")
+        + '</div></div>';
+    }
+    // type-specific body
+    body += drillSpecific(it);
+    // signals (intent)
+    if (it.signals){
+      body += '<div class="dsec"><div class="dsec-h">来源信号<span class="count">'+it.signals.length+' 条</span></div><div class="rec-grid" style="grid-template-columns:1fr">'
+        + it.signals.map(function(sg){ return '<div class="ln-node" style="border-radius:10px"><span>'+esc(sg)+'</span></div>'; }).join("")
+        + '</div></div>';
+    }
+    // reasons
+    if (it.reasons && it.reasons.length){
+      body += '<div class="dsec"><div class="dsec-h">判定理由</div><ul class="rlist" style="padding-left:18px">'
+        + it.reasons.map(function(r){ return '<li style="font-size:13px;margin-bottom:7px;color:var(--ink-2)">'+esc(r)+'</li>'; }).join("")
+        + '</ul></div>';
+    }
+    // recovery
+    if (it.recovery && it.recovery.length){
+      body += '<div class="dsec"><div class="dsec-h">恢复 / 下游任务<span class="count">'+it.recovery.length+' 项</span></div>'
+        + it.recovery.map(function(rc){
+          return '<div class="recovery" style="border-style:solid;border-color:var(--line-2);background:var(--surface-2);margin-bottom:9px">'
+            + '<b style="color:var(--brand-strong)">'+esc(rc[1])+'</b><p>'+esc(rc[0])+' — '+esc(rc[2])+'</p></div>';
+        }).join("") + '</div>';
+    } else if (!it.gateChain) {
+      body += '<div class="dsec"><div class="recovery" style="border-style:solid;border-color:var(--green-soft);background:var(--green-soft)"><b style="color:var(--green)">✓ 无阻塞</b><p>该记录无未决恢复任务，可正常进入下游。</p></div></div>';
+    }
+    $("drawerBody").innerHTML = body;
+
+    // foot
+    $("drawerFoot").innerHTML = '<button class="btn-ghost" id="drillClose2">关闭</button><button class="btn-primary" id="drillAct">推进 / 处理该对象</button>';
+    $("drillClose2").addEventListener("click", closeDrill);
+    $("drillAct").addEventListener("click", function(){
+      selected = { kind: rs.kind, title: it.name, status: "已处理", output: rs.kind, detail: "已对「"+it.name+"」执行处理动作，写入批次行动记录。" };
+      closeDrill(); renderRight();
+    });
+
+    $("drawerScrim").classList.add("open");
+    $("drawer").classList.add("open");
+    $("drawer").setAttribute("aria-hidden","false");
+    selected = { kind: rs.kind, title: it.name, status: it.status, output: rs.kind, detail: it.sub||"" };
+    renderRight();
+  }
+
+  function drillSpecific(it){
+    var html = "";
+    // score breakdown
+    if (it.scores){
+      var maxAbs = 100;
+      html += '<div class="dsec"><div class="dsec-h">评分拆解</div>';
+      html += it.scores.map(function(sc){
+        var v = sc[1], neg = v < 0;
+        var pct = Math.min(100, Math.abs(v)/maxAbs*100);
+        return '<div class="scorebar"><span class="lbl">'+esc(sc[0])+'</span>'
+          + '<span class="track"><span class="fill'+(neg?' neg':'')+'" style="width:'+pct+'%"></span></span>'
+          + '<span class="val" style="color:'+(neg?'var(--red)':'var(--brand)')+'">'+(neg?'':'+')+v+'</span></div>';
+      }).join("") + '</div>';
+    }
+    // video timeline + shots
+    if (it.timeline){
+      html += '<div class="dsec"><div class="dsec-h">分镜时间轴<span class="count">60-75s 约束</span></div><div class="vtimeline">';
+      html += it.timeline.map(function(seg){
+        return '<div class="vseg '+seg.type+'" style="flex:'+seg.w+'">'
+          + (seg.gold?'<span class="goldmark">黄金3秒</span>':'')
+          + '<div class="vt">'+esc(seg.t)+'</div><div class="vn">'+esc(seg.name)+'</div><div class="vd">'+esc(seg.desc)+'</div></div>';
+      }).join("") + '</div>';
+      html += '<div class="dsec-h" style="margin-top:16px">镜头清单<span class="count">'+it.shots.length+' 个镜头</span></div>';
+      html += it.shots.map(function(sh){
+        var tags = sh.tags.map(function(t){ return '<span class="tag'+(t[1]==="warn"?" warnt":t[1]==="bad"?" badt":t[1]==="ok"?"":"")+'"'+(t[1]==="ok"?' style="background:var(--green-soft);color:var(--green)"':'')+'>'+esc(t[0])+'</span>'; }).join("");
+        return '<div class="shot"><div class="stime">'+esc(sh.time)+'</div>'
+          + '<div><h4>'+esc(sh.h)+'</h4><p>'+esc(sh.p)+'</p><div class="smeta">'+tags+'</div></div>'
+          + '<span class="rec-arrow" style="align-self:center">▦</span></div>';
+      }).join("") + '</div>';
+    }
+    // gate chain (review)
+    if (it.gateChain){
+      html += '<div class="dsec"><div class="dsec-h">门禁链路<span class="count">'+it.gateChain.length+' 道门禁</span></div><div class="gchain">';
+      html += it.gateChain.map(function(g){
+        var icon = g.st==="pass"?"✓":g.st==="fail"?"✕":"!";
+        var rec = g.rec ? '<div class="recovery"><b>反向任务</b><p>'+esc(g.rec)+'</p></div>' : '';
+        return '<div class="gnode '+g.st+'"><div class="gicon">'+icon+'</div><div class="gbody"><h4>'+esc(g.name)+'</h4><p>'+esc(g.msg)+'</p>'+rec+'</div></div>';
+      }).join("") + '</div></div>';
+    }
+    return html;
+  }
+
+  function closeDrill(){
+    $("drawerScrim").classList.remove("open");
+    $("drawer").classList.remove("open");
+    $("drawer").setAttribute("aria-hidden","true");
+    drillItem = null;
+  }
+
+  // ============ TABS ============
+  function switchTab(t){
+    activeTab = t;
+    document.querySelectorAll(".tab").forEach(function(b){ b.classList.toggle("active", b.dataset.tab===t); });
+    document.querySelectorAll(".tabview").forEach(function(v){ v.classList.toggle("active", v.dataset.view===t); });
+  }
+
+  // ============ GENERIC DRAWER SHELL ============
+  function showDrawer(head, body, foot){
+    $("drawerHead").innerHTML = head;
+    $("drawerBody").innerHTML = body;
+    $("drawerFoot").innerHTML = foot || '<button class="btn-ghost" id="dGenClose">关闭</button>';
+    var gc = $("dGenClose"); if(gc) gc.addEventListener("click", closeDrill);
+    $("drawerScrim").classList.add("open");
+    $("drawer").classList.add("open");
+    $("drawer").setAttribute("aria-hidden","false");
+    $("drawerBody").scrollTop = 0;
+  }
+  function crumb(parts){
+    return '<div class="drawer-crumb">' + parts.map(function(p,i){
+      return (i? '<span class="sep">›</span>':'') + (p.code? '<code>'+esc(p.t)+'</code>' : esc(p.t));
+    }).join("") + '</div>';
+  }
+  function dsec(title, count, inner){
+    return '<div class="dsec"><div class="dsec-h">'+esc(title)+(count!=null?'<span class="count">'+esc(count)+'</span>':'')+'</div>'+inner+'</div>';
+  }
+  function fieldGrid(pairs){
+    return '<div class="fgrid">'+pairs.map(function(f){ return '<div class="fc'+(f[2]?' full':'')+'"><div class="fk">'+esc(f[0])+'</div><div class="fv">'+esc(f[1])+'</div></div>'; }).join("")+'</div>';
+  }
+  function reasonList(arr){
+    return '<ul class="rlist" style="padding-left:18px">'+arr.map(function(r){ return '<li style="font-size:13px;margin-bottom:7px;color:var(--ink-2)">'+esc(r)+'</li>'; }).join("")+'</ul>';
+  }
+  function relatedRecords(ids){
+    if(!ids || !ids.length) return '';
+    return '<div class="rec-grid" style="grid-template-columns:1fr">'+ids.map(function(r){
+      return '<button class="ln-node" data-rec="'+attr(r.id)+'" style="border-radius:10px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px">'
+        + pill(r.status) + '<span>'+esc(r.name)+'<span class="lk">'+esc(r.id)+'</span></span><span class="rec-arrow" style="margin-left:auto">→</span></button>';
+    }).join("")+'</div>';
+  }
+
+  // ============ INFO DRILL (metric / task / gate / artifact / detail / object / example) ============
+  function openInfoDrill(kind, key){
+    var s = activeStage();
+    var head, body = "", foot = '<button class="btn-ghost" id="dGenClose">关闭</button>';
+    var rs = records[s.id];
+
+    if (kind === "指标"){
+      var m = s.metrics.filter(function(x){return x[0]===key;})[0] || [key,""];
+      head = crumb([{t:s.no+' '+s.name},{t:'Metric',code:1},{t:key,code:1}])
+        + '<div class="drawer-titlerow"><div><h2>'+esc(m[0])+'</h2><p class="sub">'+esc(s.name)+'阶段实时指标。点击关联记录可下钻到具体业务对象。</p></div>'+pill("实时")+'</div>'
+        + '<div class="drawer-meta"><div class="dm"><b>'+esc(m[1])+'</b><span>'+esc(m[0])+'</span></div>'
+        + s.metrics.slice(0,4).filter(function(x){return x[0]!==m[0];}).slice(0,3).map(function(x){return '<div class="dm"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>';}).join("")+'</div>';
+      body += dsec("阶段全部指标", s.metrics.length+" 项", '<div class="fgrid">'+s.metrics.map(function(x){return '<div class="fc"><div class="fk">'+esc(x[0])+'</div><div class="fv">'+esc(x[1])+'</div></div>';}).join("")+'</div>');
+      body += dsec("指标如何产生", null, reasonList(["来自 "+s.name+" 阶段 Agent 对 "+(rs?rs.kind:"业务对象")+" 的实时统计","随对象工作台记录状态变化而更新","点击下方记录可查看构成该指标的具体对象"]));
+      if (rs) body += dsec("构成该指标的记录", rs.items.length+" 条", relatedRecords(rs.items.slice(0,4).map(function(it){return {id:it.id,name:it.name,status:it.status};})));
+    }
+    else if (kind === "任务"){
+      var t = s.tasks.filter(function(x){return x[0]===key;})[0] || [key,"",""];
+      var idx = s.tasks.map(function(x){return x[0];}).indexOf(t[0]);
+      head = crumb([{t:s.no+' '+s.name},{t:'AgentTask',code:1},{t:'step-'+(idx+1),code:1}])
+        + '<div class="drawer-titlerow"><div><h2>'+(idx+1)+'. '+esc(t[0])+'</h2><p class="sub">'+esc(t[1])+'</p></div>'+pill(t[2])+'</div>'
+        + '<div class="drawer-meta"><div class="dm"><b>'+(idx+1)+'/'+s.tasks.length+'</b><span>步骤序号</span></div><div class="dm"><b>'+esc(s.primary)+'</b><span>阶段主动作</span></div></div>';
+      body += dsec("任务字段", null, fieldGrid([["所属阶段",s.name],["执行者",s.owner],["状态",t[2]],["产出对象",s.output],["输入",s.input,true]]));
+      body += dsec("执行流程", null, '<div class="gchain">'+s.tasks.map(function(x,i){
+        var st = x[0]===t[0]?(statusClass(x[2])==="ok"?"pass":statusClass(x[2])==="bad"?"fail":"wait"):(i<idx?"pass":"wait");
+        var ic = st==="pass"?"✓":st==="fail"?"✕":(i+1);
+        return '<div class="gnode '+st+'"><div class="gicon">'+ic+'</div><div class="gbody"><h4>'+esc(x[0])+(x[0]===t[0]?' <span class="pill '+statusClass(x[2])+'" style="margin-left:4px">当前查看</span>':'')+'</h4><p>'+esc(x[1])+'</p></div></div>';
+      }).join("")+'</div>');
+      foot = '<button class="btn-ghost" id="dGenClose">关闭</button><button class="btn-primary" id="dGenAct">标记任务完成</button>';
+    }
+    else if (kind === "门禁"){
+      var g = s.gates.filter(function(x){return x[0]===key;})[0] || [key,"",""];
+      var stc = statusClass(g[2]);
+      head = crumb([{t:s.no+' '+s.name},{t:'ReviewGate',code:1},{t:key,code:1}])
+        + '<div class="drawer-titlerow"><div><h2>'+esc(g[0])+' 门禁</h2><p class="sub">'+esc(g[1])+'</p></div>'+pill(g[2])+'</div>'
+        + '<div class="drawer-meta"><div class="dm"><b>'+esc(g[2])+'</b><span>判定结果</span></div><div class="dm"><b>'+s.gates.length+'</b><span>本阶段门禁</span></div></div>';
+      var icon = stc==="ok"?"✓":stc==="bad"?"✕":"!";
+      var stn = stc==="ok"?"pass":stc==="bad"?"fail":"wait";
+      var inner = '<div class="gchain"><div class="gnode '+stn+'"><div class="gicon">'+icon+'</div><div class="gbody"><h4>'+esc(g[0])+'</h4><p>'+esc(g[1])+'</p>'
+        + (stc!=="ok"?'<div class="recovery"><b>恢复路径</b><p>门禁未通过，必须先处理：'+esc(g[1])+'。处理后重新校验，不能把风险带到下游。</p></div>':'')
+        + '</div></div></div>';
+      body += dsec("门禁判定", null, inner);
+      body += dsec("本阶段全部门禁", s.gates.length+" 道", '<div class="gchain">'+s.gates.map(function(x){
+        var c=statusClass(x[2]); var ic=c==="ok"?"✓":c==="bad"?"✕":"!"; var sn=c==="ok"?"pass":c==="bad"?"fail":"wait";
+        return '<div class="gnode '+sn+'"><div class="gicon">'+ic+'</div><div class="gbody"><h4>'+esc(x[0])+'</h4><p>'+esc(x[1])+'</p></div></div>';
+      }).join("")+'</div>');
+    }
+    else if (kind === "交付物"){
+      var a = s.artifacts.filter(function(x){return x[0]===key;})[0] || [key,""];
+      head = crumb([{t:s.no+' '+s.name},{t:'Artifact',code:1},{t:a[0],code:1}])
+        + '<div class="drawer-titlerow"><div><h2>'+esc(a[0])+'</h2><p class="sub">'+esc(a[1])+'</p></div>'+pill("可追溯")+'</div>'
+        + '<div class="drawer-meta"><div class="dm"><b>'+esc(s.output)+'</b><span>所属输出</span></div><div class="dm"><b>'+s.artifacts.length+'</b><span>本阶段交付物</span></div></div>';
+      body += dsec("交付物说明", null, '<p style="font-size:13.5px;color:var(--ink-2);line-height:1.6">'+esc(a[1])+'</p>');
+      body += dsec("数据流向", null, '<div class="lineage"><div class="ln-node">'+esc(s.name)+'<span class="lk">本阶段</span></div><span class="ln-arrow">→</span><div class="ln-node">'+esc(a[0])+'<span class="lk">交付物</span></div><span class="ln-arrow">→</span><div class="ln-node">下游阶段<span class="lk">'+esc(s.output)+'</span></div></div>');
+      if (rs) body += dsec("相关业务对象", rs.items.length+" 条", relatedRecords(rs.items.slice(0,3).map(function(it){return {id:it.id,name:it.name,status:it.status};})));
+    }
+    else if (kind === "细节"){
+      var d = stageDetails[s.id];
+      var c = d.cards.filter(function(x){return x[0]===key;})[0] || [key,""];
+      head = crumb([{t:s.no+' '+s.name},{t:'细节包',code:0},{t:c[0],code:1}])
+        + '<div class="drawer-titlerow"><div><h2>'+esc(c[0])+'</h2><p class="sub">'+esc(c[1])+'</p></div>'+pill("阶段规则")+'</div>'
+        + '<div class="drawer-meta"><div class="dm"><b>'+d.cards.length+'</b><span>细节卡</span></div><div class="dm"><b>'+d.objects.length+'</b><span>业务对象</span></div></div>';
+      body += dsec("规则说明", null, '<p style="font-size:13.5px;color:var(--ink-2);line-height:1.6">'+esc(c[1])+'</p>');
+      body += dsec("同阶段其他细节", (d.cards.length-1)+" 条", '<div class="fgrid">'+d.cards.filter(function(x){return x[0]!==c[0];}).map(function(x){return '<div class="fc full"><div class="fk">'+esc(x[0])+'</div><div class="fv" style="font-weight:500;font-size:12.5px;color:var(--muted)">'+esc(x[1])+'</div></div>';}).join("")+'</div>');
+    }
+    else if (kind === "对象"){
+      var d2 = stageDetails[s.id];
+      var o = d2.objects.filter(function(x){return x[0]===key;})[0] || [key,"","",""];
+      head = crumb([{t:s.no+' '+s.name},{t:'Ontology',code:0},{t:o[0],code:1}])
+        + '<div class="drawer-titlerow"><div><h2><code style="font-size:18px">'+esc(o[0])+'</code></h2><p class="sub">'+esc(o[1])+'</p></div></div>'
+        + '<div class="drawer-meta"><div class="dm"><b>'+esc(o[0])+'</b><span>对象类型</span></div></div>';
+      body += dsec("对象定义", null, fieldGrid([["职责",o[1]],["来源",o[2]],["下游去向",o[3]],["所属阶段",s.name]]));
+      body += dsec("血缘流向", null, '<div class="lineage"><div class="ln-node">'+esc(o[2])+'<span class="lk">来源</span></div><span class="ln-arrow">→</span><div class="ln-node" style="border-color:var(--brand);background:var(--brand-soft)"><b>'+esc(o[0])+'</b><span class="lk">本对象</span></div><span class="ln-arrow">→</span><div class="ln-node">'+esc(o[3])+'<span class="lk">下游</span></div></div>');
+      if (rs && rs.kind===o[0]) body += dsec("该类型的实例记录", rs.items.length+" 条", relatedRecords(rs.items.slice(0,4).map(function(it){return {id:it.id,name:it.name,status:it.status};})));
+    }
+    else if (kind === "样例"){
+      var d3 = stageDetails[s.id]; var ex = d3.example;
+      var row = ex.rows.filter(function(r){return r[0]===key;})[0] || [key];
+      head = crumb([{t:s.no+' '+s.name},{t:'Harness 样例',code:0},{t:key,code:1}])
+        + '<div class="drawer-titlerow"><div><h2>'+esc(row[0])+'</h2><p class="sub">'+esc(ex.summary)+'</p></div></div>'
+        + '<div class="drawer-meta"><div class="dm"><b>'+esc(ex.title)+'</b><span>样例集</span></div></div>';
+      var pairs = ex.columns.map(function(col,i){ return [col, row[i]!=null?row[i]:"—", String(row[i]||"").length>20]; });
+      body += dsec("样例字段", null, fieldGrid(pairs));
+      body += dsec("说明", null, '<p style="font-size:13.5px;color:var(--ink-2);line-height:1.6">'+esc(ex.summary)+'</p>');
+    }
+    else { return; }
+
+    showDrawer(head, body, foot);
+    var act = $("dGenAct");
+    if (act) act.addEventListener("click", function(){
+      selected = { kind:kind, title:key, status:"已处理", output:s.output, detail:"已对「"+key+"」执行处理动作，写入批次记录。" };
+      closeDrill(); renderRight();
+    });
+    selected = { kind:kind, title:key, status:"查看中", output:s.output, detail:"正在查看 "+kind+"：" + key };
+    renderRight();
+  }
+
+  // ============ BATCH OVERVIEW DRILL ============
+  function openBatchDrill(){
+    var head = crumb([{t:'批次'},{t:'ContentBatch',code:1},{t:batch.id,code:1}])
+      + '<div class="drawer-titlerow"><div><h2>'+esc(batch.title)+'</h2><p class="sub">'+esc(batch.objective)+'</p></div>'+pill("进行中")+'</div>'
+      + '<div class="drawer-meta"><div class="dm"><b>9</b><span>流水线阶段</span></div><div class="dm"><b>'+intake.metrics[0][1]+'</b><span>数据源接入</span></div><div class="dm"><b>'+intake.metrics[2][1]+'</b><span>输入包</span></div><div class="dm"><b>18</b><span>目标制造单</span></div></div>';
+    var body = "";
+    body += dsec("批次信息", null, fieldGrid([["批次 ID",batch.id],["负责人",batch.owner,true],["目标",batch.target,true]]));
+    body += dsec("阶段进度", "9 阶段", '<div class="gchain">'+stages.map(function(it){
+      var c=statusClass(it.status); var ic=c==="ok"?"✓":c==="bad"?"✕":it.no; var sn=c==="ok"?"pass":c==="bad"?"fail":"wait";
+      return '<button class="gnode '+sn+'" data-stage="'+it.id+'" style="text-align:left;background:none;border:0;width:100%;cursor:pointer"><div class="gicon">'+ic+'</div><div class="gbody"><h4>'+esc(it.no+' '+it.name)+' '+pill(it.status)+'</h4><p>'+esc(it.summary)+'</p></div></button>';
+    }).join("")+'</div>');
+    showDrawer(head, body, '<button class="btn-ghost" id="dGenClose">关闭</button>');
+  }
+  //MODAL_FNS2
+  // ============ INTAKE CENTER MODAL ============
+  function renderIntakeCenter(){
+    var html = '';
+    html += '<div class="metrics" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">';
+    html += intake.metrics.map(function(m,i){
+      return '<div class="metric'+(i===0?' accent':'')+'"><span>'+esc(m[0])+'</span><b>'+esc(m[1])+'</b></div>';
+    }).join("") + '</div>';
+
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">';
+    html += intake.cards.map(function(c){
+      return '<div class="dcard" data-fill="数据入口" data-title="'+attr(c.title)+'" data-status="'+attr(c.status)+'" data-output="'+attr(c.output)+'" data-detail="'+attr(c.detail)+'">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px"><h3 style="margin:0">'+esc(c.title)+'</h3>'+pill(c.status)+'</div>'
+        + '<p>'+esc(c.detail)+'</p>'
+        + '<p style="margin-top:8px;font-family:var(--mono);font-size:10.5px;color:var(--brand-strong)">'+esc(c.output)+'</p></div>';
+    }).join("") + '</div>';
+
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
+    // fill actions
+    html += '<div class="panel" style="box-shadow:none"><div class="panel-head"><div><h2 style="font-size:14px">补齐资料入口</h2><p>按资料来源选择动作，补完后生成 IntakePacket、InputBundle 或人工确认。</p></div></div><div class="panel-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+    html += intake.actions.map(function(a){
+      return '<button class="dcard" style="text-align:left" data-fill="补齐入口" data-title="'+attr(a.title)+'" data-status="可执行" data-output="'+attr(a.output)+'" data-detail="'+attr(a.detail)+'"><h3 style="margin-bottom:5px">'+esc(a.title)+'</h3><p>'+esc(a.detail)+'</p></button>';
+    }).join("") + '</div></div></div>';
+    // missing queue
+    html += '<div class="panel" style="box-shadow:none"><div class="panel-head"><div><h2 style="font-size:14px">缺口任务队列</h2><p>每个缺口都必须说明去哪补、怎么补、补完交付给哪个阶段。</p></div></div><div class="panel-body"><div class="tasks">';
+    html += intake.missingTasks.map(function(t){
+      return '<div class="task" style="grid-template-columns:1fr auto" data-fill="缺口任务" data-title="'+attr(t.title)+'" data-status="'+attr(t.status)+'" data-output="'+attr(t.output)+'" data-detail="'+attr(t.detail)+'"><div><h3>'+esc(t.title)+'</h3><p>'+esc(t.detail)+'</p></div>'+pill(t.status)+'</div>';
+    }).join("") + '</div></div></div></div>';
+
+    html += '<div class="contract"><div class="contract-bar"><i></i><i></i><i></i><span>InputBundle.schema.json</span></div><pre>'+highlightJson(intake.contract)+'</pre></div>';
+    $("intakeScroll").innerHTML = html;
+  }
+
+  // ============ FILL MODAL PRESET ============
+  function fillPreset(item){
+    var t = item.title || "补齐资料";
+    if (t.indexOf("连接系统")>=0) return {
+      title:"连接外部系统", summary:"把店铺、ERP、素材库、广告后台或评论系统接入为持续同步的 SourceConnector。",
+      fields:[["系统类型","select","广告后台 / 店铺 / ERP / 素材库 / 评论系统"],["连接名称","input","夏季风扇广告后台"],["同步频率","select","每小时 / 每天 / 手动"],["负责人","input","增长运营"],["连接凭证","input","不在原型中保存，仅标记待配置"],["输出对象","input",item.output||"SourceConnector"]],
+      steps:["选择系统类型","配置连接和负责人","同步一批样例数据","生成 SourceConnector 和 IntakePacket"]
+    };
+    if (t.indexOf("上传文件")>=0 || item.output==="Evidence" || item.output==="ClipAsset" || item.output==="DeliveryMetric") return {
+      title:t.indexOf("上传文件")>=0?"上传资料文件":"补齐缺失文件", summary:item.detail||"上传文件并解析为可追溯输入包。",
+      fields:[["资料类型","select","SKU 表 / 检测报告 / 素材包 / 投放 CSV / 历史成片"],["文件上传","drop","拖拽文件到这里，或点击选择本地文件"],["解析目标","select",item.output||"IntakePacket"],["目标阶段","select",activeStage().name],["负责人","input","运营 / 审核 / 素材负责人"],["备注","textarea","说明文件来源、适用 SKU、有效期和使用边界"]],
+      steps:["保留原始文件 rawRef","解析字段并去重","生成 normalizedRefs","写入 InputBundle 并更新缺口任务"]
+    };
+    if (t.indexOf("粘贴")>=0) return {
+      title:"粘贴文本或链接", summary:"把搜索词、评论、客服问答、竞品标题或达人脚本转为 SearchSignal、PainPoint 或 IntentCluster。",
+      fields:[["文本来源","select","搜索词 / 评论 / 客服问答 / 竞品标题 / 达人脚本"],["原始文本","textarea","一行一条粘贴到这里"],["解析目标","select","SearchSignal / PainPoint / IntentCluster"],["禁止写入","input","ProductFact"],["负责人","input","内容运营"]],
+      steps:["保留原始文本","识别噪声和敏感推断","聚类意图和痛点","交付意图或卖点阶段"]
+    };
+    if (t.indexOf("人工")>=0 || item.output==="HumanApproval") return {
+      title:"人工录入与确认", summary:item.detail||"录入价格、预算、风险例外或审核意见，生成 HumanApproval。",
+      fields:[["确认类型","select","活动价 / 预算阈值 / 风险例外 / 素材授权 / 测试条件"],["确认结论","select","通过 / 驳回 / 需要补充"],["适用对象","input",item.title||"当前批次"],["适用边界","textarea","活动时间、SKU 范围、使用场景和风险边界"],["确认人","input","运营负责人"]],
+      steps:["记录确认人和时间","写入 HumanApproval","解除对应门禁或生成恢复任务","交付审核 / 调优阶段"]
+    };
+    if (t.indexOf("历史")>=0) return {
+      title:"导入历史项目", summary:"导入历史视频、素材账本、审核结论和投放表现，作为当前批次的参考输入。",
+      fields:[["历史项目","select","夏季风扇 2025 / 小家电投放 A 组 / 历史素材库"],["导入范围","select","成片 / 审核结论 / 素材账本 / 投放表现"],["去重策略","select","按素材指纹 / 按视频任务 / 手动确认"],["目标对象","input","InputBundle / AssetUsageLedger / DeliveryMetric"],["备注","textarea","说明导入范围和不能复用的内容"]],
+      steps:["读取历史项目","按素材指纹去重","生成历史输入包","进入矩阵、调优和复盘"]
+    };
+    return {
+      title:"创建补齐任务", summary:item.detail||"把缺资料问题转成可分配、可恢复、可追踪的 MissingInputTask。",
+      fields:[["缺口类型","select","证据 / 素材 / 投放指标 / 人工确认 / 文件"],["缺口对象","input",t],["补齐方式","select","上传文件 / 补拍 / 连接系统 / 人工确认"],["交付对象","input",item.output||"MissingInputTask"],["负责人","input","待分配"],["完成定义","textarea","写清补完后需要生成的对象、进入哪个阶段、通过哪个门禁"]],
+      steps:["创建 MissingInputTask","分配负责人","补齐资料并生成输入包","回到阻塞阶段继续执行"]
+    };
+  }
+
+  function openFill(item){
+    var p = fillPreset(item);
+    $("fillTitle").textContent = p.title;
+    $("fillSummary").textContent = p.summary;
+    $("fillForm").innerHTML = p.fields.map(function(f){
+      var label=f[0], type=f[1], val=f[2];
+      if(type==="textarea") return '<div class="field full"><label>'+esc(label)+'</label><textarea>'+esc(val)+'</textarea></div>';
+      if(type==="select") return '<div class="field"><label>'+esc(label)+'</label><select><option>'+esc(val)+'</option></select></div>';
+      if(type==="drop") return '<div class="field full"><label>'+esc(label)+'</label><div class="drop">📁 '+esc(val)+'<small>支持 CSV / XLSX / PDF / DOCX / MP4 / ZIP</small></div></div>';
+      return '<div class="field"><label>'+esc(label)+'</label><input value="'+attr(val)+'"></div>';
+    }).join("");
+    var preview = JSON.stringify({ batchId:batch.id, title:item.title, output:item.output, targetStage:activeStage().id, status:"draft" }, null, 2);
+    $("fillSide").innerHTML = '<div class="mbox"><h3>生成对象</h3><p style="font-family:var(--mono);color:var(--brand-strong)">'+esc(item.output||"InputBundle")+'</p><p>补齐后会写入当前批次，并作为阶段 inputRefs 的来源。</p></div>'
+      + '<div class="mbox"><h3>执行步骤</h3><ul>'+p.steps.map(function(s){return '<li>'+esc(s)+'</li>';}).join("")+'</ul></div>'
+      + '<div class="mbox"><h3>解析预览</h3><pre>'+esc(preview)+'</pre></div>';
+    closeModal("intakeModal");
+    openModal("fillModal");
+  }
+
+  function openModal(id){ $(id).classList.add("open"); $(id).setAttribute("aria-hidden","false"); }
+  function closeModal(id){ $(id).classList.remove("open"); $(id).setAttribute("aria-hidden","true"); }
+  //EVENTS
+  // ============ EVENTS ============
+  document.body.addEventListener("click", function(e){
+    // intake workbench nav toggle
+    if (e.target.closest("#intakeNav")){ enterIntakeMode(); return; }
+
+    // 模板按钮 / Sheet 卡
+    if (e.target.closest("#tplUpload")){ openUploadCheck(); return; }
+    if (e.target.closest("#tplDownload")){ openUploadCheck(); return; }
+    var shEl = e.target.closest("[data-sheet]");
+    if (shEl){ openSheetDrill(shEl.dataset.sheet); return; }
+
+    // intake source card -> drill drawer
+    var sc = e.target.closest("[data-src]");
+    if (sc){ openSrcDrill(sc.dataset.src); return; }
+
+    // tab switch
+    var tb = e.target.closest("[data-tab]");
+    if (tb){ switchTab(tb.dataset.tab); return; }
+
+    // coverage mode toggle (商品规划)
+    var cv = e.target.closest("[data-cov]");
+    if (cv){ covMode = cv.dataset.cov; renderCoverage(); return; }
+
+    // stage switch (rail or pipeline) -> exits intake mode
+    var st = e.target.closest("[data-stage]");
+    if (st){ closeDrill(); exitIntakeMode(); activeStageId = st.dataset.stage; selected = null; wbFilter = "全部"; wbQuery = ""; if($("wbSearch")) $("wbSearch").value=""; switchTab("overview"); renderAll(); return; }
+
+    // workbench filter
+    var flt = e.target.closest("[data-filter]");
+    if (flt){ wbFilter = flt.dataset.filter; renderWorkbench(); return; }
+
+    // record card -> open drill drawer
+    var rc = e.target.closest("[data-rec]");
+    if (rc){ openDrill(rc.dataset.rec); return; }
+
+    // intake-center fill triggers (inside intake modal)
+    var fl = e.target.closest("[data-fill]");
+    if (fl){
+      var fitem = { kind: fl.dataset.fill, title: fl.dataset.title, status: fl.dataset.status, output: fl.dataset.output, detail: fl.dataset.detail };
+      selected = fitem; renderRight();
+      openFill(fitem);
+      return;
+    }
+
+    // batch card -> batch overview drawer
+    var bc = e.target.closest("[data-batch]");
+    if (bc){ openBatchDrill(); return; }
+
+    // selectable rows (main area) -> info drill drawer
+    var sel = e.target.closest("[data-select]");
+    if (sel){
+      document.querySelectorAll(".task.active, .dcard.active, .gate.active, .artifact.active, .metric.active, tbody tr.active").forEach(function(n){ n.classList.remove("active"); });
+      if (sel.matches(".task,.dcard,.gate,.artifact,.metric") || sel.tagName==="TR") sel.classList.add("active");
+      openInfoDrill(sel.dataset.select, sel.dataset.title);
+    }
+  });
+
+  // workbench search
+  document.body.addEventListener("input", function(e){
+    if (e.target.id === "wbSearch"){ wbQuery = e.target.value; renderWorkbench(); }
+  });
+
+  // drawer close
+  $("drawerScrim").addEventListener("click", closeDrill);
+
+  // primary / gate actions
+  $("primaryAction").addEventListener("click", function(){
+    var s = activeStage();
+    selected = { kind:"主动作", title:s.primary, status:"已记录", output:s.output, detail:"已把「"+s.primary+"」写入批次行动记录，等待下游门禁确认。" };
+    renderRight();
+  });
+  $("gateAction").addEventListener("click", function(){
+    var s = activeStage();
+    selected = { kind:"门禁集合", title:s.name+"阶段门禁", status:s.status, output:"门禁结论", detail:s.gates.map(function(g){ return g[0]+"："+g[2]; }).join(" / ") };
+    renderRight();
+  });
+
+  // intake center
+  $("openIntake").addEventListener("click", function(){ enterIntakeMode(); });
+  $("openMissing").addEventListener("click", function(){
+    renderIntakeCenter(); openModal("intakeModal");
+    selected = { kind:"资料接入中心", title:"缺口任务队列", status:intake.status, output:"MissingInputTask[]", detail:"当前批次需要补齐投放报表、活动价边界、低噪测试证据和通勤侧脸镜头。" };
+    renderRight();
+  });
+  $("intakeClose").addEventListener("click", function(){ closeModal("intakeModal"); });
+  $("intakeModal").addEventListener("click", function(e){ if(e.target.id==="intakeModal") closeModal("intakeModal"); });
+
+  // fill modal
+  $("fillClose").addEventListener("click", function(){ closeModal("fillModal"); });
+  $("fillCancel").addEventListener("click", function(){ closeModal("fillModal"); });
+  $("fillModal").addEventListener("click", function(e){ if(e.target.id==="fillModal") closeModal("fillModal"); });
+  $("fillDraft").addEventListener("click", function(){
+    selected = { kind:"补齐草稿", title:$("fillTitle").textContent, status:"draft", output:"FillActionRequest", detail:"已保存为补齐资料草稿，等待负责人继续完善。" };
+    closeModal("fillModal"); renderRight();
+  });
+  $("fillSubmit").addEventListener("click", function(){
+    selected = { kind:"输入包", title:$("fillTitle").textContent, status:"已生成", output:"InputBundle / IntakePacket", detail:"已生成可追溯输入包，并准备写入当前批次的阶段 inputRefs。" };
+    closeModal("fillModal"); renderRight();
+  });
+
+  document.addEventListener("keydown", function(e){
+    if(e.key==="Escape"){
+      var drawerOpen = $("drawer").classList.contains("open");
+      closeDrill(); closeModal("fillModal"); closeModal("intakeModal");
+      if(!drawerOpen && intakeMode){ exitIntakeMode(); }
+    }
+  });
+
+  // ============ INIT ============
+  renderAll();
+  </script>

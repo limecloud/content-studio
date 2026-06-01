@@ -87,7 +87,7 @@ export function validateKnowledgePackFiles(entries: KnowledgePackFileEntry[]): s
     issues.push('KNOWLEDGE.md 缺少 metadata.primaryAnswers。');
   }
   entries.forEach((entry) => {
-    if ((entry.name.endsWith('.json') && parseJson(entry.content) === null)) {
+    if (((entry.name.endsWith('.json') || entry.name.endsWith('.jsonld')) && parseJson(entry.content) === null)) {
       issues.push(`${entry.name} 不是合法 JSON。`);
     }
     if (hasSensitiveText(entry.content)) {
@@ -96,7 +96,12 @@ export function validateKnowledgePackFiles(entries: KnowledgePackFileEntry[]): s
     if (hasLocalPath(entry.content)) {
       issues.push(`${entry.name} 含本机绝对路径。`);
     }
-    if (entry.name.startsWith('ontology/') || entry.name.startsWith('answers/')) {
+    if (
+      entry.name.startsWith('ontology/') ||
+      entry.name.startsWith('answers/') ||
+      entry.name.startsWith('assets/') ||
+      entry.name.startsWith('interop/')
+    ) {
       DATA_ONLY_FORBIDDEN_PATTERNS.forEach(({ pattern, label }) => {
         if (pattern.test(entry.content)) issues.push(`${entry.name} 含${label}，不符合数据层导出要求。`);
       });

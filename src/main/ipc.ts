@@ -9,6 +9,7 @@ import type {
   CreatePromptDraftFromContentInput,
   CreateContentProductionHandoffInput,
   CreateSceneCardFromContentInput,
+  CreateTeamKnowledgePromptDraftInput,
   BuildContentKnowledgeMapInput,
   ExportContentDraftChangeInput,
   GenerateBrandKnowledgeBaseInput,
@@ -17,7 +18,9 @@ import type {
   AssetFileKind,
   CreateWorkflowDraftInput,
   ExportAssetInput,
+  ExportBrandCommandActionRecordsInput,
   ExportContentKnowledgePackInput,
+  ConfirmBrandCommandStageInput,
   ExportMixPackageInput,
   ExportMarkdownInput,
   ExportPlatformDraftInput,
@@ -36,6 +39,7 @@ import type {
   RecordPromptDraftCopyInput,
   RecordMixPackageImportEvidenceInput,
   ReadPlatformDraftCopyTextInput,
+  ReadContentKnowledgePackFileInput,
   RefreshBrandCommandActionsInput,
   SubmitContentReviewDecisionInput,
   SubmitContentDraftChangeInput,
@@ -69,6 +73,7 @@ import type {
   ReplaceSkillPackageInput,
   RegisterInputSourceInput,
   RecordBrandCommandActionInput,
+  RecordBrandCommandReviewInput,
   RespondAgentPromptActionInput,
   ResolveContentSyncConflictInput,
   SkillWorkspaceInput,
@@ -93,7 +98,6 @@ import { PromptAgentService } from './services/claudePromptAgentService';
 import { ContentKnowledgeMapApplicationService } from './services/contentKnowledgeMapApplicationService';
 import { ContentKnowledgeMapBuildRunStore } from './services/contentKnowledgeMapBuildRunStore';
 import { ContentKnowledgeMapStore } from './services/contentKnowledgeMapStore';
-import { LocalOnlyContentKnowledgeMapSyncAdapter } from './services/contentKnowledgeMapSyncPort';
 import { ContentDraftChangeStore } from './services/contentDraftChangeStore';
 import { ContentKnowledgeReleaseStore } from './services/contentKnowledgeReleaseStore';
 import { ContentMaterialFeedbackService } from './services/contentMaterialFeedbackService';
@@ -101,6 +105,7 @@ import { ContentProductionHandoffService } from './services/contentProductionHan
 import { ContentProductionHandoffStore } from './services/contentProductionHandoffStore';
 import { ContentReviewTaskApplicationService } from './services/contentReviewTaskApplicationService';
 import { ContentReviewTaskStore } from './services/contentReviewTaskStore';
+import { ContentTeamKnowledgePromptDraftService } from './services/contentTeamKnowledgePromptDraftService';
 import { ContentWorkspaceSyncService } from './services/contentWorkspaceSyncService';
 import { FileAssociationService } from './services/fileAssociationService';
 import { GenerationLogStore } from './services/generationLogStore';
@@ -390,6 +395,9 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const sceneCards = new SceneLibraryStore(logs, promptPacks, textGeneration);
   const contentKnowledgeMapStore = new ContentKnowledgeMapStore();
   const contentKnowledgeMapBuildRunStore = new ContentKnowledgeMapBuildRunStore();
+  const buguContentSync = new BuguContentWorkspaceSyncAdapter({
+    tokenProvider: () => buguAuth.getAccessToken(),
+  });
   const contentKnowledgeMaps = new ContentKnowledgeMapApplicationService(
     contentKnowledgeMapStore,
     contentKnowledgeMapBuildRunStore,
@@ -398,12 +406,10 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     ipKnowledgeBases,
     sceneCards,
     promptDrafts,
-    new LocalOnlyContentKnowledgeMapSyncAdapter(),
+    assetReviews,
+    buguContentSync,
     textGeneration,
   );
-  const buguContentSync = new BuguContentWorkspaceSyncAdapter({
-    tokenProvider: () => buguAuth.getAccessToken(),
-  });
   const contentDraftChangeStore = new ContentDraftChangeStore();
   const contentKnowledgeReleaseStore = new ContentKnowledgeReleaseStore();
   const agentKnowledgeContentExport = new AgentKnowledgeContentExportService(contentKnowledgeMapStore);
@@ -414,9 +420,32 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     agentKnowledgeContentExport,
     buguContentSync,
   );
+  const contentTeamKnowledgePromptDrafts = new ContentTeamKnowledgePromptDraftService(
+    contentKnowledgeMapStore,
+    contentKnowledgeReleaseStore,
+    promptDrafts,
+  );
   const workflows = new WorkflowStore();
   const brandCommandCenterStore = new BrandCommandCenterStore();
   const contentReviewTaskStore = new ContentReviewTaskStore();
+  const referenceReverse = new ReferenceReverseService(logs, inputSources, promptDrafts, modelConfig);
+  const articles = new ArticleGenerationService(logs, textGeneration);
+  const videoWorkflow = new VideoWorkflowService(logs, textGeneration, modelConfig);
+  const media = new MediaProvider(modelConfig, logs);
+  const workflowEngine = new WorkflowEngine(
+    workflows,
+    inputSources,
+    promptDrafts,
+    agentPromptSessions,
+    media,
+    assetReviews,
+    brandKnowledgeBases,
+    promptPacks,
+    sceneCards,
+    referenceReverse,
+    ipKnowledgeBases,
+    overlayCards,
+  );
   const contentMaterialFeedback = new ContentMaterialFeedbackService(
     contentKnowledgeMapStore,
     assetReviews,
@@ -427,15 +456,17 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const brandCommandCenters = new BrandCommandCenterApplicationService(
     brandCommandCenterStore,
     contentKnowledgeMapStore,
-    new LocalOnlyContentKnowledgeMapSyncAdapter(),
+    buguContentSync,
     buguContentSync,
     buguContentSync,
     promptDrafts,
     contentReviewTaskStore,
     buguContentSync,
     sceneCards,
-    workflows,
+    workflowEngine,
     contentMaterialFeedback,
+    buguContentSync,
+    contentKnowledgeReleaseStore,
   );
   const contentReviewTasks = new ContentReviewTaskApplicationService(
     contentReviewTaskStore,
@@ -452,12 +483,8 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     new ContentProductionHandoffStore(),
     buguContentSync,
     brandCommandCenterStore,
-    workflows,
+    workflowEngine,
   );
-  const referenceReverse = new ReferenceReverseService(logs, inputSources, promptDrafts, modelConfig);
-  const articles = new ArticleGenerationService(logs, textGeneration);
-  const videoWorkflow = new VideoWorkflowService(logs, textGeneration, modelConfig);
-  const media = new MediaProvider(modelConfig, logs);
   const generationTasks = new GenerationTaskService(
     logs,
     media,
@@ -469,19 +496,6 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     (event) => mainWindow.webContents.send('generationTasks:event', event),
   );
   const agent = new ClaudeAgentService(settings, modelConfig, skills);
-  const workflowEngine = new WorkflowEngine(
-    workflows,
-    inputSources,
-    promptDrafts,
-    agentPromptSessions,
-    media,
-    assetReviews,
-    brandKnowledgeBases,
-    promptPacks,
-    sceneCards,
-    referenceReverse,
-    ipKnowledgeBases,
-  );
 
   const publish = (event: AgentEvent) => {
     mainWindow.webContents.send(`agent:event:${event.taskId}`, event);
@@ -654,8 +668,12 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('brandCommandCenters:list', (_event, workspacePath: string) => brandCommandCenters.list(workspacePath));
   ipcMain.handle('brandCommandCenters:build', (_event, input: BuildBrandCommandCenterInput) => brandCommandCenters.build(input));
   ipcMain.handle('brandCommandCenters:recordAction', (_event, input: RecordBrandCommandActionInput) => brandCommandCenters.recordAction(input));
+  ipcMain.handle('brandCommandCenters:recordReview', (_event, input: RecordBrandCommandReviewInput) => brandCommandCenters.recordReview(input));
+  ipcMain.handle('brandCommandCenters:confirmStage', (_event, input: ConfirmBrandCommandStageInput) => brandCommandCenters.confirmStage(input));
+  ipcMain.handle('brandCommandCenters:exportActions', (_event, input: ExportBrandCommandActionRecordsInput) => brandCommandCenters.exportActionRecords(input));
   ipcMain.handle('brandCommandCenters:refreshActions', (_event, input: RefreshBrandCommandActionsInput) => brandCommandCenters.refreshActions(input));
   ipcMain.handle('contentKnowledgePack:export', (_event, input: ExportContentKnowledgePackInput) => agentKnowledgeContentExport.exportPack(input));
+  ipcMain.handle('contentKnowledgePack:readFile', (_event, input: ReadContentKnowledgePackFileInput) => agentKnowledgeContentExport.readPackFile(input));
   ipcMain.handle('contentReviewTasks:list', (_event, workspacePath: string) => contentReviewTasks.list(workspacePath));
   ipcMain.handle('contentReviewTasks:generate', (_event, input: GenerateContentReviewTasksInput) => contentReviewTasks.generate(input));
   ipcMain.handle('contentReviewTasks:submitDecision', (_event, input: SubmitContentReviewDecisionInput) => contentReviewTasks.submitDecision(input));
@@ -690,6 +708,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('promptDrafts:list', (_event, workspacePath: string) => promptDrafts.list(workspacePath));
   ipcMain.handle('promptDrafts:generate', (_event, input: GeneratePromptDraftInput) => promptDrafts.generate(input));
   ipcMain.handle('promptDrafts:createFromContent', (_event, input: CreatePromptDraftFromContentInput) => promptDrafts.createFromContent(input));
+  ipcMain.handle('promptDrafts:createTeamKnowledge', (_event, input: CreateTeamKnowledgePromptDraftInput) => contentTeamKnowledgePromptDrafts.create(input));
   ipcMain.handle('promptDrafts:update', (_event, input: UpdatePromptDraftInput) => promptDrafts.update(input));
   ipcMain.handle('promptDrafts:recordCopy', (_event, input: RecordPromptDraftCopyInput) => promptDrafts.recordCopy(input));
   ipcMain.handle('agentPromptSessions:list', (_event, workspacePath: string) => agentPromptSessions.list(workspacePath));

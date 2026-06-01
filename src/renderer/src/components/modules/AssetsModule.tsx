@@ -13,6 +13,7 @@ import {
   assetCoverageMaterialStatusLabel,
   assetCoverageRowStatusLabel,
   buildAssetCoverageByReviewId,
+  type AssetCoverageLink,
 } from '../../app/assetCoverage';
 import { isPromptDistilledSource } from '../../../../shared/inputSourcePolicy';
 import {
@@ -45,11 +46,11 @@ interface AssetsModuleProps {
   onReuseImageLogInput: (log: GenerationLogEntry) => void;
   onReviewAsset: (input: Omit<ReviewAssetInput, 'workspacePath'>) => void;
   onReworkAsset: (input: {
-    kind: AssetKind;
+    kind: ReviewAssetInput['kind'];
     assetKey?: string;
     path: string;
     title?: string;
-    sourceType: 'generation-log' | 'input-source' | 'manual';
+    sourceType: ReviewAssetInput['sourceType'];
     sourceId?: string;
     promptDraftId?: string;
     promptText?: string;
@@ -57,11 +58,11 @@ interface AssetsModuleProps {
     workflowRunId?: string;
   }) => void;
   onDistillAssetPrompt: (input: {
-    kind: AssetKind;
+    kind: ReviewAssetInput['kind'];
     assetKey?: string;
     path: string;
     title?: string;
-    sourceType: 'generation-log' | 'input-source' | 'manual';
+    sourceType: ReviewAssetInput['sourceType'];
     sourceId?: string;
     promptDraftId?: string;
     promptText?: string;
@@ -69,13 +70,17 @@ interface AssetsModuleProps {
     workflowRunId?: string;
   }) => void;
   onOpenMixExport: () => void;
+  onGenerateContentMaterialTasksForCoverageRows: (targets: Array<{
+    contentKnowledgeMapId: string;
+    rowId: string;
+  }>) => void;
   onOpenPromptDraft: (draftId: string) => void;
   onOpenSceneCards: (sceneCardIds: string[]) => void;
   onOpenWorkflowRun: (workflowRunId: string) => void;
 }
 
-type AssetKind = 'image' | 'video';
-type AssetSource = 'generation' | 'imported';
+type AssetKind = ReviewAssetInput['kind'];
+type AssetSource = 'generation' | 'imported' | 'overlay-review';
 
 interface AssetItem {
   id: string;
@@ -95,6 +100,7 @@ interface AssetItem {
   reworkSource?: AssetReworkSource;
   log?: GenerationLogEntry;
   inputSource?: InputSourceRecord;
+  reviewRecord?: AssetReviewRecord;
   relatedPromptDraft?: PromptDraft;
 }
 
@@ -347,6 +353,31 @@ function collectImportedAssets(
   });
 }
 
+function collectOverlayReviewAssets(
+  assetReviews: AssetReviewRecord[],
+  promptDrafts: PromptDraft[],
+): AssetItem[] {
+  return assetReviews.flatMap((review) => {
+    if (review.kind !== 'overlay' || review.sourceType !== 'overlay-card') return [];
+    const relatedDraft = promptDrafts.find((draft) => draft.workflowRunId === review.workflowRunId);
+    return [{
+      id: review.assetKey,
+      kind: 'overlay' as const,
+      source: 'overlay-review' as const,
+      path: review.path,
+      title: review.title,
+      subtitle: `绿幕文案图 · ${fileNameFromPath(review.path)}`,
+      prompt: activeDraftContent(relatedDraft) || review.note || '',
+      createdAt: review.createdAt,
+      tags: Array.from(new Set(['绿幕文案图', 'SOP 审核', ...review.tags].filter(Boolean))),
+      promptDraftId: relatedDraft?.id,
+      workflowRunId: review.workflowRunId,
+      reviewRecord: review,
+      relatedPromptDraft: relatedDraft,
+    }];
+  });
+}
+
 function reviewLabel(status?: AssetReviewStatus): string {
   if (status === 'approved') return '已通过并入库';
   if (status === 'rejected') return '已驳回';
@@ -361,6 +392,7 @@ function reviewClass(status?: AssetReviewStatus): string {
 
 function sourceLabel(asset: AssetItem): string {
   if (asset.source === 'generation') return asset.kind === 'video' ? '生成服务视频' : '生成服务图片';
+  if (asset.kind === 'overlay') return '绿幕文案图';
   if (asset.kind === 'video') return '第三方成品视频';
   return '手动导入素材';
 }
@@ -479,11 +511,12 @@ export function AssetsModule({
   onReworkAsset,
   onDistillAssetPrompt,
   onOpenMixExport,
+  onGenerateContentMaterialTasksForCoverageRows,
   onOpenPromptDraft,
   onOpenSceneCards,
   onOpenWorkflowRun,
 }: AssetsModuleProps) {
-  const [assetFilter, setAssetFilter] = useState<AssetKind | 'all'>(variant === 'library' ? 'all' : 'image');
+  const [assetFilter, setAssetFilter] = useState<AssetKind | 'all'>(variant === 'retouch' ? 'image' : 'all');
   const [reviewFilter, setReviewFilter] = useState<AssetReviewStatus | 'all'>('all');
   const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null);
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
@@ -502,8 +535,9 @@ export function AssetsModule({
     () => [
       ...collectImportedAssets(inputSources, promptDrafts),
       ...collectGeneratedAssets(logs, promptDrafts),
+      ...collectOverlayReviewAssets(assetReviews, promptDrafts),
     ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [inputSources, logs, promptDrafts],
+    [assetReviews, inputSources, logs, promptDrafts],
   );
   const visibleAssets = useMemo(
     () => assets.filter((asset) => {
@@ -516,6 +550,7 @@ export function AssetsModule({
   );
   const imageCount = assets.filter((asset) => asset.kind === 'image').length;
   const videoCount = assets.filter((asset) => asset.kind === 'video').length;
+  const overlayCount = assets.filter((asset) => asset.kind === 'overlay').length;
   const importedCount = assets.filter((asset) => asset.source === 'imported').length;
   const approvedCount = assets.filter((asset) => reviewMap.get(asset.id)?.status === 'approved').length;
   const rejectedCount = assets.filter((asset) => reviewMap.get(asset.id)?.status === 'rejected').length;
@@ -542,7 +577,7 @@ export function AssetsModule({
 
   useEffect(() => {
     if (variant === 'library') return;
-    setAssetFilter('image');
+    setAssetFilter(variant === 'retouch' ? 'image' : 'all');
   }, [variant]);
 
   async function copyAssetPrompt(asset: AssetItem): Promise<void> {
@@ -625,6 +660,17 @@ export function AssetsModule({
     });
   }
 
+  function createMaterialTasksForCoverageLinks(links: AssetCoverageLink[]): void {
+    if (!links.length) return;
+    onGenerateContentMaterialTasksForCoverageRows(
+      links.map((link) => ({
+        contentKnowledgeMapId: link.contentKnowledgeMapId,
+        rowId: link.rowId,
+      })),
+    );
+    setSelectedAsset(null);
+  }
+
   return (
     <section className="asset-library-workbench">
       <ModuleCommandCenter
@@ -647,6 +693,7 @@ export function AssetsModule({
             { value: 'all' as const, label: `全部 ${assets.length}` },
             { value: 'image' as const, label: `图片 ${imageCount}` },
             { value: 'video' as const, label: `视频 ${videoCount}` },
+            { value: 'overlay' as const, label: `绿幕图 ${overlayCount}` },
           ].map((filter) => (
             <button
               key={filter.value}
@@ -683,9 +730,9 @@ export function AssetsModule({
           return (
           <article key={asset.id} className={`asset-tile ${review?.status ?? 'pending'}`}>
             <button className="asset-preview-button" onClick={() => setSelectedAsset(asset)}>
-              {asset.kind === 'image'
-                ? <img src={localAssetUrl(asset.path)} alt={fileNameFromPath(asset.path)} />
-                : <video src={localAssetUrl(asset.path)} muted playsInline preload="metadata" />}
+              {asset.kind === 'video'
+                ? <video src={localAssetUrl(asset.path)} muted playsInline preload="metadata" />
+                : <img src={localAssetUrl(asset.path)} alt={fileNameFromPath(asset.path)} />}
             </button>
             <div className="asset-tile-meta">
               <strong>{asset.title}</strong>
@@ -737,16 +784,18 @@ export function AssetsModule({
           >
             <div className="detail-dialog-header">
               <div>
-                <p className="eyebrow">{selectedAsset.kind === 'image' ? '图片素材' : '视频素材'}</p>
+                <p className="eyebrow">
+                  {selectedAsset.kind === 'video' ? '视频素材' : selectedAsset.kind === 'overlay' ? '绿幕文案图' : '图片素材'}
+                </p>
                 <h3>{fileNameFromPath(selectedAsset.path)}</h3>
               </div>
               <button className="ghost small" onClick={() => setSelectedAsset(null)}>关闭</button>
             </div>
             <div className="detail-dialog-body asset-detail-body">
               <div className="asset-detail-preview">
-                {selectedAsset.kind === 'image'
-                  ? <img src={localAssetUrl(selectedAsset.path)} alt={fileNameFromPath(selectedAsset.path)} />
-                  : <video src={localAssetUrl(selectedAsset.path)} controls />}
+                {selectedAsset.kind === 'video'
+                  ? <video src={localAssetUrl(selectedAsset.path)} controls />
+                  : <img src={localAssetUrl(selectedAsset.path)} alt={fileNameFromPath(selectedAsset.path)} />}
               </div>
               {selectedDecision ? (
                 <section className="asset-review-summary" aria-label="审核决策">
@@ -808,7 +857,17 @@ export function AssetsModule({
               <section className="asset-coverage-section" aria-label="覆盖内容组合">
                 <div className="asset-coverage-section-head">
                   <strong>覆盖内容组合</strong>
-                  <span>{selectedCoverageLinks.length ? `${selectedCoverageLinks.length} 个组合` : '待回写'}</span>
+                  <div>
+                    <span>{selectedCoverageLinks.length ? `${selectedCoverageLinks.length} 个组合` : '待回写'}</span>
+                    {selectedCoverageLinks.length ? (
+                      <button
+                        className="ghost small"
+                        onClick={() => createMaterialTasksForCoverageLinks(selectedCoverageLinks)}
+                      >
+                        创建补素材任务
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 {selectedCoverageLinks.length ? (
                   <div className="asset-coverage-list">
@@ -828,6 +887,14 @@ export function AssetsModule({
                           {link.performanceTags.map((tag) => (
                             <span key={`${link.id}:${tag}`}>{tag}</span>
                           ))}
+                        </div>
+                        <div className="asset-coverage-actions">
+                          <button
+                            className="ghost small"
+                            onClick={() => createMaterialTasksForCoverageLinks([link])}
+                          >
+                            补这个组合
+                          </button>
                         </div>
                       </article>
                     ))}

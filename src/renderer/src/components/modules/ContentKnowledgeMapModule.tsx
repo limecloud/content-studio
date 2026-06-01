@@ -6,6 +6,7 @@ import type {
   ContentKnowledgeMapEvidence,
   ContentKnowledgeMapMatrixRow,
   ContentKnowledgeMapRecord,
+  ContentKnowledgePackFilePreview,
   ContentKnowledgeRelease,
   ContentKnowledgePackExportResult,
   ContentMaterialCoverageResult,
@@ -14,6 +15,7 @@ import type {
   ContentSyncConflictResolutionAction,
   ContentWorkspaceSyncResult,
   InputSourceRecord,
+  InputSourceSensitivity,
   PromptDraft,
   PromptDraftPurpose,
   SceneCard,
@@ -35,7 +37,7 @@ import { AgentSessionPanel, type AgentActionResolver, type AgentExecutionStep } 
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 import { ActionGroup, SelectableRecordCard, StatusPill } from '../WorkbenchPrimitives';
 
-type DetailTab = 'selling' | 'pain' | 'scenario' | 'ip' | 'competitor' | 'evidence' | 'gaps' | 'team' | 'materials' | 'export';
+type DetailTab = 'selling' | 'pain' | 'scenario' | 'ip' | 'competitor' | 'build' | 'evidence' | 'gaps' | 'team' | 'materials' | 'export';
 
 interface ContentKnowledgeMapModuleProps {
   workspaceReady: boolean;
@@ -62,10 +64,14 @@ interface ContentKnowledgeMapModuleProps {
   onImportTeamChangePackage: () => void;
   onResolveTeamSyncConflict: (conflict: ContentSyncConflict, resolutionAction: ContentSyncConflictResolutionAction) => void;
   onCreateTeamKnowledgePackage: () => void;
+  onCreateTeamKnowledgePromptDraft: () => void;
+  onRefreshTeamKnowledgeUpdates: () => void;
   onGenerateContentReviewTasksForRows: (rowIds: string[]) => void;
   onGenerateContentMaterialTasksForRows: (rowIds: string[]) => void;
   onCreateContentProductionHandoffForRow: (rowId: string, target: ContentProductionHandoffTarget) => void;
   contentKnowledgePackExport: ContentKnowledgePackExportResult | null;
+  contentKnowledgePackFilePreview: ContentKnowledgePackFilePreview | null;
+  onReadContentKnowledgePackFile: (input: { packageDir?: string; relativePath: string }) => void;
   contentMaterialCoverage: ContentMaterialCoverageResult | null;
   agentPromptSessions: AgentPromptSession[];
   activeAgentPromptSessionId: string;
@@ -112,6 +118,7 @@ const TAB_LABELS: Array<{ key: DetailTab; label: string }> = [
   { key: 'scenario', label: '场景矩阵' },
   { key: 'ip', label: 'IP 口径' },
   { key: 'competitor', label: '竞品观察' },
+  { key: 'build', label: '生成流程' },
   { key: 'evidence', label: '证据' },
   { key: 'gaps', label: '缺口' },
   { key: 'team', label: '团队知识包' },
@@ -154,6 +161,13 @@ const AGENT_MESSAGE_KIND_LABELS: Record<AgentPromptSession['messages'][number]['
   draft: '输出',
   adjustment: '追问',
   note: '记录',
+};
+
+const SOURCE_SHARING_LABELS: Record<InputSourceSensitivity, string> = {
+  public: '公开资料',
+  internal: '团队内部',
+  confidential: '负责人确认',
+  restricted: '仅本机',
 };
 
 function mapStatusTone(status?: ContentKnowledgeMapRecord['status']) {
@@ -243,6 +257,30 @@ function teamSyncMessage(map?: ContentKnowledgeMapRecord): string {
   if (map.syncStatus === 'pending-sync') return '变更包待提交，提交后团队成员可基于同一版本继续生产。';
   if (map.syncStatus === 'blocked') return map.teamSync.message || '团队同步未完成，当前内容已保存在本机。';
   return '当前仍是本机草稿，先生成变更包并提交到团队工作区。';
+}
+
+function sourceSharingLabel(value?: InputSourceSensitivity): string {
+  return value ? SOURCE_SHARING_LABELS[value] : '团队内部';
+}
+
+function sourceSharingTone(value?: InputSourceSensitivity) {
+  if (value === 'restricted') return 'blocked';
+  if (value === 'public' || value === 'internal') return 'ready';
+  return 'idle';
+}
+
+function restrictedSourceMessage(map?: ContentKnowledgeMapRecord): string | null {
+  const summary = map?.sourceSensitivity;
+  const hasRestrictedSummary = Boolean(summary?.counts.restricted);
+  const teamMessage = map?.teamSync.message ?? '';
+  const hasRestrictedMessage = /仅本机|共享范围|禁止共享/.test(teamMessage);
+  if (!hasRestrictedSummary && !hasRestrictedMessage) return null;
+
+  const titles = summary?.restrictedSourceTitles ?? [];
+  const sourceNames = titles.length
+    ? `${titles.slice(0, 3).join('、')}${titles.length > 3 ? ` 等 ${titles.length} 个资料` : ''}`
+    : '当前内容地图里的部分资料';
+  return `包含仅本机资料：${sourceNames}。处理共享范围后才能同步或发布团队知识包。`;
 }
 
 function exportResultMessage(result: ContentKnowledgePackExportResult): string {
@@ -356,6 +394,7 @@ function evidenceTypeLabel(sourceType: ContentKnowledgeMapEvidence['sourceType']
   if (sourceType === 'ip-knowledge-base') return 'IP 资料';
   if (sourceType === 'scene-card') return '场景卡';
   if (sourceType === 'prompt-draft') return '提示词草稿';
+  if (sourceType === 'asset-review') return '素材审核';
   if (sourceType === 'generated-inference') return '推理结果';
   if (sourceType === 'manual') return '人工补充';
   return '证据';
@@ -385,7 +424,7 @@ function rowMatchesCompetitor(row: ContentKnowledgeMapMatrixRow): boolean {
 }
 
 function rowRecoveryMessage(row: ContentKnowledgeMapMatrixRow): string {
-  if (row.status === 'ready' && row.materialStatus !== 'missing') return '已具备交接条件，仍建议先生成审核任务确认发布边界。';
+  if (row.status === 'ready' && row.materialStatus !== 'missing') return '已具备交接条件，可以先生成 Prompt 草稿，发布前仍会经过证据、品牌和平台边界检查。';
   if (row.status === 'needs-evidence') return '先补产品报告、用户原声、客服记录或人工说明；补齐前不能写成确定性主张。';
   if (row.materialStatus === 'missing') return '先创建补素材任务，补齐可用图片、视频或案例后再进入生产交接。';
   if (row.tags.some((tag) => /竞品|不可搬运/.test(tag))) return '先转写为本品牌已审核机会，不能直接复制竞品表达或视觉元素。';
@@ -523,6 +562,17 @@ function renderMatrixRowDetail(
   const evidenceItems = row.evidenceRefs
     .map((id) => evidenceById.get(id))
     .filter((item): item is ContentKnowledgeMapEvidence => Boolean(item));
+  const rowReady = row.status === 'ready';
+  const primaryAction = rowReady
+    ? {
+        label: '生成 Prompt 草稿',
+        onClick: () => onCreateHandoff(row.id, 'prompt-draft' as const),
+      }
+    : {
+        label: row.status === 'needs-evidence' ? '创建补证据任务' : '生成审核任务',
+        onClick: () => onGenerateReviewTask(row.id),
+      };
+  const productionActionDisabled = !workspaceReady || busy || !rowReady;
   return (
     <div className="content-map-row-detail">
       <div className="content-map-row-detail-head">
@@ -569,9 +619,9 @@ function renderMatrixRowDetail(
         <button
           className="primary small"
           disabled={!workspaceReady || busy}
-          onClick={() => onGenerateReviewTask(row.id)}
+          onClick={primaryAction.onClick}
         >
-          生成审核任务
+          {primaryAction.label}
         </button>
         <button
           className="ghost small"
@@ -583,23 +633,28 @@ function renderMatrixRowDetail(
         <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('knowledge-review')}>
           去审核任务
         </button>
+        {!rowReady ? (
+          <button
+            className="ghost small"
+            disabled
+            title="先补证据或完成审核后再交给生产。"
+            onClick={() => onCreateHandoff(row.id, 'prompt-draft')}
+          >
+            生成 Prompt 草稿
+          </button>
+        ) : null}
         <button
           className="ghost small"
-          disabled={!workspaceReady || busy}
-          onClick={() => onCreateHandoff(row.id, 'prompt-draft')}
-        >
-          生成 Prompt 草稿
-        </button>
-        <button
-          className="ghost small"
-          disabled={!workspaceReady || busy}
+          disabled={productionActionDisabled}
+          title={!rowReady ? '先补证据或完成审核后再交给生产。' : undefined}
           onClick={() => onCreateHandoff(row.id, 'scene-card')}
         >
           生成场景卡
         </button>
         <button
           className="ghost small"
-          disabled={!workspaceReady || busy}
+          disabled={productionActionDisabled}
+          title={!rowReady ? '先补证据或完成审核后再交给生产。' : undefined}
           onClick={() => onCreateHandoff(row.id, 'sop-run')}
         >
           启动 SOP
@@ -612,7 +667,18 @@ function renderMatrixRowDetail(
   );
 }
 
-function renderTeamKnowledgePackageContent(map: ContentKnowledgeMapRecord, release?: ContentKnowledgeRelease) {
+function renderTeamKnowledgePackageContent(input: {
+  map: ContentKnowledgeMapRecord;
+  release?: ContentKnowledgeRelease;
+  readyForPrompt: boolean;
+  readyRowCount: number;
+  workspaceReady: boolean;
+  busy: boolean;
+  onCreatePromptDraft: () => void;
+  onCreateTeamKnowledgePackage: () => void;
+  onRefreshTeamKnowledgeUpdates: () => void;
+}) {
+  const { map, release } = input;
   const readySelling = map.sellingPoints.filter((row) => row.status === 'ready').slice(0, 5);
   const readyScenarios = map.scenarios.filter((row) => row.status === 'ready').slice(0, 5);
   const painRows = map.painPoints.slice(0, 5);
@@ -627,6 +693,34 @@ function renderTeamKnowledgePackageContent(map: ContentKnowledgeMapRecord, relea
         </div>
         <StatusPill tone={release?.status === 'published' ? 'ready' : 'idle'}>{release ? releaseDeliveryLabel(release) : '等待创建版本'}</StatusPill>
       </div>
+      <ActionGroup align="left" className="content-map-package-primary-actions">
+        <button
+          className="primary small"
+          disabled={!input.workspaceReady || input.busy || !input.readyForPrompt || !input.readyRowCount}
+          onClick={input.onCreatePromptDraft}
+        >
+          生成 Prompt 草稿
+        </button>
+        <button
+          className="ghost small"
+          disabled={!input.workspaceReady || input.busy}
+          onClick={input.onCreateTeamKnowledgePackage}
+        >
+          创建知识包版本
+        </button>
+        <button
+          className="ghost small"
+          disabled={!input.workspaceReady || input.busy}
+          onClick={input.onRefreshTeamKnowledgeUpdates}
+        >
+          拉取团队更新
+        </button>
+        {!input.readyForPrompt ? (
+          <span className="content-map-action-note">先发布团队知识包版本，再生成带版本引用的 Prompt 草稿。</span>
+        ) : !input.readyRowCount ? (
+          <span className="content-map-action-note">先完成审核或补证据，至少需要 1 个可复用组合。</span>
+        ) : null}
+      </ActionGroup>
       <div className="content-map-package-grid">
         <section>
           <strong>产品事实 / 证据</strong>
@@ -747,23 +841,60 @@ function renderMaterialFeedbackContent(input: {
   );
 }
 
+function orderPackagePreviewFiles(files: string[]): string[] {
+  const priority = [
+    'KNOWLEDGE.md',
+    'compiled/prompt-grounding.md',
+    'assets/material-coverage.json',
+    'answers/questions.json',
+    'manifest.json',
+  ];
+  const rank = (file: string): number => {
+    const exactIndex = priority.indexOf(file);
+    if (exactIndex >= 0) return exactIndex;
+    if (file.startsWith('ontology/')) return priority.length;
+    if (file.startsWith('interop/')) return priority.length + 1;
+    if (file.startsWith('assets/')) return priority.length + 2;
+    if (file.startsWith('answers/')) return priority.length + 3;
+    return priority.length + 4;
+  };
+
+  return Array.from(new Set(files)).sort((left, right) => {
+    const rankDelta = rank(left) - rank(right);
+    return rankDelta || left.localeCompare(right);
+  });
+}
+
 function renderAdvancedExportContent(input: {
   map: ContentKnowledgeMapRecord;
   release?: ContentKnowledgeRelease;
   exportResult: ContentKnowledgePackExportResult | null;
+  filePreview: ContentKnowledgePackFilePreview | null;
+  selectedFile: string;
   onExportContentKnowledgePack: () => void;
   onCreateTeamKnowledgePackage: () => void;
+  onCreateTeamKnowledgePromptDraft: () => void;
+  onReadFile: (input: { packageDir?: string; relativePath: string }) => void;
   onSelectModule: (module: ModuleKey) => void;
   busy: boolean;
   workspaceReady: boolean;
 }) {
   const rows = allMatrixRows(input.map);
   const readyRows = rows.filter((row) => row.status === 'ready');
-  const files = input.release?.files.length
-    ? input.release.files
-    : input.exportResult?.files.length
-      ? input.exportResult.files
+  const releaseReadyForPrompt = input.release?.status === 'published';
+  const previewPackageDir = input.exportResult?.packageDir ?? input.release?.packageDir;
+  const files = input.exportResult?.files.length
+    ? input.exportResult.files
+    : input.release?.files.length
+      ? input.release.files
       : ['KNOWLEDGE.md', 'ontology/ontology.json', 'ontology/coverage.json', 'answers/questions.json'];
+  const previewableFiles = orderPackagePreviewFiles(files.filter((file) => !file.endsWith('.zip')));
+  const archiveSizeKb = input.exportResult?.packageArchiveSize
+    ? Math.max(1, Math.round(input.exportResult.packageArchiveSize / 1024))
+    : null;
+  const archiveSha = input.exportResult?.packageArchiveSha256
+    ? input.exportResult.packageArchiveSha256.slice(0, 12)
+    : '';
   const checks = [
     { label: '知识地图可用', ready: input.map.status === 'ready' || input.map.status === 'published' },
     { label: `${readyRows.length} 个可复用组合`, ready: readyRows.length > 0 },
@@ -789,7 +920,48 @@ function renderAdvancedExportContent(input: {
         </section>
         <section>
           <strong>包文件</strong>
-          {files.slice(0, 8).map((file) => <span key={file}>{file}</span>)}
+          <div className="content-map-package-file-list">
+            {previewableFiles.map((file) => (
+              <button
+                key={file}
+                className={input.selectedFile === file ? 'active' : ''}
+                disabled={!input.workspaceReady || input.busy || !previewPackageDir}
+                type="button"
+                onClick={() => input.onReadFile({ packageDir: previewPackageDir, relativePath: file })}
+              >
+                {file}
+              </button>
+            ))}
+          </div>
+          {!previewPackageDir ? <p>先生成本机预览，才能查看具体文件内容。</p> : null}
+        </section>
+        <section>
+          <strong>本机预览内容</strong>
+          {input.exportResult?.preview ? (
+            <>
+              <span className="ready">Agent Knowledge v{input.exportResult.preview.agentKnowledgeVersion}</span>
+              <span>{input.exportResult.preview.readyRowCount} 个可复用内容组合</span>
+              <span>{input.exportResult.preview.readyEvidenceCount} 条可引用证据</span>
+              <span>{input.exportResult.preview.materialCoverageCount} 条素材覆盖</span>
+              <span>{input.exportResult.preview.answerQuestionCount} 个答疑问题</span>
+              <span>{input.exportResult.preview.interopFormats.join(' / ')} 互操作文件</span>
+              <span>{input.exportResult.preview.promptGroundingFile}</span>
+            </>
+          ) : (
+            <p>生成本机预览后，这里会显示知识包版本、素材覆盖、答疑层和互操作文件。</p>
+          )}
+        </section>
+        <section>
+          <strong>包校验</strong>
+          {input.exportResult?.status === 'exported' ? (
+            <>
+              <span className="ready">{archiveSizeKb} KB</span>
+              <span>sha256 {archiveSha}...</span>
+              <span>{input.exportResult.packageArchiveFileName}</span>
+            </>
+          ) : (
+            <p>生成后会显示 zip 大小、sha256 和本机文件名，用于和团队发布包比对。</p>
+          )}
         </section>
         <section>
           <strong>下游消费</strong>
@@ -801,6 +973,25 @@ function renderAdvancedExportContent(input: {
           <p>导出前会阻断凭证、本机绝对路径、未审核主张、命令行指令和自动发布指令。</p>
           <p>{input.exportResult ? exportResultMessage(input.exportResult) : '尚未生成本机预览。'}</p>
         </section>
+        <section className="content-map-package-file-preview">
+          <strong>包内容详情</strong>
+          {input.filePreview ? (
+            input.filePreview.status === 'loaded' ? (
+              <>
+                <span className="ready">{input.filePreview.relativePath} · {input.filePreview.size ?? 0} 字节</span>
+                {input.filePreview.truncated ? <span>内容较长，已显示前半部分。</span> : null}
+                <pre>{input.filePreview.content}</pre>
+              </>
+            ) : (
+              <>
+                <span className="warn">{input.filePreview.relativePath}</span>
+                <p>{input.filePreview.issues.join(' / ')}</p>
+              </>
+            )
+          ) : (
+            <p>选择 KNOWLEDGE、coverage、答疑或互操作文件后，这里会读取本机预览里的真实内容。</p>
+          )}
+        </section>
       </div>
       <ActionGroup align="left" className="content-map-section-actions">
         <button className="primary small" disabled={!input.workspaceReady || input.busy} onClick={input.onExportContentKnowledgePack}>
@@ -808,6 +999,13 @@ function renderAdvancedExportContent(input: {
         </button>
         <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={input.onCreateTeamKnowledgePackage}>
           创建知识包版本
+        </button>
+        <button
+          className="ghost small"
+          disabled={!input.workspaceReady || input.busy || !releaseReadyForPrompt || !readyRows.length}
+          onClick={input.onCreateTeamKnowledgePromptDraft}
+        >
+          生成 Prompt 草稿
         </button>
         <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={() => input.onSelectModule('assets-prompt-workbench')}>
           去 Prompt 工作台
@@ -861,6 +1059,90 @@ function renderBuildRunContent(run: ContentKnowledgeMapBuildRunRecord | undefine
   );
 }
 
+function renderBuildRunDetailContent(input: {
+  run: ContentKnowledgeMapBuildRunRecord | undefined;
+  workspaceReady: boolean;
+  busy: boolean;
+  onBuildContentKnowledgeMap: () => void;
+  onGenerateReviewTasks: () => void;
+  onSelectModule: (module: ModuleKey) => void;
+}) {
+  if (!input.run) {
+    return (
+      <div className="content-map-build-detail empty">
+        <strong>暂无生成流程</strong>
+        <span>先导入产品资料、评论或素材，再生成内容知识地图。系统会记录输入、生成、质量检查和团队同步结果。</span>
+        <ActionGroup align="left">
+          <button className="primary small" disabled={!input.workspaceReady || input.busy} onClick={input.onBuildContentKnowledgeMap}>
+            生成内容知识地图
+          </button>
+          <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={() => input.onSelectModule('knowledge-inputs')}>
+            补输入源
+          </button>
+        </ActionGroup>
+      </div>
+    );
+  }
+  const hasBlockedStep = input.run.steps.some((step) => step.status === 'blocked' || step.status === 'failed');
+  return (
+    <div className="content-map-build-detail">
+      <div className="content-map-package-head">
+        <div>
+          <span className="eyebrow">生成流程</span>
+          <h4>{input.run.title}</h4>
+          <small>{new Date(input.run.completedAt).toLocaleString()} · {input.run.model ?? '生成服务'}</small>
+        </div>
+        <StatusPill tone={buildRunStatusTone(input.run.status)}>{BUILD_RUN_STATUS_LABELS[input.run.status]}</StatusPill>
+      </div>
+      <div className="content-map-build-detail-summary">
+        <div><strong>{input.run.readyPercent}%</strong><span>可用内容</span></div>
+        <div><strong>{input.run.evidenceCount}</strong><span>证据</span></div>
+        <div><strong>{input.run.gapCount}</strong><span>待处理</span></div>
+        <div><strong>{input.run.steps.length}</strong><span>流程步骤</span></div>
+      </div>
+      <div className="content-map-build-detail-steps">
+        {input.run.steps.map((step, index) => (
+          <article key={`${input.run?.id}:${step.key}`} className={buildRunStepClass(step.status)}>
+            <b>{index + 1}</b>
+            <div>
+              <strong>{step.title}</strong>
+              <span>{step.status === 'completed' ? '完成' : step.status === 'skipped' ? '跳过' : step.status === 'failed' ? '失败' : '待处理'}</span>
+              <p>{step.message}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+      {input.run.issues.length ? (
+        <section className="content-map-build-detail-issues">
+          <strong>待处理问题</strong>
+          <div>
+            {input.run.issues.slice(0, 8).map((issue) => <span key={issue}>{issue}</span>)}
+          </div>
+        </section>
+      ) : null}
+      <section className="content-map-build-detail-recovery">
+        <strong>下一步</strong>
+        <p>{hasBlockedStep ? '先按问题清单补输入源、配置生成服务或处理缺证据项，再重新生成或送审。' : '生成结果可进入审核任务、团队知识包、Prompt 工作台、场景卡或 SOP。'}</p>
+        <ActionGroup align="left">
+          <button
+            className="primary small"
+            disabled={!input.workspaceReady || input.busy || hasBlockedStep}
+            onClick={input.onGenerateReviewTasks}
+          >
+            生成审核任务
+          </button>
+          <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={input.onBuildContentKnowledgeMap}>
+            重新生成地图
+          </button>
+          <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={() => input.onSelectModule('knowledge-inputs')}>
+            补输入源
+          </button>
+        </ActionGroup>
+      </section>
+    </div>
+  );
+}
+
 export function ContentKnowledgeMapModule({
   workspaceReady,
   busy,
@@ -886,10 +1168,14 @@ export function ContentKnowledgeMapModule({
   onImportTeamChangePackage,
   onResolveTeamSyncConflict,
   onCreateTeamKnowledgePackage,
+  onCreateTeamKnowledgePromptDraft,
+  onRefreshTeamKnowledgeUpdates,
   onGenerateContentReviewTasksForRows,
   onGenerateContentMaterialTasksForRows,
   onCreateContentProductionHandoffForRow,
   contentKnowledgePackExport,
+  contentKnowledgePackFilePreview,
+  onReadContentKnowledgePackFile,
   contentMaterialCoverage,
   agentPromptSessions,
   activeAgentPromptSessionId,
@@ -918,6 +1204,7 @@ export function ContentKnowledgeMapModule({
   const [matrixBatchSize, setMatrixBatchSize] = useState(8);
   const [selectedMatrixRowIds, setSelectedMatrixRowIds] = useState<string[]>([]);
   const [focusedMatrixRowId, setFocusedMatrixRowId] = useState('');
+  const [selectedPackageFile, setSelectedPackageFile] = useState('KNOWLEDGE.md');
   const activeMap = activeContentKnowledgeMap ?? contentKnowledgeMaps[0];
   const latestBuildRun = useMemo(
     () => {
@@ -934,7 +1221,20 @@ export function ContentKnowledgeMapModule({
   const syncLabel = activeMap ? SYNC_STATUS_LABELS[activeMap.syncStatus] : '未生成';
   const mapReadyForTeam = activeMap?.status === 'ready' || activeMap?.status === 'published';
   const openTeamConflicts = teamSyncConflicts.filter((conflict) => conflict.status === 'open');
-  const latestTeamRelease = teamKnowledgePackageVersions[0];
+  const sharingSummary = activeMap?.sourceSensitivity;
+  const restrictedSourceCount = sharingSummary?.counts.restricted ?? 0;
+  const confidentialSourceCount = sharingSummary?.counts.confidential ?? 0;
+  const restrictedSharingMessage = restrictedSourceMessage(activeMap);
+  const hasSourceSharingGate = Boolean(restrictedSharingMessage);
+  const latestTeamRelease = activeMap
+    ? teamKnowledgePackageVersions.find((release) =>
+        release.contentKnowledgeMapId === activeMap.id ||
+        release.id === activeMap.teamSync.releaseId ||
+        release.serverReleaseId === activeMap.teamSync.releaseId,
+      )
+    : teamKnowledgePackageVersions[0];
+  const latestTeamReleaseReadyForPrompt = latestTeamRelease?.status === 'published';
+  const teamPromptReadyRowCount = activeMap ? allMatrixRows(activeMap).filter((row) => row.status === 'ready').length : 0;
   const evidenceById = useMemo(
     () => new Map((activeMap?.evidence ?? []).map((item) => [item.id, item])),
     [activeMap],
@@ -1031,6 +1331,9 @@ export function ContentKnowledgeMapModule({
     setSelectedMatrixRowIds([]);
     setFocusedMatrixRowId('');
   }, [activeMap?.id, activeTab]);
+  useEffect(() => {
+    setSelectedPackageFile('KNOWLEDGE.md');
+  }, [activeMap?.id]);
   const primaryAction = !activeMap
     ? {
         label: '生成内容知识地图',
@@ -1038,6 +1341,13 @@ export function ContentKnowledgeMapModule({
         disabled: !workspaceReady || busy,
         hint: '先把输入源、品牌知识库、场景和提示词草稿整理成可审核矩阵。',
       }
+    : hasSourceSharingGate
+      ? {
+          label: '处理共享范围',
+          onClick: () => onSelectModule('knowledge-inputs'),
+          disabled: !workspaceReady || busy,
+          hint: restrictedSharingMessage ?? '当前内容地图包含不能进入团队的资料，先回到输入源处理共享范围。',
+        }
     : !mapReadyForTeam
       ? {
           label: '补齐资料缺口',
@@ -1090,12 +1400,24 @@ export function ContentKnowledgeMapModule({
       ready: Boolean(activeMap?.coverage.competitorObservationCount),
     },
     {
+      label: `${activeMap?.coverage.assetReviewCount ?? 0} 条素材审核`,
+      ready: Boolean(activeMap?.coverage.assetReviewCount),
+    },
+    {
       label: `${activeMap?.constraints.length ?? 0} 条规则边界`,
       ready: Boolean(activeMap?.constraints.length),
     },
     {
       label: `${activeMap?.coverage.gapCount ?? 0} 个待补缺口`,
       ready: Boolean(activeMap && activeMap.coverage.gapCount === 0),
+    },
+    {
+      label: `${restrictedSourceCount} 个仅本机资料`,
+      ready: Boolean(activeMap && restrictedSourceCount === 0),
+    },
+    {
+      label: `${confidentialSourceCount} 个负责人确认资料`,
+      ready: Boolean(activeMap),
     },
     {
       label: `${matrixPlan.summary.audienceCount} 个人群维度`,
@@ -1137,7 +1459,7 @@ export function ContentKnowledgeMapModule({
       key: 'team',
       title: '团队共享',
       detail: teamSyncMessage(activeMap),
-      state: activeMap?.syncStatus === 'synced' ? 'done' : openTeamConflicts.length ? 'blocked' : hasMap ? 'active' : 'idle',
+      state: hasSourceSharingGate ? 'blocked' : activeMap?.syncStatus === 'synced' ? 'done' : openTeamConflicts.length ? 'blocked' : hasMap ? 'active' : 'idle',
     },
     {
       key: 'handoff',
@@ -1265,6 +1587,7 @@ export function ContentKnowledgeMapModule({
                 <article><strong>{activeMap.scenarios.length}</strong><span>场景</span></article>
                 <article><strong>{activeMap.coverage.skuRowCount ?? 0}</strong><span>SKU</span></article>
                 <article><strong>{activeMap.coverage.competitorObservationCount ?? 0}</strong><span>竞品观察</span></article>
+                <article><strong>{activeMap.coverage.assetReviewCount ?? 0}</strong><span>素材审核</span></article>
                 <article><strong>{activeMap.coverage.evidenceCount}</strong><span>证据</span></article>
                 <article><strong>{activeMap.coverage.gapCount}</strong><span>缺口</span></article>
               </div>
@@ -1273,6 +1596,38 @@ export function ContentKnowledgeMapModule({
                 <strong>团队同步</strong>
                 <span>{teamSyncMessage(activeMap)}</span>
               </div>
+
+              {sharingSummary ? (
+                <div className={`content-map-sharing-card ${restrictedSourceCount ? 'blocked' : confidentialSourceCount ? 'pending' : 'ready'}`}>
+                  <div className="content-map-sharing-head">
+                    <div>
+                      <strong>资料共享检查</strong>
+                      <span>{restrictedSourceCount ? '包含不能同步或发布的资料' : confidentialSourceCount ? '含负责人确认资料，发布前需复核' : '当前资料可进入团队流转'}</span>
+                    </div>
+                    <StatusPill tone={sourceSharingTone(sharingSummary.highest)}>
+                      {sourceSharingLabel(sharingSummary.highest)}
+                    </StatusPill>
+                  </div>
+                  <div className="content-map-sharing-counts" aria-label="资料共享范围统计">
+                    <span><b>{sharingSummary.counts.public}</b>公开资料</span>
+                    <span><b>{sharingSummary.counts.internal}</b>团队内部</span>
+                    <span><b>{sharingSummary.counts.confidential}</b>负责人确认</span>
+                    <span className={restrictedSourceCount ? 'blocked' : 'ready'}><b>{sharingSummary.counts.restricted}</b>仅本机</span>
+                  </div>
+                  {restrictedSharingMessage ? (
+                    <div className="content-map-sharing-issue">
+                      <span>{restrictedSharingMessage}</span>
+                      <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('knowledge-inputs')}>
+                        回到输入源处理共享范围
+                      </button>
+                    </div>
+                  ) : sharingSummary.confidentialSourceTitles.length ? (
+                    <p>需负责人确认：{sharingSummary.confidentialSourceTitles.slice(0, 3).join('、')}</p>
+                  ) : (
+                    <p>发布前仍会检查本机路径、凭证线索和不可共享资料。</p>
+                  )}
+                </div>
+              ) : null}
 
               <div className="content-map-tabs" role="tablist" aria-label="内容知识地图详情">
                 {TAB_LABELS.map((tab) => (
@@ -1441,7 +1796,25 @@ export function ContentKnowledgeMapModule({
                   {!activeMap.gaps.length && !activeMap.constraints.length ? <div className="empty-state">暂无缺口或规则。</div> : null}
                 </div>
               ) : null}
-              {activeTab === 'team' ? renderTeamKnowledgePackageContent(activeMap, latestTeamRelease) : null}
+              {activeTab === 'build' ? renderBuildRunDetailContent({
+                run: latestBuildRun,
+                workspaceReady,
+                busy,
+                onBuildContentKnowledgeMap,
+                onGenerateReviewTasks: () => onGenerateContentReviewTasksForRows(batchTargetRowIds),
+                onSelectModule,
+              }) : null}
+              {activeTab === 'team' ? renderTeamKnowledgePackageContent({
+                map: activeMap,
+                release: latestTeamRelease,
+                readyForPrompt: Boolean(latestTeamReleaseReadyForPrompt),
+                readyRowCount: teamPromptReadyRowCount,
+                workspaceReady,
+                busy,
+                onCreatePromptDraft: onCreateTeamKnowledgePromptDraft,
+                onCreateTeamKnowledgePackage,
+                onRefreshTeamKnowledgeUpdates,
+              }) : null}
               {activeTab === 'materials' ? renderMaterialFeedbackContent({
                 map: activeMap,
                 result: contentMaterialCoverage,
@@ -1455,8 +1828,15 @@ export function ContentKnowledgeMapModule({
                 map: activeMap,
                 release: latestTeamRelease,
                 exportResult: contentKnowledgePackExport,
+                filePreview: contentKnowledgePackFilePreview,
+                selectedFile: selectedPackageFile,
                 onExportContentKnowledgePack,
                 onCreateTeamKnowledgePackage,
+                onCreateTeamKnowledgePromptDraft,
+                onReadFile: (input) => {
+                  setSelectedPackageFile(input.relativePath);
+                  onReadContentKnowledgePackFile(input);
+                },
                 onSelectModule,
                 busy,
                 workspaceReady,
@@ -1480,6 +1860,34 @@ export function ContentKnowledgeMapModule({
             <span>{latestTeamRelease ? releaseDeliveryLabel(latestTeamRelease) : primaryAction.hint}</span>
             {latestTeamRelease?.packagePublicUrl ? (
               <a href={latestTeamRelease.packagePublicUrl} rel="noreferrer" target="_blank">打开团队知识包</a>
+            ) : null}
+            <ActionGroup align="left" className="content-map-delivery-actions">
+              <button
+                className="ghost small"
+                disabled={!workspaceReady || busy || !latestTeamReleaseReadyForPrompt || !teamPromptReadyRowCount}
+                onClick={onCreateTeamKnowledgePromptDraft}
+              >
+                生成 Prompt 草稿
+              </button>
+              <button
+                className="ghost small"
+                disabled={!workspaceReady || busy || !activeMap}
+                onClick={() => onSelectModule('assets-prompt-workbench')}
+              >
+                去 Prompt 工作台
+              </button>
+              <button
+                className="ghost small"
+                disabled={!workspaceReady || busy}
+                onClick={onRefreshTeamKnowledgeUpdates}
+              >
+                拉取团队更新
+              </button>
+            </ActionGroup>
+            {!latestTeamReleaseReadyForPrompt ? (
+              <small>发布团队知识包版本后，才能把同一团队口径交给 Prompt 工作台。</small>
+            ) : !teamPromptReadyRowCount ? (
+              <small>先完成审核或补证据，至少需要 1 个可复用组合。</small>
             ) : null}
           </div>
 
@@ -1699,7 +2107,7 @@ export function ContentKnowledgeMapModule({
                 </button>
               ) : null}
               <button className="ghost small" disabled={!workspaceReady || busy || !activeMap} onClick={() => onSelectModule('knowledge-scenes')}>去场景库</button>
-              <button className="ghost small" disabled={!workspaceReady || busy || !activeMap} onClick={() => onSelectModule('assets-prompt-workbench')}>去 Prompt 工作台</button>
+              <button className="ghost small" disabled={!workspaceReady || busy || !latestTeamReleaseReadyForPrompt || !teamPromptReadyRowCount} onClick={onCreateTeamKnowledgePromptDraft}>生成 Prompt 草稿</button>
               <button className="ghost small" disabled={!workspaceReady || busy || !activeMap} onClick={onWriteBackContentMaterialCoverage}>回写素材</button>
               <button className="ghost small" disabled={!workspaceReady || busy || !activeMap} onClick={onExportContentKnowledgePack}>生成本机预览</button>
             </ActionGroup>

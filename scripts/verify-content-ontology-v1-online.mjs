@@ -45,6 +45,7 @@ export async function verifyContentOntologyV1Online(options = {}) {
       expectedSha256: options.expectedSha256,
       maxDownloadBytes: options.maxDownloadBytes,
       verifySha256: options.verifySha256,
+      requirePublicPackage: options.requirePublicPackage,
       allowMetadataOnly: options.allowMetadataOnly,
       allowNonPublished: options.allowNonPublished,
       allowPendingApproval: options.allowPendingApproval,

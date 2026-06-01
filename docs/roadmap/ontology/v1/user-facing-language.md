@@ -1,7 +1,7 @@
 # v1 用户可见命名和产品边界
 
-更新时间：2026-05-28
-状态：Draft
+更新时间：2026-05-31
+状态：Local Verified / Production Evidence Pending
 
 ## 1. 设计结论
 

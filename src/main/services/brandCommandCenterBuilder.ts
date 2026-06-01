@@ -583,6 +583,13 @@ export function buildBrandCommandCenterDraft(
     };
   }
 
+  const commandTeamSync: ContentKnowledgeMapTeamSyncSummary = (
+    map.teamSync.workspaceId ||
+    map.teamSync.revision ||
+    map.syncStatus === 'synced'
+  )
+    ? map.teamSync
+    : teamSync;
   const signals = [
     signalFromPainPoint(map),
     signalFromCompetitor(map),
@@ -643,7 +650,7 @@ export function buildBrandCommandCenterDraft(
     workspacePath: input.workspacePath,
     title: compactText(input.title, `${map.title.replace(/内容知识地图$/g, '').trim()} 品牌战情室`),
     status: queueItems.some((item) => item.status === 'ready') ? 'active' : 'needs-review',
-    syncStatus: teamSync.status,
+    syncStatus: commandTeamSync.status,
     sourceKnowledgeMapId: map.id,
     sourceKnowledgeMapTitle: map.title,
     signals: uniqueSignals,
@@ -654,7 +661,7 @@ export function buildBrandCommandCenterDraft(
     actionRecords,
     constraints: map.constraints,
     gaps,
-    teamSync,
+    teamSync: commandTeamSync,
     createdAt: now,
     updatedAt: now,
   };

@@ -4,6 +4,7 @@ import type {
   AgentPromptSession,
   InputSourcePurpose,
   InputSourceRecord,
+  InputSourceSensitivity,
   InputSourceStatus,
   PromptDraftPurpose,
 } from '../../../../shared/types';
@@ -24,10 +25,11 @@ interface InputSourcesModuleProps {
   workspaceReady: boolean;
   busy: boolean;
   inputSources: InputSourceRecord[];
-  onImportInputSource: (purpose: InputSourcePurpose, agentSessionId?: string) => void;
+  onImportInputSource: (purpose: InputSourcePurpose, agentSessionId?: string, sensitivity?: InputSourceSensitivity) => void;
   onRegisterManualInputSource: (input: {
     title: string;
     purpose: InputSourcePurpose;
+    sensitivity?: InputSourceSensitivity;
     text: string;
     tags?: string[];
     agentSessionId?: string;
@@ -67,6 +69,13 @@ const STATUS_LABELS: Record<InputSourceStatus, string> = {
   blocked: '待解析',
   failed: '失败',
 };
+
+const SENSITIVITY_OPTIONS: Array<{ value: InputSourceSensitivity; label: string; hint: string }> = [
+  { value: 'internal', label: '团队内部', hint: '默认可进入团队资料流' },
+  { value: 'public', label: '公开资料', hint: '官网、公开文章、已发布素材' },
+  { value: 'confidential', label: '负责人确认', hint: '客户资料、未公开产品或投放数据' },
+  { value: 'restricted', label: '仅本机', hint: '不进入团队同步和发布包' },
+];
 
 const KIND_LABELS: Record<InputSourceRecord['kind'], string> = {
   docx: '文档',
@@ -132,6 +141,10 @@ function purposeLabel(value: InputSourcePurpose): string {
 
 function kindLabel(value: InputSourceRecord['kind']): string {
   return KIND_LABELS[value] ?? value;
+}
+
+function sensitivityLabel(value: InputSourceSensitivity | undefined): string {
+  return SENSITIVITY_OPTIONS.find((option) => option.value === (value ?? 'internal'))?.label ?? '团队内部';
 }
 
 function ProductBriefList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
@@ -379,6 +392,7 @@ export function InputSourcesModule({
 }: InputSourcesModuleProps) {
   const feature = V2_FEATURES['knowledge-inputs'];
   const [purpose, setPurpose] = useState<InputSourcePurpose>('sop-input');
+  const [sensitivity, setSensitivity] = useState<InputSourceSensitivity>('internal');
   const [title, setTitle] = useState('手动输入源');
   const [text, setText] = useState('');
   const [tags, setTags] = useState('用户意图, SOP');
@@ -390,6 +404,7 @@ export function InputSourcesModule({
       total: inputSources.length,
       converted: inputSources.filter((source) => source.status === 'converted').length,
       blocked: inputSources.filter((source) => source.status === 'blocked').length,
+      needsOwner: inputSources.filter((source) => source.sensitivity === 'confidential' || source.sensitivity === 'restricted').length,
     }),
     [inputSources],
   );
@@ -443,6 +458,7 @@ export function InputSourcesModule({
     onRegisterManualInputSource({
       title,
       purpose,
+      sensitivity,
       text,
       tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
       agentSessionId: activeAgentSession?.id,
@@ -477,7 +493,7 @@ export function InputSourcesModule({
     <>
       <div className="agent-turn-head">
         <strong>登记输入源</strong>
-        <small>{purposeLabel(purpose)} · {stats.total} 个已登记</small>
+        <small>{purposeLabel(purpose)} · {sensitivityLabel(sensitivity)} · {stats.total} 个已登记</small>
       </div>
       <section className="input-source-register-panel">
         <div className="workflow-form-grid">
@@ -492,6 +508,14 @@ export function InputSourcesModule({
           <label>
             <span>标题</span>
             <input value={title} onChange={(event) => setTitle(event.target.value)} />
+          </label>
+          <label>
+            <span>共享范围</span>
+            <select value={sensitivity} onChange={(event) => setSensitivity(event.target.value as InputSourceSensitivity)}>
+              {SENSITIVITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label} - {option.hint}</option>
+              ))}
+            </select>
           </label>
           <label>
             <span>标签</span>
@@ -538,6 +562,9 @@ export function InputSourcesModule({
             <article key={source.id} className="input-source-card">
               <div className="workflow-run-head">
                 <span className={`status-pill ${statusClass(source.status)}`}>{STATUS_LABELS[source.status]}</span>
+                <span className={`status-pill ${source.sensitivity === 'restricted' ? 'blocked' : source.sensitivity === 'confidential' ? 'idle' : 'ready'}`}>
+                  {sensitivityLabel(source.sensitivity)}
+                </span>
                 {isPromptDistilledSource(source) ? (
                   <span className="status-pill ready">成功素材追溯</span>
                 ) : null}
@@ -589,7 +616,7 @@ export function InputSourcesModule({
         <button
           className="ghost small"
           disabled={!workspaceReady || busy}
-          onClick={() => onImportInputSource(purpose, activeAgentSession?.id)}
+          onClick={() => onImportInputSource(purpose, activeAgentSession?.id, sensitivity)}
         >
           导入文件输入源
         </button>
@@ -617,6 +644,7 @@ export function InputSourcesModule({
           <div className="workflow-summary-stack">
             <span className="status-pill">{stats.total} 个输入源</span>
             <span className="status-pill ready">{stats.converted} 个可读文本</span>
+            <span className="status-pill idle">{stats.needsOwner} 个需确认</span>
             <span className="status-pill blocked">{stats.blocked} 个待解析</span>
           </div>
         )}

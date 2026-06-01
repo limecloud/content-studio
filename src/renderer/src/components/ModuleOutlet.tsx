@@ -107,6 +107,9 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
       onReworkAsset={(input) => app.runAction(() => app.reworkAsset(input), '正在准备回炉')}
       onDistillAssetPrompt={(input) => app.runAction(() => app.distillAssetPrompt(input), '正在沉淀成功素材 Prompt')}
       onOpenMixExport={() => app.setActiveModule('video-mix-export')}
+      onGenerateContentMaterialTasksForCoverageRows={(targets) =>
+        app.runAction(() => app.generateContentMaterialTasksForCoverageRows(targets), '正在创建补素材任务')
+      }
       onOpenPromptDraft={app.openTracePromptDraft}
       onOpenSceneCards={app.openTraceSceneCards}
       onOpenWorkflowRun={app.openTraceWorkflowRun}
@@ -382,6 +385,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onImportTeamChangePackage={() => app.runAction(app.importContentDraftChange, '正在导入变更包')}
         onResolveTeamSyncConflict={(conflict, resolutionAction) => app.runAction(() => app.resolveContentSyncConflict(conflict, resolutionAction), '正在记录冲突处理')}
         onCreateTeamKnowledgePackage={() => app.runAction(app.createContentKnowledgeRelease, '正在创建团队知识包版本')}
+        onCreateTeamKnowledgePromptDraft={() => app.runAction(app.createTeamKnowledgePromptDraft, '正在生成团队知识包 Prompt 草稿')}
+        onRefreshTeamKnowledgeUpdates={() => app.runAction(() => app.refresh(), '正在拉取团队更新')}
         onGenerateContentReviewTasksForRows={(rowIds) =>
           app.runAction(() => app.generateContentReviewTasksForRows(rowIds), '正在生成本批审核任务')
         }
@@ -395,6 +400,10 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           )
         }
         contentKnowledgePackExport={app.contentKnowledgePackExport}
+        contentKnowledgePackFilePreview={app.contentKnowledgePackFilePreview}
+        onReadContentKnowledgePackFile={(input) =>
+          app.runAction(() => app.readContentKnowledgePackFile(input), '正在读取知识包内容')
+        }
         contentMaterialCoverage={app.contentMaterialCoverage}
         agentPromptSessions={app.agentPromptSessions}
         activeAgentPromptSessionId={app.activeAgentPromptSessionId}
@@ -472,6 +481,15 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onBuildBrandCommandCenter={() => app.runAction(app.buildBrandCommandCenter, '正在生成品牌战情室')}
         onRecordBrandCommandAction={(queueItemId) =>
           app.runAction(() => app.recordBrandCommandAction(queueItemId), '正在记录作战动作')
+        }
+        onRecordBrandCommandReview={(summary) =>
+          app.runAction(() => app.recordBrandCommandReview(summary), '正在写入复盘记录')
+        }
+        onConfirmBrandCommandStage={(stage) =>
+          app.runAction(() => app.confirmBrandCommandStage(stage), '正在确认作战主动作')
+        }
+        onExportBrandCommandActionRecords={() =>
+          app.runAction(app.exportBrandCommandActionRecords, '正在导出行动记录')
         }
         onRefreshBrandCommandActions={() =>
           app.runAction(app.refreshBrandCommandActions, '正在同步团队记录')
@@ -612,6 +630,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           inputSources={app.inputSources}
           promptDrafts={app.promptDrafts}
           platformDrafts={app.platformDrafts}
+          teamKnowledgePackageVersions={app.contentKnowledgeReleases}
           copiedPlatformDraftId={app.copiedPlatformDraftId}
           agentPromptSessions={app.agentPromptSessions}
           skills={app.skills}
@@ -813,8 +832,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           workspaceReady={Boolean(app.workspacePath)}
           busy={app.busy}
           inputSources={app.inputSources}
-          onImportInputSource={(purpose, agentSessionId) =>
-            app.runAction(() => app.importInputSource(purpose, agentSessionId), '正在登记输入源文件')
+          onImportInputSource={(purpose, agentSessionId, sensitivity) =>
+            app.runAction(() => app.importInputSource(purpose, agentSessionId, sensitivity), '正在登记输入源文件')
           }
           onRegisterManualInputSource={(input) =>
             app.runAction(() => app.registerManualInputSource(input), '正在登记文本输入源')
@@ -847,6 +866,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           inputSources={app.inputSources}
           assetReviews={app.assetReviews}
           platformDrafts={app.platformDrafts}
+          teamKnowledgePackageVersions={app.contentKnowledgeReleases}
           copiedPlatformDraftId={app.copiedPlatformDraftId}
           activeDefinitionId={app.activeWorkflowDefinitionId}
           activeRunId={app.activeWorkflowRunId}
@@ -859,8 +879,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onUpdateDefinition={(definition) =>
             app.runAction(() => app.updateWorkflowDefinition(definition), '正在保存 SOP 定义')
           }
-          onStartRun={(definitionId, inputs, inputSourceIds) =>
-            app.runAction(() => app.startWorkflowRun(definitionId, inputs, inputSourceIds), '正在创建 SOP 运行记录')
+          onStartRun={(definitionId, inputs, inputSourceIds, teamKnowledgeRelease) =>
+            app.runAction(() => app.startWorkflowRun(definitionId, inputs, inputSourceIds, teamKnowledgeRelease), '正在创建 SOP 运行记录')
           }
           onOpenInputSources={() => app.setActiveModule('knowledge-inputs')}
           onRunAction={(action, runId) => {

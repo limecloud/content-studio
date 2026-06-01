@@ -7,15 +7,18 @@ import type {
   BuguAuthState,
   BuildBrandCommandCenterInput,
   BuildContentKnowledgeMapInput,
+  ContentKnowledgeReleaseReference,
   ContentKnowledgeMapBuildRunRecord,
   ContentKnowledgeMapRecord,
   ContentReviewDecisionAction,
   ContentReviewTask,
   ContentStudioApi,
+  ExportBrandCommandActionRecordsInput,
   ExportContentKnowledgePackInput,
   GeneratePromptDraftInput,
   ImageGenerationRequest,
   InputSourcePurpose,
+  InputSourceSensitivity,
   MediaGenerationResult,
   ModelCatalogView,
   ModelConfigView,
@@ -232,6 +235,7 @@ function promptDraft(input: Pick<GeneratePromptDraftInput, "workspacePath" | "pu
     workspacePath: input.workspacePath,
     contentKnowledgeMapId: input.contentKnowledgeMapId,
     contentKnowledgeMapTitle: input.contentKnowledgeMapTitle,
+    teamKnowledgeRelease: input.teamKnowledgeRelease,
     coverageRowIds: input.coverageRowIds,
     sourceRefs: input.sourceRefs,
     title: input.userIntent.slice(0, 24) || "浏览器开发 Prompt",
@@ -254,7 +258,12 @@ function promptDraft(input: Pick<GeneratePromptDraftInput, "workspacePath" | "pu
   };
 }
 
-function inputSource(purpose: InputSourcePurpose, title: string, sourcePath?: string) {
+function inputSource(
+  purpose: InputSourcePurpose,
+  title: string,
+  sourcePath?: string,
+  sensitivity: InputSourceSensitivity = "internal",
+) {
   const createdAt = new Date().toISOString();
   const kind = sourcePath ? "image" as const : "manual-note" as const;
   return {
@@ -263,6 +272,7 @@ function inputSource(purpose: InputSourcePurpose, title: string, sourcePath?: st
     kind,
     status: kind === "image" ? "blocked" as const : "converted" as const,
     purpose,
+    sensitivity,
     title,
     sourcePath,
     tags: [purpose, kind],
@@ -547,6 +557,21 @@ function brandCommandCenter(input: BuildBrandCommandCenterInput): BrandCommandCe
   };
 }
 
+const DEV_CONTENT_KNOWLEDGE_PACK_FILES = [
+  "KNOWLEDGE.md",
+  "manifest.json",
+  "ontology/ontology.json",
+  "ontology/concepts.json",
+  "ontology/relations.json",
+  "ontology/coverage.json",
+  "answers/questions.json",
+  "assets/material-coverage.json",
+  "interop/ontology.jsonld",
+  "interop/ontology.ttl",
+  "interop/ontology.rdf",
+  "compiled/prompt-grounding.md",
+];
+
 function contentKnowledgePackExport(input: ExportContentKnowledgePackInput) {
   const map = input.contentKnowledgeMapId
     ? devContentKnowledgeMaps.find((item) => item.id === input.contentKnowledgeMapId)
@@ -563,9 +588,43 @@ function contentKnowledgePackExport(input: ExportContentKnowledgePackInput) {
     packageDir: `${input.workspacePath}/.content-studio/exports/agentknowledge/browser-dev`,
     knowledgePath: `${input.workspacePath}/.content-studio/exports/agentknowledge/browser-dev/KNOWLEDGE.md`,
     manifestPath: `${input.workspacePath}/.content-studio/exports/agentknowledge/browser-dev/manifest.json`,
-    files: ["KNOWLEDGE.md", "ontology/ontology.json", "compiled/prompt-grounding.md"],
+    files: DEV_CONTENT_KNOWLEDGE_PACK_FILES,
     issues: [],
   };
+}
+
+function contentKnowledgePackFile(relativePath: string) {
+  if (relativePath === "KNOWLEDGE.md") {
+    return [
+      "---",
+      "type: content-ontology",
+      "metadata:",
+      "  primaryOntology: ontology/ontology.json",
+      "  primaryAnswers: answers/questions.json",
+      "---",
+      "",
+      "# 浏览器开发内容知识包",
+      "",
+      "本知识包用于浏览器开发模式预览，真实桌面端会读取工作区生成的本机预览文件。",
+      "",
+    ].join("\n");
+  }
+  if (relativePath === "compiled/prompt-grounding.md") {
+    return [
+      "# 浏览器开发提示词依据",
+      "",
+      "## 可用卖点",
+      "- 轻量便携：用于通勤和随身场景。",
+      "",
+      "## 规则和禁用边界",
+      "- 不使用未审核的绝对化表达。",
+      "",
+    ].join("\n");
+  }
+  if (relativePath.endsWith(".json") || relativePath.endsWith(".jsonld")) {
+    return `${JSON.stringify({ file: relativePath, source: "browser-dev", status: "preview" }, null, 2)}\n`;
+  }
+  return `# ${relativePath}\n\n浏览器开发模式文件预览。`;
 }
 
 function contentReviewTasks(workspacePath: string, input?: { targetRowIds?: string[]; taskPurpose?: ContentReviewTask["taskPurpose"] }): ContentReviewTask[] {
@@ -669,6 +728,7 @@ export function createDevBridge(): ContentStudioApi {
       workspacePath: input.workspacePath,
       purpose: input.purpose || "image",
       userIntent: input.userIntent || "浏览器开发对话",
+      teamKnowledgeRelease: input.teamKnowledgeRelease,
     });
     const idSuffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const sessionId = `browser-dev-agent-${idSuffix}`;
@@ -867,6 +927,7 @@ export function createDevBridge(): ContentStudioApi {
     const session: AgentPromptSession = {
       id: sessionId,
       workspacePath: input.workspacePath,
+      teamKnowledgeRelease: input.teamKnowledgeRelease,
       title: draft.title,
       purpose: draft.purpose,
       status,
@@ -1058,8 +1119,11 @@ export function createDevBridge(): ContentStudioApi {
       updatedAt: createdAt,
     };
   };
-  const createWorkflowRun = (id = "browser-dev-workflow-run") => {
+  const createWorkflowRun = (id = "browser-dev-workflow-run", teamKnowledgeRelease?: ContentKnowledgeReleaseReference) => {
     const createdAt = new Date().toISOString();
+    const artifactRefs = teamKnowledgeRelease && typeof teamKnowledgeRelease === "object" && "id" in teamKnowledgeRelease
+      ? [`team-knowledge-release:${String(teamKnowledgeRelease.id)}`]
+      : [];
     return {
       id,
       workspacePath: DEV_WORKSPACE_PATH,
@@ -1070,8 +1134,9 @@ export function createDevBridge(): ContentStudioApi {
       status: "running" as const,
       summary: "",
       inputs: {},
+      teamKnowledgeRelease,
       steps: [],
-      artifactRefs: [],
+      artifactRefs,
       createdAt,
       updatedAt: createdAt,
     };
@@ -1267,7 +1332,7 @@ export function createDevBridge(): ContentStudioApi {
         packageDir: `${input.workspacePath}/.content-studio/exports/agentknowledge/browser-dev`,
         knowledgePath: `${input.workspacePath}/.content-studio/exports/agentknowledge/browser-dev/KNOWLEDGE.md`,
         manifestPath: `${input.workspacePath}/.content-studio/exports/agentknowledge/browser-dev/manifest.json`,
-        files: ["KNOWLEDGE.md", "ontology/ontology.json", "compiled/prompt-grounding.md"],
+        files: DEV_CONTENT_KNOWLEDGE_PACK_FILES,
         issues: ["浏览器开发模式未连接 Bugu release API，当前只是本地预览。"],
         createdAt: now,
         updatedAt: now,
@@ -1305,11 +1370,104 @@ export function createDevBridge(): ContentStudioApi {
       record.updatedAt = now;
       return record;
     },
+    recordBrandCommandReview: async (input) => {
+      const record = devBrandCommandCenters.find((item) => item.id === input.commandCenterId);
+      if (!record) return brandCommandCenter({ workspacePath: input.workspacePath });
+      const now = new Date().toISOString();
+      record.actionRecords.unshift({
+        id: `browser-dev-review-${Date.now()}`,
+        actionType: "review-action-records",
+        title: `${record.title} 行动复盘`,
+        outcome: "recorded",
+        actorLabel: input.actorLabel || "浏览器开发",
+        actorRole: input.actorRole,
+        inputSummary: `${record.actionRecords.length} 条行动记录，${record.queueItems.length} 个队列动作。`,
+        outputSummary: input.summary,
+        writeBackSummary: "浏览器开发模式已记录复盘；Electron 主进程会同步到团队行动记录。",
+        createdAt: now,
+      });
+      record.updatedAt = now;
+      return record;
+    },
+    confirmBrandCommandStage: async (input) => {
+      const record = devBrandCommandCenters.find((item) => item.id === input.commandCenterId);
+      if (!record) return brandCommandCenter({ workspacePath: input.workspacePath });
+      const now = new Date().toISOString();
+      const stageText = input.stage === "objectives" ? "确认目标优先级" : input.stage === "bundles" ? "保存作战单元" : "同步执行队列";
+      const actionType = input.stage === "objectives"
+        ? "confirm-objectives"
+        : input.stage === "bundles"
+          ? "confirm-resource-bundles"
+          : "sync-execution-queue";
+      if (input.stage === "queue") {
+        record.queueItems = record.queueItems.map((item) => ({
+          ...item,
+          syncStatus: "blocked",
+          teamSync: {
+            backend: "bugu",
+            status: "blocked",
+            message: "浏览器开发模式未连接团队队列接口。",
+          },
+          updatedAt: now,
+        }));
+      }
+      record.actionRecords.unshift({
+        id: `browser-dev-confirm-${input.stage}-${Date.now()}`,
+        actionType,
+        title: `${record.title} / ${stageText}`,
+        outcome: "recorded",
+        actorLabel: input.actorLabel || "浏览器开发",
+        actorRole: input.actorRole,
+        inputSummary: `${record.signals.length} 个信号 / ${record.objectives.length} 个目标 / ${record.queueItems.length} 个队列动作。`,
+        outputSummary: `浏览器开发模式已记录：${stageText}。`,
+        writeBackSummary: "Electron 主进程会写入本机事实源并同步团队记录。",
+        createdAt: now,
+      });
+      record.updatedAt = now;
+      return record;
+    },
+    exportBrandCommandActionRecords: async (input: ExportBrandCommandActionRecordsInput) => {
+      const record = devBrandCommandCenters.find((item) => item.id === input.commandCenterId);
+      if (!record) return { status: "blocked" as const, files: [], issues: ["请先生成品牌战情室。"] };
+      if (!record.actionRecords.length) return { status: "blocked" as const, commandCenter: record, files: [], issues: ["暂无行动记录，先处理队列动作或写入复盘记录。"] };
+      const now = new Date().toISOString();
+      record.actionRecords.unshift({
+        id: `browser-dev-export-actions-${Date.now()}`,
+        actionType: "export-action-records",
+        title: `${record.title} 行动记录导出`,
+        outcome: "recorded",
+        actorLabel: input.actorLabel || "浏览器开发",
+        actorRole: input.actorRole,
+        inputSummary: `${record.actionRecords.length} 条行动记录。`,
+        outputSummary: "浏览器开发模式已生成导出记录；Electron 主进程会写入本机交付文件。",
+        writeBackSummary: "浏览器开发模式不会写本机文件。",
+        createdAt: now,
+      });
+      record.updatedAt = now;
+      return {
+        status: "exported" as const,
+        commandCenter: record,
+        packageDir: `${input.workspacePath}/.content-studio/exports/brand-command-actions/browser-dev`,
+        manifestPath: `${input.workspacePath}/.content-studio/exports/brand-command-actions/browser-dev/manifest.json`,
+        markdownPath: `${input.workspacePath}/.content-studio/exports/brand-command-actions/browser-dev/action-records.md`,
+        jsonPath: `${input.workspacePath}/.content-studio/exports/brand-command-actions/browser-dev/action-records.json`,
+        files: ["manifest.json", "action-records.md", "action-records.json"],
+        issues: [],
+      };
+    },
     refreshBrandCommandActions: async (input) => {
       const record = devBrandCommandCenters.find((item) => item.id === input.commandCenterId);
       return record || brandCommandCenter({ workspacePath: input.workspacePath });
     },
     exportContentKnowledgePack: async (input) => contentKnowledgePackExport(input),
+    readContentKnowledgePackFile: async (input) => ({
+      status: "loaded",
+      relativePath: input.relativePath,
+      content: contentKnowledgePackFile(input.relativePath),
+      size: contentKnowledgePackFile(input.relativePath).length,
+      truncated: false,
+      issues: [],
+    }),
     listContentReviewTasks: async () => devContentReviewTasks,
     generateContentReviewTasks: async (input) => {
       const generated = contentReviewTasks(input.workspacePath, input);
@@ -1536,9 +1694,62 @@ export function createDevBridge(): ContentStudioApi {
       userIntent: input.content,
       contentKnowledgeMapId: input.contentKnowledgeMapId,
       contentKnowledgeMapTitle: input.contentKnowledgeMapTitle,
+      teamKnowledgeRelease: input.teamKnowledgeRelease,
       coverageRowIds: input.coverageRowIds,
       sourceRefs: input.sourceRefs,
     }),
+    createTeamKnowledgePromptDraft: async (input) => {
+      const map = input.contentKnowledgeMapId
+        ? devContentKnowledgeMaps.find((item) => item.id === input.contentKnowledgeMapId)
+        : devContentKnowledgeMaps[0];
+      const release = input.contentKnowledgeReleaseId
+        ? devContentKnowledgeReleases.find((item) => item.id === input.contentKnowledgeReleaseId || item.serverReleaseId === input.contentKnowledgeReleaseId)
+        : devContentKnowledgeReleases.find((item) => item.status === "published" && (!map || item.contentKnowledgeMapId === map.id));
+      const readyRows = map ? [...map.sellingPoints, ...map.painPoints, ...map.scenarios].filter((row) => row.status === "ready").slice(0, 12) : [];
+      if (!map) throw new Error("请先生成内容知识地图。");
+      if (!release || release.status !== "published") throw new Error("请先发布当前内容知识地图的团队知识包版本，再交给 Prompt 工作台。");
+      if (!readyRows.length) throw new Error("当前没有可复用组合，请先完成审核或补证据。");
+      return createDraft({
+        workspacePath: input.workspacePath,
+        purpose: "image",
+        userIntent: [
+          `# ${map.title} / Prompt 工作台交接`,
+          "",
+          `团队知识包：${release.title} ${release.version}`,
+          "",
+          "## 使用边界",
+          "- 这份草稿只能作为团队口径和 Prompt 依据，不能把知识包标题、版本号或文件地址当成产品事实。",
+          "",
+          "## 可复用卖点",
+          ...readyRows.map((row, index) => `${index + 1}. ${row.title}：${row.summary}`),
+          "",
+          "## 禁用边界",
+          ...(map.constraints.length ? map.constraints.map((item) => `- ${item}`) : ["- 暂无规则边界，请先补充品牌禁用表达和平台规则。"]),
+          "",
+          "## 下游 Prompt 要求",
+          "- 如果进入短视频生产，必须补充节奏、语气、情绪、背景音乐、说话速度、镜头动作、字幕和素材缺口。",
+        ].join("\n"),
+        contentKnowledgeMapId: map.id,
+        contentKnowledgeMapTitle: map.title,
+        teamKnowledgeRelease: {
+          id: release.serverReleaseId || release.id,
+          title: release.title,
+          version: release.version,
+          contentKnowledgeMapId: release.contentKnowledgeMapId,
+          contentKnowledgeMapTitle: release.contentKnowledgeMapTitle,
+          packageObjectKey: release.packageObjectKey,
+          packagePublicUrl: release.packagePublicUrl,
+          packageUploadStatus: release.packageUploadStatus,
+          approvalStatus: release.approvalStatus,
+        },
+        coverageRowIds: readyRows.map((row) => row.id),
+        sourceRefs: Array.from(new Set([
+          `content-knowledge-map:${map.id}`,
+          `content-knowledge-release:${release.serverReleaseId || release.id}`,
+          ...readyRows.flatMap((row) => row.sourceRefs),
+        ])),
+      });
+    },
     updatePromptDraft: async (input) => createDraft({ workspacePath: input.workspacePath, purpose: "image", userIntent: input.content }),
     recordPromptDraftCopy: async (input) => createDraft({ workspacePath: input.workspacePath, purpose: "image", userIntent: input.draftId }),
     listAgentPromptSessions: async () => devAgentPromptSessions,
@@ -1813,18 +2024,18 @@ export function createDevBridge(): ContentStudioApi {
     createWorkflowDraft: async () => createWorkflowDefinition(),
     updateWorkflowDefinition: async (input) => input,
     listWorkflowRuns: async () => [],
-    startWorkflowRun: async () => createWorkflowRun(),
+    startWorkflowRun: async (input) => createWorkflowRun(undefined, input.teamKnowledgeRelease),
     recordWorkflowManualEvent: async (input) => createWorkflowRun(input.workflowRunId),
     listGenerationLogs: async () => [],
 
     registerInputSource: async (input) => {
-      const source = inputSource(input.purpose, input.title || input.text || "浏览器开发输入源", input.sourcePath);
+      const source = inputSource(input.purpose, input.title || input.text || "浏览器开发输入源", input.sourcePath, input.sensitivity);
       devInputSources.unshift(source);
       return source;
     },
-    importInputSourceFromFile: async (_workspacePath, purpose) => {
+    importInputSourceFromFile: async (_workspacePath, purpose, options) => {
       const title = purpose === "reference" ? "browser-reference.png" : "browser-product.png";
-      const source = inputSource(purpose, title, `/tmp/content-studio-browser-dev/${title}`);
+      const source = inputSource(purpose, title, `/tmp/content-studio-browser-dev/${title}`, options?.sensitivity);
       devInputSources.unshift(source);
       return source;
     },

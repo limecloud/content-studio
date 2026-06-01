@@ -1,4 +1,4 @@
-import { isClaudeModelName, type AgentPromptMessage, type AgentPromptSourceSnapshot, type GeneratePromptDraftInput, type InputSourceRecord, type PromptDraftPurpose, type TextGenerationProtocol } from '../../shared/types';
+import { isClaudeModelName, type AgentPromptMessage, type AgentPromptSourceSnapshot, type ContentKnowledgeReleaseReference, type GeneratePromptDraftInput, type InputSourceRecord, type PromptDraftPurpose, type TextGenerationProtocol } from '../../shared/types';
 import {
   createTextProvider,
   TextProviderBlockedError,
@@ -69,6 +69,16 @@ function sourceDigest(sources: InputSourceRecord[]): string {
   }).join('\n');
 }
 
+function teamKnowledgeReleaseDigest(release?: ContentKnowledgeReleaseReference): string {
+  if (!release?.id) return '未选择团队知识包，本草稿只使用本轮输入源和用户意图。';
+  return [
+    `${release.title} ${release.version}`,
+    release.contentKnowledgeMapTitle ? `内容知识地图：${release.contentKnowledgeMapTitle}` : '',
+    release.packageUploadStatus ? `发布包状态：${release.packageUploadStatus}` : '',
+    release.packagePublicUrl ? '发布包：已登记公开地址' : '',
+  ].filter(Boolean).join('；');
+}
+
 function sourceMaterialForModel(sources: InputSourceRecord[]): string {
   if (sources.length === 0) return '未选择输入源。';
   let remaining = 18_000;
@@ -127,6 +137,9 @@ function formatModelPromptContent(input: GeneratePromptDraftInput, output: Promp
     '用户意图：',
     input.userIntent.trim(),
     '',
+    '团队知识包：',
+    teamKnowledgeReleaseDigest(input.teamKnowledgeRelease),
+    '',
     'Prompt 草稿：',
     output.prompt,
     '',
@@ -172,12 +185,16 @@ function buildLocalPromptContent(
     '可用输入源：',
     sourceText,
     '',
+    '团队知识包：',
+    teamKnowledgeReleaseDigest(input.teamKnowledgeRelease),
+    '',
     '本轮 skills：',
     skillContext.summaryText,
     '',
     '输出要求：',
     skillContext.promptText ? '- 必须按本轮选择的 skill 执行规范组织输出；不适用时要说明原因。' : '',
     '- 只使用输入源和用户意图中能追溯的信息，不编造卖点、功效、背书或平台数据。',
+    '- 如已选择团队知识包，必须沿用该版本的团队口径；但不能把版本名称、发布地址或对象存储信息当成新的产品事实。',
     '- 先给主体、场景、动作、镜头 / 文案结构，再给风格和质量约束。',
     '- 如输入源包含 blocked 项，保留“需要人工确认 / 需要模型解析”的标记，不把 blocked 信息当成已解析事实。',
     '- 输出可以直接复制到下游生成模块，但仍允许人工继续改写。',
@@ -320,6 +337,7 @@ export class PromptAgentService {
           `你是${getOemRuntimeConfig().productName}内容工厂的 Prompt 生成 Agent。`,
           '你会读取用户选择的本地输入源文本，结合用户意图生成可执行 Prompt 草稿。',
           '必须把知识库当事实源：只使用输入源中可追溯的信息，不编造功效、背书、品牌数据或用户案例。',
+          input.teamKnowledgeRelease ? '本轮选择了团队知识包版本，必须沿用该版本的团队口径，但不得把包元数据当成产品事实。' : '',
           '如果资料缺失，要输出需要追问的问题；如果输入源被 blocked，要明确提醒人工确认。',
           '输出的 prompt 要可直接进入图片、视频 Prompt、文案、绿幕文案图、SOP 或 Skill 下游，但仍允许用户多轮调整。',
           skillContext.promptText ? '本轮用户选择了 skills，你必须先学习并遵守这些执行规范。' : '',
@@ -328,6 +346,7 @@ export class PromptAgentService {
           `下游用途：${purposeLabel(input.purpose)}`,
           `用户意图：${input.userIntent.trim()}`,
           input.sceneCardIds?.length ? `场景卡：已选择 ${input.sceneCardIds.length} 张` : '未选择场景卡。',
+          `团队知识包：${teamKnowledgeReleaseDigest(input.teamKnowledgeRelease)}`,
           '',
           skillContext.promptText ? '本轮 skill 执行规范：' : '',
           skillContext.promptText,

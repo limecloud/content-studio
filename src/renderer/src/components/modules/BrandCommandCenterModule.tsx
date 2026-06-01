@@ -3,6 +3,7 @@ import type {
   AgentPromptSession,
   BrandCommandActionRecord,
   BrandCommandCenterRecord,
+  BrandCommandConfirmStage,
   BrandCommandDecisionCheck,
   BrandCommandObjective,
   BrandCommandQueueItem,
@@ -60,6 +61,9 @@ interface BrandCommandCenterModuleProps {
   initialTab?: CommandTab;
   onBuildBrandCommandCenter: () => void;
   onRecordBrandCommandAction: (queueItemId: string) => void;
+  onRecordBrandCommandReview: (summary: string) => void;
+  onConfirmBrandCommandStage: (stage: BrandCommandConfirmStage) => void;
+  onExportBrandCommandActionRecords: () => void;
   onRefreshBrandCommandActions: () => void;
   onSelectAgentSession: (sessionId: string) => void;
   onResolveAgentAction?: AgentActionResolver;
@@ -115,6 +119,11 @@ const ACTION_TYPE_LABELS: Record<BrandCommandQueueItem['actionType'], string> = 
   'launch-sop-run': '启动 SOP',
   'create-material-gap-list': '创建补素材清单',
   'write-back-material-coverage': '回写素材覆盖',
+  'confirm-objectives': '确认目标优先级',
+  'confirm-resource-bundles': '保存作战单元',
+  'sync-execution-queue': '同步执行队列',
+  'review-action-records': '行动复盘',
+  'export-action-records': '导出行动记录',
   'content-production-blocked': '记录发布检查未通过',
 };
 
@@ -315,6 +324,13 @@ interface CommandChartItem {
   detail?: string;
 }
 
+interface CommandMainAction {
+  label: string;
+  disabled: boolean;
+  disabledHint?: string;
+  onClick: () => void;
+}
+
 function renderCommandChart(title: string, items: CommandChartItem[], empty: string, maxValue?: number) {
   const max = maxValue ?? Math.max(...items.map((item) => item.value), 1);
   return (
@@ -374,6 +390,7 @@ function evidenceSourceLabel(sourceType: ContentKnowledgeMapEvidence['sourceType
   if (sourceType === 'ip-knowledge-base') return 'IP 资料';
   if (sourceType === 'scene-card') return '场景卡';
   if (sourceType === 'prompt-draft') return '提示词草稿';
+  if (sourceType === 'asset-review') return '素材审核';
   if (sourceType === 'generated-inference') return '推理结果';
   if (sourceType === 'manual') return '人工补充';
   return '输入资料';
@@ -476,6 +493,7 @@ function renderCommandViewBrief(
   record: BrandCommandCenterRecord | undefined,
   latestMap: ContentKnowledgeMapRecord | undefined,
   readyQueueCount: number,
+  mainAction?: CommandMainAction,
 ) {
   const view = COMMAND_VIEW_CONFIGS[tab];
   const objectSummary = record
@@ -505,6 +523,14 @@ function renderCommandViewBrief(
           <p className="eyebrow">主动作</p>
           <strong>{view.mainAction}</strong>
           <span>{view.deliveryTarget}</span>
+          {mainAction ? (
+            <>
+              <button className="primary small" disabled={mainAction.disabled} onClick={mainAction.onClick}>
+                {mainAction.label}
+              </button>
+              {mainAction.disabled && mainAction.disabledHint ? <small>{mainAction.disabledHint}</small> : null}
+            </>
+          ) : null}
         </div>
       </div>
       {renderCommandViewChart(tab, record)}
@@ -729,40 +755,74 @@ function renderQueue(
   );
 }
 
-function renderLogs(records: BrandCommandActionRecord[]) {
+function renderLogs(
+  records: BrandCommandActionRecord[],
+  busy: boolean,
+  reviewDraft: string,
+  setReviewDraft: (value: string) => void,
+  onRecordReview: (summary: string) => void,
+  onExportRecords: () => void,
+) {
   if (!records.length) return <div className="empty-state">暂无行动记录。处理队列动作后会追加记录。</div>;
   return (
-    <div className="brand-command-log-list">
-      {records.map((record) => (
-        <article key={record.id}>
-          <time>{new Date(record.createdAt).toLocaleString()}</time>
-          <div>
-            <strong>{record.title}</strong>
-            <p>{record.outputSummary}</p>
-            <small>
-              {record.actorLabel}
-              {record.actorRole ? ` / ${TEAM_ROLE_LABELS[record.actorRole]}` : ''}
-              {' · '}
-              {record.inputSummary}
-            </small>
-            <div className="brand-command-log-detail">
-              <span>动作：{ACTION_TYPE_LABELS[record.actionType]}</span>
-              {record.promptDraftId ? <span>Prompt：{record.promptDraftId}</span> : null}
-              {record.sceneCardId ? <span>场景卡：{record.sceneCardId}</span> : null}
-              {record.workflowRunId ? <span>SOP：{record.workflowRunId}</span> : null}
-              {record.reviewTaskId ? <span>审核任务：{record.reviewTaskId}</span> : null}
-              {record.materialCoverageChangeId ? <span>素材回写：{record.materialCoverageChangeId}</span> : null}
-              {record.writeBackSummary ? <span>回写：{record.writeBackSummary}</span> : null}
-              {record.blockedReason ? <span className="warn">原因：{record.blockedReason}</span> : null}
-              <span>团队：{record.teamSync?.message ?? (record.syncStatus ? SYNC_STATUS_LABELS[record.syncStatus] : '本机记录')}</span>
+    <>
+      <div className="brand-command-review-box">
+        <div>
+          <strong>复盘结论</strong>
+          <span>写入行动记录，供下一轮信号、资源包和补资源判断使用。</span>
+        </div>
+        <textarea
+          value={reviewDraft}
+          onChange={(event) => setReviewDraft(event.target.value)}
+          placeholder="例如：抖音图文 Prompt 已交接，缺 9:16 通勤视频素材；下一轮优先补拍午后补涂场景。"
+        />
+        <button className="primary small" disabled={busy || !reviewDraft.trim()} onClick={() => onRecordReview(reviewDraft)}>
+          写入复盘记录
+        </button>
+        <button className="ghost small" disabled={busy || !records.length} onClick={onExportRecords}>
+          导出行动记录
+        </button>
+      </div>
+      <div className="brand-command-log-list">
+        {records.map((record) => (
+          <article key={record.id}>
+            <time>{new Date(record.createdAt).toLocaleString()}</time>
+            <div>
+              <strong>{record.title}</strong>
+              <p>{record.outputSummary}</p>
+              <small>
+                {record.actorLabel}
+                {record.actorRole ? ` / ${TEAM_ROLE_LABELS[record.actorRole]}` : ''}
+                {' · '}
+                {record.inputSummary}
+              </small>
+              <div className="brand-command-log-detail">
+                <span>动作：{ACTION_TYPE_LABELS[record.actionType]}</span>
+                {record.promptDraftId ? <span>Prompt：{record.promptDraftId}</span> : null}
+                {record.sceneCardId ? <span>场景卡：{record.sceneCardId}</span> : null}
+                {record.workflowRunId ? <span>SOP：{record.workflowRunId}</span> : null}
+                {record.teamKnowledgeRelease ? (
+                  <span>团队知识包：{record.teamKnowledgeRelease.title} {record.teamKnowledgeRelease.version}</span>
+                ) : null}
+                {record.reviewTaskId ? <span>审核任务：{record.reviewTaskId}</span> : null}
+                {record.materialCoverageChangeId ? <span>素材回写：{record.materialCoverageChangeId}</span> : null}
+                {record.artifactRefs?.length ? (
+                  <span className="wide">
+                    交付物：{record.artifactRefs.map((ref) => ref.split(/[\\/]/).pop() || ref).join(' / ')}
+                  </span>
+                ) : null}
+                {record.writeBackSummary ? <span>回写：{record.writeBackSummary}</span> : null}
+                {record.blockedReason ? <span className="warn">原因：{record.blockedReason}</span> : null}
+                <span>团队：{record.teamSync?.message ?? (record.syncStatus ? SYNC_STATUS_LABELS[record.syncStatus] : '本机记录')}</span>
+              </div>
             </div>
-          </div>
-          <StatusPill tone={record.outcome === 'handoff' || record.outcome === 'recorded' ? 'ready' : 'blocked'}>
-            {record.outcome === 'handoff' ? '已交接' : record.outcome === 'recorded' ? '已记录' : record.outcome === 'needs-review' ? '待审核' : record.outcome === 'needs-resource' ? '待补资源' : record.outcome === 'written-back' ? '已回写' : '待处理'}
-          </StatusPill>
-        </article>
-      ))}
-    </div>
+            <StatusPill tone={record.outcome === 'handoff' || record.outcome === 'recorded' ? 'ready' : 'blocked'}>
+              {record.outcome === 'handoff' ? '已交接' : record.outcome === 'recorded' ? '已记录' : record.outcome === 'needs-review' ? '待审核' : record.outcome === 'needs-resource' ? '待补资源' : record.outcome === 'written-back' ? '已回写' : '待处理'}
+            </StatusPill>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -781,6 +841,9 @@ export function BrandCommandCenterModule({
   initialTab = 'signals',
   onBuildBrandCommandCenter,
   onRecordBrandCommandAction,
+  onRecordBrandCommandReview,
+  onConfirmBrandCommandStage,
+  onExportBrandCommandActionRecords,
   onRefreshBrandCommandActions,
   onSelectAgentSession,
   onResolveAgentAction,
@@ -790,6 +853,7 @@ export function BrandCommandCenterModule({
 }: BrandCommandCenterModuleProps) {
   const [activeTab, setActiveTab] = useState<CommandTab>(initialTab);
   const [agentMessage, setAgentMessage] = useState(() => COMMAND_VIEW_CONFIGS[initialTab].defaultMessage);
+  const [reviewDraft, setReviewDraft] = useState('');
   const currentView = COMMAND_VIEW_CONFIGS[activeTab];
   const feature = V2_FEATURES[currentView.featureKey];
   const activeRecord = activeBrandCommandCenter ?? brandCommandCenters[0];
@@ -905,6 +969,46 @@ export function BrandCommandCenterModule({
     if (!activeAgentSession || !trimmed) return;
     onContinueAgentSession({ sessionId: activeAgentSession.id, message: trimmed, textModel });
   };
+  const mainAction: CommandMainAction = (() => {
+    if (activeTab === 'signals') {
+      return {
+        label: activeRecord ? '刷新战情室' : '生成战情室',
+        disabled: !workspaceReady || busy || !latestMap,
+        disabledHint: latestMap ? '当前正在处理任务，稍后再试。' : '先生成内容知识地图。',
+        onClick: onBuildBrandCommandCenter,
+      };
+    }
+    if (activeTab === 'objectives') {
+      return {
+        label: '确认目标优先级',
+        disabled: !workspaceReady || busy || !activeRecord || !activeRecord.objectives.length,
+        disabledHint: activeRecord ? '当前没有可确认目标，先刷新战情室。' : '先生成品牌战情室。',
+        onClick: () => onConfirmBrandCommandStage('objectives'),
+      };
+    }
+    if (activeTab === 'bundles') {
+      return {
+        label: '保存作战单元',
+        disabled: !workspaceReady || busy || !activeRecord || !activeRecord.resourceBundles.length,
+        disabledHint: activeRecord ? '当前没有资源包，先补齐卖点、证据和素材。' : '先生成品牌战情室。',
+        onClick: () => onConfirmBrandCommandStage('bundles'),
+      };
+    }
+    if (activeTab === 'queue') {
+      return {
+        label: '同步执行队列',
+        disabled: !workspaceReady || busy || !activeRecord || !activeRecord.queueItems.length,
+        disabledHint: activeRecord ? '当前没有执行队列，先完成作战编组。' : '先生成品牌战情室。',
+        onClick: () => onConfirmBrandCommandStage('queue'),
+      };
+    }
+    return {
+      label: '同步团队记录',
+      disabled: !workspaceReady || busy || !activeRecord,
+      disabledHint: '先生成品牌战情室。',
+      onClick: onRefreshBrandCommandActions,
+    };
+  })();
 
   return (
     <section className="knowledge-brand-workbench brand-command-workbench">
@@ -981,7 +1085,7 @@ export function BrandCommandCenterModule({
 
           {activeRecord ? (
             <>
-              {renderCommandViewBrief(activeTab, activeRecord, latestMap, readyQueueCount)}
+              {renderCommandViewBrief(activeTab, activeRecord, latestMap, readyQueueCount, mainAction)}
               <div className="content-map-stat-grid">
                 <article><strong>{activeRecord.signals.length}</strong><span>信号</span></article>
                 <article><strong>{activeRecord.objectives.length}</strong><span>目标</span></article>
@@ -1008,11 +1112,14 @@ export function BrandCommandCenterModule({
               {activeTab === 'objectives' ? renderObjectives(activeRecord) : null}
               {activeTab === 'bundles' ? renderBundles(activeRecord, activeRecord.resourceBundles, knowledgeLookup) : null}
               {activeTab === 'queue' ? renderQueue(activeRecord, activeRecord.queueItems, knowledgeLookup, busy, onRecordBrandCommandAction) : null}
-              {activeTab === 'logs' ? renderLogs(activeRecord.actionRecords) : null}
+              {activeTab === 'logs' ? renderLogs(activeRecord.actionRecords, busy, reviewDraft, setReviewDraft, (summary) => {
+                onRecordBrandCommandReview(summary);
+                setReviewDraft('');
+              }, onExportBrandCommandActionRecords) : null}
             </>
           ) : (
             <>
-              {renderCommandViewBrief(activeTab, activeRecord, latestMap, readyQueueCount)}
+              {renderCommandViewBrief(activeTab, activeRecord, latestMap, readyQueueCount, mainAction)}
               <div className="empty-state">先生成内容知识地图，再创建{currentView.title}。</div>
             </>
           )}

@@ -6,6 +6,7 @@ import type {
   ContentReviewTaskPurpose,
   ContentReviewTaskRisk,
 } from '../../shared/types';
+import { contentMatrixRiskIssues } from './contentMatrixRiskPolicy';
 
 type ContentReviewMatrixTargetType = Extract<ContentReviewTask['targetType'], 'selling-point' | 'pain-point' | 'scenario'>;
 
@@ -19,19 +20,22 @@ interface BuildContentReviewTasksFromMapOptions {
 }
 
 function rowRisk(row: ContentKnowledgeMapMatrixRow): ContentReviewTaskRisk {
+  if (contentMatrixRiskIssues(row).length) return 'high';
   if (row.status !== 'ready' || row.evidenceRefs.length === 0) return 'high';
   if (row.confidence < 65) return 'medium';
   return 'low';
 }
 
 function rowIssueLabels(row: ContentKnowledgeMapMatrixRow): string[] {
+  const riskLabels = contentMatrixRiskIssues(row).map((issue) => issue.label);
   const labels = [
+    ...riskLabels,
     row.evidenceRefs.length ? '' : '缺证据',
     row.status === 'needs-review' ? '待人工确认' : '',
     row.status === 'needs-evidence' ? '待补证据' : '',
     row.confidence < 65 ? '置信度偏低' : '',
   ].filter(Boolean);
-  return labels.length ? labels : ['本批送审'];
+  return labels.length ? Array.from(new Set(labels)) : ['本批送审'];
 }
 
 function materialIssueLabels(row: ContentKnowledgeMapMatrixRow): string[] {
@@ -158,7 +162,7 @@ export function buildContentReviewTasksFromMap(
       ? targetRowIds.has(row.id)
       : taskPurpose === 'material-supplement'
         ? row.materialStatus === 'missing' || !row.materialRefs?.length
-        : row.status !== 'ready' || row.evidenceRefs.length === 0 || row.confidence < 65)
+        : row.status !== 'ready' || row.evidenceRefs.length === 0 || row.confidence < 65 || contentMatrixRiskIssues(row).length > 0)
   ));
   const rowLimit = options.limitRows ?? (hasTargetRows ? candidateRows.length : 30);
   const gapLimit = options.limitGaps ?? 20;

@@ -5,6 +5,7 @@ import type {
   ContentKnowledgeMapBuildRunStep,
   ContentKnowledgeMapBuildRunStepStatus,
   ContentKnowledgeMapRecord,
+  InputSourceRecord,
 } from '../../shared/types';
 import { BrandKnowledgeBaseStore } from './brandKnowledgeBaseStore';
 import {
@@ -16,7 +17,12 @@ import {
   type ContentKnowledgeMapBuildSources,
   type ContentKnowledgeMapModelOutput,
 } from './contentKnowledgeMapBuilder';
+import { AssetReviewStore } from './assetReviewStore';
 import { ContentKnowledgeMapBuildRunStore } from './contentKnowledgeMapBuildRunStore';
+import {
+  contentKnowledgeMapSensitiveIssues,
+  summarizeInputSourceSensitivity,
+} from './contentKnowledgeMapSensitivityPolicy';
 import { ContentKnowledgeMapStore } from './contentKnowledgeMapStore';
 import type { ContentKnowledgeMapSyncPort } from './contentKnowledgeMapSyncPort';
 import { validateContentKnowledgeMapBuild } from './contentKnowledgeMapValidator';
@@ -65,15 +71,22 @@ function selectedIds<T extends { id: string }>(items: T[], ids: string[] | undef
   return items.filter((item) => allowed.has(item.id)).map((item) => item.id);
 }
 
+function selectedItems<T extends { id: string }>(items: T[], ids: string[] | undefined): T[] {
+  if (!ids?.length) return items;
+  const allowed = new Set(ids);
+  return items.filter((item) => allowed.has(item.id));
+}
+
 function blockedBuildRecord(input: {
   buildInput: BuildContentKnowledgeMapInput;
   now: string;
   teamSync: ContentKnowledgeMapRecord['teamSync'];
-  inputSources: Array<{ id: string; title?: string }>;
+  inputSources: InputSourceRecord[];
   brandKnowledgeBases: Array<{ id: string; title?: string }>;
   ipKnowledgeBases: Array<{ id: string }>;
   sceneCards: Array<{ id: string }>;
   promptDrafts: Array<{ id: string }>;
+  assetReviews?: Array<{ id: string }>;
   reason: string;
 }): ContentKnowledgeMapRecord {
   const title = input.buildInput.title?.trim()
@@ -102,12 +115,14 @@ function blockedBuildRecord(input: {
       ipKnowledgeBaseCount: 0,
       skuRowCount: 0,
       competitorObservationCount: 0,
+      assetReviewCount: input.assetReviews?.length ?? 0,
       sceneCardCount: 0,
       promptDraftCount: 0,
       evidenceCount: 0,
       gapCount: 1,
       readyPercent: 0,
     },
+    sourceSensitivity: summarizeInputSourceSensitivity(selectedItems(input.inputSources, input.buildInput.inputSourceIds)),
     model: 'blocked:text-provider',
     createdAt: input.now,
     updatedAt: input.now,
@@ -159,26 +174,30 @@ export class ContentKnowledgeMapApplicationService {
     private readonly ipKnowledgeBases: IpKnowledgeBaseStore,
     private readonly sceneCards: SceneLibraryStore,
     private readonly promptDrafts: PromptDraftStore,
+    private readonly assetReviews: AssetReviewStore,
     private readonly sync: ContentKnowledgeMapSyncPort,
     private readonly buildRuntime?: ContentKnowledgeMapBuildRuntime,
   ) {}
 
-  list(workspacePath: string): Promise<ContentKnowledgeMapRecord[]> {
+  async list(workspacePath: string): Promise<ContentKnowledgeMapRecord[]> {
+    await this.refreshTeamKnowledgeMaps(workspacePath);
     return this.store.list(workspacePath);
   }
 
-  listBuildRuns(workspacePath: string): Promise<ContentKnowledgeMapBuildRunRecord[]> {
+  async listBuildRuns(workspacePath: string): Promise<ContentKnowledgeMapBuildRunRecord[]> {
+    await this.refreshTeamBuildRuns(workspacePath);
     return this.buildRuns.list(workspacePath);
   }
 
   async build(input: BuildContentKnowledgeMapInput): Promise<ContentKnowledgeMapRecord> {
     const now = new Date().toISOString();
-    const [inputSources, brandKnowledgeBases, ipKnowledgeBases, sceneCards, promptDrafts, teamSync] = await Promise.all([
+    const [inputSources, brandKnowledgeBases, ipKnowledgeBases, sceneCards, promptDrafts, assetReviews, teamSync] = await Promise.all([
       this.inputSources.list(input.workspacePath),
       this.brandKnowledgeBases.list(input.workspacePath),
       this.ipKnowledgeBases.list(input.workspacePath),
       this.sceneCards.list(input.workspacePath),
       this.promptDrafts.list(input.workspacePath),
+      this.assetReviews.list(input.workspacePath),
       this.sync.draftStatus(input.workspacePath),
     ]);
     const sources = {
@@ -187,6 +206,7 @@ export class ContentKnowledgeMapApplicationService {
       ipKnowledgeBases,
       sceneCards,
       promptDrafts,
+      assetReviews,
     };
     const baseSteps = [
       buildStep({
@@ -197,6 +217,7 @@ export class ContentKnowledgeMapApplicationService {
           `${selectedIds(inputSources, input.inputSourceIds).length} 个输入源`,
           `${selectedIds(brandKnowledgeBases, input.brandKnowledgeBaseIds).length} 个品牌知识库`,
           `${selectedIds(ipKnowledgeBases, input.ipKnowledgeBaseIds).length} 个 IP 版本`,
+          `${assetReviews.length} 条素材审核`,
         ].join(' / '),
         startedAt: now,
         completedAt: now,
@@ -211,7 +232,7 @@ export class ContentKnowledgeMapApplicationService {
       }),
     ];
     const saveBuildRun = async (record: ContentKnowledgeMapRecord, extraSteps: ContentKnowledgeMapBuildRunStep[]) => {
-      await this.buildRuns.save({
+      const buildRun: ContentKnowledgeMapBuildRunRecord = {
         id: randomUUID(),
         workspacePath: input.workspacePath,
         title: buildRunTitle({ buildInput: input, inputSources, brandKnowledgeBases }),
@@ -233,8 +254,72 @@ export class ContentKnowledgeMapApplicationService {
         startedAt: now,
         completedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+      };
+      const savedBuildRun = await this.buildRuns.save(buildRun);
+      if (teamSync.status === 'local-only') return record;
+      const safetyIssues = contentKnowledgeMapSensitiveIssues(record);
+      if (safetyIssues.length) {
+        const blockedTeamSync: ContentKnowledgeMapRecord['teamSync'] = {
+          ...teamSync,
+          status: 'blocked',
+          message: safetyIssues.join(' '),
+          lastSyncedAt: new Date().toISOString(),
+        };
+        const blockedRecord = await this.store.save({
+          ...record,
+          syncStatus: 'blocked',
+          teamSync: blockedTeamSync,
+          updatedAt: new Date().toISOString(),
+        });
+        await this.buildRuns.save({
+          ...savedBuildRun,
+          status: 'blocked',
+          issues: Array.from(new Set([...savedBuildRun.issues, ...safetyIssues])),
+          teamSync: blockedTeamSync,
+          updatedAt: new Date().toISOString(),
+        });
+        return blockedRecord;
+      }
+
+      const mapSync = this.sync.upsertKnowledgeMapSnapshot
+        ? await this.sync.upsertKnowledgeMapSnapshot({ record, authorLabel: 'Content Studio' })
+        : undefined;
+      const syncedRecord = mapSync
+        ? await this.store.save({
+          ...record,
+          syncStatus: mapSync.status,
+          teamSync: mapSync,
+          updatedAt: new Date().toISOString(),
+        })
+        : record;
+      const buildRunWithMapSync = mapSync
+        ? await this.buildRuns.save({
+          ...savedBuildRun,
+          teamSync: mapSync,
+          updatedAt: new Date().toISOString(),
+        })
+        : savedBuildRun;
+      if (mapSync && mapSync.status !== 'synced') return syncedRecord;
+      const runSync = this.sync.appendBuildRun
+        ? await this.sync.appendBuildRun({
+          buildRun: buildRunWithMapSync,
+          sourceKnowledgeMap: syncedRecord,
+          authorLabel: 'Content Studio',
+        })
+        : undefined;
+      if (!runSync || runSync.status === 'local-only') return syncedRecord;
+      const finalRecord = await this.store.save({
+        ...syncedRecord,
+        syncStatus: runSync.status,
+        teamSync: runSync,
+        updatedAt: new Date().toISOString(),
       });
-      return record;
+      await this.buildRuns.save({
+        ...buildRunWithMapSync,
+        teamSync: runSync,
+        updatedAt: new Date().toISOString(),
+      });
+      return finalRecord;
     };
     if (!this.buildRuntime) {
       const record = await this.store.save(blockedBuildRecord({
@@ -246,6 +331,7 @@ export class ContentKnowledgeMapApplicationService {
         ipKnowledgeBases,
         sceneCards,
         promptDrafts,
+        assetReviews,
         reason: '生成服务未接入：请先接入文字生成服务，再构建内容知识地图。',
       }));
       return saveBuildRun(record, [
@@ -279,6 +365,7 @@ export class ContentKnowledgeMapApplicationService {
         ipKnowledgeBases,
         sceneCards,
         promptDrafts,
+        assetReviews,
         reason,
       }));
       return saveBuildRun(record, [
@@ -309,6 +396,7 @@ export class ContentKnowledgeMapApplicationService {
         ipKnowledgeBases,
         sceneCards,
         promptDrafts,
+        assetReviews,
         reason,
       }));
       return saveBuildRun(record, [
@@ -386,12 +474,14 @@ export class ContentKnowledgeMapApplicationService {
         ipKnowledgeBaseCount: build.ipKnowledgeBaseIds.length,
         skuRowCount: build.skuRowCount,
         competitorObservationCount: build.competitorObservationCount,
+        assetReviewCount: build.assetReviewCount,
         sceneCardCount: build.sceneCardIds.length,
         promptDraftCount: build.promptDraftIds.length,
         evidenceCount: build.evidence.length,
         gapCount: validation.gaps.length,
         readyPercent: validation.readyPercent,
       },
+      sourceSensitivity: summarizeInputSourceSensitivity(inputSources.filter((source) => build.sourceInputSourceIds.includes(source.id))),
       model: build.model,
       createdAt: now,
       updatedAt: now,
@@ -425,6 +515,71 @@ export class ContentKnowledgeMapApplicationService {
 
   update(input: ContentKnowledgeMapRecord): Promise<ContentKnowledgeMapRecord> {
     return this.store.update(input);
+  }
+
+  private async refreshTeamKnowledgeMaps(workspacePath: string): Promise<void> {
+    if (!this.sync.listKnowledgeMaps) return;
+    const localRecords = await this.store.list(workspacePath);
+    const localById = new Map(localRecords.map((record) => [record.id, record]));
+    const workspaceIds = await this.teamWorkspaceIds(workspacePath);
+    await Promise.all(workspaceIds.map(async (workspaceId) => {
+      try {
+        const records = await this.sync.listKnowledgeMaps?.({ workspacePath, workspaceId });
+        await Promise.all((records ?? []).map((record) => this.store.save(this.mergeTeamKnowledgeMap(record, localById.get(record.id)))));
+      } catch {
+        // 团队刷新失败时保留本机缓存，不把失败伪装成已同步。
+      }
+    }));
+  }
+
+  private async refreshTeamBuildRuns(workspacePath: string): Promise<void> {
+    if (!this.sync.listBuildRuns) return;
+    const localMaps = await this.store.list(workspacePath);
+    const workspaceIds = this.workspaceIdsFromMaps(localMaps);
+    await Promise.all(workspaceIds.map(async (workspaceId) => {
+      try {
+        const records = await this.sync.listBuildRuns?.({ workspacePath, workspaceId });
+        await Promise.all((records ?? []).map((record) => this.buildRuns.save(record)));
+      } catch {
+        // 团队刷新失败时保留本机缓存，不把失败伪装成已同步。
+      }
+    }));
+  }
+
+  private async teamWorkspaceIds(workspacePath: string): Promise<string[]> {
+    return this.workspaceIdsFromMaps(await this.store.list(workspacePath));
+  }
+
+  private workspaceIdsFromMaps(maps: ContentKnowledgeMapRecord[]): string[] {
+    return Array.from(new Set(maps
+      .map((map) => map.teamSync.workspaceId)
+      .filter((workspaceId): workspaceId is string => Boolean(workspaceId))));
+  }
+
+  private mergeTeamKnowledgeMap(
+    teamRecord: ContentKnowledgeMapRecord,
+    localRecord: ContentKnowledgeMapRecord | undefined,
+  ): ContentKnowledgeMapRecord {
+    if (!localRecord) return teamRecord;
+    if (localRecord.syncStatus === 'pending-sync' || localRecord.syncStatus === 'conflict') {
+      return localRecord;
+    }
+    if (
+      localRecord.syncStatus === 'synced' &&
+      localRecord.teamSync.revision &&
+      localRecord.updatedAt.localeCompare(teamRecord.updatedAt) >= 0
+    ) {
+      return {
+        ...localRecord,
+        syncStatus: localRecord.syncStatus,
+        teamSync: {
+          ...teamRecord.teamSync,
+          ...localRecord.teamSync,
+          status: localRecord.teamSync.status,
+        },
+      };
+    }
+    return teamRecord;
   }
 
   private async buildWithTextModel(
@@ -471,6 +626,7 @@ export class ContentKnowledgeMapApplicationService {
           ipKnowledgeBases: sources.ipKnowledgeBases,
           sceneCards: sources.sceneCards,
           promptDrafts: sources.promptDrafts,
+          assetReviews: sources.assetReviews,
           reason: error.message || '生成服务待配置：请先在模型设置中配置文字生成服务，再构建内容知识地图。',
         });
       }
@@ -483,6 +639,7 @@ export class ContentKnowledgeMapApplicationService {
         ipKnowledgeBases: sources.ipKnowledgeBases,
         sceneCards: sources.sceneCards,
         promptDrafts: sources.promptDrafts,
+        assetReviews: sources.assetReviews,
         reason: `内容知识地图生成失败：${sanitizedFailureReason(error)}`,
       });
     }

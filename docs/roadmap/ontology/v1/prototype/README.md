@@ -1,7 +1,7 @@
 # 内容知识地图 v1 桌面原型
 
-更新时间：2026-05-29
-状态：Draft / 可交互确认版
+更新时间：2026-05-31
+状态：Local Verified / Production Evidence Pending
 使用 Skill：`.codex/skills/bugu-product-design-cheatsheet`
 业务 UI 契约：[`../business-ui-contract.md`](../business-ui-contract.md)
 

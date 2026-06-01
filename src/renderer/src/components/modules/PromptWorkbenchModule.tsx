@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ModuleKey, V2ModuleKey } from '../../app/types';
 import type {
   AgentPromptSession,
+  ContentKnowledgeRelease,
+  ContentKnowledgeReleaseReference,
   InputSourceRecord,
   InputSourcePurpose,
   PlatformDraftRecord,
@@ -32,6 +34,7 @@ interface PromptWorkbenchModuleProps {
   inputSources: InputSourceRecord[];
   promptDrafts: PromptDraft[];
   platformDrafts: PlatformDraftRecord[];
+  teamKnowledgePackageVersions: ContentKnowledgeRelease[];
   copiedPlatformDraftId: string | null;
   agentPromptSessions: AgentPromptSession[];
   skills: LoadedSkill[];
@@ -49,6 +52,7 @@ interface PromptWorkbenchModuleProps {
     purpose: PromptDraftPurpose;
     userIntent: string;
     inputSourceIds: string[];
+    teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
     selectedSkills?: SkillRef[];
     selectedSkillSlugs?: string[];
   }) => void;
@@ -57,6 +61,7 @@ interface PromptWorkbenchModuleProps {
     purpose: PromptDraftPurpose;
     userIntent: string;
     inputSourceIds: string[];
+    teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
     sceneCardIds?: string[];
     selectedSkills?: SkillRef[];
     selectedSkillSlugs?: string[];
@@ -320,6 +325,26 @@ function skillLabel(ref: SkillRef, skills: LoadedSkill[]): string {
   return skills.find((skill) => skill.slug === ref.slug && skill.source === ref.source)?.metadata.name ?? ref.slug;
 }
 
+function teamKnowledgeReleaseReference(release?: ContentKnowledgeRelease): ContentKnowledgeReleaseReference | undefined {
+  if (!release) return undefined;
+  return {
+    id: release.serverReleaseId || release.id,
+    title: release.title,
+    version: release.version,
+    contentKnowledgeMapId: release.contentKnowledgeMapId,
+    contentKnowledgeMapTitle: release.contentKnowledgeMapTitle,
+    packageObjectKey: release.packageObjectKey,
+    packagePublicUrl: release.packagePublicUrl,
+    packageUploadStatus: release.packageUploadStatus,
+    approvalStatus: release.approvalStatus,
+  };
+}
+
+function teamKnowledgeReleaseLabel(release: ContentKnowledgeRelease): string {
+  const status = release.packageUploadStatus ? ` · ${release.packageUploadStatus}` : '';
+  return `${release.title} ${release.version}${status}`;
+}
+
 function compactLabels(labels: string[]): string {
   if (!labels.length) return '未选择';
   if (labels.length <= 3) return labels.join('、');
@@ -337,6 +362,7 @@ export function PromptWorkbenchModule({
   inputSources,
   promptDrafts,
   platformDrafts,
+  teamKnowledgePackageVersions,
   copiedPlatformDraftId,
   agentPromptSessions,
   skills,
@@ -376,7 +402,9 @@ export function PromptWorkbenchModule({
   const [sessionTextModel, setSessionTextModel] = useState(defaultSessionTextModel);
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [selectedSkillKeys, setSelectedSkillKeys] = useState<string[]>([]);
+  const [selectedTeamReleaseId, setSelectedTeamReleaseId] = useState('');
   const sourceSelectionModeRef = useRef<'auto' | 'manual'>('auto');
+  const teamReleaseSelectionModeRef = useRef<'auto' | 'manual'>('auto');
   const skillSelectionModeRef = useRef<'auto' | 'manual'>('auto');
   const lastAutoSelectionContextRef = useRef<string>('');
   const visibleSkills = useMemo(
@@ -393,6 +421,12 @@ export function PromptWorkbenchModule({
   const selectedSkillRefs = useMemo(
     () => selectedSkills.map(skillRefFromLoaded),
     [selectedSkills],
+  );
+  const publishedTeamKnowledgeReleases = useMemo(
+    () => teamKnowledgePackageVersions
+      .filter((release) => release.status === 'published')
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [teamKnowledgePackageVersions],
   );
   const availableSkillKeys = useMemo(
     () => new Set(skills.filter((skill) => skill.valid).map(skillKey)),
@@ -450,6 +484,17 @@ export function PromptWorkbenchModule({
     }),
     [inputSources, purpose],
   );
+  const selectedTeamRelease = useMemo(
+    () => publishedTeamKnowledgeReleases.find((release) => (
+      release.id === selectedTeamReleaseId ||
+      release.serverReleaseId === selectedTeamReleaseId
+    )),
+    [publishedTeamKnowledgeReleases, selectedTeamReleaseId],
+  );
+  const selectedTeamReleaseRef = useMemo(
+    () => teamKnowledgeReleaseReference(selectedTeamRelease),
+    [selectedTeamRelease],
+  );
 
   useEffect(() => {
     setDraftContent(activeContent(activeDraft));
@@ -486,6 +531,20 @@ export function PromptWorkbenchModule({
     lastAutoSelectionContextRef.current = selectionContext;
   }, [activeDraft?.id, inputSources, purpose]);
 
+  useEffect(() => {
+    if (teamReleaseSelectionModeRef.current === 'manual') return;
+    const draftReleaseId = activeDraft?.teamKnowledgeRelease?.id;
+    const sessionReleaseId = activeSession?.teamKnowledgeRelease?.id;
+    const preferredId = draftReleaseId || sessionReleaseId || publishedTeamKnowledgeReleases[0]?.serverReleaseId || publishedTeamKnowledgeReleases[0]?.id || '';
+    setSelectedTeamReleaseId(preferredId);
+  }, [
+    activeDraft?.id,
+    activeDraft?.teamKnowledgeRelease?.id,
+    activeSession?.id,
+    activeSession?.teamKnowledgeRelease?.id,
+    publishedTeamKnowledgeReleases,
+  ]);
+
   const canGenerate = workspaceReady && !busy && userIntent.trim().length > 0;
   const sessionModelReady = textProtocol !== 'claude-sdk' || !sessionTextModel || isClaudeModelName(sessionTextModel);
   const canStartSession = canGenerate && sessionModelReady;
@@ -500,6 +559,7 @@ export function PromptWorkbenchModule({
       : selectedSkillRefs;
   const activeProcessSkillLabels = activeProcessSkillRefs.map((ref) => skillLabel(ref, skills));
   const activeProcessSourceCount = activeSession?.sourceSnapshots.length ?? reusableSelectedSourceIds.length;
+  const activeTeamRelease = activeDraft?.teamKnowledgeRelease ?? activeSession?.teamKnowledgeRelease ?? selectedTeamReleaseRef;
   const isPromptActionRunning = busy && Boolean(currentActionLabel?.includes('Prompt') || currentActionLabel?.includes('协作') || currentActionLabel?.includes('对话'));
   const agentProcessSteps: AgentExecutionStep[] = [
     {
@@ -564,7 +624,29 @@ export function PromptWorkbenchModule({
             ))}
           </select>
         </label>
+        <label>
+          <span>团队知识包</span>
+          <select
+            value={selectedTeamReleaseId}
+            onChange={(event) => {
+              teamReleaseSelectionModeRef.current = 'manual';
+              setSelectedTeamReleaseId(event.target.value);
+            }}
+          >
+            <option value="">不绑定</option>
+            {publishedTeamKnowledgeReleases.map((release) => (
+              <option key={release.serverReleaseId || release.id} value={release.serverReleaseId || release.id}>
+                {teamKnowledgeReleaseLabel(release)}
+              </option>
+            ))}
+          </select>
+        </label>
         <span>文字协议 <strong>{textProtocolLabel(activeDraftTextProtocol)}</strong></span>
+      </div>
+      <div className="prompt-agent-context-note">
+        {activeTeamRelease
+          ? `团队知识包：${activeTeamRelease.title} ${activeTeamRelease.version}`
+          : '未绑定团队知识包，本轮只使用所选输入源和用户意图。'}
       </div>
       {activeProcessSkillLabels.length ? (
         <div className="prompt-agent-context-note">{compactLabels(activeProcessSkillLabels)}</div>
@@ -621,7 +703,7 @@ export function PromptWorkbenchModule({
           <button
             className="primary small"
             disabled={!canStartSession}
-            onClick={() => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug), textModel: sessionTextModel })}
+            onClick={() => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, teamKnowledgeRelease: selectedTeamReleaseRef, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug), textModel: sessionTextModel })}
           >
             开始协作
           </button>
@@ -629,7 +711,7 @@ export function PromptWorkbenchModule({
         <button
           className="ghost small"
           disabled={!canGenerate}
-          onClick={() => onGenerateDraft({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug) })}
+          onClick={() => onGenerateDraft({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, teamKnowledgeRelease: selectedTeamReleaseRef, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug) })}
         >
           仅生成草稿
         </button>
@@ -735,9 +817,31 @@ export function PromptWorkbenchModule({
               <input value={title} onChange={(event) => setTitle(event.target.value)} />
             </label>
             <label>
+              <span>团队知识包</span>
+              <select
+                value={selectedTeamReleaseId}
+                onChange={(event) => {
+                  teamReleaseSelectionModeRef.current = 'manual';
+                  setSelectedTeamReleaseId(event.target.value);
+                }}
+              >
+                <option value="">不绑定</option>
+                {publishedTeamKnowledgeReleases.map((release) => (
+                  <option key={release.serverReleaseId || release.id} value={release.serverReleaseId || release.id}>
+                    {teamKnowledgeReleaseLabel(release)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
               <span>用户意图</span>
               <textarea value={userIntent} onChange={(event) => setUserIntent(event.target.value)} />
             </label>
+          </div>
+          <div className="prompt-team-release-hint">
+            {selectedTeamReleaseRef
+              ? `本轮会绑定「${selectedTeamReleaseRef.title} ${selectedTeamReleaseRef.version}」，草稿和协作记录会沿用同一套已审核口径。`
+              : '没有已发布团队知识包时，草稿仍可生成，但只使用当前输入源和用户意图。'}
           </div>
           <div className="prompt-skill-picker">
             <div>
@@ -814,14 +918,14 @@ export function PromptWorkbenchModule({
             <button
               className="primary small"
               disabled={!canStartSession}
-              onClick={() => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug), textModel: sessionTextModel })}
+              onClick={() => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, teamKnowledgeRelease: selectedTeamReleaseRef, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug), textModel: sessionTextModel })}
             >
               开始协作
             </button>
             <button
               className="ghost small"
               disabled={!canGenerate}
-              onClick={() => onGenerateDraft({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug) })}
+              onClick={() => onGenerateDraft({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, teamKnowledgeRelease: selectedTeamReleaseRef, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug) })}
             >
               仅生成草稿
             </button>

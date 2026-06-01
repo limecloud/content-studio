@@ -160,6 +160,7 @@ function evidenceSourceLabel(sourceType: ContentKnowledgeMapEvidence['sourceType
   if (sourceType === 'ip-knowledge-base') return 'IP 资料';
   if (sourceType === 'scene-card') return '场景卡';
   if (sourceType === 'prompt-draft') return '提示词草稿';
+  if (sourceType === 'asset-review') return '素材审核';
   if (sourceType === 'generated-inference') return '推理结果';
   if (sourceType === 'manual') return '人工补充';
   return '输入资料';

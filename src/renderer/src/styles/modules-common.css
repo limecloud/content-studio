@@ -746,6 +746,13 @@
   justify-content: space-between;
   gap: 10px;
 }
+.asset-coverage-section-head > div {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .asset-coverage-section-head strong {
   color: var(--text);
   font-size: 12px;
@@ -806,6 +813,10 @@
   padding: 4px 8px;
   font-size: 11px;
   font-weight: 800;
+}
+.asset-coverage-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 .asset-coverage-note {
   border-top: 1px solid var(--line);

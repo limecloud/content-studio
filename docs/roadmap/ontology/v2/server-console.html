@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>布谷AI 内容工厂 · 服务端控制台 Ontology v2</title>
+  <link rel="icon" href="data:," />
+  <style>
+    :root {
+      /* 深色运维仪表盘配色，与客户端浅色工作台同源但分明 */
+      --bg: #0a1518;
+      --bg-2: #0d1c20;
+      --panel: #11252a;
+      --panel-2: #16303644;
+      --surface: #16303a;
+      --surface-2: #1a3a44;
+      --line: #20424c;
+      --line-2: #2a525e;
+      --ink: #e8f4f1;
+      --ink-2: #b9d4ce;
+      --muted: #7fa099;
+      --faint: #5d7d77;
+      --brand: #16b094;
+      --brand-strong: #2fd1ad;
+      --brand-soft: rgba(22, 176, 148, 0.14);
+      --brand-glow: rgba(22, 176, 148, 0.28);
+      --blue: #5b9be8;
+      --blue-soft: rgba(91, 155, 232, 0.16);
+      --amber: #e7a33a;
+      --amber-soft: rgba(231, 163, 58, 0.16);
+      --red: #e2607a;
+      --red-soft: rgba(226, 96, 122, 0.16);
+      --green: #34c98a;
+      --green-soft: rgba(52, 201, 138, 0.16);
+      --shadow: 0 2px 6px rgba(0,0,0,0.3), 0 18px 48px rgba(0,0,0,0.36);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+      --r-sm: 9px;
+      --r: 14px;
+      --r-lg: 18px;
+      --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", system-ui, sans-serif;
+      --mono: "SF Mono", "JetBrains Mono", "Cascadia Code", "Liberation Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; color: var(--ink); font-family: var(--sans);
+      font-size: 14px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+      background:
+        radial-gradient(1100px 520px at 8% -6%, rgba(22,176,148,0.10), transparent 60%),
+        radial-gradient(900px 500px at 100% 0%, rgba(91,155,232,0.07), transparent 55%),
+        linear-gradient(180deg, #0b181c 0%, var(--bg) 50%, var(--bg-2) 100%);
+    }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    h1,h2,h3,h4 { margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+    p { margin: 0; }
+    ::selection { background: var(--brand-glow); }
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-thumb { background: rgba(127,160,153,0.25); border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(127,160,153,0.4); background-clip: padding-box; }
+
+    .app { display: grid; grid-template-columns: 248px minmax(0,1fr); min-height: 100vh; }
+
+    /* ===== sidebar ===== */
+    .side { position: sticky; top: 0; height: 100vh; overflow: auto; padding: 18px 14px;
+      background: linear-gradient(176deg, #0c2228 0%, #081519 100%);
+      border-right: 1px solid var(--line); }
+    .brand { display: flex; gap: 11px; align-items: center; padding: 4px 6px 16px; }
+    .brand .logo { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center;
+      font-weight: 900; font-size: 17px; color: #03332d;
+      background: linear-gradient(145deg, #2fd1ad, #0c8a78); box-shadow: 0 8px 20px rgba(22,176,148,0.3); }
+    .brand strong { display: block; font-size: 14px; color: #f1faf7; }
+    .brand span { display: block; font-size: 10.5px; color: var(--faint); margin-top: 2px; letter-spacing: .04em; }
+    .env { margin: 0 4px 14px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px;
+      background: var(--panel); display: flex; align-items: center; gap: 8px; }
+    .env .dot { width: 8px; height: 8px; border-radius: 99px; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+    .env .et { font-size: 12px; font-weight: 700; }
+    .env .es { font-size: 10px; color: var(--faint); margin-top: 1px; }
+    .navlbl { margin: 14px 10px 7px; font-size: 10px; font-weight: 800; letter-spacing: .14em; color: var(--faint); text-transform: uppercase; }
+    .nav { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 0; border-radius: 10px;
+      background: transparent; color: var(--ink-2); text-align: left; margin-bottom: 3px; transition: all .14s ease; }
+    .nav:hover { background: rgba(255,255,255,0.05); }
+    .nav.active { background: linear-gradient(120deg, var(--brand-soft), rgba(22,176,148,0.06)); color: #eafff9;
+      box-shadow: inset 0 0 0 1px rgba(22,176,148,0.3); }
+    .nav .ni { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; font-size: 12px;
+      background: rgba(255,255,255,0.06); flex-shrink: 0; }
+    .nav.active .ni { background: var(--brand); color: #03332d; }
+    .nav .nt { font-size: 13px; font-weight: 600; flex: 1; }
+    .nav .nb { font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 99px; }
+    .nav .nb.warn { background: var(--amber-soft); color: var(--amber); }
+    .nav .nb.bad { background: var(--red-soft); color: var(--red); }
+    .side-foot { margin: 16px 6px 0; padding: 11px; border: 1px solid var(--line); border-radius: 11px;
+      background: var(--panel); font-size: 11px; color: var(--muted); line-height: 1.6; }
+
+    /* ===== main ===== */
+    main { min-width: 0; padding: 20px 26px 40px; }
+    .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+    .top .kick { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 99px;
+      font-size: 11px; font-weight: 800; color: var(--brand-strong); background: var(--brand-soft); border: 1px solid var(--line-2); }
+    .top .kick::before { content:""; width: 6px; height: 6px; border-radius: 99px; background: var(--brand-strong); box-shadow: 0 0 0 3px var(--brand-glow); }
+    .top h1 { font-size: 24px; margin: 10px 0 6px; }
+    .top p { color: var(--muted); font-size: 13px; max-width: 680px; line-height: 1.6; }
+    .top .acts { display: flex; gap: 9px; flex-shrink: 0; }
+    .btn { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); padding: 9px 15px;
+      border-radius: 11px; font-size: 13px; font-weight: 700; transition: all .12s ease; }
+    .btn:hover { border-color: var(--brand); color: var(--brand-strong); }
+    .btn.pri { border: 0; color: #03241f; background: linear-gradient(135deg, #2fd1ad, #0c8a78); box-shadow: 0 8px 18px rgba(22,176,148,0.24); }
+    .btn.pri:hover { color: #03241f; filter: brightness(1.05); }
+
+    /* ===== KPI ===== */
+    .kpis { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 18px; }
+    .kpi { padding: 15px 16px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); box-shadow: var(--shadow-sm); }
+    .kpi .kh { display: flex; align-items: center; justify-content: space-between; }
+    .kpi .kl { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+    .kpi b { display: block; font-size: 27px; font-weight: 800; letter-spacing: -0.03em; margin-top: 7px; }
+    .kpi small { font-size: 11px; color: var(--faint); margin-top: 5px; display: block; }
+    .kpi .spark { display: flex; gap: 2px; align-items: flex-end; height: 22px; margin-top: 8px; }
+    .kpi .spark i { flex: 1; background: var(--brand); border-radius: 2px 2px 0 0; opacity: .55; }
+    .trend { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 99px; }
+    .trend.up { color: var(--green); background: var(--green-soft); }
+    .trend.down { color: var(--red); background: var(--red-soft); }
+
+    /* ===== panel ===== */
+    .panel { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); box-shadow: var(--shadow-sm); overflow: hidden; margin-bottom: 16px; }
+    .ph { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px 17px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+    .ph h2 { font-size: 15px; display: flex; align-items: center; gap: 9px; }
+    .ph h2 .hi { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-size: 13px; background: var(--brand-soft); color: var(--brand-strong); }
+    .ph p { margin-top: 5px; font-size: 12px; color: var(--muted); }
+    .pb { padding: 15px 17px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+
+    /* ===== table ===== */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; font-size: 12.5px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { font-size: 11px; font-weight: 800; color: var(--faint); letter-spacing: .03em; }
+    tbody tr { transition: background .1s ease; }
+    tbody tr:hover { background: rgba(22,176,148,0.05); }
+    tbody tr:last-child td { border-bottom: 0; }
+    td code, code { font-family: var(--mono); font-size: 11px; color: var(--brand-strong); }
+
+    /* ===== badges / health ===== */
+    .bdg { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .bdg::before { content:""; width: 5px; height: 5px; border-radius: 99px; background: currentColor; }
+    .bdg.ok { color: var(--green); background: var(--green-soft); }
+    .bdg.warn { color: var(--amber); background: var(--amber-soft); }
+    .bdg.bad { color: var(--red); background: var(--red-soft); }
+    .bdg.info { color: var(--blue); background: var(--blue-soft); }
+    .bdg.idle { color: var(--muted); background: rgba(127,160,153,0.12); }
+    .lvl { font-family: var(--mono); font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 6px; }
+    .lvl.l0 { background: var(--green-soft); color: var(--green); }
+    .lvl.l1 { background: var(--blue-soft); color: var(--blue); }
+    .lvl.l2 { background: var(--amber-soft); color: var(--amber); }
+
+    /* progress / bars */
+    .bar { height: 6px; border-radius: 99px; background: rgba(255,255,255,0.07); overflow: hidden; min-width: 70px; }
+    .bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #2fd1ad, #0c8a78); }
+    .bar i.warn { background: linear-gradient(90deg, #e8c06a, #b8730a); }
+    .bar i.bad { background: linear-gradient(90deg, #e2607a, #b8344e); }
+    .barwrap { display: flex; align-items: center; gap: 9px; }
+    .barwrap span { font-family: var(--mono); font-size: 11px; color: var(--ink-2); min-width: 34px; }
+
+    /* queue / runtime */
+    .rt-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .rt-col { padding: 14px 16px; }
+    .rt-col:first-child { border-right: 1px solid var(--line); }
+    .rt-col h3 { font-size: 13px; display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+    .rt-col h3 .rd { width: 8px; height: 8px; border-radius: 99px; }
+    .rt-col h3 .rd.local { background: var(--brand); } .rt-col h3 .rd.cloud { background: var(--blue); }
+    .job { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+    .job:last-child { border-bottom: 0; }
+    .job .jt { font-size: 12.5px; font-weight: 600; }
+    .job .jm { font-size: 10.5px; color: var(--faint); margin-top: 3px; font-family: var(--mono); }
+    .log { font-family: var(--mono); font-size: 11.5px; line-height: 1.7; color: var(--ink-2); }
+    .log .t { color: var(--faint); } .log .ok { color: var(--green); } .log .warn { color: var(--amber); } .log .bad { color: var(--red); } .log .info { color: var(--blue); }
+
+    .miniseg { display: flex; height: 26px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+    .miniseg i { display: grid; place-items: center; font-size: 10px; font-weight: 800; color: #042a24; }
+    .kv { display: grid; grid-template-columns: 96px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+    .kv:last-child { border-bottom: 0; }
+    .kv .k { color: var(--faint); } .kv .v { color: var(--ink-2); font-weight: 600; }
+    .view { display: none; } .view.active { display: block; animation: fade .22s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    /*STYLES*/
+  </style>
+</head>
+<body>
+  <!--BODY-->
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo">谷</div>
+        <div><strong>布谷AI 服务端控制台</strong><span>Ontology v2 · 运维后台</span></div>
+      </div>
+      <div class="env">
+        <span class="dot"></span>
+        <div><div class="et" id="envName">生产环境 · 多租户云</div><div class="es" id="envMeta">3 租户在线 · 引擎健康</div></div>
+      </div>
+      <div class="navlbl">控制台</div>
+      <nav id="nav"></nav>
+      <div class="side-foot">服务端常驻：接入引擎、Agent 双 Runtime 调度、规则门禁、密钥库、状态托管。客户端只采集与渲染。</div>
+    </aside>
+
+    <main>
+      <div class="top">
+        <div>
+          <span class="kick" id="kick">控制台</span>
+          <h1 id="title"></h1>
+          <p id="desc"></p>
+        </div>
+        <div class="acts">
+          <button class="btn" id="actSecondary">查看运行日志</button>
+          <button class="btn pri" id="actPrimary">刷新状态</button>
+        </div>
+      </div>
+
+      <!-- 概览 -->
+      <section class="view active" data-view="overview">
+        <div class="kpis" id="kpis"></div>
+        <div class="grid2">
+          <section class="panel">
+            <div class="ph"><div><h2><span class="hi">⇲</span> 接入引擎健康</h2><p>6 数据源 · 成熟度分层与新鲜度</p></div></div>
+            <div class="pb" id="ovIntake"></div>
+          </section>
+          <section class="panel">
+            <div class="ph"><div><h2><span class="hi">⚙</span> Agent 双 Runtime</h2><p>本地 / 服务端任务分流与负载</p></div></div>
+            <div class="pb" id="ovRuntime"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <div class="ph"><div><h2><span class="hi">▤</span> 实时运行日志</h2><p>跨子系统事件流（接入同步 / Agent 执行 / 门禁裁决）</p></div><span class="bdg ok">实时</span></div>
+          <div class="pb"><div class="log" id="ovLog"></div></div>
+        </section>
+      </section>
+
+      <!-- 接入引擎运维 -->
+      <section class="view" data-view="intake">
+        <div class="kpis" id="ikKpis"></div>
+        <section class="panel">
+          <div class="ph"><div><h2><span class="hi">⇲</span> 连接器运行时</h2><p>各数据源成熟度、新鲜度、覆盖率与同步状态。点击行查看字段映射。</p></div></div>
+          <div class="pb" style="padding:0"><div id="ikSources"></div></div>
+        </section>
+        <div class="grid2">
+          <section class="panel">
+            <div class="ph"><div><h2><span class="hi">▦</span> 适配器注册表</h2><p>可复用映射模板 · 跨租户复用</p></div></div>
+            <div class="pb" style="padding:0"><div id="ikAdapters"></div></div>
+          </section>
+          <section class="panel">
+            <div class="ph"><div><h2><span class="hi">↺</span> 定时同步日志</h2><p>L1/L2 轮询与 webhook 回写</p></div></div>
+            <div class="pb"><div class="log" id="ikLog"></div></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Agent 调度 -->
+      <section class="view" data-view="agent">
+        <div class="kpis" id="agKpis"></div>
+        <section class="panel">
+          <div class="ph"><div><h2><span class="hi">⚙</span> 双 Runtime 任务队列</h2><p>同一套 agent 定义，本地 / 服务端分流；算力不足自动转交。</p></div></div>
+          <div class="rt-split" id="agRuntimes"></div>
+        </section>
+        <section class="panel">
+          <div class="ph"><div><h2><span class="hi">⛁</span> 运行中任务</h2><p>跨租户 Agent 执行明细</p></div></div>
+          <div class="pb" style="padding:0"><div id="agJobs"></div></div>
+        </section>
+      </section>
+
+      <!-- 门禁与合规 -->
+      <section class="view" data-view="gate">
+        <div class="kpis" id="gtKpis"></div>
+        <div class="grid2">
+          <section class="panel">
+            <div class="ph"><div><h2><span class="hi">⛨</span> 规则门禁引擎</h2><p>各门禁通过率与拦截分布</p></div></div>
+            <div class="pb" style="padding:0"><div id="gtGates"></div></div>
+          </section>
+          <section class="panel">
+            <div class="ph"><div><h2><span class="hi">⚑</span> 审核队列</h2><p>待人工确认的高风险项</p></div></div>
+            <div class="pb" style="padding:0"><div id="gtReview"></div></div>
+          </section>
+        </div>
+        <section class="panel">
+          <div class="ph"><div><h2><span class="hi">▤</span> 合规裁决日志</h2><p>门禁判定与反向恢复任务（服务端权威裁决）</p></div></div>
+          <div class="pb"><div class="log" id="gtLog"></div></div>
+        </section>
+      </section>
+
+      <!-- 多租户与安全 -->
+      <section class="view" data-view="tenant">
+        <div class="kpis" id="tnKpis"></div>
+        <section class="panel">
+          <div class="ph"><div><h2><span class="hi">▢</span> 租户列表</h2><p>各租户部署模式、配额用量与接入成熟度。点击行查看详情。</p></div></div>
+          <div class="pb" style="padding:0"><div id="tnTenants"></div></div>
+        </section>
+        <div class="grid2">
+          <section class="panel">
+            <div class="ph"><div><h2><span class="hi">🔑</span> 密钥库</h2><p>加密托管的凭证 · 绝不下发客户端</p></div></div>
+            <div class="pb" style="padding:0"><div id="tnVault"></div></div>
+          </section>
+          <section class="panel">
+            <div class="ph"><div><h2><span class="hi">⊞</span> 部署模式分布</h2><p>公有云 / VPC / 内网 Agent</p></div></div>
+            <div class="pb" id="tnDeploy"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- drawer -->
+  <div id="scrim" style="position:fixed;inset:0;z-index:60;background:rgba(2,10,12,0.6);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .25s ease"></div>
+  <aside id="drawer" style="position:fixed;top:0;right:0;bottom:0;z-index:61;width:min(640px,94vw);background:var(--panel);border-left:1px solid var(--line-2);box-shadow:-24px 0 64px rgba(0,0,0,0.5);transform:translateX(102%);transition:transform .3s cubic-bezier(.22,1,.36,1);display:flex;flex-direction:column">
+    <div id="drawerHead" style="padding:20px 22px;border-bottom:1px solid var(--line);background:var(--panel-2)"></div>
+    <div id="drawerBody" style="flex:1;overflow:auto;padding:20px 22px"></div>
+  </div>
+  <script>
+  //DATA
+  // ============ 控制台数据（同时是 Mock API 的数据契约）============
+  var DB = {
+    overview: {
+      kpis: [
+        { l: "在线租户", v: "3", s: "公有云 2 · VPC 1", spark: [4,5,3,6,5,7,6,8], trend: null },
+        { l: "今日 Agent 任务", v: "1,284", s: "本地 61% · 云端 39%", spark: [3,4,6,5,7,6,8,9], trend: ["up","+12%"] },
+        { l: "门禁拦截", v: "47", s: "高风险 9 · 待人工 11", spark: [2,3,2,4,3,5,4,3], trend: ["down","-8%"] },
+        { l: "接入平均覆盖", v: "62%", s: "2 源瓶颈待补", spark: [5,5,6,6,6,7,7,7], trend: ["up","+3%"] }
+      ]
+    },
+    sources: [
+      { id: "shop", name: "商品与库存", level: "L1", lname: "半自动", resp: "实施顾问", cover: 92, fresh: "T+1 每日", conf: "高", health: "ok", adapter: "淘宝/天猫商品模板 v3",
+        mapping: [["商品标题","NormalizedSku.title","已映射"],["销售价","NormalizedSku.price","已映射"],["规格(写标题里)","NormalizedSku.spec","AI 抽取"],["库存数","NormalizedSku.stock","已映射 · T+1"],["活动价","—","缺：需人工确认"]],
+        next: "升 L2 直连用友 ERP，库存实时", blocker: "实施配置 U8 接口（约 2 人日）" },
+      { id: "search", name: "搜索与评论", level: "L2", lname: "直连", resp: "系统自动", cover: 88, fresh: "实时", conf: "高", health: "ok", adapter: "抖音商品模板 v2",
+        mapping: [["搜索词","SearchSignal.term","已映射"],["搜索量","SearchSignal.volume","已映射"],["评论正文","PainPoint.raw","已映射"],["客服问答","IntentCluster","已映射"]],
+        next: "已达最高档 L2", blocker: "无，保持监控" },
+      { id: "rules", name: "平台与品牌规则", level: "L1", lname: "半自动", resp: "自助", cover: 79, fresh: "按需更新", conf: "高", health: "ok", adapter: "通用 Excel 映射器",
+        mapping: [["禁用词","ForbiddenExpression","已映射"],["功效边界","ReviewGate.rule","已映射"],["品牌口径","RulePatch","已映射"],["类目特殊规则","—","部分缺失"]],
+        next: "升 L2 订阅平台合规推送", blocker: "平台合规 API 准入审核" },
+      { id: "content", name: "素材与证据", level: "L0", lname: "手动", resp: "自助", cover: 54, fresh: "手动上传", conf: "中", health: "warn", adapter: "飞书/网盘素材适配器",
+        mapping: [["详情页主图","ClipAsset","已上传"],["实拍视频","ClipAsset","部分"],["检测报告 PDF","Evidence","OCR 待校"],["历史成片","—","缺：未上传"]],
+        next: "升 L1 授权飞书目录自动归集", blocker: "甲方整理素材命名规范（约 0.5 人日）" },
+      { id: "manual", name: "人工确认", level: "L0", lname: "手动", resp: "自助", cover: 61, fresh: "事件触发", conf: "中", health: "warn", adapter: "通用 Excel 映射器",
+        mapping: [["活动价边界","HumanApproval.offer","待确认"],["预算阈值","HumanApproval.budget","已确认"],["风险例外","HumanApproval.risk","待确认"]],
+        next: "升 L1 模板化确认表单 + 待办提醒", blocker: "配置确认表单模板（约 0.5 人日）" },
+      { id: "ads", name: "投放与流量", level: "L0", lname: "手动", resp: "实施顾问", cover: 0, fresh: "未接入", conf: "无", health: "bad", adapter: "巨量引擎投放适配器",
+        mapping: [["投放花费","DeliveryMetric.cost","缺：未接入"],["3秒留存","DeliveryMetric.retention","缺：未接入"],["点击率","DeliveryMetric.ctr","缺：未接入"],["转化","DeliveryMetric.cvr","缺：未接入"]],
+        next: "升 L2 直连巨量引擎，实时回写", blocker: "甲方授权广告账户 + 实施配置（约 1.5 人日）" }
+    ],
+    adapters: [
+      { name: "通用 Excel 映射器", platform: "excel", reuse: 88, owner: "系统自动", ver: "v4" },
+      { name: "淘宝/天猫商品模板", platform: "taobao", reuse: 41, owner: "系统自动", ver: "v3" },
+      { name: "抖音商品模板", platform: "douyin", reuse: 23, owner: "系统自动", ver: "v2" },
+      { name: "飞书/网盘素材适配器", platform: "feishu", reuse: 19, owner: "自助", ver: "v2" },
+      { name: "用友 ERP 适配器", platform: "yonyou", reuse: 12, owner: "实施顾问", ver: "v1" },
+      { name: "巨量引擎投放适配器", platform: "oceanengine", reuse: 9, owner: "实施顾问", ver: "v1" }
+    ],
+    runtimes: {
+      local: { name: "本地 Agent Runtime", running: 14, queued: 3, cap: "随客户端算力", note: "用户在场默认本地 · 低延迟交互创作",
+        jobs: [["卖点共创 · 冰感挂脖风扇","tenant-A · 本地 · 0.8s/轮"],["脚本精修 · 通勤痛点","tenant-A · 本地 · 进行中"],["单图精修 · 地铁首镜","tenant-C · 本地 · 进行中"]] },
+      cloud: { name: "服务端 Agent Runtime", running: 22, queued: 41, cap: "弹性算力池", note: "无头 / 定时 / 批量 / 离线兜底",
+        jobs: [["286 SKU 批量分档","tenant-B · 云端 · 64% (转交自本地)"],["矩阵全量生成 · 864 组","tenant-A · 云端 · 排队"],["夜间复盘巡航","tenant-B · 云端 · 定时"],["视频批量渲染 · 18 单","tenant-C · 云端 · 进行中"]] }
+    },
+    agentJobs: [
+      ["job-7f3a","卖点共创","tenant-A","本地","进行中","claude-agent · 3 轮"],
+      ["job-8b21","286 SKU 分档","tenant-B","云端(转交)","进行中","批量 · 64%"],
+      ["job-9c04","矩阵生成","tenant-A","云端","排队","864 组待处理"],
+      ["job-a15e","视频批量渲染","tenant-C","云端","进行中","18 单 · 11 完成"],
+      ["job-b290","夜间复盘","tenant-B","云端","定时","02:00 触发"]
+    ],
+    gates: [
+      ["证据合规", 91, "强主张须 verified 证据", "ok"],
+      ["平台表达", 88, "禁用词 / 极限词 / 价格越界", "ok"],
+      ["素材真实性", 76, "复用上限 / AI 标注 / 授权", "warn"],
+      ["结构门禁", 97, "4-5 段 / 黄金三秒", "ok"],
+      ["预算阈值", 82, "超阈值转人工确认", "warn"],
+      ["强功效", 64, "三秒降温类无测试拦截", "bad"]
+    ],
+    review: [
+      ["rp-fan-018","三秒降温缺测试条件","高","tenant-A","待人工"],
+      ["活动价边界","券后价缺活动时间","中","tenant-A","待人工"],
+      ["素材授权","通勤侧脸镜头授权缺失","中","tenant-C","待人工"],
+      ["预算提升","+65% 超自动阈值 40%","高","tenant-B","待人工"]
+    ],
+    tenants: [
+      { id: "tenant-A", name: "夏季风扇品牌方", deploy: "公有云", mode: "品牌全量", sku: "286", cover: 62, agents: "本地+云端", quota: 72, conf: "数据敏感度低", health: "ok" },
+      { id: "tenant-B", name: "小家电代运营", deploy: "公有云", mode: "代运营产能", sku: "1,240", cover: 71, agents: "云端为主", quota: 88, conf: "多店铺托管", health: "warn" },
+      { id: "tenant-C", name: "服饰大客户", deploy: "VPC 私有化", mode: "品牌全量", sku: "3,508", cover: 84, agents: "本地+云端", quota: 56, conf: "ERP 内网 Agent", health: "ok" }
+    ],
+    vault: [
+      ["tenant-A","抖店 OAuth Token","活跃","T+6 天过期"],
+      ["tenant-B","巨量引擎广告账户","活跃","T+2 天过期"],
+      ["tenant-C","用友 U8 内网凭证","内网 Agent 持有","长期"],
+      ["tenant-A","店铺 API Key","活跃","长期"]
+    ],
+    deploy: [["公有云多租户","2 租户","ok"],["VPC 私有化","1 租户","info"],["内网 Agent + 云","1 租户(tenant-C)","info"]]
+  };
+  //RENDER
+  var $ = function(id){ return document.getElementById(id); };
+  function esc(v){ return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function hcls(h){ return h==="ok"?"ok":h==="warn"?"warn":h==="bad"?"bad":h==="info"?"info":"idle"; }
+  function bar(pct, cls){ return '<div class="barwrap"><div class="bar"><i class="'+(cls||'')+'" style="width:'+pct+'%"></i></div><span>'+pct+'%</span></div>'; }
+  function kpiCard(k){
+    var spark = (k.spark||[]).map(function(v){ return '<i style="height:'+(v*11)+'%"></i>'; }).join("");
+    var trend = k.trend ? '<span class="trend '+k.trend[0]+'">'+k.trend[1]+'</span>' : '';
+    return '<div class="kpi"><div class="kh"><span class="kl">'+esc(k.l)+'</span>'+trend+'</div><b>'+esc(k.v)+'</b>'
+      + (k.spark?'<div class="spark">'+spark+'</div>':'') + '<small>'+esc(k.s)+'</small></div>';
+  }
+
+  var NAV = [
+    { id:"overview", ic:"◎", t:"概览", title:"服务端运行概览", desc:"多租户、接入引擎、Agent 调度、门禁的实时全局视图。", kick:"控制台 · Overview" },
+    { id:"intake", ic:"⇲", t:"接入引擎运维", title:"接入引擎运维", desc:"连接器运行时、定时同步、适配器注册表、字段映射调试。接入引擎常驻服务端。", kick:"接入 · Intake Engine" },
+    { id:"agent", ic:"⚙", t:"Agent 调度", title:"Agent 双 Runtime 调度", desc:"同一套 agent 定义，本地与服务端两个 Runtime 分流；用户在场本地优先，算力不足转交云端。", kick:"调度 · Agent Runtime", badge:["warn","41"] },
+    { id:"gate", ic:"⛨", t:"门禁与合规", title:"门禁与合规", desc:"规则门禁引擎、合规裁决、审核队列、人工确认闸口。裁决以服务端为权威。", kick:"质量 · Gate", badge:["bad","11"] },
+    { id:"tenant", ic:"▢", t:"多租户与安全", title:"多租户与安全", desc:"租户管理、配额用量、密钥库、部署模式（公有云 / VPC / 内网 Agent）。", kick:"平台 · Tenant" }
+  ];
+  var activeView = "overview";
+
+  function renderNav(){
+    $("nav").innerHTML = NAV.map(function(n){
+      var b = n.badge ? '<span class="nb '+n.badge[0]+'">'+n.badge[1]+'</span>' : '';
+      return '<button class="nav'+(n.id===activeView?' active':'')+'" data-nav="'+n.id+'"><span class="ni">'+n.ic+'</span><span class="nt">'+esc(n.t)+'</span>'+b+'</button>';
+    }).join("");
+  }
+  function setView(id){
+    activeView = id;
+    var n = NAV.filter(function(x){return x.id===id;})[0];
+    $("title").textContent = n.title; $("desc").textContent = n.desc; $("kick").textContent = n.kick;
+    document.querySelectorAll(".view").forEach(function(v){ v.classList.toggle("active", v.dataset.view===id); });
+    renderNav();
+    if(id==="intake") renderIntake();
+    if(id==="agent") renderAgent();
+    if(id==="gate") renderGate();
+    if(id==="tenant") renderTenant();
+    window.scrollTo(0,0);
+  }
+
+  // ===== 概览 =====
+  function renderOverview(){
+    $("kpis").innerHTML = DB.overview.kpis.map(kpiCard).join("");
+    $("ovIntake").innerHTML = DB.sources.map(function(s){
+      var bc = s.cover===0?"bad":(s.cover<70?"warn":"");
+      return '<div style="display:grid;grid-template-columns:130px 56px 1fr;gap:10px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)">'
+        + '<span style="font-size:12.5px;font-weight:600">'+esc(s.name)+'</span>'
+        + '<span class="lvl '+s.level.toLowerCase()+'">'+s.level+'</span>'
+        + bar(s.cover, bc) + '</div>';
+    }).join("");
+    var rt = DB.runtimes;
+    $("ovRuntime").innerHTML =
+      '<div style="display:grid;gap:12px">'
+      + '<div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px"><span><span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:var(--brand);margin-right:6px"></span>本地 Runtime</span><span class="bdg ok">'+rt.local.running+' 运行 · '+rt.local.queued+' 排队</span></div>'+bar(70)+'</div>'
+      + '<div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px"><span><span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:var(--blue);margin-right:6px"></span>服务端 Runtime</span><span class="bdg info">'+rt.cloud.running+' 运行 · '+rt.cloud.queued+' 排队</span></div>'+bar(88,"warn")+'</div>'
+      + '<div style="font-size:11.5px;color:var(--muted);line-height:1.6;padding-top:6px;border-top:1px dashed var(--line)">同一套 agent 定义双端加载。用户在场默认本地（低延迟），算力不足或需无头/定时自动转交服务端。</div>'
+      + '</div>';
+    $("ovLog").innerHTML = [
+      ['02:14:07','info','[intake] tenant-B 商品源 T+1 同步完成 · 1,240 SKU 归一'],
+      ['02:14:09','ok','[gate] tenant-A 证据合规通过 · sp-long-battery (verified)'],
+      ['02:14:11','warn','[agent] tenant-B 本地算力不足 · 286 SKU 分档转交服务端 Runtime'],
+      ['02:14:15','bad','[gate] tenant-A 拦截 · 三秒降温缺测试条件 → 创建 MissingEvidenceTask'],
+      ['02:14:18','info','[agent] tenant-C 视频批量渲染 11/18 完成'],
+      ['02:14:22','warn','[tenant] tenant-B 预算提升 +65% 超阈值 → 转人工确认队列'],
+      ['02:14:25','ok','[intake] tenant-C 内网 Agent 推送用友库存 · 实时']
+    ].map(function(l){ return '<div><span class="t">'+l[0]+'</span> <span class="'+l[1]+'">'+esc(l[2])+'</span></div>'; }).join("");
+  }
+  //RENDER2
+  // ===== 接入引擎运维 =====
+  function renderIntake(){
+    $("ikKpis").innerHTML = [
+      { l:"已接入数据源", v:"6", s:"L2 直连 1 · L1 半自动 2 · L0 手动 3" },
+      { l:"平均覆盖率", v:"62%", s:"2 源瓶颈：投放 0% · 素材 54%" },
+      { l:"可自助比例", v:"4 / 6", s:"自助接入越高越易规模化" },
+      { l:"适配器复用", v:"192 次", s:"边际接入成本随复用下降" }
+    ].map(kpiCard).join("");
+    $("ikSources").innerHTML = '<table><thead><tr><th>数据源</th><th>成熟度</th><th>责任方</th><th>覆盖率</th><th>新鲜度</th><th>置信</th><th>适配器</th><th>状态</th></tr></thead><tbody>'
+      + DB.sources.map(function(s){
+        var bc = s.cover===0?"bad":(s.cover<70?"warn":"");
+        return '<tr style="cursor:pointer" data-src="'+s.id+'"><td><strong>'+esc(s.name)+'</strong></td>'
+          + '<td><span class="lvl '+s.level.toLowerCase()+'">'+s.level+' '+esc(s.lname)+'</span></td>'
+          + '<td>'+esc(s.resp)+'</td><td style="min-width:120px">'+bar(s.cover,bc)+'</td>'
+          + '<td>'+esc(s.fresh)+'</td><td>'+esc(s.conf)+'</td><td style="font-size:11px;color:var(--muted)">'+esc(s.adapter)+'</td>'
+          + '<td><span class="bdg '+hcls(s.health)+'">'+(s.health==="ok"?"健康":s.health==="warn"?"待补":"未接入")+'</span></td></tr>';
+      }).join("") + '</tbody></table>';
+    $("ikAdapters").innerHTML = '<table><thead><tr><th>适配器</th><th>平台</th><th>复用</th><th>责任方</th><th>版本</th></tr></thead><tbody>'
+      + DB.adapters.map(function(a){
+        return '<tr><td><strong>'+esc(a.name)+'</strong></td><td><code>'+esc(a.platform)+'</code></td>'
+          + '<td><span class="bdg info">'+a.reuse+' 次</span></td><td>'+esc(a.owner)+'</td><td><code>'+esc(a.ver)+'</code></td></tr>';
+      }).join("") + '</tbody></table>';
+    $("ikLog").innerHTML = [
+      ['02:00:03','info','[L1] tenant-A 商品源定时轮询触发'],
+      ['02:00:48','ok','[L1] tenant-A 商品源同步完成 · 覆盖 92% · 库存 T+1 校正'],
+      ['02:01:12','ok','[L2] tenant-A 搜索源 webhook · 新增 18 条评论 → PainPoint'],
+      ['02:03:30','warn','[L0] tenant-A 素材源仍待上传 · 覆盖 54% 压低制造档位'],
+      ['02:05:00','bad','[L0] tenant-A 投放源未接入 · 调优阶段用行业基线兜底（低置信）'],
+      ['02:06:15','info','[L2] tenant-C 内网 Agent 推送用友库存 · 实时校正']
+    ].map(function(l){ return '<div><span class="t">'+l[0]+'</span> <span class="'+l[1]+'">'+esc(l[2])+'</span></div>'; }).join("");
+  }
+
+  // ===== Agent 调度 =====
+  function renderAgent(){
+    $("agKpis").innerHTML = [
+      { l:"运行中任务", v:"36", s:"本地 14 · 云端 22" },
+      { l:"排队任务", v:"44", s:"本地 3 · 云端 41" },
+      { l:"本地→云端转交", v:"7", s:"今日 · 算力不足自动转交" },
+      { l:"Token 代理签发", v:"312", s:"短期 token · 无长期密钥下发" }
+    ].map(kpiCard).join("");
+    function rtCol(rt, kind){
+      return '<div class="rt-col"><h3><span class="rd '+kind+'"></span>'+esc(rt.name)+' <span class="bdg '+(kind==="local"?"ok":"info")+'" style="margin-left:auto">'+rt.running+' 运行 · '+rt.queued+' 排队</span></h3>'
+        + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">'+esc(rt.note)+' · '+esc(rt.cap)+'</div>'
+        + rt.jobs.map(function(j){ return '<div class="job"><div><div class="jt">'+esc(j[0])+'</div><div class="jm">'+esc(j[1])+'</div></div></div>'; }).join("") + '</div>';
+    }
+    $("agRuntimes").innerHTML = rtCol(DB.runtimes.local,"local") + rtCol(DB.runtimes.cloud,"cloud");
+    $("agJobs").innerHTML = '<table><thead><tr><th>任务 ID</th><th>类型</th><th>租户</th><th>Runtime</th><th>状态</th><th>明细</th></tr></thead><tbody>'
+      + DB.agentJobs.map(function(j){
+        var st = j[4]==="进行中"?"ok":j[4]==="排队"?"idle":"info";
+        var rt = j[3].indexOf("本地")>=0?'<span class="bdg ok">'+esc(j[3])+'</span>':'<span class="bdg info">'+esc(j[3])+'</span>';
+        return '<tr><td><code>'+esc(j[0])+'</code></td><td><strong>'+esc(j[1])+'</strong></td><td>'+esc(j[2])+'</td><td>'+rt+'</td><td><span class="bdg '+st+'">'+esc(j[4])+'</span></td><td style="font-size:11px;color:var(--muted)">'+esc(j[5])+'</td></tr>';
+      }).join("") + '</tbody></table>';
+  }
+
+  // ===== 门禁与合规 =====
+  function renderGate(){
+    $("gtKpis").innerHTML = [
+      { l:"今日裁决", v:"3,910", s:"通过 3,863 · 拦截 47" },
+      { l:"门禁拦截", v:"47", s:"反向恢复任务已创建" },
+      { l:"待人工确认", v:"11", s:"高风险 4 · 中风险 7" },
+      { l:"平均通过率", v:"83%", s:"强功效门禁最低 64%" }
+    ].map(kpiCard).join("");
+    $("gtGates").innerHTML = '<table><thead><tr><th>门禁</th><th>通过率</th><th>规则</th></tr></thead><tbody>'
+      + DB.gates.map(function(g){
+        var bc = g[3]==="bad"?"bad":g[3]==="warn"?"warn":"";
+        return '<tr><td><strong>'+esc(g[0])+'</strong></td><td style="min-width:120px">'+bar(g[1],bc)+'</td><td style="font-size:11.5px;color:var(--muted)">'+esc(g[2])+'</td></tr>';
+      }).join("") + '</tbody></table>';
+    $("gtReview").innerHTML = '<table><thead><tr><th>对象</th><th>问题</th><th>风险</th><th>租户</th></tr></thead><tbody>'
+      + DB.review.map(function(r){
+        var rk = r[2]==="高"?"bad":"warn";
+        return '<tr><td><strong>'+esc(r[0])+'</strong></td><td style="font-size:11.5px;color:var(--muted)">'+esc(r[1])+'</td><td><span class="bdg '+rk+'">'+esc(r[2])+'</span></td><td>'+esc(r[3])+'</td></tr>';
+      }).join("") + '</tbody></table>';
+    $("gtLog").innerHTML = [
+      ['02:14:09','ok','[gate] 证据合规通过 · sp-long-battery 引用 ev-manual-01 (verified)'],
+      ['02:14:15','bad','[gate] 拦截 · vj-fan-018 强功效"三秒降温"缺测试 → MissingEvidenceTask'],
+      ['02:14:16','bad','[gate] 拦截 · asset-commute-bag-b 复用 4/4 超限 → MaterialGapTask'],
+      ['02:14:22','warn','[gate] tenant-B 预算 +65% 超阈值 → HumanApproval（不可绕过）'],
+      ['02:14:30','info','[gate] 裁决以服务端为权威 · 本地 agent 放行前已回服务端复核']
+    ].map(function(l){ return '<div><span class="t">'+l[0]+'</span> <span class="'+l[1]+'">'+esc(l[2])+'</span></div>'; }).join("");
+  }
+
+  // ===== 多租户与安全 =====
+  function renderTenant(){
+    $("tnKpis").innerHTML = [
+      { l:"在线租户", v:"3", s:"公有云 2 · VPC 1" },
+      { l:"托管 SKU 总量", v:"5,034", s:"跨租户全量覆盖" },
+      { l:"密钥托管", v:"4", s:"加密 · 绝不下发客户端" },
+      { l:"最高配额用量", v:"88%", s:"tenant-B 接近上限" }
+    ].map(kpiCard).join("");
+    $("tnTenants").innerHTML = '<table><thead><tr><th>租户</th><th>部署模式</th><th>覆盖策略</th><th>SKU</th><th>接入覆盖</th><th>Agent</th><th>配额用量</th><th>状态</th></tr></thead><tbody>'
+      + DB.tenants.map(function(t){
+        var qc = t.quota>=85?"bad":t.quota>=70?"warn":"";
+        var dm = t.deploy==="VPC 私有化"?"info":"idle";
+        return '<tr style="cursor:pointer" data-tenant="'+t.id+'"><td><strong>'+esc(t.name)+'</strong><div style="font-size:10.5px;color:var(--faint);font-family:var(--mono)">'+esc(t.id)+'</div></td>'
+          + '<td><span class="bdg '+dm+'">'+esc(t.deploy)+'</span></td><td>'+esc(t.mode)+'</td><td>'+esc(t.sku)+'</td>'
+          + '<td style="min-width:110px">'+bar(t.cover, t.cover<70?"warn":"")+'</td><td style="font-size:11.5px;color:var(--muted)">'+esc(t.agents)+'</td>'
+          + '<td style="min-width:100px">'+bar(t.quota,qc)+'</td><td><span class="bdg '+hcls(t.health)+'">'+(t.health==="ok"?"正常":"关注")+'</span></td></tr>';
+      }).join("") + '</tbody></table>';
+    $("tnVault").innerHTML = '<table><thead><tr><th>租户</th><th>凭证</th><th>状态</th><th>有效期</th></tr></thead><tbody>'
+      + DB.vault.map(function(v){
+        var st = v[2].indexOf("内网")>=0?"info":"ok";
+        return '<tr><td>'+esc(v[0])+'</td><td><strong>'+esc(v[1])+'</strong></td><td><span class="bdg '+st+'">'+esc(v[2])+'</span></td><td style="font-size:11.5px;color:var(--muted)">'+esc(v[3])+'</td></tr>';
+      }).join("") + '</tbody></table>';
+    $("tnDeploy").innerHTML = DB.deploy.map(function(d){
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px dashed var(--line)"><span style="font-size:12.5px;font-weight:600">'+esc(d[0])+'</span><span class="bdg '+d[2]+'">'+esc(d[1])+'</span></div>';
+    }).join("") + '<div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:10px">部署位置可谈（公有云/VPC/内网 Agent），但「接入引擎是常驻服务端组件」不变。</div>';
+  }
+
+  // ===== 抽屉 =====
+  function openDrawer(head, body){
+    $("drawerHead").innerHTML = head; $("drawerBody").innerHTML = body;
+    $("scrim").style.opacity = "1"; $("scrim").style.pointerEvents = "auto"; $("drawer").style.transform = "none";
+  }
+  function closeDrawer(){ $("scrim").style.opacity = "0"; $("scrim").style.pointerEvents = "none"; $("drawer").style.transform = "translateX(102%)"; }
+  function openSrcDrawer(id){
+    var s = DB.sources.filter(function(x){return x.id===id;})[0]; if(!s) return;
+    openDrawer(
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:9px">接入引擎 › SourceConnector › <code>'+esc(s.id)+'</code></div>'
+      + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px"><div><h2 style="font-size:19px">'+esc(s.name)+'</h2><p style="color:var(--muted);font-size:12.5px;margin-top:6px">责任方 '+esc(s.resp)+' · 适配器 '+esc(s.adapter)+'</p></div><span class="lvl '+s.level.toLowerCase()+'" style="font-size:13px;padding:5px 11px">'+s.level+' '+esc(s.lname)+'</span></div>',
+      '<div class="kv"><span class="k">覆盖率</span><span class="v">'+s.cover+'%</span></div><div class="kv"><span class="k">新鲜度</span><span class="v">'+esc(s.fresh)+'</span></div><div class="kv"><span class="k">置信度</span><span class="v">'+esc(s.conf)+'</span></div>'
+      + '<div style="margin:18px 0 10px;font-size:12px;font-weight:800;color:var(--faint);letter-spacing:.04em">字段映射</div>'
+      + '<table><thead><tr><th>甲方字段</th><th>本体字段</th><th>状态</th></tr></thead><tbody>'
+      + s.mapping.map(function(m){ var st = m[2].indexOf("缺")>=0?"bad":(m[2].indexOf("AI")>=0||m[2].indexOf("OCR")>=0||m[2].indexOf("待")>=0?"warn":"ok"); return '<tr><td>'+esc(m[0])+'</td><td><code>'+esc(m[1])+'</code></td><td><span class="bdg '+st+'">'+esc(m[2])+'</span></td></tr>'; }).join("")
+      + '</tbody></table>'
+      + '<div style="margin:18px 0 10px;font-size:12px;font-weight:800;color:var(--faint);letter-spacing:.04em">升级路径</div>'
+      + '<div style="padding:12px;border:1px solid var(--line-2);border-radius:11px;background:var(--surface)"><div style="font-size:12.5px;font-weight:700;color:var(--brand-strong)">下一步：'+esc(s.next)+'</div><div style="font-size:12px;color:var(--muted);margin-top:6px">门槛：'+esc(s.blocker)+'</div></div>'
+    );
+  }
+  function openTenantDrawer(id){
+    var t = DB.tenants.filter(function(x){return x.id===id;})[0]; if(!t) return;
+    openDrawer(
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:9px">多租户 › Tenant › <code>'+esc(t.id)+'</code></div>'
+      + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px"><div><h2 style="font-size:19px">'+esc(t.name)+'</h2><p style="color:var(--muted);font-size:12.5px;margin-top:6px">'+esc(t.conf)+'</p></div><span class="bdg '+(t.deploy==="VPC 私有化"?"info":"idle")+'" style="font-size:12px">'+esc(t.deploy)+'</span></div>',
+      '<div class="kv"><span class="k">覆盖策略</span><span class="v">'+esc(t.mode)+'</span></div>'
+      + '<div class="kv"><span class="k">托管 SKU</span><span class="v">'+esc(t.sku)+'</span></div>'
+      + '<div class="kv"><span class="k">接入覆盖</span><span class="v">'+t.cover+'%</span></div>'
+      + '<div class="kv"><span class="k">Agent 模式</span><span class="v">'+esc(t.agents)+'</span></div>'
+      + '<div class="kv"><span class="k">配额用量</span><span class="v">'+t.quota+'%</span></div>'
+      + '<div style="margin:18px 0 10px;font-size:12px;font-weight:800;color:var(--faint);letter-spacing:.04em">该租户密钥</div>'
+      + '<table><thead><tr><th>凭证</th><th>状态</th><th>有效期</th></tr></thead><tbody>'
+      + DB.vault.filter(function(v){return v[0]===t.id;}).map(function(v){ return '<tr><td><strong>'+esc(v[1])+'</strong></td><td><span class="bdg ok">'+esc(v[2])+'</span></td><td style="color:var(--muted);font-size:11.5px">'+esc(v[3])+'</td></tr>'; }).join("")
+      + '</tbody></table>'
+      + '<div style="font-size:11px;color:var(--muted);margin-top:14px;line-height:1.6">密钥加密托管于服务端密钥库，绝不下发客户端；agent 调用走短期 token，过期回服务端续签。</div>'
+    );
+  }
+
+  // ===== 事件 =====
+  document.body.addEventListener("click", function(e){
+    var nav = e.target.closest("[data-nav]"); if(nav){ setView(nav.dataset.nav); return; }
+    var src = e.target.closest("[data-src]"); if(src){ openSrcDrawer(src.dataset.src); return; }
+    var tn = e.target.closest("[data-tenant]"); if(tn){ openTenantDrawer(tn.dataset.tenant); return; }
+    if(e.target.id==="scrim"){ closeDrawer(); return; }
+  });
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape") closeDrawer(); });
+  $("actPrimary").addEventListener("click", function(){ renderOverview(); });
+
+  // ===== init =====
+  renderNav();
+  renderOverview();
+  setView("overview");
+  </script>
+</body>
+</html>

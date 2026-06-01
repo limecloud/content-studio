@@ -1,10 +1,13 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import type {
   ContentKnowledgeMapRecord,
+  ContentKnowledgeMapMatrixRow,
+  ContentKnowledgePackFilePreview,
   ContentKnowledgePackExportResult,
   ExportContentKnowledgePackInput,
+  ReadContentKnowledgePackFileInput,
 } from '../../shared/types';
 import { ContentKnowledgeMapStore } from './contentKnowledgeMapStore';
 import {
@@ -23,6 +26,28 @@ function safeSegment(value: string): string {
 
 function relativeFile(path: string, root: string): string {
   return path.startsWith(root) ? path.slice(root.length + 1).replace(/\\/g, '/') : path.replace(/\\/g, '/');
+}
+
+function pathInside(root: string, target: string): boolean {
+  const delta = relative(root, target);
+  return delta === '' || (!delta.startsWith('..') && !isAbsolute(delta));
+}
+
+function normalizePackageRelativePath(value: string): string {
+  const normalized = value.replace(/\\/g, '/').replace(/^\/+/, '');
+  const parts = normalized.split('/').filter(Boolean);
+  if (!parts.length || parts.some((part) => part === '..' || part === '.' || part.includes('\0'))) {
+    throw new Error('知识包文件路径非法。');
+  }
+  return parts.join('/');
+}
+
+function blockedFilePreview(relativePath: string, issue: string): ContentKnowledgePackFilePreview {
+  return {
+    status: 'blocked',
+    relativePath,
+    issues: [issue],
+  };
 }
 
 const CRC32_TABLE = new Uint32Array(256).map((_, index) => {
@@ -112,6 +137,149 @@ function buildRelations(map: ContentKnowledgeMapRecord) {
     ...map.painPoints.flatMap((row) => row.evidenceRefs.map((evidenceId) => ({ from: row.id, type: 'heard-in', to: evidenceId }))),
     ...map.scenarios.flatMap((row) => row.evidenceRefs.map((evidenceId) => ({ from: row.id, type: 'grounded-by', to: evidenceId }))),
   ];
+}
+
+function xmlEscape(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function ttlLiteral(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+}
+
+function iriSegment(value: string): string {
+  return encodeURIComponent(value.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'item');
+}
+
+function rowType(row: ContentKnowledgeMapMatrixRow, map: ContentKnowledgeMapRecord): 'selling-point' | 'pain-point' | 'scenario' {
+  if (map.painPoints.some((item) => item.id === row.id)) return 'pain-point';
+  if (map.scenarios.some((item) => item.id === row.id)) return 'scenario';
+  return 'selling-point';
+}
+
+function buildMaterialCoverage(map: ContentKnowledgeMapRecord) {
+  return [...map.sellingPoints, ...map.painPoints, ...map.scenarios].map((row) => ({
+    rowId: row.id,
+    rowType: rowType(row, map),
+    title: row.title,
+    materialStatus: row.materialStatus ?? 'missing',
+    materialRefs: row.materialRefs ?? [],
+    performanceTags: row.performanceTags ?? [],
+    dimensions: row.dimensions ?? {},
+    evidenceRefs: row.evidenceRefs,
+    status: row.status,
+  }));
+}
+
+function buildJsonLd(map: ContentKnowledgeMapRecord, concepts: ReturnType<typeof buildConcepts>, relations: ReturnType<typeof buildRelations>) {
+  return {
+    '@context': {
+      bugu: 'https://schema.bugu.run/content-knowledge#',
+      title: 'bugu:title',
+      summary: 'bugu:summary',
+      status: 'bugu:status',
+      supportedBy: { '@id': 'bugu:supportedBy', '@type': '@id' },
+      concepts: { '@id': 'bugu:concepts', '@container': '@list' },
+      relations: { '@id': 'bugu:relations', '@container': '@list' },
+    },
+    '@id': `bugu:content-map/${iriSegment(map.id)}`,
+    '@type': 'bugu:ContentKnowledgeMap',
+    title: map.title,
+    status: map.status,
+    concepts: concepts.map((concept) => ({
+      '@id': `bugu:concept/${iriSegment(concept.id)}`,
+      '@type': `bugu:${concept.type}`,
+      title: concept.title,
+      summary: concept.summary,
+      status: concept.status,
+      dimensions: concept.dimensions ?? {},
+      tags: concept.tags,
+    })),
+    relations: relations.map((relation) => ({
+      from: `bugu:concept/${iriSegment(relation.from)}`,
+      type: relation.type,
+      to: `bugu:evidence/${iriSegment(relation.to)}`,
+    })),
+    evidence: map.evidence.map((item) => ({
+      '@id': `bugu:evidence/${iriSegment(item.id)}`,
+      '@type': `bugu:${item.sourceType}`,
+      title: item.sourceTitle,
+      claim: item.claim,
+      excerpt: item.excerpt,
+      status: item.status,
+    })),
+  };
+}
+
+function buildTurtle(map: ContentKnowledgeMapRecord, concepts: ReturnType<typeof buildConcepts>, relations: ReturnType<typeof buildRelations>): string {
+  const lines = [
+    '@prefix bugu: <https://schema.bugu.run/content-knowledge#> .',
+    '@prefix map: <https://schema.bugu.run/content-map/> .',
+    '@prefix concept: <https://schema.bugu.run/concept/> .',
+    '@prefix evidence: <https://schema.bugu.run/evidence/> .',
+    '',
+    `map:${iriSegment(map.id)} a bugu:ContentKnowledgeMap ;`,
+    `  bugu:title ${ttlLiteral(map.title)} ;`,
+    `  bugu:status ${ttlLiteral(map.status)} .`,
+    '',
+  ];
+  concepts.forEach((concept) => {
+    lines.push(
+      `concept:${iriSegment(concept.id)} a bugu:${concept.type} ;`,
+      `  bugu:title ${ttlLiteral(concept.title)} ;`,
+      `  bugu:summary ${ttlLiteral(concept.summary)} ;`,
+      `  bugu:status ${ttlLiteral(concept.status)} .`,
+      '',
+    );
+  });
+  map.evidence.forEach((item) => {
+    lines.push(
+      `evidence:${iriSegment(item.id)} a bugu:${item.sourceType} ;`,
+      `  bugu:title ${ttlLiteral(item.sourceTitle)} ;`,
+      `  bugu:claim ${ttlLiteral(item.claim)} ;`,
+      `  bugu:status ${ttlLiteral(item.status)} .`,
+      '',
+    );
+  });
+  relations.forEach((relation) => {
+    lines.push(`concept:${iriSegment(relation.from)} bugu:${relation.type} evidence:${iriSegment(relation.to)} .`);
+  });
+  return `${lines.join('\n')}\n`;
+}
+
+function buildRdfXml(map: ContentKnowledgeMapRecord, concepts: ReturnType<typeof buildConcepts>, relations: ReturnType<typeof buildRelations>): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:bugu="https://schema.bugu.run/content-knowledge#">',
+    `  <bugu:ContentKnowledgeMap rdf:about="https://schema.bugu.run/content-map/${iriSegment(map.id)}">`,
+    `    <bugu:title>${xmlEscape(map.title)}</bugu:title>`,
+    `    <bugu:status>${xmlEscape(map.status)}</bugu:status>`,
+    '  </bugu:ContentKnowledgeMap>',
+    ...concepts.map((concept) => [
+      `  <bugu:${concept.type} rdf:about="https://schema.bugu.run/concept/${iriSegment(concept.id)}">`,
+      `    <bugu:title>${xmlEscape(concept.title)}</bugu:title>`,
+      `    <bugu:summary>${xmlEscape(concept.summary)}</bugu:summary>`,
+      `    <bugu:status>${xmlEscape(concept.status)}</bugu:status>`,
+      ...relations
+        .filter((relation) => relation.from === concept.id)
+        .map((relation) => `    <bugu:${relation.type} rdf:resource="https://schema.bugu.run/evidence/${iriSegment(relation.to)}" />`),
+      `  </bugu:${concept.type}>`,
+    ].join('\n')),
+    ...map.evidence.map((item) => [
+      `  <bugu:${item.sourceType} rdf:about="https://schema.bugu.run/evidence/${iriSegment(item.id)}">`,
+      `    <bugu:title>${xmlEscape(item.sourceTitle)}</bugu:title>`,
+      `    <bugu:claim>${xmlEscape(item.claim)}</bugu:claim>`,
+      `    <bugu:status>${xmlEscape(item.status)}</bugu:status>`,
+      `  </bugu:${item.sourceType}>`,
+    ].join('\n')),
+    '</rdf:RDF>',
+    '',
+  ].join('\n');
 }
 
 function groundingMarkdown(map: ContentKnowledgeMapRecord): string {
@@ -209,12 +377,84 @@ function buildPackageEntries(map: ContentKnowledgeMapRecord): KnowledgePackFileE
       title: item.sourceTitle,
       excerpt: item.excerpt,
     }))),
+    jsonEntry('assets/material-coverage.json', buildMaterialCoverage(map)),
+    jsonEntry('interop/ontology.jsonld', buildJsonLd(map, concepts, relations)),
+    textEntry('interop/ontology.ttl', buildTurtle(map, concepts, relations)),
+    textEntry('interop/ontology.rdf', buildRdfXml(map, concepts, relations)),
     textEntry('compiled/prompt-grounding.md', groundingMarkdown(map)),
   ];
 }
 
+function buildExportPreview(map: ContentKnowledgeMapRecord): NonNullable<ContentKnowledgePackExportResult['preview']> {
+  const readyRows = [map.sellingPoints, map.painPoints, map.scenarios]
+    .flat()
+    .filter((row) => row.status === 'ready');
+  const materialCoverageCount = readyRows.filter((row) => (
+    row.materialStatus === 'covered' ||
+    row.materialStatus === 'approved' ||
+    Boolean(row.materialRefs?.length)
+  )).length;
+  return {
+    agentKnowledgeVersion: '0.7.2',
+    readyRowCount: readyRows.length,
+    readyEvidenceCount: map.evidence.filter((item) => item.status === 'ready').length,
+    materialCoverageCount,
+    interopFormats: ['JSON-LD', 'Turtle', 'RDF/XML'],
+    answerQuestionCount: map.painPoints.slice(0, 20).length,
+    promptGroundingFile: 'compiled/prompt-grounding.md',
+  };
+}
+
 export class AgentKnowledgeContentExportService {
   constructor(private readonly maps: ContentKnowledgeMapStore) {}
+
+  async readPackFile(input: ReadContentKnowledgePackFileInput): Promise<ContentKnowledgePackFilePreview> {
+    if (!input.packageDir?.trim()) {
+      return blockedFilePreview(input.relativePath, '当前没有可读取的本机知识包预览。先生成本机预览，或拉取带本机包路径的团队版本。');
+    }
+
+    let relativePath = input.relativePath;
+    try {
+      relativePath = normalizePackageRelativePath(input.relativePath);
+    } catch (error) {
+      return blockedFilePreview(input.relativePath, error instanceof Error ? error.message : '知识包文件路径非法。');
+    }
+
+    try {
+      const workspaceDataDir = await realpath(resolve(getWorkspaceDataDir(input.workspacePath))).catch(() => resolve(getWorkspaceDataDir(input.workspacePath)));
+      const packageDir = await realpath(resolve(input.packageDir));
+      if (!pathInside(workspaceDataDir, packageDir)) {
+        return blockedFilePreview(relativePath, '只能读取当前工作区生成的知识包预览文件。');
+      }
+
+      const filePath = resolve(packageDir, relativePath);
+      if (!pathInside(packageDir, filePath)) {
+        return blockedFilePreview(relativePath, '知识包文件路径越界。');
+      }
+      const realFilePath = await realpath(filePath);
+      if (!pathInside(packageDir, realFilePath)) {
+        return blockedFilePreview(relativePath, '知识包文件路径越界。');
+      }
+
+      const fileStat = await stat(realFilePath);
+      if (!fileStat.isFile()) {
+        return blockedFilePreview(relativePath, '该路径不是可预览文件。');
+      }
+      const maxBytes = Math.min(Math.max(input.maxBytes ?? 64 * 1024, 1024), 256 * 1024);
+      const content = await readFile(realFilePath);
+      const truncated = content.length > maxBytes;
+      return {
+        status: 'loaded',
+        relativePath,
+        content: content.subarray(0, maxBytes).toString('utf8'),
+        size: content.length,
+        truncated,
+        issues: [],
+      };
+    } catch (error) {
+      return blockedFilePreview(relativePath, error instanceof Error ? error.message : '知识包文件读取失败。');
+    }
+  }
 
   async exportPack(input: ExportContentKnowledgePackInput): Promise<ContentKnowledgePackExportResult> {
     const maps = await this.maps.list(input.workspacePath);
@@ -234,8 +474,16 @@ export class AgentKnowledgeContentExportService {
     const packageDir = join(getWorkspaceDataDir(input.workspacePath), 'exports', 'agentknowledge', `${safeSegment(map.title)}-${stamp}`);
     const ontologyDir = join(packageDir, 'ontology');
     const answersDir = join(packageDir, 'answers');
+    const assetsDir = join(packageDir, 'assets');
+    const interopDir = join(packageDir, 'interop');
     const compiledDir = join(packageDir, 'compiled');
-    await Promise.all([mkdir(ontologyDir, { recursive: true }), mkdir(answersDir, { recursive: true }), mkdir(compiledDir, { recursive: true })]);
+    await Promise.all([
+      mkdir(ontologyDir, { recursive: true }),
+      mkdir(answersDir, { recursive: true }),
+      mkdir(assetsDir, { recursive: true }),
+      mkdir(interopDir, { recursive: true }),
+      mkdir(compiledDir, { recursive: true }),
+    ]);
 
     const files: string[] = [];
     for (const entry of entries) {
@@ -271,6 +519,7 @@ export class AgentKnowledgeContentExportService {
       packageArchiveFileName,
       packageArchiveSha256: createHash('sha256').update(archive).digest('hex'),
       packageArchiveSize: archive.length,
+      preview: buildExportPreview(map),
       files,
       issues: [],
     };

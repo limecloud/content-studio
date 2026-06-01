@@ -921,11 +921,13 @@ export class AgentPromptSessionStore {
         selectedSources,
         skillContext,
         textModel: input.textModel,
+        teamKnowledgeRelease: input.teamKnowledgeRelease,
       });
       providerEvents = generated.providerEvents;
       draft = await this.promptDrafts.createFromContent({
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
+        teamKnowledgeRelease: input.teamKnowledgeRelease,
         title: input.title?.trim() || generated.title || '模型生成 Prompt 草稿',
         purpose: input.purpose,
         userIntent: input.userIntent.trim(),
@@ -948,6 +950,7 @@ export class AgentPromptSessionStore {
         sceneCardIds: input.sceneCardIds,
         selectedSkills: skillContext.skillRefs,
         selectedSkillSlugs: skillContext.skillRefs.map((skill) => skill.slug),
+        teamKnowledgeRelease: input.teamKnowledgeRelease,
       });
     }
     const now = new Date().toISOString();
@@ -968,6 +971,11 @@ export class AgentPromptSessionStore {
           '输入源快照：',
           sourceSnapshotText(sourceSnapshots),
           '',
+          '团队知识包：',
+          input.teamKnowledgeRelease
+            ? `${input.teamKnowledgeRelease.title} ${input.teamKnowledgeRelease.version}`
+            : '未绑定，本轮只使用输入源和用户意图。',
+          '',
           '本轮 skills：',
           skillSummaryText(skillContext),
         ].join('\n'),
@@ -987,6 +995,7 @@ export class AgentPromptSessionStore {
       id: sessionId,
       workspacePath: input.workspacePath,
       workflowRunId: input.workflowRunId,
+      teamKnowledgeRelease: input.teamKnowledgeRelease,
       title: input.title?.trim() || draft.title,
       purpose: input.purpose,
       status: draft.model?.startsWith('blocked:') ? 'blocked' : 'draft-created',

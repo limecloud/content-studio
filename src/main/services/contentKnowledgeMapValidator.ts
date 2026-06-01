@@ -4,34 +4,7 @@ import type {
   InputSourceRecord,
 } from '../../shared/types';
 import type { ContentKnowledgeMapBuildResult } from './contentKnowledgeMapBuilder';
-
-const FORBIDDEN_EXPRESSION_PATTERNS = [
-  /绝对安全/,
-  /绝对有效/,
-  /全网最/,
-  /最安全/,
-  /最有效/,
-  /唯一/,
-  /100%/,
-  /百分百/,
-  /保证/,
-  /包治/,
-  /治疗/,
-  /见效/,
-  /替代专业/,
-  /官方认证/,
-  /专家认证/,
-];
-
-const IP_DRIFT_PATTERNS = [
-  /官方认证/,
-  /专家认证/,
-  /权威认证/,
-  /唯一/,
-  /绝对/,
-  /100%/,
-  /保证/,
-];
+import { competitorInputSourceIds, contentMatrixRiskIssues } from './contentMatrixRiskPolicy';
 
 function compactText(value: string | undefined): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -49,10 +22,6 @@ function uniqueStrings(values: Array<string | undefined>, limit = 12): string[] 
     if (result.length >= limit) break;
   }
   return result;
-}
-
-function rowText(row: ContentKnowledgeMapMatrixRow): string {
-  return [row.title, row.summary, ...row.tags].filter(Boolean).join(' ');
 }
 
 function rowLabel(type: string): string {
@@ -94,42 +63,16 @@ function conceptSimilarity(left: string, right: string): number {
   return union ? intersection / union : 0;
 }
 
-function rowMatches(row: ContentKnowledgeMapMatrixRow, patterns: RegExp[]): boolean {
-  const text = rowText(row);
-  return patterns.some((pattern) => pattern.test(text));
-}
-
-function isIpRow(row: ContentKnowledgeMapMatrixRow): boolean {
-  return row.sourceRefs.some((ref) => ref.startsWith('ip-knowledge-base:')) ||
-    row.tags.some((tag) => /IP|口播|私域|语言/.test(tag)) ||
-    /IP|创始人|人设/.test(row.title);
-}
-
-function isCompetitorRow(row: ContentKnowledgeMapMatrixRow, competitorInputSourceIds: Set<string>): boolean {
-  return row.sourceRefs.some((ref) => {
-    if (!ref.startsWith('input-source:')) return false;
-    return competitorInputSourceIds.has(ref.slice('input-source:'.length));
-  }) ||
-    row.tags.some((tag) => /竞品|竞对|对标|不可搬运/.test(tag)) ||
-    /竞品|竞对|对标/.test(row.title);
-}
-
 function validationIssuesForRows(
   build: ContentKnowledgeMapBuildResult,
   inputSources: InputSourceRecord[],
 ): string[] {
-  const competitorInputSourceIds = new Set(inputSources
-    .filter((source) => source.purpose === 'competitor-observation')
-    .map((source) => source.id));
+  const competitorIds = competitorInputSourceIds(inputSources);
   const rows = [...build.sellingPoints, ...build.painPoints, ...build.scenarios];
-  const forbiddenRows = rows.filter((row) => rowMatches(row, FORBIDDEN_EXPRESSION_PATTERNS));
-  const ipDriftRows = rows.filter((row) => isIpRow(row) && rowMatches(row, IP_DRIFT_PATTERNS));
-  const competitorReadyRows = rows.filter((row) => isCompetitorRow(row, competitorInputSourceIds) && row.status === 'ready');
   const readyRowsWithoutEvidence = rows.filter((row) => row.status === 'ready' && row.evidenceRefs.length === 0);
+  const riskIssues = rows.flatMap((row) => contentMatrixRiskIssues(row, { competitorInputSourceIds: competitorIds }));
   return uniqueStrings([
-    ...forbiddenRows.slice(0, 4).map((row) => `矩阵行包含禁用或绝对化表达，需要改写或标记禁用：${row.title}`),
-    ...ipDriftRows.slice(0, 4).map((row) => `IP 表达疑似偏离核心立场或语言边界，需要人工确认：${row.title}`),
-    ...competitorReadyRows.slice(0, 4).map((row) => `竞品观察不能直接作为可发布内容，需要先人工审核并转写为本品牌差异化机会：${row.title}`),
+    ...riskIssues.slice(0, 8).map((issue) => issue.message),
     ...readyRowsWithoutEvidence.slice(0, 4).map((row) => `可交付条目缺少证据引用，需要降级或补证据：${row.title}`),
     ...duplicateConceptIssues(build),
     ...isolatedConceptIssues(build),

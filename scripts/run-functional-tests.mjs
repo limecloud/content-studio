@@ -18,6 +18,17 @@ await esbuild.build({
   target: 'node20',
   format: 'esm',
   sourcemap: 'inline',
+  banner: {
+    js: `
+const __contentStudioFunctionalArgv1 = process.argv[1];
+if (process.env.CONTENT_STUDIO_FUNCTIONAL_TEST_BUNDLE === '1') {
+  process.argv[1] = '';
+  queueMicrotask(() => {
+    process.argv[1] = __contentStudioFunctionalArgv1;
+  });
+}
+`,
+  },
   external: ['@anthropic-ai/claude-agent-sdk', 'fast-xml-parser', 'gray-matter', 'yauzl'],
   plugins: [{
     name: 'electron-test-shim',
@@ -52,7 +63,12 @@ await esbuild.build({
 const child = spawn(process.execPath, ['--test', ...process.argv.slice(2), outFile], {
   cwd: projectRoot,
   stdio: 'inherit',
-  env: { ...process.env, CONTENT_STUDIO_RESOURCES_DIR: join(projectRoot, 'resources') },
+  env: {
+    ...process.env,
+    CONTENT_STUDIO_FUNCTIONAL_TEST_BUNDLE: '1',
+    CONTENT_STUDIO_REPO_ROOT: projectRoot,
+    CONTENT_STUDIO_RESOURCES_DIR: join(projectRoot, 'resources'),
+  },
 });
 const code = await new Promise((resolve) => child.on('exit', resolve));
 await rm(outDir, { recursive: true, force: true });

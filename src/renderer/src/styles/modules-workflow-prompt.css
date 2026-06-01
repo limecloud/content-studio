@@ -411,6 +411,43 @@
   min-height: 92px;
 }
 
+.workflow-team-release-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+  gap: 12px;
+  align-items: end;
+  border: 1px solid color-mix(in srgb, var(--cyan) 18%, var(--line));
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  padding: 12px;
+}
+
+.workflow-team-release-picker h4 {
+  margin: 2px 0 4px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.workflow-team-release-picker span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workflow-team-release-picker label {
+  display: grid;
+  gap: 6px;
+}
+
+.workflow-team-release-picker label span {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.workflow-team-release-picker select {
+  width: 100%;
+}
+
 .workflow-input-source-picker {
   display: grid;
   gap: 10px;
@@ -813,6 +850,7 @@
   .workflow-view-tabs,
   .workflow-two-column,
   .workflow-form-grid,
+  .workflow-team-release-picker,
   .workflow-input-source-list,
   .workflow-history-layout,
   .workflow-run-step-layout {
@@ -1286,7 +1324,7 @@
 
 .prompt-agent-context-grid {
   display: grid;
-  grid-template-columns: minmax(130px, 0.55fr) minmax(220px, 1fr) minmax(180px, 0.7fr) auto;
+  grid-template-columns: minmax(120px, 0.5fr) minmax(200px, 0.95fr) minmax(160px, 0.65fr) minmax(190px, 0.82fr) auto;
   gap: 8px;
   align-items: end;
 }
@@ -1380,6 +1418,16 @@
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--cyan) 4%, #ffffff);
   padding: 9px;
+}
+
+.prompt-team-release-hint {
+  border: 1px solid color-mix(in srgb, var(--cyan) 20%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--cyan) 5%, #ffffff);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 8px 9px;
 }
 
 .prompt-skill-picker > div:first-child {

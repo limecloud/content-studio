@@ -3,10 +3,13 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import process from 'node:process';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isPublicHttpUrl } from './content-public-url-policy.mjs';
 
 const DEFAULT_API_BASE_URL = 'https://api.bugu.run';
 const DEFAULT_MAX_DOWNLOAD_BYTES = 128 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_PAGE_SIZE = 100;
+const DEFAULT_MAX_LIST_ITEMS = 5_000;
 
 function normalizeText(value) {
   return String(value ?? '').trim();
@@ -57,6 +60,10 @@ function normalizeRelease(raw = {}) {
   };
 }
 
+function isSha256(value) {
+  return /^[a-fA-F0-9]{64}$/.test(normalizeText(value));
+}
+
 function selectRelease(items, { releaseId, version }) {
   const releases = items.map(normalizeRelease).filter((item) => item.id);
   if (!releases.length) throw new Error('Bugu release 列表为空，无法验收团队知识包。');
@@ -104,16 +111,63 @@ async function fetchJson(fetchImpl, url, init, timeoutMs) {
   return unwrapData(payload);
 }
 
-async function fetchReleaseFromBugu(options) {
+function normalizePositiveInteger(value, fallback, max = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.floor(parsed), max);
+}
+
+async function fetchReleasePage(fetchImpl, options, query = {}) {
   const apiBaseUrl = normalizeBaseUrl(options.apiBaseUrl || DEFAULT_API_BASE_URL);
   const url = new URL(contentApiPath(apiBaseUrl, 'content-knowledge-releases'));
   if (options.tenant) url.searchParams.set('tenant', options.tenant);
   if (options.workspaceId) url.searchParams.set('workspaceId', options.workspaceId);
-  const payload = await fetchJson(options.fetchImpl || fetch, url, {
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && String(value) !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  return fetchJson(fetchImpl, url, {
     method: 'GET',
     headers: authHeaders(options.token),
   }, options.timeoutMs);
-  return selectRelease(payload.items || payload.releases || [], options);
+}
+
+async function fetchReleaseListFromBugu(options) {
+  const fetchImpl = options.fetchImpl || fetch;
+  const limit = normalizePositiveInteger(options.pageSize, DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  const maxItems = normalizePositiveInteger(options.maxListItems, DEFAULT_MAX_LIST_ITEMS);
+  const items = [];
+  let offset = 0;
+  let total = null;
+
+  while (items.length < maxItems) {
+    const payload = await fetchReleasePage(fetchImpl, options, { limit, offset });
+    const pageItems = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.releases) ? payload.releases : [];
+    items.push(...pageItems);
+
+    const payloadTotal = Number(payload?.total);
+    if (Number.isFinite(payloadTotal) && payloadTotal >= 0) total = Math.floor(payloadTotal);
+    if (pageItems.length === 0) break;
+    if (total !== null && items.length >= total) break;
+    if (pageItems.length < limit) break;
+
+    offset += limit;
+  }
+
+  const expectedTotal = total ?? items.length;
+  return {
+    items: items.slice(0, maxItems),
+    total: expectedTotal,
+    fetched: Math.min(items.length, maxItems),
+    limit,
+    truncated: items.length < expectedTotal,
+  };
+}
+
+async function fetchReleaseFromBugu(options) {
+  const payload = await fetchReleaseListFromBugu(options);
+  return selectRelease(payload.items, options);
 }
 
 async function readStreamForHash(response, maxBytes) {
@@ -167,6 +221,15 @@ async function verifyPublicPackage(release, options = {}) {
       message: options.allowMetadataOnly
         ? '该版本只登记了发布包元数据，没有公开下载地址。'
         : '缺少公开下载地址，不能证明团队知识包可分发。',
+    });
+    return { checks, reachable: false };
+  }
+  if (!isPublicHttpUrl(packageUrl)) {
+    checks.push({
+      id: 'public-url-format',
+      status: 'failed',
+      message: '公开下载地址必须是 http/https 公网地址，不能是 file://、相对路径、本机或内网地址。',
+      publicUrl: packageUrl,
     });
     return { checks, reachable: false };
   }
@@ -324,11 +387,32 @@ export async function verifyContentKnowledgeReleaseOnline(options = {}) {
   if (release.packageUploadStatus && release.packageUploadStatus !== 'stored') {
     checks.push({
       id: 'package-upload-status',
-      status: release.packagePublicUrl || options.allowMetadataOnly ? 'warning' : 'failed',
+      status: options.requirePublicPackage
+        ? 'failed'
+        : release.packagePublicUrl || options.allowMetadataOnly ? 'warning' : 'failed',
       message: `发布包登记状态不是 stored：${release.packageUploadStatus}`,
     });
   } else if (release.packageUploadStatus) {
     checks.push({ id: 'package-upload-status', status: 'passed', message: '发布包已登记为可分发。' });
+  }
+
+  if (options.requirePublicPackage) {
+    checks.push({
+      id: 'package-size-required',
+      status: release.packageSize > 0 ? 'passed' : 'failed',
+      message: release.packageSize > 0
+        ? `团队知识包大小已登记：${release.packageSize} bytes。`
+        : '生产验收要求团队知识包大小大于 0。',
+      size: release.packageSize,
+    });
+    checks.push({
+      id: 'package-sha256-format',
+      status: isSha256(release.packageSha256) ? 'passed' : 'failed',
+      message: isSha256(release.packageSha256)
+        ? '团队知识包 sha256 格式有效。'
+        : '生产验收要求团队知识包 sha256 为 64 位十六进制。',
+      sha256: release.packageSha256,
+    });
   }
 
   const packageResult = await verifyPublicPackage(release, options);
@@ -363,7 +447,10 @@ function parseCliOptions(argv) {
     expectedSize: Number(cliValue(argv, 'expected-size') || '0'),
     expectedSha256: cliValue(argv, 'expected-sha256') || '',
     maxDownloadBytes: Number.isFinite(maxDownloadMb) && maxDownloadMb > 0 ? maxDownloadMb * 1024 * 1024 : DEFAULT_MAX_DOWNLOAD_BYTES,
+    pageSize: cliValue(argv, 'page-size') || process.env.CONTENT_STUDIO_BUGU_LIST_PAGE_SIZE || DEFAULT_PAGE_SIZE,
+    maxListItems: cliValue(argv, 'max-list-items') || process.env.CONTENT_STUDIO_BUGU_MAX_LIST_ITEMS || DEFAULT_MAX_LIST_ITEMS,
     verifySha256: !cliFlag(argv, 'skip-sha256'),
+    requirePublicPackage: cliFlag(argv, 'require-public-package'),
     allowMetadataOnly: cliFlag(argv, 'allow-metadata-only'),
     allowNonPublished: cliFlag(argv, 'allow-non-published'),
     allowPendingApproval: cliFlag(argv, 'allow-pending-approval'),

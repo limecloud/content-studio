@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  AssetReviewRecord,
   BrandKnowledgeBaseRecord,
   BuildContentKnowledgeMapInput,
   ContentKnowledgeMapCoverageDimensions,
@@ -17,6 +18,7 @@ export interface ContentKnowledgeMapBuildSources {
   ipKnowledgeBases: IpKnowledgeBaseRecord[];
   sceneCards: SceneCard[];
   promptDrafts: PromptDraft[];
+  assetReviews?: AssetReviewRecord[];
 }
 
 export interface ContentKnowledgeMapBuildResult {
@@ -35,6 +37,7 @@ export interface ContentKnowledgeMapBuildResult {
   model: string;
   skuRowCount: number;
   competitorObservationCount: number;
+  assetReviewCount: number;
 }
 
 export interface ContentKnowledgeMapModelRow {
@@ -47,6 +50,8 @@ export interface ContentKnowledgeMapModelRow {
   confidence?: number;
   status?: ContentKnowledgeMapMatrixRow['status'];
   materialStatus?: ContentKnowledgeMapMatrixRow['materialStatus'];
+  materialRefs?: string[];
+  performanceTags?: string[];
 }
 
 export interface ContentKnowledgeMapModelOutput {
@@ -133,7 +138,8 @@ function isCompetitorSource(source: InputSourceRecord): boolean {
 }
 
 function parseTableRows(text: string | undefined, limit = 12): Array<Record<string, string>> {
-  const lines = compactText(text)
+  const lines = String(text ?? '')
+    .replace(/\r\n?/g, '\n')
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
@@ -266,6 +272,54 @@ function evidenceFromScene(scene: SceneCard): ContentKnowledgeMapEvidence {
   };
 }
 
+function evidenceFromAssetReview(asset: AssetReviewRecord): ContentKnowledgeMapEvidence {
+  return {
+    id: randomUUID(),
+    sourceType: 'asset-review',
+    sourceId: asset.id,
+    sourceTitle: asset.title,
+    claim: clip(asset.note || `${asset.title} 已进入素材审核`, 90),
+    excerpt: clip([asset.title, asset.note, ...asset.tags].filter(Boolean).join(' / '), 180),
+    status: asset.status === 'approved' ? 'ready' : 'needs-review',
+  };
+}
+
+function assetDimensions(asset: AssetReviewRecord): ContentKnowledgeMapCoverageDimensions | undefined {
+  return optionalDimensions({
+    audiences: asset.tags.filter((tag) => /学生|宝妈|通勤|白领|新手|敏感肌|油皮|干皮|户外|家庭|办公室/.test(tag)),
+    channels: asset.tags.filter((tag) => /抖音|小红书|视频号|直播|电商|私域/.test(tag)),
+    stages: asset.tags.filter((tag) => /种草|转化|复购|认知|信任|成交/.test(tag)),
+    contentFormats: uniqueStrings([
+      asset.kind === 'video' ? '短视频' : '',
+      asset.kind === 'image' ? '图片' : '',
+      asset.kind === 'overlay' ? '贴片' : '',
+      ...asset.tags.filter((tag) => /短视频|图文|口播|直播|贴片|测评/.test(tag)),
+    ], 8),
+    useCases: asset.tags.filter((tag) => /通勤|办公室|补涂|户外|带娃|出差|包内|桌面|睡前|早餐后/.test(tag)),
+  });
+}
+
+function performanceTagsFromAsset(asset: AssetReviewRecord): string[] {
+  return uniqueStrings(asset.tags.filter((tag) => /高转化|高点击|高收藏|高完播|高复用|表现好|复用/.test(tag)), 8);
+}
+
+function assetRowStatus(asset: AssetReviewRecord): ContentKnowledgeMapMatrixRow['status'] {
+  return asset.status === 'approved' ? 'ready' : 'needs-review';
+}
+
+function materialStatusFromAsset(asset: AssetReviewRecord): ContentKnowledgeMapMatrixRow['materialStatus'] {
+  if (asset.status === 'approved') return 'approved';
+  if (asset.status === 'rejected') return 'rejected';
+  return 'covered';
+}
+
+function sourceRefsForAsset(asset: AssetReviewRecord): string[] {
+  return uniqueStrings([
+    sourceRef('asset-review', asset.id),
+    asset.sourceId ? sourceRef(asset.sourceType, asset.sourceId) : '',
+  ], 4);
+}
+
 function rowFromItem(input: {
   title: string;
   summary?: string;
@@ -275,9 +329,14 @@ function rowFromItem(input: {
   evidenceRefs?: string[];
   confidence?: number;
   status?: ContentKnowledgeMapMatrixRow['status'];
+  materialStatus?: ContentKnowledgeMapMatrixRow['materialStatus'];
+  materialRefs?: string[];
+  performanceTags?: string[];
 }): ContentKnowledgeMapMatrixRow {
   const evidenceRefs = uniqueStrings(input.evidenceRefs ?? [], 8);
-  return {
+  const materialRefs = uniqueStrings(input.materialRefs ?? [], 8);
+  const performanceTags = uniqueStrings(input.performanceTags ?? [], 8);
+  const row: ContentKnowledgeMapMatrixRow = {
     id: randomUUID(),
     title: clip(input.title, 80),
     summary: clip(input.summary || input.title, 180),
@@ -288,6 +347,10 @@ function rowFromItem(input: {
     confidence: Math.max(0, Math.min(100, Math.round(input.confidence ?? (evidenceRefs.length ? 78 : 45)))),
     status: input.status ?? (evidenceRefs.length ? 'ready' : 'needs-evidence'),
   };
+  if (input.materialStatus) row.materialStatus = input.materialStatus;
+  if (materialRefs.length) row.materialRefs = materialRefs;
+  if (performanceTags.length) row.performanceTags = performanceTags;
+  return row;
 }
 
 function dedupeRows(rows: ContentKnowledgeMapMatrixRow[], limit = 12): ContentKnowledgeMapMatrixRow[] {
@@ -388,16 +451,25 @@ function normalizeModelRows(input: {
       dimensions: normalizeDimensions(row.dimensions) ?? fallback?.dimensions,
       sourceRefs,
       evidenceRefs,
-      materialStatus: validMaterialStatus(row.materialStatus) ?? fallback?.materialStatus,
-      materialRefs: fallback?.materialRefs,
-      performanceTags: fallback?.performanceTags,
       confidence: Math.max(0, Math.min(100, Math.round(Number(row.confidence ?? fallback?.confidence ?? (evidenceRefs.length ? 76 : 42))))),
       status,
     };
+    const materialStatus = validMaterialStatus(row.materialStatus) ?? fallback?.materialStatus;
+    const materialRefs = uniqueStrings([
+      ...normalizeStringArray(row.materialRefs, 8),
+      ...(fallback?.materialRefs ?? []),
+    ], 8);
+    const performanceTags = uniqueStrings([
+      ...normalizeStringArray(row.performanceTags, 8),
+      ...(fallback?.performanceTags ?? []),
+    ], 8);
+    if (materialStatus) normalizedRow.materialStatus = materialStatus;
+    if (materialRefs.length) normalizedRow.materialRefs = materialRefs;
+    if (performanceTags.length) normalizedRow.performanceTags = performanceTags;
     return normalizedRow;
   }).filter((row): row is ContentKnowledgeMapMatrixRow => Boolean(row));
 
-  return dedupeRows(normalized, input.limit);
+  return dedupeRows([...normalized, ...input.fallbackRows], input.limit);
 }
 
 function normalizeArrayLike<T>(value: T[] | undefined): T[] {
@@ -460,6 +532,17 @@ function sourceDigest(input: ContentKnowledgeMapBuildSources): Array<Record<stri
       status: draft.status,
       content: clip(draft.versions.find((version) => version.id === draft.activeVersionId)?.content ?? draft.versions[0]?.content ?? '', 600),
     })),
+    ...(input.assetReviews ?? []).map((asset) => ({
+      kind: 'asset-review',
+      ref: sourceRef('asset-review', asset.id),
+      id: asset.id,
+      assetKind: asset.kind,
+      status: asset.status,
+      sourceRef: asset.sourceId ? sourceRef(asset.sourceType, asset.sourceId) : undefined,
+      title: asset.title,
+      note: clip(asset.note ?? '', 260),
+      tags: asset.tags,
+    })),
   ];
 }
 
@@ -468,6 +551,7 @@ function seedDigest(seed: ContentKnowledgeMapBuildResult): Record<string, unknow
     title: seed.title,
     skuRowCount: seed.skuRowCount,
     competitorObservationCount: seed.competitorObservationCount,
+    assetReviewCount: seed.assetReviewCount,
     evidence: seed.evidence.map((item) => ({
       id: item.id,
       sourceRef: sourceRef(item.sourceType, item.sourceId),
@@ -494,6 +578,9 @@ function rowForModelPrompt(row: ContentKnowledgeMapMatrixRow): Record<string, un
     dimensions: row.dimensions,
     sourceRefs: row.sourceRefs,
     evidenceRefs: row.evidenceRefs,
+    materialStatus: row.materialStatus,
+    materialRefs: row.materialRefs,
+    performanceTags: row.performanceTags,
     confidence: row.confidence,
     status: row.status,
   };
@@ -524,6 +611,8 @@ export function contentKnowledgeMapModelSchema(): Record<string, unknown> {
       confidence: { type: 'number', minimum: 0, maximum: 100 },
       status: { type: 'string', enum: ['ready', 'needs-evidence', 'needs-review'] },
       materialStatus: { type: 'string', enum: ['missing', 'covered', 'approved', 'rejected'] },
+      materialRefs: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+      performanceTags: { type: 'array', items: { type: 'string' }, maxItems: 8 },
     },
   };
   return {
@@ -552,6 +641,7 @@ export function buildContentKnowledgeMapModelPrompt(input: {
       '基于真实输入源构建内容知识地图，不编造产品事实、用户原声、功效、价格、测试结果或案例。',
       '先做概念拆解、聚类命名、层级归并和风险校验，再输出卖点、痛点、场景三类矩阵。',
       '所有行只能引用 provided seed.evidence 中已有 evidenceRefs，或 sources 中已有 sourceRefs；证据不足时 status 使用 needs-evidence 或 needs-review。',
+      '已审核素材只能证明内容形式、拍摄场景、素材可用性和表现标签；不能把素材表现自动升级为产品功效或用户承诺。',
       '竞品观察只能转成差异化机会或风险边界，不能作为本品牌事实，相关行必须 needs-review。',
       '输出普通运营可理解的业务词，不输出 Ontology、RDF、schema、node、edge 等工程词。',
     ],
@@ -613,6 +703,8 @@ export function buildContentKnowledgeMapDraft(
   const selectedIps = pickRecords(sources.ipKnowledgeBases, input.ipKnowledgeBaseIds);
   const selectedScenes = pickRecords(sources.sceneCards, input.sceneCardIds);
   const selectedDrafts = pickRecords(sources.promptDrafts, input.promptDraftIds);
+  const selectedAssetReviews = (sources.assetReviews ?? []).slice(0, 60);
+  const assetEvidence = selectedAssetReviews.map(evidenceFromAssetReview);
   const skuSources = selectedInputs.filter(isSkuSource);
   const skuRows = skuSources.flatMap((source) =>
     parseTableRows(source.extractedText || source.summary).map((row) => ({ source, row })),
@@ -639,6 +731,7 @@ export function buildContentKnowledgeMapDraft(
       evidenceFromIp(record, '创作引擎', record.layers.engine),
     ].filter((item) => item.excerpt && !/待补齐/.test(item.excerpt))),
     ...selectedScenes.slice(0, 12).map(evidenceFromScene),
+    ...assetEvidence,
   ];
   const evidenceBySource = new Map<string, string[]>();
   for (const item of evidence) {
@@ -739,6 +832,23 @@ export function buildContentKnowledgeMapDraft(
         status: 'needs-review',
       }),
     )),
+    ...selectedAssetReviews
+      .filter((asset) => asset.status === 'approved')
+      .map((asset) =>
+        rowFromItem({
+          title: `素材验证卖点：${asset.title}`,
+          summary: clip(asset.note || `${asset.title} 已通过素材审核，可作为对应卖点的拍摄或复用素材。`, 180),
+          tags: uniqueStrings(['素材验证', asset.kind, ...asset.tags], 6),
+          dimensions: assetDimensions(asset),
+          sourceRefs: sourceRefsForAsset(asset),
+          evidenceRefs: evidenceBySource.get(sourceRef('asset-review', asset.id)),
+          confidence: 72,
+          status: assetRowStatus(asset),
+          materialStatus: materialStatusFromAsset(asset),
+          materialRefs: [asset.id],
+          performanceTags: performanceTagsFromAsset(asset),
+        }),
+      ),
   ], 16);
 
   const painPoints = dedupeRows([
@@ -782,6 +892,23 @@ export function buildContentKnowledgeMapDraft(
         status: 'needs-review',
       }),
     )),
+    ...selectedAssetReviews
+      .filter((asset) => asset.status === 'rejected')
+      .map((asset) =>
+        rowFromItem({
+          title: `素材驳回原因：${asset.title}`,
+          summary: clip(asset.note || `${asset.title} 未通过素材审核，需要复盘画面、口播或证据缺口。`, 180),
+          tags: uniqueStrings(['素材复盘', '需审核', ...asset.tags], 6),
+          dimensions: assetDimensions(asset),
+          sourceRefs: sourceRefsForAsset(asset),
+          evidenceRefs: evidenceBySource.get(sourceRef('asset-review', asset.id)),
+          confidence: 54,
+          status: 'needs-review',
+          materialStatus: 'rejected',
+          materialRefs: [asset.id],
+          performanceTags: performanceTagsFromAsset(asset),
+        }),
+      ),
   ], 14);
 
   const scenarios = dedupeRows([
@@ -850,6 +977,21 @@ export function buildContentKnowledgeMapDraft(
         status: 'needs-review',
       }),
     )),
+    ...selectedAssetReviews.map((asset) =>
+      rowFromItem({
+        title: `素材场景：${asset.title}`,
+        summary: clip(asset.note || `${asset.title} 可作为内容生产素材，需按审核结论决定是否进入发布链路。`, 180),
+        tags: uniqueStrings(['素材场景', asset.kind, ...asset.tags], 6),
+        dimensions: assetDimensions(asset),
+        sourceRefs: sourceRefsForAsset(asset),
+        evidenceRefs: evidenceBySource.get(sourceRef('asset-review', asset.id)),
+        confidence: asset.status === 'approved' ? 76 : 50,
+        status: assetRowStatus(asset),
+        materialStatus: materialStatusFromAsset(asset),
+        materialRefs: [asset.id],
+        performanceTags: performanceTagsFromAsset(asset),
+      }),
+    ),
   ], 16);
 
   const constraints = uniqueStrings([
@@ -861,6 +1003,7 @@ export function buildContentKnowledgeMapDraft(
     ]),
     competitorSources.length ? '竞品观察只允许用于结构、证据类型和差异化机会，不能作为本品牌事实证据。' : '',
     competitorSources.length ? '禁止复制竞品 Logo、包装、文案、人物肖像或可识别创意元素。' : '',
+    selectedAssetReviews.length ? '素材审核记录只用于证明素材可用性、拍摄场景和表现标签，不能替代产品事实、功效证据或用户原声。' : '',
     ...selectedInputs.filter((source) => source.tags.some((tag) => /合规|禁用|边界/.test(tag))).map((source) => source.summary),
     '涉及功效、效果、对比和背书时必须回到证据来源。',
     '未进入审核的卖点只允许作为草稿，不进入发布交接。',
@@ -881,5 +1024,6 @@ export function buildContentKnowledgeMapDraft(
     model: 'local-rule',
     skuRowCount: skuRows.length,
     competitorObservationCount: competitorSources.length,
+    assetReviewCount: selectedAssetReviews.length,
   };
 }

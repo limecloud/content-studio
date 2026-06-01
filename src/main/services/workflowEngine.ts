@@ -496,40 +496,40 @@ export class WorkflowEngine {
         return { run: await this.executeInputStep(definition, run, step, context), stop: false };
       }
       if (step.kind === 'build-brand-knowledge-base') {
-        return this.executeBrandKnowledgeStep(definition, run, step, context);
+        return await this.executeBrandKnowledgeStep(definition, run, step, context);
       }
       if (step.kind === 'build-ip-knowledge-base') {
-        return this.executeIpKnowledgeStep(definition, run, step, context);
+        return await this.executeIpKnowledgeStep(definition, run, step, context);
       }
       if (step.kind === 'generate-prompt-pack') {
-        return this.executePromptPackStep(definition, run, step, context);
+        return await this.executePromptPackStep(definition, run, step, context);
       }
       if (step.kind === 'generate-scene-library') {
-        return this.executeSceneLibraryStep(definition, run, step, context);
+        return await this.executeSceneLibraryStep(definition, run, step, context);
       }
       if (step.kind === 'generate-prompt-group') {
-        return this.executePromptGroupStep(definition, run, step, context);
+        return await this.executePromptGroupStep(definition, run, step, context);
       }
       if (step.kind === 'agent-read') {
-        return this.executeAgentReadStep(definition, run, step, context);
+        return await this.executeAgentReadStep(definition, run, step, context);
       }
       if (step.kind === 'reference-reverse') {
-        return this.executeReferenceReverseStep(definition, run, step, context);
+        return await this.executeReferenceReverseStep(definition, run, step, context);
       }
       if (step.kind === 'structure-product-brief') {
-        return this.executeProductBriefStep(definition, run, step, context);
+        return await this.executeProductBriefStep(definition, run, step, context);
       }
       if (step.kind === 'cluster-user-feedback') {
-        return this.executeFeedbackClusterStep(definition, run, step, context);
+        return await this.executeFeedbackClusterStep(definition, run, step, context);
       }
       if (step.kind === 'prompt-generate' || step.kind === 'video-prompt') {
-        return this.executePromptStep(definition, run, step, context);
+        return await this.executePromptStep(definition, run, step, context);
       }
       if (step.kind === 'image-generate') {
-        return this.executeImageStep(definition, run, step, context);
+        return await this.executeImageStep(definition, run, step, context);
       }
       if (step.kind === 'overlay-generate') {
-        return this.executeOverlayStep(definition, run, step, context);
+        return await this.executeOverlayStep(definition, run, step, context);
       }
       if (step.kind === 'manual-video-prompt-copy') {
         return {

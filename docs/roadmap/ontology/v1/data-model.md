@@ -1,7 +1,7 @@
 # Ontology v1 数据模型
 
-更新时间：2026-05-30
-状态：Draft / 本地事实源审计历史补充
+更新时间：2026-06-01
+状态：Local Verified / Production Evidence Pending
 
 ## 1. 设计结论
 
@@ -80,7 +80,7 @@ v1 采用业务服务端事实源优先：Bugu 保存团队工作区、权限、
 - `createdAt`
 - `updatedAt`
 
-当前 Content Studio 第一刀落地字段：
+当前 Content Studio 落地字段：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -92,6 +92,7 @@ v1 采用业务服务端事实源优先：Bugu 保存团队工作区、权限、
 | `scenarios` | 场景卡、SKU 场景、IP 延伸场景和竞品内容结构参考。 |
 | `evidence` | 输入源、品牌知识库、IP 知识库和场景卡产生的来源证据。 |
 | `constraints` | 品牌合规、IP 立场、禁用表达和竞品不可搬运边界。 |
+| `sourceSensitivity` | 输入源共享范围摘要；普通用户界面显示为“共享范围”，用于阻断仅本机资料进入团队同步和知识包发布。 |
 | `coverage.skuRowCount` | SKU 表解析出的 SKU 行数。 |
 | `coverage.ipKnowledgeBaseCount` | 接入的 IP 知识库版本数。 |
 | `coverage.competitorObservationCount` | 接入的竞品观察输入数。 |
@@ -103,6 +104,30 @@ v1 采用业务服务端事实源优先：Bugu 保存团队工作区、权限、
 - SKU 表可以作为产品规格证据，但缺证据或解析失败的组合不能进入 ready。
 - IP 知识库可生成场景和表达规则，但不同渠道只能改形式，不能改身份、观点和语言边界。
 - 竞品观察只能生成待审核机会和结构参考，不能作为本品牌事实证据，也不能进入可直接发布的 PromptDraft。
+
+输入源共享范围：
+
+```ts
+export type InputSourceSensitivity =
+  | 'public'
+  | 'internal'
+  | 'confidential'
+  | 'restricted';
+
+export interface ContentKnowledgeMapSourceSensitivitySummary {
+  highest: InputSourceSensitivity;
+  counts: Record<InputSourceSensitivity, number>;
+  restrictedSourceTitles: string[];
+  confidentialSourceTitles: string[];
+}
+```
+
+落地规则：
+
+- `public`：公开资料，可进入团队事实源和发布包。
+- `internal`：团队内部资料，默认可进入团队资料流。
+- `confidential`：客户资料、未公开产品或投放数据，需要负责人确认后进入团队资料流；当前不会静默公开。
+- `restricted`：仅本机资料，构建可生成本机草稿，但 `ContentKnowledgeMapApplicationService` 不会同步到 Bugu，`ContentWorkspaceSyncService` 也会阻止变更包提交和团队知识包发布。
 
 `scope`：
 
@@ -339,7 +364,7 @@ export type CoverageMatrixType =
 - `publishedArtifactRefs`
 - `performanceTags`
 
-当前 Content Studio 第一刀的 `ContentKnowledgeMapMatrixRow` 对应更轻量的行结构：`id`、`title`、`summary`、`tags`、`sourceRefs`、`evidenceRefs`、`materialStatus`、`materialRefs`、`performanceTags`、`confidence` 和 `status`。分页、排序和本批摘要是展示计划，不写回为领域事实；审核任务只保存被送审行的 `targetId` 和来源引用。
+当前 Content Studio 的 `ContentKnowledgeMapMatrixRow` 对应更轻量的行结构：`id`、`title`、`summary`、`tags`、`sourceRefs`、`evidenceRefs`、`materialStatus`、`materialRefs`、`performanceTags`、`confidence` 和 `status`。分页、排序和本批摘要是展示计划，不写回为领域事实；审核任务只保存被送审行的 `targetId` 和来源引用。
 
 行状态：
 
@@ -434,7 +459,7 @@ export type ReviewAction =
 | `ResourceBundle` | `coverageRowIds`、`sceneCardIds`、`promptDraftIds`、`materialIds`、`sopIds`、`forbiddenExpressions`、`gaps` | 可快速组合的资源包，必须说明可用依据、可产物和不能说什么。 |
 | `DecisionGate` | `requiredEvidence`、`reviewStatus`、`constraints`、`permissions`、`platformRules`、`materialStatus` | 执行前发布检查。 |
 | `ExecutionQueueItem` | `campaignCellId`、`actionType`、`status`、`blockedReason`、`recoveryAction` | 可执行、待审核、待补资源、已拦截、已交接和已回写的动作项。 |
-| `ActionLog` | `actor`、`actionType`、`inputs`、`outputs`、`decision`、`blockedReason` | 行动和结果记录。 |
+| `ActionLog` | `actor`、`actionType`、`inputs`、`outputs`、`decision`、`blockedReason`、`artifactRefs` | 行动、结果和本机交付文件记录。 |
 
 标准 `ActionType`：
 
@@ -446,6 +471,22 @@ export type ReviewAction =
 - `create-material-gap-list`
 - `export-agent-knowledge-pack`
 - `write-back-material-coverage`
+
+`create-material-gap-list` 的标准交付包：
+
+```text
+.content-studio/exports/brand-command-material-gaps/<动作标题>-<时间>/
+  manifest.json
+  material-gap-list.md
+  material-gap-list.json
+```
+
+约束：
+
+- `material-gap-list.json` 使用 `buguai.brand-command.material-gap-list.v1` schema。
+- 清单必须包含资源包、目标人群、渠道、内容形式、使用场景、证据线索、禁用边界、缺口行、素材状态和审核任务 ID。
+- 本机行动记录保留完整文件路径用于打开交付物；同步到 Bugu 的行动记录只保留脱敏后的交付物线索。
+- 清单不得包含账号凭证、API Key、自动发布指令或本机绝对路径。
 
 ## 8. Agent Knowledge v0.7.2 映射
 
@@ -465,6 +506,12 @@ answers/
   questions.json
   answer-blocks.json
   citation-targets.json
+assets/
+  material-coverage.json
+interop/
+  ontology.jsonld
+  ontology.ttl
+  ontology.rdf
 compiled/
   prompt-grounding.md
 ```
@@ -495,12 +542,16 @@ metadata:
 | 高价值 FAQ / 购买问题 | `answers/questions.json` |
 | 已审核回答块 | `answers/answer-blocks.json` |
 | 可引用来源 | `answers/citation-targets.json` |
+| 素材覆盖关系、表现标签和素材引用 | `assets/material-coverage.json` |
+| 外部图谱分析 | `interop/ontology.jsonld`、`interop/ontology.ttl`、`interop/ontology.rdf` |
 | 子图摘要 | `compiled/prompt-grounding.md` |
 
 约束：
 
 - `ontology/` 是数据，不是脚本、workflow 或 prompt 指令。
 - `answers/` 是可选 answer-ready 层，不是 GEO 排名操控层。
+- `assets/` 只保存素材覆盖引用、覆盖维度和表现标签，不保存本机素材路径。
+- `interop/` 只服务外部图谱工具分析，不替代 Bugu 团队事实源，也不是 v1 运行时依赖。
 - 包校验失败时不能覆盖已有导出。
 
 ## 9. 团队共享模型
@@ -582,4 +633,4 @@ export type ContentWorkspaceSyncPolicy =
 
 `KnowledgeRelease` 和 Agent Knowledge v0.7.2 包一一对应。Prompt 工作台、SOP 和 Agent 客户端默认消费 release，而不是消费某个人的本地 draft。
 
-当前第一刀中，Content Studio 生成 Agent Knowledge zip、sha256 和 size；Bugu release 记录对象存储 key、公开 URL 和上传状态。Content Studio 可按已同步工作区拉取团队 release 列表，并将服务端包地址与本机预览路径合并到本地缓存。拉取时按 `serverReleaseId` 收敛到同一记录，不生成重复版本；本地发布历史不因展示阈值截断。未配置公开对象存储时只能显示“发布包已登记”，不能显示“可下载”。
+当前实现中，Content Studio 生成 Agent Knowledge zip、sha256 和 size；Bugu release 记录对象存储 key、公开 URL 和上传状态。Content Studio 可按已同步工作区拉取团队 release 列表，并将服务端包地址与本机预览路径合并到本地缓存。拉取时按 `serverReleaseId` 收敛到同一记录，不生成重复版本；本地发布历史不因展示阈值截断。未配置公开对象存储时只能显示“发布包已登记”，不能显示“可下载”。

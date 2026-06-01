@@ -5,6 +5,8 @@ import { pathToFileURL } from 'node:url';
 
 const DEFAULT_API_BASE_URL = 'https://api.bugu.run';
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_PAGE_SIZE = 100;
+const DEFAULT_MAX_LIST_ITEMS = 5_000;
 
 function normalizeText(value) {
   return String(value ?? '').trim();
@@ -68,14 +70,68 @@ async function fetchJson(fetchImpl, url, init, timeoutMs) {
   return unwrapData(payload);
 }
 
-async function listContent(fetchImpl, options, route, token) {
+function normalizePositiveInteger(value, fallback, max = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.floor(parsed), max);
+}
+
+function normalizeNonNegativeInteger(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.floor(parsed);
+}
+
+async function listContentPage(fetchImpl, options, route, token, query = {}) {
   const url = new URL(contentApiPath(options.apiBaseUrl, route));
   if (options.tenant) url.searchParams.set('tenant', options.tenant);
   if (options.workspaceId) url.searchParams.set('workspaceId', options.workspaceId);
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && String(value) !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  }
   return fetchJson(fetchImpl, url, {
     method: 'GET',
     headers: authHeaders(token),
   }, options.timeoutMs);
+}
+
+async function listContent(fetchImpl, options, route, token) {
+  const limit = normalizePositiveInteger(options.pageSize, DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  const maxItems = normalizePositiveInteger(options.maxListItems, DEFAULT_MAX_LIST_ITEMS);
+  let offset = 0;
+  let total = null;
+  let firstPayload = null;
+  const items = [];
+
+  while (items.length < maxItems) {
+    const payload = await listContentPage(fetchImpl, options, route, token, { limit, offset });
+    if (!firstPayload) firstPayload = payload && typeof payload === 'object' ? payload : {};
+    const pageItems = Array.isArray(payload?.items) ? payload.items : [];
+    items.push(...pageItems);
+
+    const payloadTotal = Number(payload?.total);
+    if (Number.isFinite(payloadTotal) && payloadTotal >= 0) total = Math.floor(payloadTotal);
+    if (pageItems.length === 0) break;
+    if (total !== null && items.length >= total) break;
+    if (pageItems.length < limit) break;
+
+    offset += limit;
+  }
+
+  const expectedTotal = total ?? items.length;
+  const slicedItems = items.slice(0, maxItems);
+  const truncated = slicedItems.length < expectedTotal;
+  return {
+    ...firstPayload,
+    items: slicedItems,
+    total: expectedTotal,
+    fetched: slicedItems.length,
+    limit,
+    offset: 0,
+    truncated,
+  };
 }
 
 function normalizeWorkspace(raw = {}) {
@@ -134,18 +190,73 @@ function stableItemId(item) {
   return normalizeText(item?.id || item?.taskId || item?.queueItemId || item?.releaseId);
 }
 
-function summarizeItems(items = []) {
+function normalizeStringList(value) {
+  return Array.isArray(value) ? value.map(normalizeText).filter(Boolean).sort() : [];
+}
+
+function isUnsafeArtifactRef(value) {
+  const text = normalizeText(value);
+  if (!text) return true;
+  if (/^file:\/\//i.test(text)) return true;
+  if (/^(?:\/Users|\/private\/var|\/tmp|\/home)\//.test(text)) return true;
+  if (/^[A-Za-z]:[\\/]/.test(text)) return true;
+  if (/(?:api[_-]?key|secret|token|password)=/i.test(text)) return true;
+  return false;
+}
+
+function artifactRefsContain(refsByRecordId, pattern) {
+  return Object.values(refsByRecordId).some((refs) => refs.some((ref) => pattern.test(ref)));
+}
+
+function summarizeItems(payload = {}) {
+  const items = Array.isArray(payload.items) ? payload.items : [];
   const ids = items.map(stableItemId).filter(Boolean).sort();
+  const count = Number.isFinite(Number(payload.total)) ? Number(payload.total) : items.length;
+  const listComplete = !payload.truncated && items.length >= count && ids.length === count;
   return {
-    count: Array.isArray(items) ? items.length : 0,
-    ids: ids.slice(0, 50),
+    count,
+    ids,
+    fetchedCount: items.length,
+    missingIdCount: Math.max(0, items.length - ids.length),
+    listComplete,
+    truncated: Boolean(payload.truncated),
+  };
+}
+
+function summarizeActionArtifacts(payload = {}) {
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const refsByRecordId = {};
+  for (const item of items) {
+    const id = stableItemId(item);
+    const refs = normalizeStringList(item?.artifactRefs);
+    if (id && refs.length) refsByRecordId[id] = refs;
+  }
+  const recordIds = Object.keys(refsByRecordId).sort();
+  return {
+    recordCount: recordIds.length,
+    recordIds,
+    refsByRecordId,
+    unsafeRefs: Object.entries(refsByRecordId)
+      .flatMap(([recordId, refs]) => refs.filter(isUnsafeArtifactRef).map((ref) => ({ recordId, ref }))),
   };
 }
 
 function sameSummary(left, right) {
+  if (!left.listComplete || !right.listComplete) return false;
   if (left.count !== right.count) return false;
   if (left.ids.length !== right.ids.length) return false;
   return left.ids.every((id, index) => id === right.ids[index]);
+}
+
+function sameActionArtifactSummary(left, right) {
+  if (left.recordIds.length !== right.recordIds.length) return false;
+  return left.recordIds.every((id, index) => {
+    if (id !== right.recordIds[index]) return false;
+    const leftRefs = left.refsByRecordId[id] ?? [];
+    const rightRefs = right.refsByRecordId[id] ?? [];
+    if (leftRefs.length !== rightRefs.length) return false;
+    return leftRefs.every((ref, refIndex) => ref === rightRefs[refIndex]);
+  });
 }
 
 export async function verifyContentTeamSharingOnline(options = {}) {
@@ -164,6 +275,8 @@ export async function verifyContentTeamSharingOnline(options = {}) {
     tenant: options.tenant || '',
     workspaceId: options.workspaceId || '',
     timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
+    pageSize: normalizePositiveInteger(options.pageSize, DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE),
+    maxListItems: normalizePositiveInteger(options.maxListItems, DEFAULT_MAX_LIST_ITEMS),
   };
 
   const [actorAWorkspaces, actorBWorkspaces] = await Promise.all([
@@ -189,17 +302,33 @@ export async function verifyContentTeamSharingOnline(options = {}) {
   const [
     actorAReleases,
     actorBReleases,
+    actorAKnowledgeMaps,
+    actorBKnowledgeMaps,
+    actorABuildRuns,
+    actorBBuildRuns,
+    actorACommandCenters,
+    actorBCommandCenters,
     actorAReviews,
     actorBReviews,
     actorAQueue,
     actorBQueue,
+    actorAActions,
+    actorBActions,
   ] = await Promise.all([
     listContent(fetchImpl, workspaceOptions, 'content-knowledge-releases', actorAToken),
     listContent(fetchImpl, workspaceOptions, 'content-knowledge-releases', actorBToken),
+    listContent(fetchImpl, workspaceOptions, 'content-knowledge-maps', actorAToken),
+    listContent(fetchImpl, workspaceOptions, 'content-knowledge-maps', actorBToken),
+    listContent(fetchImpl, workspaceOptions, 'content-build-runs', actorAToken),
+    listContent(fetchImpl, workspaceOptions, 'content-build-runs', actorBToken),
+    listContent(fetchImpl, workspaceOptions, 'content-command-centers', actorAToken),
+    listContent(fetchImpl, workspaceOptions, 'content-command-centers', actorBToken),
     listContent(fetchImpl, workspaceOptions, 'content-review-tasks', actorAToken),
     listContent(fetchImpl, workspaceOptions, 'content-review-tasks', actorBToken),
     listContent(fetchImpl, workspaceOptions, 'content-execution-queue', actorAToken),
     listContent(fetchImpl, workspaceOptions, 'content-execution-queue', actorBToken),
+    listContent(fetchImpl, workspaceOptions, 'content-action-records', actorAToken),
+    listContent(fetchImpl, workspaceOptions, 'content-action-records', actorBToken),
   ]);
 
   const defaultReleaseId = workspace.actorA.defaultKnowledgeReleaseId || workspace.actorB.defaultKnowledgeReleaseId;
@@ -232,6 +361,24 @@ export async function verifyContentTeamSharingOnline(options = {}) {
 
   addCheck(
     checks,
+    'knowledge-map-list-reachable',
+    Array.isArray(actorAKnowledgeMaps.items) && Array.isArray(actorBKnowledgeMaps.items),
+    `知识地图列表可读取：A=${actorAKnowledgeMaps.items?.length ?? 0} B=${actorBKnowledgeMaps.items?.length ?? 0}`,
+  );
+  addCheck(
+    checks,
+    'build-run-list-reachable',
+    Array.isArray(actorABuildRuns.items) && Array.isArray(actorBBuildRuns.items),
+    `构建运行列表可读取：A=${actorABuildRuns.items?.length ?? 0} B=${actorBBuildRuns.items?.length ?? 0}`,
+  );
+  addCheck(
+    checks,
+    'command-center-list-reachable',
+    Array.isArray(actorACommandCenters.items) && Array.isArray(actorBCommandCenters.items),
+    `品牌作战系统列表可读取：A=${actorACommandCenters.items?.length ?? 0} B=${actorBCommandCenters.items?.length ?? 0}`,
+  );
+  addCheck(
+    checks,
     'review-task-list-reachable',
     Array.isArray(actorAReviews.items) && Array.isArray(actorBReviews.items),
     `审核任务列表可读取：A=${actorAReviews.items?.length ?? 0} B=${actorBReviews.items?.length ?? 0}`,
@@ -242,11 +389,177 @@ export async function verifyContentTeamSharingOnline(options = {}) {
     Array.isArray(actorAQueue.items) && Array.isArray(actorBQueue.items),
     `执行队列可读取：A=${actorAQueue.items?.length ?? 0} B=${actorBQueue.items?.length ?? 0}`,
   );
+  addCheck(
+    checks,
+    'action-record-list-reachable',
+    Array.isArray(actorAActions.items) && Array.isArray(actorBActions.items),
+    `行动记录可读取：A=${actorAActions.items?.length ?? 0} B=${actorBActions.items?.length ?? 0}`,
+  );
 
-  const reviewSummaryA = summarizeItems(actorAReviews.items || []);
-  const reviewSummaryB = summarizeItems(actorBReviews.items || []);
-  const queueSummaryA = summarizeItems(actorAQueue.items || []);
-  const queueSummaryB = summarizeItems(actorBQueue.items || []);
+  const knowledgeMapSummaryA = summarizeItems(actorAKnowledgeMaps);
+  const knowledgeMapSummaryB = summarizeItems(actorBKnowledgeMaps);
+  const buildRunSummaryA = summarizeItems(actorABuildRuns);
+  const buildRunSummaryB = summarizeItems(actorBBuildRuns);
+  const commandCenterSummaryA = summarizeItems(actorACommandCenters);
+  const commandCenterSummaryB = summarizeItems(actorBCommandCenters);
+  const reviewSummaryA = summarizeItems(actorAReviews);
+  const reviewSummaryB = summarizeItems(actorBReviews);
+  const releaseSummaryA = summarizeItems(actorAReleases);
+  const releaseSummaryB = summarizeItems(actorBReleases);
+  const queueSummaryA = summarizeItems(actorAQueue);
+  const queueSummaryB = summarizeItems(actorBQueue);
+  const actionSummaryA = summarizeItems(actorAActions);
+  const actionSummaryB = summarizeItems(actorBActions);
+  const actionArtifactsA = summarizeActionArtifacts(actorAActions);
+  const actionArtifactsB = summarizeActionArtifacts(actorBActions);
+  addCheck(
+    checks,
+    'knowledge-map-list-complete',
+    knowledgeMapSummaryA.listComplete && knowledgeMapSummaryB.listComplete,
+    `知识地图已完整拉取并具备 ID 清单：A=${knowledgeMapSummaryA.fetchedCount}/${knowledgeMapSummaryA.count} B=${knowledgeMapSummaryB.fetchedCount}/${knowledgeMapSummaryB.count}`,
+    { actorA: knowledgeMapSummaryA, actorB: knowledgeMapSummaryB },
+  );
+  addCheck(
+    checks,
+    'build-run-list-complete',
+    buildRunSummaryA.listComplete && buildRunSummaryB.listComplete,
+    `构建运行已完整拉取并具备 ID 清单：A=${buildRunSummaryA.fetchedCount}/${buildRunSummaryA.count} B=${buildRunSummaryB.fetchedCount}/${buildRunSummaryB.count}`,
+    { actorA: buildRunSummaryA, actorB: buildRunSummaryB },
+  );
+  addCheck(
+    checks,
+    'command-center-list-complete',
+    commandCenterSummaryA.listComplete && commandCenterSummaryB.listComplete,
+    `品牌作战系统已完整拉取并具备 ID 清单：A=${commandCenterSummaryA.fetchedCount}/${commandCenterSummaryA.count} B=${commandCenterSummaryB.fetchedCount}/${commandCenterSummaryB.count}`,
+    { actorA: commandCenterSummaryA, actorB: commandCenterSummaryB },
+  );
+  addCheck(
+    checks,
+    'knowledge-map-list-present',
+    knowledgeMapSummaryA.count > 0 && knowledgeMapSummaryB.count > 0,
+    `团队知识地图快照非空：A=${knowledgeMapSummaryA.count} B=${knowledgeMapSummaryB.count}`,
+    { actorA: knowledgeMapSummaryA, actorB: knowledgeMapSummaryB },
+  );
+  addCheck(
+    checks,
+    'build-run-list-present',
+    buildRunSummaryA.count > 0 && buildRunSummaryB.count > 0,
+    `团队生成流程记录非空：A=${buildRunSummaryA.count} B=${buildRunSummaryB.count}`,
+    { actorA: buildRunSummaryA, actorB: buildRunSummaryB },
+  );
+  addCheck(
+    checks,
+    'command-center-list-present',
+    commandCenterSummaryA.count > 0 && commandCenterSummaryB.count > 0,
+    `团队品牌作战系统快照非空：A=${commandCenterSummaryA.count} B=${commandCenterSummaryB.count}`,
+    { actorA: commandCenterSummaryA, actorB: commandCenterSummaryB },
+  );
+  addCheck(
+    checks,
+    'review-task-list-present',
+    reviewSummaryA.count > 0 && reviewSummaryB.count > 0,
+    `团队审核任务非空：A=${reviewSummaryA.count} B=${reviewSummaryB.count}`,
+    { actorA: reviewSummaryA, actorB: reviewSummaryB },
+  );
+  addCheck(
+    checks,
+    'execution-queue-list-present',
+    queueSummaryA.count > 0 && queueSummaryB.count > 0,
+    `团队执行队列非空：A=${queueSummaryA.count} B=${queueSummaryB.count}`,
+    { actorA: queueSummaryA, actorB: queueSummaryB },
+  );
+  addCheck(
+    checks,
+    'action-record-list-present',
+    actionSummaryA.count > 0 && actionSummaryB.count > 0,
+    `团队行动记录非空：A=${actionSummaryA.count} B=${actionSummaryB.count}`,
+    { actorA: actionSummaryA, actorB: actionSummaryB },
+  );
+  addCheck(
+    checks,
+    'review-task-list-complete',
+    reviewSummaryA.listComplete && reviewSummaryB.listComplete,
+    `审核任务已完整拉取并具备 ID 清单：A=${reviewSummaryA.fetchedCount}/${reviewSummaryA.count} B=${reviewSummaryB.fetchedCount}/${reviewSummaryB.count}`,
+    { actorA: reviewSummaryA, actorB: reviewSummaryB },
+  );
+  addCheck(
+    checks,
+    'release-list-present',
+    releaseSummaryA.count > 0 && releaseSummaryB.count > 0,
+    `团队知识包版本清单非空：A=${releaseSummaryA.count} B=${releaseSummaryB.count}`,
+    { actorA: releaseSummaryA, actorB: releaseSummaryB },
+  );
+  addCheck(
+    checks,
+    'release-list-complete',
+    releaseSummaryA.listComplete && releaseSummaryB.listComplete,
+    `团队知识包版本已完整拉取并具备 ID 清单：A=${releaseSummaryA.fetchedCount}/${releaseSummaryA.count} B=${releaseSummaryB.fetchedCount}/${releaseSummaryB.count}`,
+    { actorA: releaseSummaryA, actorB: releaseSummaryB },
+  );
+  addCheck(
+    checks,
+    'execution-queue-list-complete',
+    queueSummaryA.listComplete && queueSummaryB.listComplete,
+    `执行队列已完整拉取并具备 ID 清单：A=${queueSummaryA.fetchedCount}/${queueSummaryA.count} B=${queueSummaryB.fetchedCount}/${queueSummaryB.count}`,
+    { actorA: queueSummaryA, actorB: queueSummaryB },
+  );
+  addCheck(
+    checks,
+    'action-record-list-complete',
+    actionSummaryA.listComplete && actionSummaryB.listComplete,
+    `行动记录已完整拉取并具备 ID 清单：A=${actionSummaryA.fetchedCount}/${actionSummaryA.count} B=${actionSummaryB.fetchedCount}/${actionSummaryB.count}`,
+    { actorA: actionSummaryA, actorB: actionSummaryB },
+  );
+  addCheck(
+    checks,
+    'action-record-artifacts-present',
+    actionArtifactsA.recordCount > 0 && actionArtifactsB.recordCount > 0,
+    `带交付物引用的行动记录可见：A=${actionArtifactsA.recordCount} B=${actionArtifactsB.recordCount}`,
+    { actorA: actionArtifactsA, actorB: actionArtifactsB },
+  );
+  addCheck(
+    checks,
+    'action-record-artifacts-match',
+    sameActionArtifactSummary(actionArtifactsA, actionArtifactsB),
+    `两个账号看到的行动记录交付物引用一致：A=${actionArtifactsA.recordCount} B=${actionArtifactsB.recordCount}`,
+    { actorA: actionArtifactsA, actorB: actionArtifactsB },
+  );
+  addCheck(
+    checks,
+    'action-record-artifacts-safe',
+    actionArtifactsA.unsafeRefs.length === 0 && actionArtifactsB.unsafeRefs.length === 0,
+    `行动记录交付物引用未包含本机绝对路径、file URL 或疑似凭证：A=${actionArtifactsA.unsafeRefs.length} B=${actionArtifactsB.unsafeRefs.length}`,
+    { actorA: actionArtifactsA.unsafeRefs, actorB: actionArtifactsB.unsafeRefs },
+  );
+  addCheck(
+    checks,
+    'material-gap-artifact-present',
+    artifactRefsContain(actionArtifactsA.refsByRecordId, /material-gap-list\.json$/) &&
+      artifactRefsContain(actionArtifactsB.refsByRecordId, /material-gap-list\.json$/),
+    '两账号都能看到补素材清单交付文件引用 material-gap-list.json。',
+    { actorA: actionArtifactsA.refsByRecordId, actorB: actionArtifactsB.refsByRecordId },
+  );
+  addCheck(
+    checks,
+    'knowledge-map-list-match',
+    sameSummary(knowledgeMapSummaryA, knowledgeMapSummaryB),
+    `两个账号看到的知识地图清单一致：A=${knowledgeMapSummaryA.count} B=${knowledgeMapSummaryB.count}`,
+    { actorA: knowledgeMapSummaryA, actorB: knowledgeMapSummaryB },
+  );
+  addCheck(
+    checks,
+    'build-run-list-match',
+    sameSummary(buildRunSummaryA, buildRunSummaryB),
+    `两个账号看到的构建运行清单一致：A=${buildRunSummaryA.count} B=${buildRunSummaryB.count}`,
+    { actorA: buildRunSummaryA, actorB: buildRunSummaryB },
+  );
+  addCheck(
+    checks,
+    'command-center-list-match',
+    sameSummary(commandCenterSummaryA, commandCenterSummaryB),
+    `两个账号看到的品牌作战系统清单一致：A=${commandCenterSummaryA.count} B=${commandCenterSummaryB.count}`,
+    { actorA: commandCenterSummaryA, actorB: commandCenterSummaryB },
+  );
   addCheck(
     checks,
     'review-task-list-match',
@@ -256,10 +569,24 @@ export async function verifyContentTeamSharingOnline(options = {}) {
   );
   addCheck(
     checks,
+    'release-list-match',
+    sameSummary(releaseSummaryA, releaseSummaryB),
+    `两个账号看到的团队知识包版本清单一致：A=${releaseSummaryA.count} B=${releaseSummaryB.count}`,
+    { actorA: releaseSummaryA, actorB: releaseSummaryB },
+  );
+  addCheck(
+    checks,
     'execution-queue-list-match',
     sameSummary(queueSummaryA, queueSummaryB),
     `两个账号看到的执行队列清单一致：A=${queueSummaryA.count} B=${queueSummaryB.count}`,
     { actorA: queueSummaryA, actorB: queueSummaryB },
+  );
+  addCheck(
+    checks,
+    'action-record-list-match',
+    sameSummary(actionSummaryA, actionSummaryB),
+    `两个账号看到的行动记录清单一致：A=${actionSummaryA.count} B=${actionSummaryB.count}`,
+    { actorA: actionSummaryA, actorB: actionSummaryB },
   );
 
   return {
@@ -268,20 +595,56 @@ export async function verifyContentTeamSharingOnline(options = {}) {
     release: actorARelease,
     summaries: {
       actorA: {
-        reviewTaskCount: actorAReviews.items?.length ?? 0,
-        executionQueueCount: actorAQueue.items?.length ?? 0,
-        releaseCount: actorAReleases.items?.length ?? 0,
+        reviewTaskCount: reviewSummaryA.count,
+        knowledgeMapCount: knowledgeMapSummaryA.count,
+        buildRunCount: buildRunSummaryA.count,
+        commandCenterCount: commandCenterSummaryA.count,
+        executionQueueCount: queueSummaryA.count,
+        actionRecordCount: actionSummaryA.count,
+        releaseCount: releaseSummaryA.count,
+        knowledgeMapIds: knowledgeMapSummaryA.ids,
+        buildRunIds: buildRunSummaryA.ids,
+        commandCenterIds: commandCenterSummaryA.ids,
         reviewTaskIds: reviewSummaryA.ids,
         executionQueueIds: queueSummaryA.ids,
-        releaseIds: summarizeItems(actorAReleases.items || []).ids,
+        actionRecordIds: actionSummaryA.ids,
+        knowledgeMapListComplete: knowledgeMapSummaryA.listComplete,
+        buildRunListComplete: buildRunSummaryA.listComplete,
+        commandCenterListComplete: commandCenterSummaryA.listComplete,
+        actionArtifactRecordCount: actionArtifactsA.recordCount,
+        actionArtifactRecordIds: actionArtifactsA.recordIds,
+        actionArtifactRefsByRecordId: actionArtifactsA.refsByRecordId,
+        reviewTaskListComplete: reviewSummaryA.listComplete,
+        executionQueueListComplete: queueSummaryA.listComplete,
+        actionRecordListComplete: actionSummaryA.listComplete,
+        releaseIds: releaseSummaryA.ids,
+        releaseListComplete: releaseSummaryA.listComplete,
       },
       actorB: {
-        reviewTaskCount: actorBReviews.items?.length ?? 0,
-        executionQueueCount: actorBQueue.items?.length ?? 0,
-        releaseCount: actorBReleases.items?.length ?? 0,
+        reviewTaskCount: reviewSummaryB.count,
+        knowledgeMapCount: knowledgeMapSummaryB.count,
+        buildRunCount: buildRunSummaryB.count,
+        commandCenterCount: commandCenterSummaryB.count,
+        executionQueueCount: queueSummaryB.count,
+        actionRecordCount: actionSummaryB.count,
+        releaseCount: releaseSummaryB.count,
+        knowledgeMapIds: knowledgeMapSummaryB.ids,
+        buildRunIds: buildRunSummaryB.ids,
+        commandCenterIds: commandCenterSummaryB.ids,
         reviewTaskIds: reviewSummaryB.ids,
         executionQueueIds: queueSummaryB.ids,
-        releaseIds: summarizeItems(actorBReleases.items || []).ids,
+        actionRecordIds: actionSummaryB.ids,
+        knowledgeMapListComplete: knowledgeMapSummaryB.listComplete,
+        buildRunListComplete: buildRunSummaryB.listComplete,
+        commandCenterListComplete: commandCenterSummaryB.listComplete,
+        actionArtifactRecordCount: actionArtifactsB.recordCount,
+        actionArtifactRecordIds: actionArtifactsB.recordIds,
+        actionArtifactRefsByRecordId: actionArtifactsB.refsByRecordId,
+        reviewTaskListComplete: reviewSummaryB.listComplete,
+        executionQueueListComplete: queueSummaryB.listComplete,
+        actionRecordListComplete: actionSummaryB.listComplete,
+        releaseIds: releaseSummaryB.ids,
+        releaseListComplete: releaseSummaryB.listComplete,
       },
     },
     checks,
@@ -299,6 +662,8 @@ function parseCliOptions(argv) {
     allowSameToken: cliFlag(argv, 'allow-same-token'),
     allowPendingApproval: cliFlag(argv, 'allow-pending-approval'),
     requirePublicPackage: cliFlag(argv, 'require-public-package'),
+    pageSize: cliValue(argv, 'page-size') || process.env.CONTENT_STUDIO_BUGU_LIST_PAGE_SIZE || DEFAULT_PAGE_SIZE,
+    maxListItems: cliValue(argv, 'max-list-items') || process.env.CONTENT_STUDIO_BUGU_MAX_LIST_ITEMS || DEFAULT_MAX_LIST_ITEMS,
     output: cliValue(argv, 'output') || '',
     json: cliFlag(argv, 'json'),
   };
