@@ -21,6 +21,13 @@ import {
 } from './materialCoverageAssembler';
 import { validateMaterialFeedbackInput } from './materialFeedbackPolicy';
 
+function reviewTaskForTeamSync(task: ContentReviewTask): ContentReviewTask {
+  return {
+    ...task,
+    workspacePath: '[本机工作区]',
+  };
+}
+
 function updateRows(input: {
   map: ContentKnowledgeMapRecord;
   approvedAssets: AssetReviewRecord[];
@@ -179,7 +186,7 @@ export class ContentMaterialFeedbackService {
     if (!this.reviewSync || !input.shouldSync) return { tasks: newTasks };
     const teamSync = await this.reviewSync.syncReviewTasks({
       workspacePath: input.workspacePath,
-      tasks: newTasks,
+      tasks: newTasks.map(reviewTaskForTeamSync),
       authorLabel: '本机工作台',
     });
     const syncedTasks = await this.reviewTasks.updateMany(

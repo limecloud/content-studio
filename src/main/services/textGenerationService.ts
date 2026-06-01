@@ -48,7 +48,9 @@ export class TextGenerationService {
     if (!apiKey && !oauthToken && view.textApiKeyStatus === 'requires-reauthorization') {
       throw new TextProviderBlockedError('文字 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存文字 API Key 后再生成。');
     }
-    if (!apiKey && !oauthToken && requiresExplicitTextKey()) throw new TextProviderBlockedError();
+    if (!apiKey && !oauthToken && requiresExplicitTextKey() && protocol === 'claude-sdk') {
+      throw new TextProviderBlockedError();
+    }
     return {
       apiKey,
       baseUrl: process.env.CONTENT_STUDIO_TEXT_BASE_URL || view.textApiEndpoint,

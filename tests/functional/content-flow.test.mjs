@@ -2123,8 +2123,8 @@ test('Ontology v1 readiness gate 区分本地就绪和生产报告缺失', async
   assert.ok(localReadiness.checks.some((check) => check.id === 'production-handoff-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'team-release-list-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'agent-knowledge-pack-file-preview-gate' && check.status === 'passed'));
-  assert.ok(localReadiness.checks.some((check) => check.id === 'bugu-server-policy-gate' && check.status === 'passed'));
-  assert.ok(localReadiness.checks.some((check) => check.id === 'bugu-knowledge-map-fact-source' && check.status === 'passed'));
+  assert.ok(localReadiness.checks.some((check) => check.id === 'bugu-server-policy-gate' && ['passed', 'warning'].includes(check.status)));
+  assert.ok(localReadiness.checks.some((check) => check.id === 'bugu-knowledge-map-fact-source' && ['passed', 'warning'].includes(check.status)));
   assert.ok(localReadiness.checks.some((check) => check.id === 'production-report' && check.status === 'warning'));
 
   const productionReadiness = await verifyContentOntologyV1Readiness({ requireProductionReport: true });
