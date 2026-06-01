@@ -239,14 +239,28 @@ async function clickButton(page, label) {
 }
 
 async function openPromptSupportDrawer(page) {
-  const drawer = page.locator('.prompt-support-drawer');
+  const drawer = page.locator('.prompt-workbench .prompt-support-drawer').first();
   await expect(drawer).toBeVisible();
   const isOpen = await drawer.evaluate((element) => element.hasAttribute('open'));
   if (!isOpen) {
     await drawer.locator('summary').click();
   }
-  await expect(page.locator('.prompt-source-panel')).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator('.prompt-source-panel input').first()).toBeEditable({ timeout: 20_000 });
+  const panel = drawer.locator('.prompt-source-panel').first();
+  await expect(panel).toBeVisible({ timeout: 20_000 });
+  await expect(promptSourceTitleInput(panel)).toBeEditable({ timeout: 20_000 });
+  return panel;
+}
+
+function promptSourcePurposeSelect(panel) {
+  return panel.locator('.workflow-form-grid label').filter({ hasText: '用途' }).locator('select').first();
+}
+
+function promptSourceTitleInput(panel) {
+  return panel.locator('.workflow-form-grid label').filter({ hasText: '标题' }).locator('input').first();
+}
+
+function promptSourceIntentInput(panel) {
+  return panel.locator('.workflow-form-grid label').filter({ hasText: '用户意图' }).locator('textarea').first();
 }
 
 async function clickNavItem(page, label) {
@@ -5694,14 +5708,14 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
     ).toBe(true);
 
     await clickNavItem(page, 'Prompt 工作台');
-    await openPromptSupportDrawer(page);
+    let promptSourcePanel = await openPromptSupportDrawer(page);
     await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
-    await page.locator('.prompt-source-panel select').first().selectOption('skill');
-    await expect(page.locator('.prompt-source-panel input').first()).toHaveValue('Skill 草案');
-    await expect(page.locator('.prompt-source-panel textarea')).toHaveValue(/本地 skill/);
+    await promptSourcePurposeSelect(promptSourcePanel).selectOption('skill');
+    await expect(promptSourceTitleInput(promptSourcePanel)).toHaveValue('Skill 草案');
+    await expect(promptSourceIntentInput(promptSourcePanel)).toHaveValue(/本地 skill/);
     await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).not.toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
@@ -5734,10 +5748,10 @@ test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', asy
     expect(persisted.skillContent).toContain('只使用用户提供的知识库');
 
     await clickNavItem(page, 'Prompt 工作台');
-    await openPromptSupportDrawer(page);
-    await page.locator('.prompt-source-panel select').first().selectOption('sop');
-    await expect(page.locator('.prompt-source-panel input').first()).toHaveValue('SOP 草案');
-    await expect(page.locator('.prompt-source-panel textarea')).toHaveValue(/发布运行的 SOP 草案/);
+    promptSourcePanel = await openPromptSupportDrawer(page);
+    await promptSourcePurposeSelect(promptSourcePanel).selectOption('sop');
+    await expect(promptSourceTitleInput(promptSourcePanel)).toHaveValue('SOP 草案');
+    await expect(promptSourceIntentInput(promptSourcePanel)).toHaveValue(/发布运行的 SOP 草案/);
     await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).not.toBeChecked();
     await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
@@ -5907,13 +5921,13 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
     expect(distilledVideoTrace.runHasDistilledDraftRef, JSON.stringify(distilledVideoTrace)).toBe(true);
 
     await clickNavItem(page, 'Prompt 工作台');
-    await openPromptSupportDrawer(page);
+    const promptSourcePanel = await openPromptSupportDrawer(page);
     const traceSourceInput = page.locator('.prompt-source-option').filter({ hasText: '追溯源' }).locator('input').first();
     await expect(traceSourceInput).toBeDisabled();
     await expect(traceSourceInput).not.toBeChecked();
-    await page.locator('.prompt-source-panel input').first().fill('追溯源隔离验证');
-    await page.locator('.prompt-source-panel textarea').fill('基于当前页面生成一个新视频 Prompt，但不要把成功素材反向沉淀的追溯源作为新输入源。');
-    await page.locator('.prompt-source-panel button').filter({ hasText: '仅生成草稿' }).click();
+    await promptSourceTitleInput(promptSourcePanel).fill('追溯源隔离验证');
+    await promptSourceIntentInput(promptSourcePanel).fill('基于当前页面生成一个新视频 Prompt，但不要把成功素材反向沉淀的追溯源作为新输入源。');
+    await promptSourcePanel.locator('button').filter({ hasText: '仅生成草稿' }).click();
     await expect(page.locator('.prompt-draft-editor')).toHaveValue(/Prompt 草稿|任务：/, { timeout: 20_000 });
     const promptIsolationTrace = await page.evaluate(async (workspacePath) => {
       const api = window.contentStudio;
@@ -5933,7 +5947,7 @@ test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和�
       promptIsolationTrace.traceSourceIds.some((id) => promptIsolationTrace.draftInputSourceIds.includes(id)),
       JSON.stringify(promptIsolationTrace),
     ).toBe(false);
-    await page.locator('.prompt-source-panel button').filter({ hasText: '补输入源' }).click();
+    await promptSourcePanel.locator('button').filter({ hasText: '补输入源' }).click();
     await expect(page.locator('.input-sources-workbench')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.input-source-list .input-source-card').first()).toContainText('成功素材追溯', { timeout: 20_000 });
     await expect(page.locator('.input-source-list .input-source-card').first()).toContainText('成功素材沉淀 / third-party-finished-video.mp4', { timeout: 20_000 });
