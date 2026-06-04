@@ -4331,7 +4331,7 @@ test('内容知识地图 v1 真实工作台支持下钻和素材回写', async (
 test('内容知识地图页点击生成会调用真实结构化文字服务并显示模型矩阵', async ({}, testInfo) => {
   test.setTimeout(90_000);
 
-  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
+  const { server, baseUrl, requests } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
   const bugu = await startFakeBuguContentWorkspaceServer();
   try {
     await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
@@ -4474,7 +4474,7 @@ test('内容知识地图页点击生成会调用真实结构化文字服务并�
 test('对话里的待处理动作可以恢复到真实输入源页面', async ({}, testInfo) => {
   test.setTimeout(90_000);
 
-  const { server, baseUrl, requests } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
+  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
   try {
     await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
     await page.evaluate(async ({ workspacePath, endpoint }) => {
