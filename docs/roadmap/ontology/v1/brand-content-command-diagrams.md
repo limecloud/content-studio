@@ -1,7 +1,9 @@
 # 品牌内容作战系统图表
 
 更新时间：2026-05-31
-状态：Local Verified / Production Evidence Pending
+状态：Historical Archive / Retired From Current Client
+
+> 归档说明：本文图表只保留旧品牌战情室方案的历史上下文。当前 Content Studio 客户端不再提供品牌战情室、目标树、作战编组或执行队列入口；当前实现以内容制造批次、阶段恢复任务和生产交接行动记录承接可复用语义。
 
 本文是 [`brand-content-command-system.md`](./brand-content-command-system.md) 的图表补充，用于把品牌内容作战系统从“概念说明”落成可讨论的系统结构、流程、状态和时序。
 

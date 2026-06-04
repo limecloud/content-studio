@@ -133,7 +133,7 @@ function buildImportGuide(record: MixPackageRecord): string {
     '',
     '## 交付文件',
     '',
-    '- 清单文件 `manifest.json`：完整机器可读清单，保留 SOP、提示词、来源和审核状态。',
+    '- 清单文件 `manifest.json`：完整机器可读清单，保留历史运行、提示词、来源和审核状态。',
     '- CSV 简表 `manifest.csv`：给剪辑人员或第三方混剪软件导入 / 对表使用。',
     '- `images/`：已通过审核的图片素材。',
     '- `videos/`：用户手动导入或生成后已通过审核的视频素材。',

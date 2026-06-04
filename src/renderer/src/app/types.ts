@@ -3,6 +3,8 @@ import type { Dispatch, SetStateAction } from 'react';
 
 export type CoreModuleKey = 'image' | 'image-showcase' | 'video' | 'video-showcase' | 'article' | 'knowledge' | 'assets' | 'skills';
 
+export type BusinessModuleKey = 'content-batch';
+
 export type V2ModuleKey =
   | 'material-breakdown'
   | 'image-scene-prompts'
@@ -23,18 +25,10 @@ export type V2ModuleKey =
   | 'knowledge-scenes'
   | 'knowledge-ip'
   | 'knowledge-inputs'
-  | 'brand-command-center'
-  | 'brand-command-objectives'
-  | 'brand-command-bundles'
-  | 'brand-command-queue'
-  | 'brand-command-logs'
   | 'assets-prompt-workbench'
-  | 'assets-sop'
-  | 'assets-history'
-  | 'workflow-definition'
-  | 'workflow-canvas';
+  | 'assets-history';
 
-export type ModuleKey = CoreModuleKey | V2ModuleKey;
+export type ModuleKey = CoreModuleKey | BusinessModuleKey | V2ModuleKey;
 export type NavItem = { key?: ModuleKey; label: string; disabled?: boolean; advanced?: boolean };
 
 export type ModelDraft = {
@@ -46,10 +40,12 @@ export type ModelDraft = {
   imageProtocol: ImageGenerationProtocol;
   imageOuterModel: string;
   textModel: string;
+  textModels: string;
   imageModels: string;
   videoApiEndpoint: string;
   videoApiKey: string;
   videoModel: string;
+  videoModels: string;
 };
 
 export type ColorTheme =

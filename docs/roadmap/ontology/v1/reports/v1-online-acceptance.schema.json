@@ -196,7 +196,7 @@
     },
     "teamSummary": {
       "type": "object",
-      "required": ["knowledgeMapCount", "buildRunCount", "commandCenterCount", "reviewTaskCount", "executionQueueCount", "actionRecordCount", "releaseCount", "knowledgeMapIds", "buildRunIds", "commandCenterIds", "reviewTaskIds", "executionQueueIds", "actionRecordIds", "actionArtifactRecordCount", "actionArtifactRecordIds", "actionArtifactRefsByRecordId", "releaseIds", "knowledgeMapListComplete", "buildRunListComplete", "commandCenterListComplete", "reviewTaskListComplete", "executionQueueListComplete", "actionRecordListComplete", "releaseListComplete"],
+      "required": ["knowledgeMapCount", "buildRunCount", "reviewTaskCount", "actionRecordCount", "releaseCount", "knowledgeMapIds", "buildRunIds", "reviewTaskIds", "actionRecordIds", "actionArtifactRecordCount", "actionArtifactRecordIds", "actionArtifactRefsByRecordId", "releaseIds", "knowledgeMapListComplete", "buildRunListComplete", "reviewTaskListComplete", "actionRecordListComplete", "releaseListComplete"],
       "properties": {
         "knowledgeMapCount": {
           "type": "number",
@@ -206,15 +206,7 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
-        "commandCenterCount": {
-          "type": "number",
-          "exclusiveMinimum": 0
-        },
         "reviewTaskCount": {
-          "type": "number",
-          "exclusiveMinimum": 0
-        },
-        "executionQueueCount": {
           "type": "number",
           "exclusiveMinimum": 0
         },
@@ -240,21 +232,7 @@
             "type": "string"
           }
         },
-        "commandCenterIds": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string"
-          }
-        },
         "reviewTaskIds": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string"
-          }
-        },
-        "executionQueueIds": {
           "type": "array",
           "minItems": 1,
           "items": {
@@ -303,13 +281,7 @@
         "buildRunListComplete": {
           "const": true
         },
-        "commandCenterListComplete": {
-          "const": true
-        },
         "reviewTaskListComplete": {
-          "const": true
-        },
-        "executionQueueListComplete": {
           "const": true
         },
         "actionRecordListComplete": {

@@ -56,6 +56,7 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
   {
     title: '知识库',
     items: [
+      { key: 'content-batch', label: '内容制造' },
       { key: 'knowledge', label: '成型知识库' },
       { key: 'knowledge-map', label: '内容知识地图' },
       { key: 'knowledge-review', label: '审核任务' },
@@ -66,21 +67,10 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     ],
   },
   {
-    title: '作战',
-    items: [
-      { key: 'brand-command-center', label: '品牌战情室' },
-      { key: 'brand-command-objectives', label: '目标树' },
-      { key: 'brand-command-bundles', label: '作战编组' },
-      { key: 'brand-command-queue', label: '执行队列' },
-      { key: 'brand-command-logs', label: '行动记录' },
-    ],
-  },
-  {
     title: '资产',
     items: [
       { key: 'assets', label: '素材库' },
       { key: 'assets-prompt-workbench', label: 'Prompt 工作台' },
-      { key: 'assets-sop', label: 'SOP 工作流' },
       { key: 'assets-history', label: '运行历史' },
     ],
   },
@@ -88,8 +78,6 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: '管理',
     items: [
       { key: 'skills', label: 'skills 管理' },
-      { key: 'workflow-definition', label: '工作流定义', advanced: true },
-      { key: 'workflow-canvas', label: 'Canvas 编排', advanced: true },
     ],
   },
 ];

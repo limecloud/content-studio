@@ -162,6 +162,9 @@ export function App() {
       <ParamsPanel
         params={app.params}
         textProtocol={app.modelConfig?.textProtocol ?? "claude-sdk"}
+        textModels={app.textModelOptions}
+        imageModels={app.imageModelOptions}
+        videoModels={app.videoModelOptions}
         citations={app.activeModule === "material-breakdown" ? [] : app.selectedCitations}
         logs={app.logs}
         skillSelection={app.skillSelection}

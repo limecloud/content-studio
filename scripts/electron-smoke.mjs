@@ -305,6 +305,18 @@ try {
       await wait(80);
       return true;
     };
+    const clickSettingsButton = async (label) => {
+      const modal = document.querySelector('.settings-modal');
+      if (!modal) return false;
+      const button = Array.from(modal.querySelectorAll('button')).find((item) => {
+        const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
+        return accessibleText.includes(label) && !item.disabled;
+      });
+      if (!button) return false;
+      button.click();
+      await wait(80);
+      return true;
+    };
     const clickAnyButton = async (labels) => {
       for (const label of labels) {
         if (await clickButton(label)) return true;
@@ -329,8 +341,19 @@ try {
         && document.body.innerText.includes('Slash command + auto'),
     });
     checks.push({ action: 'open settings', clicked: await clickButton('设置'), hasText: document.body.innerText.includes('设置') && document.body.innerText.includes('通用') });
-    checks.push({ action: 'click model settings', clicked: await clickButton('模型'), hasText: (document.body.innerText.includes('生成服务连接配置') && document.body.innerText.includes('文字生成')) || (document.body.innerText.includes('Provider 连接配置') && document.body.innerText.includes('文字端点')) });
-    checks.push({ action: 'close settings', clicked: await clickButton('完成'), hasText: !document.body.innerText.includes('生成服务连接配置') && !document.body.innerText.includes('文字端点') });
+    checks.push({
+      action: 'click model settings',
+      clicked: await clickSettingsButton('模型'),
+      hasText: document.body.innerText.includes('生成服务设置')
+        && document.body.innerText.includes('文字生成')
+        && document.body.innerText.includes('图片生成')
+        && document.body.innerText.includes('视频生成'),
+    });
+    checks.push({
+      action: 'close settings',
+      clicked: await clickButton('完成'),
+      hasText: !document.body.innerText.includes('生成服务设置'),
+    });
     return {
       checks,
       failed: checks.filter((check) => !check.clicked || !check.hasText),
@@ -431,12 +454,12 @@ try {
     await clickActionButton('智能拆解');
     await waitFor('video breakdown blocked', () => bodyText().includes('请先选择本地视频') || bodyText().includes('真实视频理解模型未配置'));
     checks.push({ step: 'video breakdown blocked without provider', ok: true });
-    await clickVideoStageTab('脚本生成');
-    await clickAnyActionButton(['生成新视频脚本', '生成复刻脚本']);
+    await clickVideoStageTab('脚本改写');
+    await clickAnyActionButton(['生成分镜脚本', '生成新视频脚本', '生成复刻脚本']);
     await waitFor('video script blocked', () => bodyText().includes('文字模型未配置'));
     checks.push({ step: 'video script blocked without provider', ok: true });
     await clickVideoStageTab('Prompt 交接');
-    await clickActionButton('可选：内部视频生成');
+    await clickActionButton('内部生成');
     await waitFor('video queue submitted or blocked', () => (
       bodyText().includes('后台生成队列')
       || bodyText().includes('排队中')

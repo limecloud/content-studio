@@ -47,13 +47,10 @@ const REQUIRED_IMPLEMENTATION_FILES = [
   'src/main/services/contentReviewTaskApplicationService.ts',
   'src/main/services/contentProductionHandoffService.ts',
   'src/main/services/contentMaterialFeedbackService.ts',
-  'src/main/services/brandCommandCenterApplicationService.ts',
-  'src/main/services/brandCommandExecutionPolicy.ts',
   'src/main/services/contentWorkspaceSyncService.ts',
   'src/main/services/agentKnowledgeContentExportService.ts',
   'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx',
   'src/renderer/src/components/modules/ContentReviewTasksModule.tsx',
-  'src/renderer/src/components/modules/BrandCommandCenterModule.tsx',
   'tests/functional/content-flow.test.mjs',
 ];
 
@@ -75,8 +72,20 @@ const FORBIDDEN_PROTOTYPE_PATTERNS = [
 const V1_USER_FACING_COPY_AUDIT_PATHS = [
   'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx',
   'src/renderer/src/components/modules/ContentReviewTasksModule.tsx',
-  'src/renderer/src/components/modules/BrandCommandCenterModule.tsx',
   'src/renderer/src/components/modules/PromptWorkbenchModule.tsx',
+];
+
+const RETIRED_BRAND_COMMAND_PATHS = [
+  'src/main/services/brandCommandCenterApplicationService.ts',
+  'src/main/services/brandCommandCenterBuilder.ts',
+  'src/main/services/brandCommandCenterStore.ts',
+  'src/main/services/brandCommandExecutionPolicy.ts',
+  'src/renderer/src/components/modules/BrandCommandCenterModule.tsx',
+];
+
+const RETIRED_SOP_WORKFLOW_PATHS = [
+  'src/main/services/workflowStore.ts',
+  'src/main/services/workflowEngine.ts',
   'src/renderer/src/components/modules/WorkflowFeatureModule.tsx',
 ];
 
@@ -88,8 +97,8 @@ const V1_DOCUMENT_STATUS_EXPECTATIONS = [
   ['docs/roadmap/ontology/v1/data-model.md', 'Local Verified / Production Evidence Pending'],
   ['docs/roadmap/ontology/v1/implementation-plan.md', 'Local Verified / Production Evidence Pending'],
   ['docs/roadmap/ontology/v1/workflow-integration.md', 'Local Verified / Production Evidence Pending'],
-  ['docs/roadmap/ontology/v1/brand-content-command-system.md', 'Local Verified / Production Evidence Pending'],
-  ['docs/roadmap/ontology/v1/brand-content-command-diagrams.md', 'Local Verified / Production Evidence Pending'],
+  ['docs/roadmap/ontology/v1/brand-content-command-system.md', 'Historical Archive / Retired From Current Client'],
+  ['docs/roadmap/ontology/v1/brand-content-command-diagrams.md', 'Historical Archive / Retired From Current Client'],
   ['docs/roadmap/ontology/v1/server-integration-plan.md', 'Local Verified / Production Evidence Pending'],
   ['docs/roadmap/ontology/v1/team-sharing-plan.md', 'Local Verified / Production Evidence Pending'],
   ['docs/roadmap/ontology/v1/user-facing-language.md', 'Local Verified / Production Evidence Pending'],
@@ -249,19 +258,44 @@ async function checkV1FactSourceDocsGate(repoRoot, checks) {
     teamSharing: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/team-sharing-plan.md'), 'utf-8'),
     acceptance: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/acceptance-plan.md'), 'utf-8'),
     audit: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/completion-audit.md'), 'utf-8'),
+    moduleDesign: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/module-design.md'), 'utf-8'),
+    workflow: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/workflow-integration.md'), 'utf-8'),
     implementation: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/implementation-plan.md'), 'utf-8'),
+    prototypeReadme: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/prototype/README.md'), 'utf-8'),
+    brandCommandSystem: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/brand-content-command-system.md'), 'utf-8'),
+    brandCommandDiagrams: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/brand-content-command-diagrams.md'), 'utf-8'),
+    v2Migration: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v2/client-capability-migration.md'), 'utf-8'),
   };
+  const currentDocs = [
+    files.serverPlan,
+    files.teamSharing,
+    files.acceptance,
+    files.audit,
+    files.moduleDesign,
+    files.workflow,
+    files.implementation,
+    files.prototypeReadme,
+  ].join('\n');
   const required = [
     ['server-current-knowledge-maps', files.serverPlan.includes('content-knowledge-maps` 是团队版内容知识地图 current 服务端事实源')],
     ['server-current-build-runs', files.serverPlan.includes('content-build-runs` 是生成流程 current 服务端事实源')],
-    ['server-current-command-centers', files.serverPlan.includes('content-command-centers` 是品牌内容作战系统 current 服务端事实源')],
-    ['server-compat-queue-actions', files.serverPlan.includes('content-execution-queue') && files.serverPlan.includes('content-action-records') && files.serverPlan.includes('队列 / 行动旁路事实')],
-    ['team-sharing-current-sources', files.teamSharing.includes('content-knowledge-maps') && files.teamSharing.includes('content-build-runs') && files.teamSharing.includes('content-command-centers') && files.teamSharing.includes('current 主事实源')],
-    ['team-sharing-compat-boundary', files.teamSharing.includes('compat 旁路事实源') && files.teamSharing.includes('不能替代 `content-command-centers`')],
-    ['acceptance-rejects-non-current-substitutes', files.acceptance.includes('不能只用本机 JSON、变更包、执行队列、行动记录或 release 元数据替代团队主事实源')],
-    ['acceptance-command-center-compat-boundary', files.acceptance.includes('`content-execution-queue` 和 `content-action-records` 只作为队列 / 行动旁路事实') && files.acceptance.includes('不能替代完整作战系统快照')],
-    ['audit-current-readback-boundary', files.audit.includes('不把 release、执行队列或行动记录旁路当作完整团队事实源')],
-    ['implementation-report-gate-current-sources', files.implementation.includes('`content-knowledge-maps` 同清单') && files.implementation.includes('`content-build-runs` 同清单') && files.implementation.includes('`content-command-centers` 同清单')],
+    ['server-current-action-records', files.serverPlan.includes('content-action-records')],
+    ['team-sharing-current-sources', files.teamSharing.includes('content-knowledge-maps') && files.teamSharing.includes('content-build-runs') && files.teamSharing.includes('content-action-records')],
+    ['acceptance-rejects-non-current-substitutes', files.acceptance.includes('不能只用本机 JSON、变更包、行动记录或 release 元数据替代团队主事实源')],
+    ['audit-current-readback-boundary', files.audit.includes('不把 release 或行动记录旁路当作完整团队事实源')],
+    ['implementation-report-gate-current-sources', files.implementation.includes('`content-knowledge-maps` 同清单') && files.implementation.includes('`content-build-runs` 同清单')],
+    ['acceptance-docs-retired-brand-command', files.acceptance.includes('旧品牌战情室、目标树、作战编组和执行队列运行时已退役')],
+    ['team-sharing-docs-retired-command-routes', files.teamSharing.includes('旧 `content-command-centers` 和 `content-execution-queue` 不再是当前客户端事实源')],
+    ['v2-docs-retired-brand-command', files.v2Migration.includes('旧品牌战情室') && files.v2Migration.includes('不作为 v2 当前入口保留')],
+    ['current-docs-do-not-require-command-centers', !files.acceptance.includes('content-command-centers` 对两账号可见') && !files.teamSharing.includes('`content-command-centers` 同清单') && !files.audit.includes('品牌作战系统')],
+    ['current-docs-do-not-require-execution-queue', !files.acceptance.includes('executionQueueIds') && !files.teamSharing.includes('执行队列 ID 清单') && !files.audit.includes('执行队列 ID')],
+    ['module-docs-use-content-batches', files.moduleDesign.includes('ContentBatchApplicationService') && files.moduleDesign.includes('content-batches.json')],
+    ['workflow-docs-use-content-batches', files.workflow.includes('内容制造批次') && files.workflow.includes('contentBatches:build')],
+    ['implementation-docs-use-content-batches', files.implementation.includes('ContentBatchApplicationService') && files.implementation.includes('内容制造批次和生产交接')],
+    ['prototype-docs-use-content-batches', files.prototypeReadme.includes('内容制造批次') && files.prototypeReadme.includes('生产交接')],
+    ['retired-command-docs-are-archived', files.brandCommandSystem.includes('Historical Archive / Retired From Current Client') && files.brandCommandDiagrams.includes('Historical Archive / Retired From Current Client')],
+    ['current-docs-do-not-reference-brand-command-runtime', !/(BrandCommandCenter|brandCommand|brand-command|brand-command-centers\.json|BrandCommandExecutionPolicy|BrandCommandCenterModule)/.test(currentDocs)],
+    ['current-docs-do-not-promote-command-routes', !/content-command-centers` 是|content-execution-queue` 和|\/api\/v1\/oem\/content-command-centers|\/api\/v1\/oem\/content-execution-queue|content-command-centers` 同清单|执行队列同清单|品牌作战系统/.test(currentDocs)],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
   addCheck(
@@ -270,7 +304,7 @@ async function checkV1FactSourceDocsGate(repoRoot, checks) {
     missing.length ? 'failed' : 'passed',
     missing.length
       ? 'v1 文档事实源口径缺少 current 主事实源或 compat 旁路边界。'
-      : 'v1 文档已声明三类 current 主事实源和 compat 旁路边界。',
+      : 'v1 文档已声明知识地图、生成流程和生产交接行动记录事实源边界。',
     missing.length ? { missing } : {},
   );
 }
@@ -285,12 +319,10 @@ async function checkV1UserFacingCopyGate(repoRoot, checks) {
   const required = [
     ['copy-audit-content-map', auditScript.includes("path: 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'")],
     ['copy-audit-review-tasks', auditScript.includes("path: 'src/renderer/src/components/modules/ContentReviewTasksModule.tsx'")],
-    ['copy-audit-brand-command', auditScript.includes("path: 'src/renderer/src/components/modules/BrandCommandCenterModule.tsx'")],
     ['copy-audit-prompt-workbench', auditScript.includes("path: 'src/renderer/src/components/modules/PromptWorkbenchModule.tsx'")],
-    ['copy-audit-workflow-runner', auditScript.includes("path: 'src/renderer/src/components/modules/WorkflowFeatureModule.tsx'") && auditScript.includes('...v1BusinessModuleRules()')],
     ['copy-audit-engineering-terms', auditScript.includes('visible-ontology-engineering-term') && auditScript.includes('PromptGroundingContext') && auditScript.includes('DecisionGate')],
     ['functional-runs-copy-audit', functional.includes('v2 UX 文案审计会阻断普通用户可见工程词回退') && functional.includes('buildV2UxCopyAudit()')],
-    ['docs-ac13-copy-scope', acceptancePlan.includes('Prompt 工作台') && acceptancePlan.includes('SOP 执行页') && completionAudit.includes('Prompt 工作台和 SOP 执行页')],
+    ['docs-ac13-copy-scope', acceptancePlan.includes('Prompt 工作台') && acceptancePlan.includes('知识地图') && completionAudit.includes('Prompt 工作台')],
     ['copy-audit-runs-v1-modules', copyAuditReport.summary.passed && copyAuditReport.summary.files === V1_USER_FACING_COPY_AUDIT_PATHS.length],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
@@ -301,7 +333,7 @@ async function checkV1UserFacingCopyGate(repoRoot, checks) {
     missing.length || failures.length ? 'failed' : 'passed',
     missing.length || failures.length
       ? 'v1 普通用户主路径文案门禁缺少模块覆盖、工程词规则、功能测试或文档证据。'
-      : 'v1 普通用户主路径文案门禁已覆盖知识地图、审核台、品牌战情室、Prompt 工作台和 SOP 执行页。',
+      : 'v1 普通用户主路径文案门禁已覆盖知识地图、审核台和 Prompt 工作台。',
     {
       files: copyAuditReport.summary.files,
       rules: copyAuditReport.summary.rules,
@@ -314,15 +346,11 @@ async function checkV1UserFacingCopyGate(repoRoot, checks) {
 async function checkTeamKnowledgePromptHandoff(repoRoot, checks) {
   const servicePath = resolve(repoRoot, 'src/main/services/contentTeamKnowledgePromptDraftService.ts');
   const rendererPath = resolve(repoRoot, 'src/renderer/src/app/useContentStudioApp.ts');
-  const workflowRendererPath = resolve(repoRoot, 'src/renderer/src/components/modules/WorkflowFeatureModule.tsx');
-  const moduleOutletPath = resolve(repoRoot, 'src/renderer/src/components/ModuleOutlet.tsx');
   const e2ePath = resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs');
   const functionalPath = resolve(repoRoot, 'tests/functional/content-flow.test.mjs');
   const files = {
     service: await readFile(servicePath, 'utf-8'),
     renderer: await readFile(rendererPath, 'utf-8'),
-    workflowRenderer: await readFile(workflowRendererPath, 'utf-8'),
-    moduleOutlet: await readFile(moduleOutletPath, 'utf-8'),
     e2e: await readFile(e2ePath, 'utf-8'),
     functional: await readFile(functionalPath, 'utf-8'),
   };
@@ -334,10 +362,6 @@ async function checkTeamKnowledgePromptHandoff(repoRoot, checks) {
     ['renderer-uses-main-action', files.renderer.includes('createTeamKnowledgePromptDraft({') && !files.renderer.includes('buildTeamKnowledgePromptContent')],
     ['e2e-clicks-package-action', files.e2e.includes('content-map-package-content button') && files.e2e.includes('BreezeGo Air 团队知识包 v1.4 / Prompt 依据')],
     ['functional-covers-main-service', files.functional.includes('团队知识包详情页交接会在主进程生成带版本依据的 Prompt 草稿')],
-    ['sop-runner-release-picker', files.workflowRenderer.includes('workflow-team-release-picker') && files.workflowRenderer.includes('本次 SOP 口径版本') && files.workflowRenderer.includes('selectedTeamReleaseRef')],
-    ['sop-controller-explicit-release', files.renderer.includes('teamKnowledgeRelease?: ContentKnowledgeReleaseReference | null') && files.renderer.includes('teamKnowledgeRelease === undefined')],
-    ['sop-module-passes-releases', files.moduleOutlet.includes('teamKnowledgePackageVersions={app.contentKnowledgeReleases}') && files.moduleOutlet.includes('app.startWorkflowRun(definitionId, inputs, inputSourceIds, teamKnowledgeRelease)')],
-    ['functional-covers-sop-explicit-release', files.functional.includes('SOP 执行可以显式选择团队知识包版本') && files.functional.includes('release-sop-selected-1')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
   addCheck(
@@ -564,31 +588,23 @@ async function checkProductionHandoffGate(repoRoot, checks) {
     service: await readFile(resolve(repoRoot, 'src/main/services/contentProductionHandoffService.ts'), 'utf-8'),
     policy: await readFile(resolve(repoRoot, 'src/main/services/contentProductionHandoffPolicy.ts'), 'utf-8'),
     grounding: await readFile(resolve(repoRoot, 'src/main/services/promptGroundingAssembler.ts'), 'utf-8'),
-    commandService: await readFile(resolve(repoRoot, 'src/main/services/brandCommandCenterApplicationService.ts'), 'utf-8'),
     renderer: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8'),
-    commandRenderer: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/BrandCommandCenterModule.tsx'), 'utf-8'),
     functional: await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8'),
     e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
     workflowDocs: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/workflow-integration.md'), 'utf-8'),
     audit: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/completion-audit.md'), 'utf-8'),
   };
   const required = [
-    ['service-creates-three-targets', files.service.includes('promptDrafts.createFromContent') && files.service.includes('sceneCards.createFromContent') && files.service.includes('workflows.startRun')],
+    ['service-creates-current-targets', files.service.includes('promptDrafts.createFromContent') && files.service.includes('sceneCards.createFromContent') && !files.service.includes('workflows.startRun')],
     ['service-map-scoped-release', files.service.includes("published.find((release) => release.contentKnowledgeMapId === map.id)") && !files.service.includes('|| published[0]')],
-    ['service-blocked-action-record', files.service.includes("actionType: 'blocked'") && files.service.includes('appendToBrandCommandCenter')],
+    ['service-blocked-action-record', files.service.includes("actionType: 'blocked'") && files.service.includes('syncProductionHandoffActions')],
     ['policy-review-evidence-boundary', files.policy.includes("candidate.task.status === 'approved'") && files.policy.includes('candidate.readyEvidence.length') && files.policy.includes('isCompetitorMatrixRow') && files.policy.includes('contentMatrixRiskIssues')],
     ['grounding-minimal-context', files.grounding.includes('readyEvidence') && files.grounding.includes('clip(') && files.grounding.includes('sourceRefs')],
-    ['renderer-row-actions', files.renderer.includes("onCreateHandoff(row.id, 'prompt-draft')") && files.renderer.includes("onCreateHandoff(row.id, 'scene-card')") && files.renderer.includes("onCreateHandoff(row.id, 'sop-run')")],
-    ['brand-command-real-targets', files.commandService.includes("effectiveQueueItem.actionType === 'generate-prompt-draft'") && files.commandService.includes("effectiveQueueItem.actionType === 'create-scene-card'") && files.commandService.includes("effectiveQueueItem.actionType === 'launch-sop-run'")],
-    ['brand-command-team-release-binding', (files.commandService.includes('selectTeamRelease(await this.releases.list(input.workspacePath), sourceMap)') || files.commandService.includes('selectTeamRelease(await releases.list(input.workspacePath), sourceMap)')) && files.commandService.includes('teamKnowledgeRelease: promptDraft?.teamKnowledgeRelease ?? workflowRun?.teamKnowledgeRelease ?? teamKnowledgeRelease') && files.commandService.includes("published.find((release) => release.contentKnowledgeMapId === map.id)")],
-    ['renderer-shows-brand-command-team-release', files.commandRenderer.includes('record.teamKnowledgeRelease') && files.commandRenderer.includes('团队知识包：')],
+    ['renderer-row-actions', files.renderer.includes("onCreateHandoff(row.id, 'prompt-draft')") && files.renderer.includes("onCreateHandoff(row.id, 'scene-card')") && !files.renderer.includes("onCreateHandoff(row.id, 'sop-run')")],
     ['functional-covers-prompt-release', files.functional.includes('生产交接会把团队知识包版本绑定到 Prompt 草稿')],
     ['functional-covers-map-scoped-release', files.functional.includes('生产交接不会把其他内容知识地图的团队知识包误绑定到本机草稿')],
-    ['functional-covers-sop-run', files.functional.includes('生产交接能把审核通过组合创建为 SOP 运行记录') && files.functional.includes('生产交接启动 SOP 会经过真实 WorkflowEngine 并生成步骤产物')],
     ['functional-covers-blocked-record', files.functional.includes('生产交接被发布检查拦截时也会写入行动记录')],
-    ['functional-covers-brand-command-targets', files.functional.includes('品牌作战 create-scene-card 动作会生成真实场景卡并回填资源包') && files.functional.includes('品牌作战 launch-sop-run 动作会创建真实 SOP 运行并回填资源包')],
-    ['functional-covers-brand-command-release-scope', files.functional.includes('品牌作战行动记录能追加到团队工作区') && files.functional.includes('品牌作战不会把其他内容知识地图的团队知识包误绑定到队列产物')],
-    ['e2e-clicks-row-handoff', files.e2e.includes("filter({ hasText: '生成 Prompt 草稿' }).click()") && files.e2e.includes("filter({ hasText: '生成场景卡' }).click()") && files.e2e.includes("filter({ hasText: '启动 SOP' }).click()")],
+    ['e2e-clicks-row-handoff', files.e2e.includes("filter({ hasText: '生成 Prompt 草稿' }).click()") && files.e2e.includes("filter({ hasText: '生成场景卡' }).click()") && !files.e2e.includes("filter({ hasText: '启动 SOP' }).click()")],
     ['docs-audit-production-handoff', files.workflowDocs.includes('每次生产交接必须写行动记录') && files.audit.includes('生产交接闭环门禁')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
@@ -597,8 +613,8 @@ async function checkProductionHandoffGate(repoRoot, checks) {
     'production-handoff-gate',
     missing.length ? 'failed' : 'passed',
     missing.length
-      ? '生产交接闭环缺少地图行交接、发布检查、团队知识包版本边界、真实下游产物、行动记录或回归证据。'
-      : '生产交接闭环已覆盖地图行交接、发布检查、团队知识包版本边界、真实下游产物、行动记录和回归证据。',
+      ? '生产交接闭环缺少地图行交接、发布检查、团队知识包版本边界、Prompt / 场景下游产物、行动记录或回归证据。'
+      : '生产交接闭环已覆盖地图行交接、发布检查、团队知识包版本边界、Prompt / 场景下游产物、行动记录和回归证据。',
     missing.length ? { missing } : {},
   );
 }
@@ -701,29 +717,107 @@ async function checkAgentKnowledgePackFilePreviewGate(repoRoot, checks) {
   );
 }
 
-async function checkBrandCommandMaterialGapList(repoRoot, checks) {
-  const service = await readFile(resolve(repoRoot, 'src/main/services/brandCommandCenterApplicationService.ts'), 'utf-8');
-  const shared = await readFile(resolve(repoRoot, 'src/shared/types.ts'), 'utf-8');
-  const renderer = await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/BrandCommandCenterModule.tsx'), 'utf-8');
-  const adapter = await readFile(resolve(repoRoot, 'src/main/services/buguContentWorkspaceSyncAdapter.ts'), 'utf-8');
-  const functional = await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8');
+async function checkRetiredBrandCommandRuntimeGate(repoRoot, checks) {
+  const existingRetiredFiles = [];
+  for (const relativePath of RETIRED_BRAND_COMMAND_PATHS) {
+    if (await fileExists(resolve(repoRoot, relativePath))) existingRetiredFiles.push(relativePath);
+  }
+  const files = {
+    ipc: await readFile(resolve(repoRoot, 'src/main/ipc.ts'), 'utf-8'),
+    preload: await readFile(resolve(repoRoot, 'src/preload/index.ts'), 'utf-8'),
+    shared: await readFile(resolve(repoRoot, 'src/shared/types.ts'), 'utf-8'),
+    appHook: await readFile(resolve(repoRoot, 'src/renderer/src/app/useContentStudioApp.ts'), 'utf-8'),
+    devBridge: await readFile(resolve(repoRoot, 'src/renderer/src/devContentStudioBridge.ts'), 'utf-8'),
+    adapter: await readFile(resolve(repoRoot, 'src/main/services/buguContentWorkspaceSyncAdapter.ts'), 'utf-8'),
+    functional: await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8'),
+    e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
+    uxAudit: await readFile(resolve(repoRoot, 'scripts/v2-ux-copy-audit.mjs'), 'utf-8'),
+  };
+  const joinedRuntime = [
+    files.ipc,
+    files.preload,
+    files.shared,
+    files.appHook,
+    files.devBridge,
+    files.functional,
+    files.e2e,
+  ].join('\n');
   const required = [
-    ['service-writes-material-gap-package', service.includes('brand-command-material-gaps') && service.includes('material-gap-list.md') && service.includes('material-gap-list.json')],
-    ['service-material-gap-schema', service.includes('buguai.brand-command.material-gap-list.v1')],
-    ['shared-action-artifacts', shared.includes('artifactRefs?: string[]')],
-    ['renderer-shows-artifacts', renderer.includes('交付物：') && renderer.includes('artifactRefs')],
-    ['adapter-redacts-local-artifacts', adapter.includes('redactedLocalRefs') && adapter.includes('[本机工作区]')],
-    ['functional-covers-material-gap-files', functional.includes('material-gap-list.json') && functional.includes('buguai.brand-command.material-gap-list.v1')],
+    ['retired-files-removed', existingRetiredFiles.length === 0],
+    ['runtime-api-removed', !/(BrandCommand|brandCommand|listBrandCommandCenters|buildBrandCommandCenter|brandCommandCenters:)/.test(joinedRuntime)],
+    ['bugu-command-center-route-removed', !files.adapter.includes('content-command-centers') && !files.functional.includes('content-command-centers') && !files.e2e.includes('content-command-centers')],
+    ['bugu-execution-queue-route-removed', !files.functional.includes('content-execution-queue') && !files.e2e.includes('content-execution-queue')],
+    ['handoff-action-record-route-kept', files.adapter.includes("'content-action-records'") && files.adapter.includes('syncProductionHandoffActions')],
+    ['ux-audit-guards-retired-entry', files.uxAudit.includes('retiredBrandCommandEntryRules')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
   addCheck(
     checks,
-    'brand-command-material-gap-list',
+    'retired-brand-command-runtime-gate',
     missing.length ? 'failed' : 'passed',
     missing.length
-      ? '品牌战情室补素材动作缺少真实交付文件、路径脱敏、UI 展示或回归证据。'
-      : '品牌战情室补素材动作会生成真实补素材清单文件，行动记录可追溯且同步 payload 已脱敏。',
-    missing.length ? { missing } : {},
+      ? '旧品牌作战运行时退役不完整，仍存在旧文件、旧 API、旧路由或缺少防回流守卫。'
+      : '旧品牌作战运行时已退役，客户端收敛到内容制造 / 生产交接行动记录事实源。',
+    {
+      ...(existingRetiredFiles.length ? { existingRetiredFiles } : {}),
+      ...(missing.length ? { missing } : {}),
+    },
+  );
+}
+
+async function checkRetiredSopWorkflowRuntimeGate(repoRoot, checks) {
+  const existingRetiredFiles = [];
+  for (const relativePath of RETIRED_SOP_WORKFLOW_PATHS) {
+    if (await fileExists(resolve(repoRoot, relativePath))) existingRetiredFiles.push(relativePath);
+  }
+  const files = {
+    ipc: await readFile(resolve(repoRoot, 'src/main/ipc.ts'), 'utf-8'),
+    preload: await readFile(resolve(repoRoot, 'src/preload/index.ts'), 'utf-8'),
+    shared: await readFile(resolve(repoRoot, 'src/shared/types.ts'), 'utf-8'),
+    appTypes: await readFile(resolve(repoRoot, 'src/renderer/src/app/types.ts'), 'utf-8'),
+    constants: await readFile(resolve(repoRoot, 'src/renderer/src/app/constants.ts'), 'utf-8'),
+    registry: await readFile(resolve(repoRoot, 'src/renderer/src/app/v2FeatureRegistry.ts'), 'utf-8'),
+    moduleOutlet: await readFile(resolve(repoRoot, 'src/renderer/src/components/ModuleOutlet.tsx'), 'utf-8'),
+    sidebar: await readFile(resolve(repoRoot, 'src/renderer/src/components/AppSidebar.tsx'), 'utf-8'),
+    devBridge: await readFile(resolve(repoRoot, 'src/renderer/src/devContentStudioBridge.ts'), 'utf-8'),
+    functional: await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8'),
+    e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
+    uxAudit: await readFile(resolve(repoRoot, 'scripts/v2-ux-copy-audit.mjs'), 'utf-8'),
+  };
+  const runtimeText = [
+    files.ipc,
+    files.preload,
+    files.shared,
+    files.appTypes,
+    files.constants,
+    files.registry,
+    files.moduleOutlet,
+    files.sidebar,
+    files.devBridge,
+    files.functional,
+    files.e2e,
+  ].join('\n');
+  const required = [
+    ['retired-files-removed', existingRetiredFiles.length === 0],
+    ['runtime-classes-removed', !/\bWorkflowFeatureModule\b|\bWorkflowStore\b|\bWorkflowEngine\b/.test(runtimeText)],
+    ['workflow-ipc-removed', !/workflow:(?:list|create|update|start|record)|listWorkflowDefinitions|createWorkflowDraft|updateWorkflowDefinition|listWorkflowRuns|startWorkflowRun|recordWorkflowManualEvent/.test(runtimeText)],
+    ['module-keys-removed', !/assets-sop|workflow-definition|workflow-canvas/.test(runtimeText)],
+    ['handoff-sop-run-removed', !/sop-run|prompt-scene-sop|launch-sop-run/.test(runtimeText)],
+    ['e2e-does-not-click-sop-module', !files.e2e.includes("clickNavItem(page, 'SOP 工作流')") && !files.e2e.includes("hasText: '启动 SOP'")],
+    ['ux-audit-guards-retired-sop-entry', files.uxAudit.includes('retiredSopWorkflowEntryRules')],
+  ];
+  const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
+  addCheck(
+    checks,
+    'retired-sop-workflow-runtime-gate',
+    missing.length ? 'failed' : 'passed',
+    missing.length
+      ? '旧 SOP 工作流运行时退役不完整，仍存在旧文件、旧 IPC、旧路由、旧交接目标或缺少防回流守卫。'
+      : '旧 SOP 工作流运行时已退役，客户端收敛到 Prompt、场景卡、内容制造批次和生产交接行动记录。',
+    {
+      ...(existingRetiredFiles.length ? { existingRetiredFiles } : {}),
+      ...(missing.length ? { missing } : {}),
+    },
   );
 }
 
@@ -854,13 +948,13 @@ async function checkTeamWorkflowPresenceGate(repoRoot, checks) {
     functional: await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8'),
   };
   const required = [
-    ['online-verifier-checks-team-workflow-presence', files.onlineVerifier.includes('review-task-list-present') && files.onlineVerifier.includes('execution-queue-list-present') && files.onlineVerifier.includes('action-record-list-present')],
-    ['report-verifier-checks-team-workflow-presence', files.reportVerifier.includes('team-review-present') && files.reportVerifier.includes('team-queue-present') && files.reportVerifier.includes('team-action-present')],
-    ['report-schema-requires-team-workflow-presence', /"reviewTaskCount"\s*:\s*\{\s*"type"\s*:\s*"number",\s*"exclusiveMinimum"\s*:\s*0/s.test(files.reportSchema) && /"executionQueueCount"\s*:\s*\{\s*"type"\s*:\s*"number",\s*"exclusiveMinimum"\s*:\s*0/s.test(files.reportSchema) && /"actionRecordCount"\s*:\s*\{\s*"type"\s*:\s*"number",\s*"exclusiveMinimum"\s*:\s*0/s.test(files.reportSchema)],
-    ['report-readme-docs-team-workflow-presence', files.reportReadme.includes('reviewTaskCount') && files.reportReadme.includes('executionQueueCount') && files.reportReadme.includes('actionRecordCount') && files.reportReadme.includes('都必须大于 0')],
-    ['audit-docs-team-workflow-gate', files.audit.includes('团队共享在线验收会拒绝空的团队审核任务和执行队列') && files.audit.includes('team-review-present') && files.audit.includes('team-queue-present') && files.audit.includes('team-action-present')],
-    ['functional-covers-empty-team-workflow-online-gate', files.functional.includes('团队共享在线验收会拒绝空的团队审核任务和执行队列') && files.functional.includes('review-task-list-present') && files.functional.includes('execution-queue-list-present') && files.functional.includes('action-record-list-present')],
-    ['functional-covers-team-workflow-report-gate', files.functional.includes('missingReviewReport') && files.functional.includes('team-review-present') && files.functional.includes('missingQueueReport') && files.functional.includes('team-queue-present') && files.functional.includes('team-action-present')],
+    ['online-verifier-checks-team-workflow-presence', files.onlineVerifier.includes('review-task-list-present') && files.onlineVerifier.includes('action-record-list-present')],
+    ['report-verifier-checks-team-workflow-presence', files.reportVerifier.includes('team-review-present') && files.reportVerifier.includes('team-action-present')],
+    ['report-schema-requires-team-workflow-presence', /"reviewTaskCount"\s*:\s*\{\s*"type"\s*:\s*"number",\s*"exclusiveMinimum"\s*:\s*0/s.test(files.reportSchema) && /"actionRecordCount"\s*:\s*\{\s*"type"\s*:\s*"number",\s*"exclusiveMinimum"\s*:\s*0/s.test(files.reportSchema) && /"releaseCount"\s*:\s*\{\s*"type"\s*:\s*"number",\s*"exclusiveMinimum"\s*:\s*0/s.test(files.reportSchema) && !files.reportSchema.includes('executionQueueCount') && !files.reportSchema.includes('commandCenterCount')],
+    ['report-readme-docs-team-workflow-presence', files.reportReadme.includes('reviewTaskCount') && files.reportReadme.includes('actionRecordCount') && files.reportReadme.includes('都必须大于 0') && !files.reportReadme.includes('executionQueueCount') && !files.reportReadme.includes('commandCenterCount')],
+    ['audit-docs-team-workflow-gate', files.audit.includes('团队共享在线验收会拒绝空的团队审核任务和行动记录') && files.audit.includes('team-review-present') && files.audit.includes('team-action-present')],
+    ['functional-covers-empty-team-workflow-online-gate', files.functional.includes('团队共享在线验收会拒绝空的团队审核任务和行动记录') && files.functional.includes('review-task-list-present') && files.functional.includes('action-record-list-present')],
+    ['functional-covers-team-workflow-report-gate', files.functional.includes('missingReviewReport') && files.functional.includes('team-review-present') && files.functional.includes('missingActionReport') && files.functional.includes('team-action-present')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
   addCheck(
@@ -868,8 +962,8 @@ async function checkTeamWorkflowPresenceGate(repoRoot, checks) {
     'team-workflow-presence-gate',
     missing.length ? 'failed' : 'passed',
     missing.length
-      ? '团队审核任务、执行队列和行动记录缺少非空在线验收、生产报告、schema、文档或回归门禁。'
-      : '团队审核任务、执行队列和行动记录已作为 v1 必备团队业务事实纳入在线验收、生产报告、schema、文档和回归门禁。',
+      ? '团队审核任务和生产交接行动记录缺少非空在线验收、生产报告、schema、文档或回归门禁。'
+      : '团队审核任务和生产交接行动记录已作为 v1 必备团队业务事实纳入在线验收、生产报告、schema、文档和回归门禁。',
     missing.length ? { missing } : {},
   );
 }
@@ -897,33 +991,27 @@ async function checkBuguKnowledgeMapFactSource(repoRoot, checks, options = {}) {
     onlineVerifier: await readFile(resolve(repoRoot, 'scripts/verify-content-team-sharing-online.mjs'), 'utf-8'),
     functional: await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8'),
     e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
-    commandService: await readFile(resolve(repoRoot, 'src/main/services/brandCommandCenterApplicationService.ts'), 'utf-8'),
     serverPlan: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/server-integration-plan.md'), 'utf-8'),
     moduleDesign: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/module-design.md'), 'utf-8'),
     teamSharingPlan: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/team-sharing-plan.md'), 'utf-8'),
   };
   const required = [
-    ['bugu-store-arrays', files.store.includes('contentKnowledgeMaps') && files.store.includes('contentBuildRuns') && files.store.includes('contentCommandCenters')],
-    ['bugu-service-serializers', files.service.includes('serializeKnowledgeMap') && files.service.includes('serializeBuildRun') && files.service.includes('serializeCommandCenter')],
-    ['bugu-service-methods', files.service.includes('upsertKnowledgeMap') && files.service.includes('appendBuildRun') && files.service.includes('upsertCommandCenter')],
-    ['bugu-routes', files.route.includes('/api/v1/oem/content-knowledge-maps') && files.route.includes('/api/v1/oem/content-build-runs') && files.route.includes('/api/v1/oem/content-command-centers')],
-    ['bugu-smoke-covers-routes', files.smoke.includes('/api/v1/oem/content-knowledge-maps') && files.smoke.includes('/api/v1/oem/content-build-runs') && files.smoke.includes('/api/v1/oem/content-command-centers')],
-    ['desktop-adapter-covers-routes', files.adapter.includes("post<BuguContentKnowledgeMapResult>('content-knowledge-maps'") && files.adapter.includes("post<BuguContentBuildRunResult>('content-build-runs'") && files.adapter.includes("post<BuguContentCommandCenterResult>('content-command-centers'")],
-    ['desktop-adapter-pulls-current-sources', files.adapter.includes('async listKnowledgeMaps') && files.adapter.includes('async listBuildRuns') && files.adapter.includes('async listCommandCenters') && files.adapter.includes("this.listItems<BuguContentKnowledgeMap>('content-knowledge-maps'") && files.adapter.includes("this.listItems<BuguContentBuildRun>('content-build-runs'") && files.adapter.includes("this.listItems<BuguContentCommandCenter>('content-command-centers'")],
-    ['desktop-app-service-syncs', files.appService.includes('upsertKnowledgeMapSnapshot') && files.appService.includes('appendBuildRun') && files.commandService.includes('upsertCommandCenterSnapshot')],
-    ['desktop-list-refreshes-current-sources', files.appService.includes('refreshTeamKnowledgeMaps') && files.appService.includes('refreshTeamBuildRuns') && files.commandService.includes('refreshTeamCommandCenters')],
-    ['online-verifier-requires-current-source-presence', files.onlineVerifier.includes('knowledge-map-list-present') && files.onlineVerifier.includes('build-run-list-present') && files.onlineVerifier.includes('command-center-list-present')],
+    ['bugu-store-arrays', files.store.includes('contentKnowledgeMaps') && files.store.includes('contentBuildRuns')],
+    ['bugu-service-serializers', files.service.includes('serializeKnowledgeMap') && files.service.includes('serializeBuildRun')],
+    ['bugu-service-methods', files.service.includes('upsertKnowledgeMap') && files.service.includes('appendBuildRun')],
+    ['bugu-routes', files.route.includes('/api/v1/oem/content-knowledge-maps') && files.route.includes('/api/v1/oem/content-build-runs') && files.route.includes('/api/v1/oem/content-action-records')],
+    ['bugu-smoke-covers-routes', files.smoke.includes('/api/v1/oem/content-knowledge-maps') && files.smoke.includes('/api/v1/oem/content-build-runs')],
+    ['desktop-adapter-covers-routes', files.adapter.includes("post<BuguContentKnowledgeMapResult>('content-knowledge-maps'") && files.adapter.includes("post<BuguContentBuildRunResult>('content-build-runs'") && files.adapter.includes("'content-action-records'")],
+    ['desktop-app-service-syncs', files.appService.includes('upsertKnowledgeMapSnapshot') && files.appService.includes('appendBuildRun')],
+    ['desktop-list-refreshes-current-sources', files.appService.includes('refreshTeamKnowledgeMaps') && files.appService.includes('refreshTeamBuildRuns')],
+    ['online-verifier-requires-current-source-presence', files.onlineVerifier.includes('knowledge-map-list-present') && files.onlineVerifier.includes('build-run-list-present') && files.onlineVerifier.includes('action-record-list-present')],
     ['functional-covers-sync', files.functional.includes('内容知识地图构建会同步地图快照和生成流程到团队事实源')],
-    ['functional-covers-current-source-pull', files.functional.includes('内容知识地图列表会从 Bugu current 事实源刷新团队地图和生成流程') && files.functional.includes('品牌战情室列表会从 Bugu current 事实源刷新完整作战系统快照')],
-    ['functional-covers-empty-current-source-online-gate', files.functional.includes('团队共享在线验收会拒绝空的团队主事实源清单') && files.functional.includes('knowledge-map-list-present') && files.functional.includes('build-run-list-present') && files.functional.includes('command-center-list-present')],
-    ['e2e-covers-click-sync-routes', files.e2e.includes('content-knowledge-maps') && files.e2e.includes('content-build-runs') && files.e2e.includes('content-command-centers') && files.e2e.includes('CONTENT_STUDIO_BUGU_CONTENT_API_TOKEN') && files.e2e.includes("request.route === 'content-knowledge-maps'") && files.e2e.includes("request.route === 'content-build-runs'") && files.e2e.includes("request.route === 'content-command-centers'")],
-    ['e2e-covers-click-current-source-pull', files.e2e.includes('远端团队内容地图') && files.e2e.includes('远端团队生成流程') && files.e2e.includes('远端团队品牌作战系统') && files.e2e.includes("route === 'content-knowledge-maps' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'") && files.e2e.includes("route === 'content-build-runs' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'") && files.e2e.includes("route === 'content-command-centers' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'")],
-    ['e2e-covers-command-center-snapshot-actions', files.e2e.includes('等待 Bugu 品牌作战系统快照包含三类主动作') && files.e2e.includes('等待 Bugu 品牌作战系统快照包含三类真实队列交付') && files.e2e.includes('confirm-objectives') && files.e2e.includes('confirm-resource-bundles') && files.e2e.includes('sync-execution-queue') && files.e2e.includes('generate-prompt-draft') && files.e2e.includes('create-scene-card') && files.e2e.includes('launch-sop-run') && files.e2e.includes('write-back-material-coverage') && files.e2e.includes('sceneCardId') && files.e2e.includes('workflowRunId') && files.e2e.includes('materialCoverageChangeId') && files.e2e.includes('review-action-records') && files.e2e.includes('export-action-records')],
-    ['review-feedback-not-only-action-record', files.commandService.includes('buildReviewFeedbackDraft') && files.commandService.includes('行动记录复盘') && files.commandService.includes('syncExecutionQueue') && files.functional.includes('品牌战情室行动记录复盘会写入本机并同步团队记录') && files.functional.includes('复盘补资源队列已同步') && files.e2e.includes('等待 Bugu 品牌作战系统快照包含复盘反馈信号和补素材队列') && files.e2e.includes('复盘创建补素材清单') && files.e2e.includes('待补资源')],
-    ['command-center-current-local-newer-guard', files.commandService.includes('useLocalCommandSnapshot') && files.functional.includes('品牌战情室团队事实源刷新不会覆盖本机已同步的更新快照')],
-    ['functional-covers-command-center-sync', files.functional.includes('品牌战情室生成后能同步执行队列到团队工作区') && files.functional.includes('品牌内容作战系统已同步到测试团队事实源')],
-    ['docs-state-current-source', files.serverPlan.includes('content-knowledge-maps') && files.serverPlan.includes('content-build-runs') && files.serverPlan.includes('content-command-centers') && files.moduleDesign.includes('current 服务端事实源')],
-    ['docs-team-sharing-current-sources', files.teamSharingPlan.includes('content-knowledge-maps') && files.teamSharingPlan.includes('content-build-runs') && files.teamSharingPlan.includes('content-command-centers') && files.teamSharingPlan.includes('两账号必须分页完整看到非空且同一批知识地图、构建运行、品牌作战系统')],
+    ['functional-covers-current-source-pull', files.functional.includes('内容知识地图列表会从 Bugu current 事实源刷新团队地图和生成流程')],
+    ['functional-covers-empty-current-source-online-gate', files.functional.includes('团队共享在线验收会拒绝空的团队主事实源清单') && files.functional.includes('knowledge-map-list-present') && files.functional.includes('build-run-list-present') && files.functional.includes('action-record-list-present')],
+    ['e2e-covers-click-sync-routes', files.e2e.includes('content-knowledge-maps') && files.e2e.includes('content-build-runs') && files.e2e.includes('CONTENT_STUDIO_BUGU_CONTENT_API_TOKEN') && files.e2e.includes("request.route === 'content-knowledge-maps'") && files.e2e.includes("request.route === 'content-build-runs'")],
+    ['e2e-covers-click-current-source-pull', files.e2e.includes('远端团队内容地图') && files.e2e.includes('远端团队生成流程') && files.e2e.includes("route === 'content-knowledge-maps' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'") && files.e2e.includes("route === 'content-build-runs' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'")],
+    ['docs-state-current-source', files.serverPlan.includes('content-knowledge-maps') && files.serverPlan.includes('content-build-runs') && files.moduleDesign.includes('current 服务端事实源')],
+    ['docs-team-sharing-current-sources', files.teamSharingPlan.includes('content-knowledge-maps') && files.teamSharingPlan.includes('content-build-runs')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
   addCheck(
@@ -931,8 +1019,8 @@ async function checkBuguKnowledgeMapFactSource(repoRoot, checks, options = {}) {
     'bugu-knowledge-map-fact-source',
     missing.length ? 'failed' : 'passed',
     missing.length
-      ? 'Bugu 知识地图 / 构建运行 / 品牌作战系统服务端事实源缺少路由、存储、适配器、回归或文档证据。'
-      : 'Bugu 知识地图 / 构建运行 / 品牌作战系统已成为 current 服务端事实源，并有桌面适配器和回归证据。',
+      ? 'Bugu 知识地图 / 构建运行 / 生产交接行动记录事实源缺少路由、存储、适配器、回归或文档证据。'
+      : 'Bugu 知识地图 / 构建运行 / 生产交接行动记录已成为 current 事实源，并有桌面适配器和回归证据。',
     { buguRepoRoot, ...(missing.length ? { missing } : {}) },
   );
 }
@@ -991,7 +1079,8 @@ export async function verifyContentOntologyV1Readiness(options = {}) {
   await checkContentMatrixRiskPolicy(repoRoot, checks);
   await checkAgentKnowledgeExportInterop(repoRoot, checks);
   await checkAgentKnowledgePackFilePreviewGate(repoRoot, checks);
-  await checkBrandCommandMaterialGapList(repoRoot, checks);
+  await checkRetiredBrandCommandRuntimeGate(repoRoot, checks);
+  await checkRetiredSopWorkflowRuntimeGate(repoRoot, checks);
   await checkServerArtifactRefSafety(repoRoot, checks);
   await checkBuguServerPolicyGate(repoRoot, checks, {
     buguRepoRoot: options.buguRepoRoot,

@@ -8,6 +8,7 @@ import type {
   AgentRuntimePhase,
   ModelConfigView,
 } from '../../shared/types';
+import { resolveAuthorizationHeader } from './multimodalProviderUtils';
 import { buildClaudeSubprocessEnv, ensureClaudeConfig, resolveClaudeCodeExecutable } from '../services/claudeSdkRuntime';
 
 export class TextProviderBlockedError extends Error {
@@ -123,8 +124,8 @@ function isAuthError(message: string): boolean {
 }
 
 function textMaxTokens(): number {
-  const value = Number(process.env.CONTENT_STUDIO_TEXT_MAX_TOKENS ?? 8192);
-  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 8192;
+  const value = Number(process.env.CONTENT_STUDIO_TEXT_MAX_TOKENS ?? process.env.LLM_MAX_TOKENS ?? 16384);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 16384;
 }
 
 function ensureWorkspaceDirectory(workspacePath: string): void {
@@ -408,7 +409,7 @@ class OpenAIChatTextProvider implements JsonTextProvider {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
-          authorization: `Bearer ${runtime.apiKey}`,
+          authorization: resolveAuthorizationHeader(runtime.apiKey, endpoint),
           'content-type': 'application/json',
         },
         body: JSON.stringify({
@@ -418,6 +419,7 @@ class OpenAIChatTextProvider implements JsonTextProvider {
             { role: 'user', content: input.prompt },
           ],
           temperature: 0,
+          max_tokens: textMaxTokens(),
           response_format: { type: 'json_object' },
         }),
       });

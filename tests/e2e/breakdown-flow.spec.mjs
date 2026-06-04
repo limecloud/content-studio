@@ -17,9 +17,15 @@ const ONE_PIXEL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42
 function startVisionServer() {
   let requestCount = 0;
   const server = createServer((request, response) => {
+    const isGenerationRequest = request.method === 'POST' && request.url?.includes('/responses');
     let body = '';
     request.on('data', (chunk) => { body += chunk.toString(); });
     request.on('end', () => {
+      if (!isGenerationRequest) {
+        response.statusCode = 404;
+        response.end('not found');
+        return;
+      }
       requestCount += 1;
       if (requestCount === 1) {
         response.statusCode = 429;
@@ -152,7 +158,7 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
 
   // 确认拆解意图已有默认值
   const intentTextarea = page.locator('.ai-breakdown-intent');
-  await expect(intentTextarea).toHaveValue(/参考 SOP 示例图/);
+  await expect(intentTextarea).toHaveValue(/参考示例图/);
 
   // Step 3: 点击生成提示词（等待按钮 enabled 表示所有条件满足）
   const breakdownBtn = page.getByRole('button', { name: /生成提示词|重新生成提示词/ }).first();

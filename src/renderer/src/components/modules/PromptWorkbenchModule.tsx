@@ -82,11 +82,10 @@ interface PromptWorkbenchModuleProps {
   onOpenVideoPrompt: (draftId: string) => void;
   onUsePromptInArticle: (draftId: string, prompt: string) => void;
   onOpenGreenScreen: (draftId: string) => void;
-  onMaterializeDraftToSop: (input: { draftId: string; content: string }) => void;
   onMaterializeDraftToSkill: (input: { draftId: string; content: string }) => void;
   onRevealPath: (path: string) => void;
   onCopyPlatformDraft: (draftId: string) => void;
-  onOpenWorkflowRun: (workflowRunId: string) => void;
+  onOpenRunTrace: (runTraceId: string) => void;
   onOpenSourceLog: (sourceLogId: string) => void;
   onSelectModule: (module: ModuleKey) => void;
 }
@@ -102,7 +101,7 @@ const PURPOSE_OPTIONS: Array<{ value: PromptDraftPurpose; label: string }> = [
   { value: 'video', label: '视频 Prompt' },
   { value: 'article', label: '文案 Prompt' },
   { value: 'green-screen', label: '绿幕文案图' },
-  { value: 'sop', label: 'SOP 草案' },
+  { value: 'content-task', label: '内容任务' },
   { value: 'skill', label: 'Skill 草案' },
 ];
 
@@ -127,9 +126,13 @@ const PURPOSE_DEFAULTS: Record<PromptDraftPurpose, { title: string; userIntent: 
     title: '绿幕文案图 Prompt 草稿',
     userIntent: '生成适合拆成标题卡、卖点卡、金句卡和 CTA 卡的绿幕文案图 Prompt。',
   },
+  'content-task': {
+    title: '内容任务草稿',
+    userIntent: '把已跑通的方法整理为可复用内容任务，保留输入、输出和事实边界。',
+  },
   sop: {
-    title: 'SOP 草案',
-    userIntent: '把已跑通的方法整理为可发布运行的 SOP 草案，补齐输入、步骤、审核和导出规则。',
+    title: '方法草稿',
+    userIntent: '把已跑通的方法整理为可复用 Prompt 或 Skill 草稿，保留输入、输出和事实边界。',
   },
   skill: {
     title: 'Skill 草案',
@@ -138,12 +141,13 @@ const PURPOSE_DEFAULTS: Record<PromptDraftPurpose, { title: string; userIntent: 
 };
 
 const PURPOSE_SOURCE_PRIORITIES: Record<PromptDraftPurpose, InputSourcePurpose[]> = {
-  image: ['ip-scenario-kb', 'brand-kb', 'product-brief', 'user-feedback', 'competitor-observation', 'reference', 'successful-asset', 'sop-input'],
-  video: ['ip-scenario-kb', 'brand-kb', 'product-brief', 'user-feedback', 'competitor-observation', 'reference', 'successful-asset', 'sop-input'],
-  article: ['user-feedback', 'ip-scenario-kb', 'ip-kb', 'brand-kb', 'product-brief', 'competitor-observation', 'sop-input', 'successful-asset', 'reference'],
-  'green-screen': ['user-feedback', 'ip-scenario-kb', 'brand-kb', 'product-brief', 'competitor-observation', 'sop-input', 'successful-asset'],
-  sop: ['sop-input', 'user-feedback', 'brand-kb', 'ip-kb', 'ip-scenario-kb', 'product-brief', 'competitor-observation', 'successful-asset', 'reference'],
-  skill: ['sop-input', 'user-feedback', 'brand-kb', 'ip-kb', 'ip-scenario-kb', 'product-brief', 'competitor-observation', 'successful-asset', 'reference'],
+  image: ['ip-scenario-kb', 'brand-kb', 'product-brief', 'user-feedback', 'competitor-observation', 'reference', 'successful-asset', 'task-input', 'sop-input'],
+  video: ['ip-scenario-kb', 'brand-kb', 'product-brief', 'user-feedback', 'competitor-observation', 'reference', 'successful-asset', 'task-input', 'sop-input'],
+  article: ['user-feedback', 'ip-scenario-kb', 'ip-kb', 'brand-kb', 'product-brief', 'competitor-observation', 'task-input', 'sop-input', 'successful-asset', 'reference'],
+  'green-screen': ['user-feedback', 'ip-scenario-kb', 'brand-kb', 'product-brief', 'competitor-observation', 'task-input', 'sop-input', 'successful-asset'],
+  'content-task': ['task-input', 'sop-input', 'user-feedback', 'brand-kb', 'ip-kb', 'ip-scenario-kb', 'product-brief', 'competitor-observation', 'successful-asset', 'reference'],
+  sop: ['sop-input', 'task-input', 'user-feedback', 'brand-kb', 'ip-kb', 'ip-scenario-kb', 'product-brief', 'competitor-observation', 'successful-asset', 'reference'],
+  skill: ['task-input', 'sop-input', 'user-feedback', 'brand-kb', 'ip-kb', 'ip-scenario-kb', 'product-brief', 'competitor-observation', 'successful-asset', 'reference'],
 };
 
 const STATUS_LABELS: Record<PromptDraftStatus, string> = {
@@ -179,6 +183,7 @@ const INPUT_SOURCE_PURPOSE_LABELS: Record<InputSourcePurpose, string> = {
   reference: '参考素材',
   'product-brief': '产品资料',
   'user-feedback': '评论 / 客服问题',
+  'task-input': '任务输入',
   'sop-input': '任务输入',
   'successful-asset': '成功素材',
 };
@@ -383,11 +388,10 @@ export function PromptWorkbenchModule({
   onOpenVideoPrompt,
   onUsePromptInArticle,
   onOpenGreenScreen,
-  onMaterializeDraftToSop,
   onMaterializeDraftToSkill,
   onRevealPath,
   onCopyPlatformDraft,
-  onOpenWorkflowRun,
+  onOpenRunTrace,
   onOpenSourceLog,
   onSelectModule,
 }: PromptWorkbenchModuleProps) {
@@ -945,7 +949,7 @@ export function PromptWorkbenchModule({
                 <StatusPill tone={modelStatusClass(activeDraft.model)}>{modelLabel(activeDraft.model)}</StatusPill>
                 <StatusPill tone={activeDraftTextProtocol ? 'ready' : 'idle'}>{textProtocolLabel(activeDraftTextProtocol)}</StatusPill>
                 {activeDraft.workflowRunId ? (
-                  <StatusPill tone="ready">已关联 SOP</StatusPill>
+                  <StatusPill tone="ready">已关联历史</StatusPill>
                 ) : null}
                 {activeDraft.teamKnowledgeRelease ? (
                   <StatusPill tone="ready">团队知识包</StatusPill>
@@ -1011,15 +1015,6 @@ export function PromptWorkbenchModule({
                     生成绿幕图
                   </button>
                 ) : null}
-                {activePurpose !== 'skill' ? (
-                  <button
-                    className="ghost small"
-                    disabled={!canUseCurrentDraft}
-                    onClick={() => activeDraft && onMaterializeDraftToSop({ draftId: activeDraft.id, content: draftContent })}
-                  >
-                    沉淀为 SOP
-                  </button>
-                ) : null}
                 {activePurpose === 'skill' ? (
                   <button
                     className="ghost small"
@@ -1054,7 +1049,7 @@ export function PromptWorkbenchModule({
                     copiedDraftId={copiedPlatformDraftId}
                     onRevealPath={onRevealPath}
                     onCopyPlatformDraft={onCopyPlatformDraft}
-                    onOpenWorkflowRun={onOpenWorkflowRun}
+                    onOpenRunTrace={onOpenRunTrace}
                     onOpenSourceLog={onOpenSourceLog}
                   />
                 </section>
@@ -1090,7 +1085,7 @@ export function PromptWorkbenchModule({
                 status={STATUS_LABELS[draft.status]}
                 statusTone={statusClass(draft.status)}
                 title={draft.title}
-                meta={`${PURPOSE_LABELS[draft.purpose]} · ${draft.versions.length} 个版本 · ${draft.inputSourceIds.length} 个输入源${draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}${draft.teamKnowledgeRelease ? ` · ${draft.teamKnowledgeRelease.version}` : ''}${draft.workflowRunId ? ' · 已关联 SOP' : ''} · ${modelLabel(draft.model)} · ${textProtocolLabel(draft.textProtocol)}`}
+                meta={`${PURPOSE_LABELS[draft.purpose]} · ${draft.versions.length} 个版本 · ${draft.inputSourceIds.length} 个输入源${draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}${draft.teamKnowledgeRelease ? ` · ${draft.teamKnowledgeRelease.version}` : ''}${draft.workflowRunId ? ' · 已关联历史' : ''} · ${modelLabel(draft.model)} · ${textProtocolLabel(draft.textProtocol)}`}
                 onClick={() => onSelectDraft(draft.id)}
               />
             ))}
@@ -1102,7 +1097,7 @@ export function PromptWorkbenchModule({
           <section className="panel prompt-source-footprint">
             <p className="eyebrow">来源追溯</p>
             <div className="workflow-run-steps">
-              {activeDraft?.workflowRunId ? <span>已关联 SOP</span> : null}
+              {activeDraft?.workflowRunId ? <span>已关联历史</span> : null}
               {activeDraft?.sceneCardIds?.length ? <span>场景卡：{activeDraft.sceneCardIds.length} 张</span> : null}
               {selectedSources.map((source) => (
                 <span key={source.id}>{source.title}</span>

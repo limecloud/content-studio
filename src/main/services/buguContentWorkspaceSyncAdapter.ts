@@ -2,15 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { basename, isAbsolute, relative } from 'node:path';
 import type {
-  BrandCommandActionRecord,
-  BrandCommandCenterRecord,
-  BrandCommandQueueItem,
   ContentProductionHandoffActionRecord,
   ContentDraftChange,
   ContentKnowledgeMapBuildRunRecord,
   ContentKnowledgeMapRecord,
   ContentKnowledgeRelease,
-  ContentKnowledgeReleaseReference,
   ContentKnowledgeMapTeamSyncSummary,
   ContentMaterialCoverageResult,
   ContentKnowledgeMapSourceSensitivitySummary,
@@ -57,24 +53,6 @@ export interface ContentReviewTaskSyncAdapter {
   }): Promise<ContentKnowledgeMapTeamSyncSummary>;
 }
 
-export interface BrandCommandActionSyncAdapter {
-  appendActionRecord(input: {
-    workspacePath: string;
-    commandCenterId: string;
-    record: BrandCommandActionRecord;
-    authorLabel?: string;
-  }): Promise<ContentKnowledgeMapTeamSyncSummary>;
-  listActionRecords?(input: {
-    workspacePath: string;
-    workspaceId?: string;
-    commandCenterId?: string;
-    limit?: number;
-  }): Promise<{
-    records: BrandCommandActionRecord[];
-    teamSync: ContentKnowledgeMapTeamSyncSummary;
-  }>;
-}
-
 export interface ContentProductionHandoffActionSyncAdapter {
   syncProductionHandoffActions(input: {
     workspacePath: string;
@@ -92,27 +70,6 @@ export interface ContentMaterialCoverageSyncAdapter {
     result: ContentMaterialCoverageResult;
     authorLabel?: string;
   }): Promise<ContentKnowledgeMapTeamSyncSummary>;
-}
-
-export interface BrandCommandExecutionQueueSyncAdapter {
-  syncExecutionQueue(input: {
-    workspacePath: string;
-    commandCenterId: string;
-    items: BrandCommandQueueItem[];
-    authorLabel?: string;
-  }): Promise<ContentKnowledgeMapTeamSyncSummary>;
-}
-
-export interface BrandCommandCenterSyncAdapter {
-  upsertCommandCenterSnapshot(input: {
-    record: BrandCommandCenterRecord;
-    authorLabel?: string;
-  }): Promise<ContentKnowledgeMapTeamSyncSummary>;
-  listCommandCenters?(input: {
-    workspacePath: string;
-    workspaceId?: string;
-    sourceKnowledgeMapId?: string;
-  }): Promise<BrandCommandCenterRecord[]>;
 }
 
 interface BuguEnvelope<T> {
@@ -146,15 +103,6 @@ interface BuguContentKnowledgeMapResult {
 interface BuguContentBuildRunResult {
   workspace?: BuguContentWorkspace | null;
   buildRun?: {
-    id?: string;
-    serverRevision?: string;
-    baseRevision?: string;
-  } | null;
-}
-
-interface BuguContentCommandCenterResult {
-  workspace?: BuguContentWorkspace | null;
-  commandCenter?: {
     id?: string;
     serverRevision?: string;
     baseRevision?: string;
@@ -275,35 +223,6 @@ interface BuguContentBuildRunListResult {
   revision?: string | number;
 }
 
-interface BuguContentCommandCenter {
-  id?: string;
-  workspaceId?: string;
-  title?: string;
-  status?: string;
-  sourceKnowledgeMapId?: string;
-  sourceKnowledgeMapTitle?: string;
-  signals?: unknown;
-  objectives?: unknown;
-  resourceBundles?: unknown;
-  campaignCells?: unknown;
-  queueSummary?: unknown;
-  actionSummary?: unknown;
-  constraints?: unknown;
-  gaps?: unknown;
-  baseRevision?: string;
-  serverRevision?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-interface BuguContentCommandCenterListResult {
-  items?: BuguContentCommandCenter[];
-  total?: number;
-  limit?: number;
-  offset?: number;
-  revision?: string | number;
-}
-
 interface BuguContentReviewTasksResult {
   workspace?: BuguContentWorkspace | null;
   items?: Array<{
@@ -326,7 +245,6 @@ interface BuguContentActionRecordsResult {
   workspace?: BuguContentWorkspace | null;
   items?: Array<{
     id?: string;
-    commandCenterId?: string;
     queueItemId?: string;
     campaignCellId?: string;
     actionType?: string;
@@ -341,7 +259,6 @@ interface BuguContentActionRecordsResult {
     promptDraftId?: string;
     sceneCardId?: string;
     workflowRunId?: string;
-    teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
     materialCoverageChangeId?: string;
     reviewTaskId?: string;
     artifactRefs?: string[];
@@ -359,15 +276,6 @@ interface BuguContentMaterialCoverageResult {
     serverRevision?: string;
     baseRevision?: string;
   } | null;
-}
-
-interface BuguContentExecutionQueueResult {
-  workspace?: BuguContentWorkspace | null;
-  items?: Array<{
-    id?: string;
-    serverRevision?: string;
-    baseRevision?: string;
-  }>;
 }
 
 interface BuguContentSyncConflict {
@@ -456,22 +364,6 @@ function redactedLocalText(value: string | undefined, workspacePath: string): st
   return redactedLocalRefs([value], workspacePath)?.[0];
 }
 
-function countByStatus<T extends { status?: string }>(items: T[]): Record<string, number> {
-  return items.reduce<Record<string, number>>((counts, item) => {
-    const status = item.status || 'unknown';
-    counts[status] = (counts[status] || 0) + 1;
-    return counts;
-  }, {});
-}
-
-function countByOutcome<T extends { outcome?: string }>(items: T[]): Record<string, number> {
-  return items.reduce<Record<string, number>>((counts, item) => {
-    const outcome = item.outcome || 'recorded';
-    counts[outcome] = (counts[outcome] || 0) + 1;
-    return counts;
-  }, {});
-}
-
 function knowledgeMapSnapshot(record: ContentKnowledgeMapRecord): Record<string, unknown> {
   return {
     title: record.title,
@@ -532,131 +424,6 @@ function knowledgeMapSnapshot(record: ContentKnowledgeMapRecord): Record<string,
     coverage: record.coverage,
     sourceSensitivity: record.sourceSensitivity,
     updatedAt: record.updatedAt,
-  };
-}
-
-function commandCenterSnapshot(record: BrandCommandCenterRecord): Record<string, unknown> {
-  const workspacePath = record.workspacePath;
-  const queueItems = record.queueItems.map((item) => ({
-    id: item.id,
-    campaignCellId: item.campaignCellId,
-    actionType: item.actionType,
-    title: redactedLocalText(item.title, workspacePath),
-    summary: redactedLocalText(item.summary, workspacePath),
-    status: item.status,
-    blockedReason: redactedLocalText(item.blockedReason, workspacePath),
-    recoveryAction: redactedLocalText(item.recoveryAction, workspacePath),
-    outputTarget: item.outputTarget,
-    resourceBundleId: item.resourceBundleId,
-    dimensions: item.dimensions,
-    syncStatus: item.syncStatus,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-  }));
-  const actionRecords = record.actionRecords.map((item) => ({
-    id: item.id,
-    queueItemId: item.queueItemId,
-    campaignCellId: item.campaignCellId,
-    actionType: item.actionType,
-    title: redactedLocalText(item.title, workspacePath),
-    outcome: item.outcome,
-    actorLabel: redactedLocalText(item.actorLabel, workspacePath),
-    actorRole: item.actorRole,
-    inputSummary: redactedLocalText(item.inputSummary, workspacePath),
-    outputSummary: redactedLocalText(item.outputSummary, workspacePath),
-    blockedReason: redactedLocalText(item.blockedReason, workspacePath),
-    writeBackSummary: redactedLocalText(item.writeBackSummary, workspacePath),
-    promptDraftId: item.promptDraftId,
-    sceneCardId: item.sceneCardId,
-    workflowRunId: item.workflowRunId,
-    teamKnowledgeRelease: item.teamKnowledgeRelease,
-    materialCoverageChangeId: item.materialCoverageChangeId,
-    reviewTaskId: item.reviewTaskId,
-    artifactRefs: redactedLocalRefs(item.artifactRefs, workspacePath),
-    syncStatus: item.syncStatus,
-    createdAt: item.createdAt,
-  }));
-  return {
-    signals: record.signals.map((item) => ({
-      id: item.id,
-      type: item.type,
-      title: redactedLocalText(item.title, workspacePath),
-      summary: redactedLocalText(item.summary, workspacePath),
-      sourceLabel: redactedLocalText(item.sourceLabel, workspacePath),
-      businessValue: item.businessValue,
-      evidenceReadiness: item.evidenceReadiness,
-      urgency: item.urgency,
-      riskLevel: item.riskLevel,
-      productionCost: item.productionCost,
-      recommendedObjectiveType: item.recommendedObjectiveType,
-      riskBoundary: redactedLocalText(item.riskBoundary, workspacePath),
-      relatedMapRowIds: item.relatedMapRowIds,
-    })),
-    objectives: record.objectives.map((item) => ({
-      id: item.id,
-      type: item.type,
-      title: redactedLocalText(item.title, workspacePath),
-      summary: redactedLocalText(item.summary, workspacePath),
-      priority: item.priority,
-      channels: item.channels,
-      dimensions: item.dimensions,
-      successCriteria: item.successCriteria.map((criterion) => redactedLocalText(criterion, workspacePath) || criterion),
-      signalIds: item.signalIds,
-    })),
-    resourceBundles: record.resourceBundles.map((item) => ({
-      id: item.id,
-      title: redactedLocalText(item.title, workspacePath),
-      objectiveId: item.objectiveId,
-      sourceKnowledgeMapId: item.sourceKnowledgeMapId,
-      coverageRowIds: item.coverageRowIds,
-      approvedCoverageRowIds: item.approvedCoverageRowIds,
-      sellingPointRefs: item.sellingPointRefs.map((ref) => redactedLocalText(ref, workspacePath) || ref),
-      evidenceRefs: item.evidenceRefs,
-      sceneRefs: item.sceneRefs.map((ref) => redactedLocalText(ref, workspacePath) || ref),
-      sceneCardIds: item.sceneCardIds,
-      promptDraftIds: item.promptDraftIds,
-      materialRefs: redactedLocalRefs(item.materialRefs, workspacePath),
-      sopRefs: item.sopRefs,
-      dimensions: item.dimensions,
-      constraints: item.constraints.map((constraint) => redactedLocalText(constraint, workspacePath) || constraint),
-      gaps: item.gaps.map((gap) => redactedLocalText(gap, workspacePath) || gap),
-      handoffStatus: item.handoffStatus,
-      handoffRefs: redactedLocalRefs(item.handoffRefs, workspacePath),
-      lastHandoffSummary: redactedLocalText(item.lastHandoffSummary, workspacePath),
-      lastBlockedReason: redactedLocalText(item.lastBlockedReason, workspacePath),
-      readyPercent: item.readyPercent,
-    })),
-    campaignCells: record.campaignCells.map((item) => ({
-      id: item.id,
-      title: redactedLocalText(item.title, workspacePath),
-      objectiveId: item.objectiveId,
-      ownerRole: redactedLocalText(item.ownerRole, workspacePath),
-      agentRole: redactedLocalText(item.agentRole, workspacePath),
-      channels: item.channels,
-      dimensions: item.dimensions,
-      timeWindow: item.timeWindow,
-      resourceBundleId: item.resourceBundleId,
-      decisionChecks: item.decisionChecks.map((check) => ({
-        key: check.key,
-        label: redactedLocalText(check.label, workspacePath),
-        status: check.status,
-        message: redactedLocalText(check.message, workspacePath),
-        recoveryAction: redactedLocalText(check.recoveryAction, workspacePath),
-      })),
-      queueItemIds: item.queueItemIds,
-    })),
-    queueSummary: {
-      total: queueItems.length,
-      statusCounts: countByStatus(queueItems),
-      items: queueItems,
-    },
-    actionSummary: {
-      total: actionRecords.length,
-      outcomeCounts: countByOutcome(actionRecords),
-      records: actionRecords,
-    },
-    constraints: record.constraints.map((constraint) => redactedLocalText(constraint, workspacePath) || constraint),
-    gaps: record.gaps.map((gap) => redactedLocalText(gap, workspacePath) || gap),
   };
 }
 
@@ -1084,364 +851,6 @@ function buildRunFromResult(input: {
   };
 }
 
-function brandSignalTypeFromResult(value: unknown): BrandCommandCenterRecord['signals'][number]['type'] {
-  const type = textValue(value);
-  if (
-    type === 'feedback-pain' ||
-    type === 'competitor-action' ||
-    type === 'trend' ||
-    type === 'ad-performance' ||
-    type === 'material-performance' ||
-    type === 'brand-risk'
-  ) {
-    return type;
-  }
-  return 'manual';
-}
-
-function brandObjectiveTypeFromResult(value: unknown): BrandCommandCenterRecord['objectives'][number]['type'] {
-  const type = textValue(value);
-  if (
-    type === 'acquisition' ||
-    type === 'conversion' ||
-    type === 'objection-handling' ||
-    type === 'trust-building' ||
-    type === 'price-defense' ||
-    type === 'risk-control' ||
-    type === 'evidence-gap' ||
-    type === 'material-gap' ||
-    type === 'retention'
-  ) {
-    return type;
-  }
-  return 'conversion';
-}
-
-function objectivePriorityFromResult(value: unknown): BrandCommandCenterRecord['objectives'][number]['priority'] {
-  const priority = textValue(value);
-  if (priority === 'P0' || priority === 'P2') return priority;
-  return 'P1';
-}
-
-function queueStatusFromResult(value: unknown): BrandCommandQueueItem['status'] {
-  const status = textValue(value);
-  if (
-    status === 'ready' ||
-    status === 'needs-review' ||
-    status === 'needs-resource' ||
-    status === 'handed-off' ||
-    status === 'written-back'
-  ) {
-    return status;
-  }
-  return 'blocked';
-}
-
-function outputTargetFromResult(value: unknown): BrandCommandQueueItem['outputTarget'] {
-  const target = textValue(value);
-  if (
-    target === 'prompt-draft' ||
-    target === 'scene-card' ||
-    target === 'review-task' ||
-    target === 'evidence-task' ||
-    target === 'sop-run' ||
-    target === 'material-gap' ||
-    target === 'material-coverage'
-  ) {
-    return target;
-  }
-  return 'prompt-draft';
-}
-
-function decisionCheckStatusFromResult(value: unknown): BrandCommandCenterRecord['campaignCells'][number]['decisionChecks'][number]['status'] {
-  const status = textValue(value);
-  if (status === 'needs-review' || status === 'needs-resource' || status === 'blocked') return status;
-  return 'passed';
-}
-
-function handoffStatusFromResult(value: unknown): BrandCommandCenterRecord['resourceBundles'][number]['handoffStatus'] {
-  const status = textValue(value);
-  if (status === 'handed-off' || status === 'blocked') return status;
-  if (status === 'none') return status;
-  return undefined;
-}
-
-function actorRoleFromResult(value: unknown): BrandCommandActionRecord['actorRole'] | undefined {
-  const role = textValue(value);
-  if (role === 'owner' || role === 'content-engineer' || role === 'reviewer' || role === 'operator' || role === 'viewer') return role;
-  return undefined;
-}
-
-function teamKnowledgeReleaseFromResult(value: unknown): ContentKnowledgeReleaseReference | undefined {
-  const item = objectValue(value);
-  const id = textValue(item.id);
-  const title = textValue(item.title);
-  const version = textValue(item.version);
-  if (!id || !title || !version) return undefined;
-  return {
-    id,
-    title,
-    version,
-    contentKnowledgeMapId: optionalTextValue(item.contentKnowledgeMapId),
-    contentKnowledgeMapTitle: optionalTextValue(item.contentKnowledgeMapTitle),
-    packageObjectKey: optionalTextValue(item.packageObjectKey),
-    packagePublicUrl: optionalTextValue(item.packagePublicUrl),
-    packageUploadStatus: optionalTextValue(item.packageUploadStatus),
-    approvalStatus: item.approvalStatus === 'pending' || item.approvalStatus === 'rejected' ? item.approvalStatus : 'approved',
-  };
-}
-
-function signalFromResult(value: unknown, fallbackIndex: number): BrandCommandCenterRecord['signals'][number] {
-  const item = objectValue(value);
-  return {
-    id: textValue(item.id, `signal-${fallbackIndex + 1}`),
-    type: brandSignalTypeFromResult(item.type),
-    title: textValue(item.title, '团队信号'),
-    summary: textValue(item.summary, '从 Bugu 团队事实源同步的信号。'),
-    sourceLabel: textValue(item.sourceLabel, '团队工作区'),
-    businessValue: numberValue(item.businessValue),
-    evidenceReadiness: numberValue(item.evidenceReadiness),
-    urgency: numberValue(item.urgency),
-    riskLevel: numberValue(item.riskLevel),
-    productionCost: numberValue(item.productionCost),
-    recommendedObjectiveType: brandObjectiveTypeFromResult(item.recommendedObjectiveType),
-    riskBoundary: textValue(item.riskBoundary),
-    relatedMapRowIds: stringArrayValue(item.relatedMapRowIds, 120),
-  };
-}
-
-function objectiveFromResult(value: unknown, fallbackIndex: number): BrandCommandCenterRecord['objectives'][number] {
-  const item = objectValue(value);
-  return {
-    id: textValue(item.id, `objective-${fallbackIndex + 1}`),
-    type: brandObjectiveTypeFromResult(item.type),
-    title: textValue(item.title, '团队目标'),
-    summary: textValue(item.summary, '从 Bugu 团队事实源同步的目标。'),
-    priority: objectivePriorityFromResult(item.priority),
-    channels: stringArrayValue(item.channels, 60),
-    dimensions: coverageDimensionsFromResult(item.dimensions),
-    successCriteria: stringArrayValue(item.successCriteria, 80),
-    signalIds: stringArrayValue(item.signalIds, 120),
-  };
-}
-
-function resourceBundleFromResult(value: unknown, fallbackIndex: number): BrandCommandCenterRecord['resourceBundles'][number] {
-  const item = objectValue(value);
-  return {
-    id: textValue(item.id, `bundle-${fallbackIndex + 1}`),
-    title: textValue(item.title, '团队资源包'),
-    objectiveId: textValue(item.objectiveId),
-    sourceKnowledgeMapId: optionalTextValue(item.sourceKnowledgeMapId),
-    coverageRowIds: stringArrayValue(item.coverageRowIds, 160),
-    approvedCoverageRowIds: stringArrayValue(item.approvedCoverageRowIds, 160),
-    sellingPointRefs: stringArrayValue(item.sellingPointRefs, 160),
-    evidenceRefs: stringArrayValue(item.evidenceRefs, 160),
-    sceneRefs: stringArrayValue(item.sceneRefs, 160),
-    sceneCardIds: stringArrayValue(item.sceneCardIds, 160),
-    promptDraftIds: stringArrayValue(item.promptDraftIds, 160),
-    materialRefs: stringArrayValue(item.materialRefs, 160),
-    sopRefs: stringArrayValue(item.sopRefs, 160),
-    dimensions: coverageDimensionsFromResult(item.dimensions),
-    constraints: stringArrayValue(item.constraints, 120),
-    gaps: stringArrayValue(item.gaps, 120),
-    handoffStatus: handoffStatusFromResult(item.handoffStatus),
-    handoffRefs: stringArrayValue(item.handoffRefs, 120),
-    lastHandoffSummary: optionalTextValue(item.lastHandoffSummary),
-    lastBlockedReason: optionalTextValue(item.lastBlockedReason),
-    readyPercent: numberValue(item.readyPercent),
-  };
-}
-
-function decisionCheckFromResult(value: unknown, fallbackIndex: number): BrandCommandCenterRecord['campaignCells'][number]['decisionChecks'][number] {
-  const item = objectValue(value);
-  return {
-    key: textValue(item.key, `check-${fallbackIndex + 1}`),
-    label: textValue(item.label, '团队检查项'),
-    status: decisionCheckStatusFromResult(item.status),
-    message: textValue(item.message, '从 Bugu 团队事实源同步的检查项。'),
-    recoveryAction: optionalTextValue(item.recoveryAction),
-  };
-}
-
-function campaignCellFromResult(value: unknown, fallbackIndex: number): BrandCommandCenterRecord['campaignCells'][number] {
-  const item = objectValue(value);
-  return {
-    id: textValue(item.id, `cell-${fallbackIndex + 1}`),
-    title: textValue(item.title, '团队作战单元'),
-    objectiveId: textValue(item.objectiveId),
-    ownerRole: textValue(item.ownerRole, '内容负责人'),
-    agentRole: textValue(item.agentRole, '内容工程 Agent'),
-    channels: stringArrayValue(item.channels, 60),
-    dimensions: coverageDimensionsFromResult(item.dimensions),
-    timeWindow: textValue(item.timeWindow, '本轮'),
-    resourceBundleId: textValue(item.resourceBundleId),
-    decisionChecks: arrayValue(item.decisionChecks).map(decisionCheckFromResult),
-    queueItemIds: stringArrayValue(item.queueItemIds, 160),
-  };
-}
-
-function queueItemFromResult(input: {
-  value: unknown;
-  fallbackIndex: number;
-  teamSync: ContentKnowledgeMapTeamSyncSummary;
-}): BrandCommandQueueItem {
-  const item = objectValue(input.value);
-  const now = new Date().toISOString();
-  return {
-    id: textValue(item.id, `queue-${input.fallbackIndex + 1}`),
-    campaignCellId: textValue(item.campaignCellId),
-    actionType: brandActionTypeFromResult(textValue(item.actionType)),
-    title: textValue(item.title, '团队队列动作'),
-    summary: textValue(item.summary, '从 Bugu 团队事实源同步的队列动作。'),
-    status: queueStatusFromResult(item.status),
-    blockedReason: optionalTextValue(item.blockedReason),
-    recoveryAction: optionalTextValue(item.recoveryAction),
-    outputTarget: outputTargetFromResult(item.outputTarget),
-    resourceBundleId: textValue(item.resourceBundleId),
-    dimensions: coverageDimensionsFromResult(item.dimensions),
-    syncStatus: 'synced',
-    teamSync: input.teamSync,
-    createdAt: textValue(item.createdAt, now),
-    updatedAt: textValue(item.updatedAt, textValue(item.createdAt, now)),
-  };
-}
-
-function actionRecordFromSnapshot(input: {
-  value: unknown;
-  fallbackIndex: number;
-  teamSync: ContentKnowledgeMapTeamSyncSummary;
-}): BrandCommandActionRecord {
-  const item = objectValue(input.value);
-  return {
-    id: textValue(item.id, `action-${input.fallbackIndex + 1}`),
-    queueItemId: optionalTextValue(item.queueItemId),
-    campaignCellId: optionalTextValue(item.campaignCellId),
-    actionType: brandActionTypeFromResult(textValue(item.actionType)),
-    title: textValue(item.title, '团队行动记录'),
-    outcome: brandActionOutcomeFromResult(textValue(item.outcome)),
-    actorLabel: textValue(item.actorLabel, '团队成员'),
-    actorRole: actorRoleFromResult(item.actorRole),
-    inputSummary: textValue(item.inputSummary),
-    outputSummary: textValue(item.outputSummary),
-    blockedReason: optionalTextValue(item.blockedReason),
-    writeBackSummary: optionalTextValue(item.writeBackSummary),
-    promptDraftId: optionalTextValue(item.promptDraftId),
-    sceneCardId: optionalTextValue(item.sceneCardId),
-    workflowRunId: optionalTextValue(item.workflowRunId),
-    teamKnowledgeRelease: teamKnowledgeReleaseFromResult(item.teamKnowledgeRelease),
-    materialCoverageChangeId: optionalTextValue(item.materialCoverageChangeId),
-    reviewTaskId: optionalTextValue(item.reviewTaskId),
-    artifactRefs: stringArrayValue(item.artifactRefs, 80),
-    syncStatus: 'synced',
-    teamSync: input.teamSync,
-    createdAt: textValue(item.createdAt, new Date().toISOString()),
-  };
-}
-
-function commandCenterFromResult(input: {
-  workspacePath: string;
-  item: BuguContentCommandCenter;
-  listRevision?: string | number;
-  fallbackWorkspaceId?: string;
-}): BrandCommandCenterRecord | null {
-  if (!input.item.id) return null;
-  const now = new Date().toISOString();
-  const teamSync = teamSyncFromListItem({
-    message: '已从 Bugu 团队事实源拉取品牌内容作战系统。',
-    workspaceId: input.item.workspaceId || input.fallbackWorkspaceId,
-    serverRevision: input.item.serverRevision,
-    baseRevision: input.item.baseRevision,
-    listRevision: input.listRevision,
-  });
-  const queueSummary = objectValue(input.item.queueSummary);
-  const actionSummary = objectValue(input.item.actionSummary);
-  return {
-    id: input.item.id,
-    workspacePath: input.workspacePath,
-    title: textValue(input.item.title, '团队品牌内容作战系统'),
-    status: input.item.status === 'draft' ||
-      input.item.status === 'needs-review' ||
-      input.item.status === 'blocked' ||
-      input.item.status === 'archived'
-      ? input.item.status
-      : 'active',
-    syncStatus: 'synced',
-    sourceKnowledgeMapId: optionalTextValue(input.item.sourceKnowledgeMapId),
-    sourceKnowledgeMapTitle: optionalTextValue(input.item.sourceKnowledgeMapTitle),
-    signals: arrayValue(input.item.signals).map(signalFromResult),
-    objectives: arrayValue(input.item.objectives).map(objectiveFromResult),
-    resourceBundles: arrayValue(input.item.resourceBundles).map(resourceBundleFromResult),
-    campaignCells: arrayValue(input.item.campaignCells).map(campaignCellFromResult),
-    queueItems: arrayValue(queueSummary.items).map((value, index) => queueItemFromResult({ value, fallbackIndex: index, teamSync })),
-    actionRecords: arrayValue(actionSummary.records).map((value, index) => actionRecordFromSnapshot({ value, fallbackIndex: index, teamSync })),
-    constraints: stringArrayValue(input.item.constraints, 200),
-    gaps: stringArrayValue(input.item.gaps, 200),
-    teamSync,
-    createdAt: input.item.createdAt || now,
-    updatedAt: input.item.updatedAt || now,
-  };
-}
-
-function brandActionTypeFromResult(value: string | undefined): BrandCommandActionRecord['actionType'] {
-  if (value === 'create-scene-card') return 'create-scene-card';
-  if (value === 'request-review') return 'request-review';
-  if (value === 'request-evidence') return 'request-evidence';
-  if (value === 'launch-sop-run') return 'launch-sop-run';
-  if (value === 'create-material-gap-list') return 'create-material-gap-list';
-  if (value === 'write-back-material-coverage') return 'write-back-material-coverage';
-  if (value === 'confirm-objectives') return 'confirm-objectives';
-  if (value === 'confirm-resource-bundles') return 'confirm-resource-bundles';
-  if (value === 'sync-execution-queue') return 'sync-execution-queue';
-  if (value === 'review-action-records') return 'review-action-records';
-  if (value === 'export-action-records') return 'export-action-records';
-  if (value === 'content-production-blocked') return 'content-production-blocked';
-  return 'generate-prompt-draft';
-}
-
-function brandActionOutcomeFromResult(value: string | undefined): BrandCommandActionRecord['outcome'] {
-  if (value === 'blocked') return 'blocked';
-  if (value === 'handoff') return 'handoff';
-  if (value === 'needs-review') return 'needs-review';
-  if (value === 'needs-resource') return 'needs-resource';
-  if (value === 'written-back') return 'written-back';
-  return 'recorded';
-}
-
-function actionRecordFromResult(input: {
-  item: NonNullable<BuguContentActionRecordsResult['items']>[number];
-  teamSync: ContentKnowledgeMapTeamSyncSummary;
-}): BrandCommandActionRecord | null {
-  if (!input.item.id) return null;
-  return {
-    id: input.item.id,
-    queueItemId: input.item.queueItemId,
-    campaignCellId: input.item.campaignCellId,
-    actionType: brandActionTypeFromResult(input.item.actionType),
-    title: input.item.title || '团队行动记录',
-    outcome: brandActionOutcomeFromResult(input.item.outcome),
-    actorLabel: input.item.actorLabel || '团队成员',
-    actorRole: input.item.actorRole as BrandCommandActionRecord['actorRole'] | undefined,
-    inputSummary: input.item.inputSummary || '',
-    outputSummary: input.item.outputSummary || '',
-    blockedReason: input.item.blockedReason || undefined,
-    writeBackSummary: input.item.writeBackSummary || undefined,
-    promptDraftId: input.item.promptDraftId || undefined,
-    sceneCardId: input.item.sceneCardId || undefined,
-    workflowRunId: input.item.workflowRunId || undefined,
-    teamKnowledgeRelease: input.item.teamKnowledgeRelease,
-    materialCoverageChangeId: input.item.materialCoverageChangeId || undefined,
-    reviewTaskId: input.item.reviewTaskId || undefined,
-    artifactRefs: Array.isArray(input.item.artifactRefs) ? input.item.artifactRefs.filter((ref): ref is string => typeof ref === 'string') : undefined,
-    syncStatus: 'synced',
-    teamSync: {
-      ...input.teamSync,
-      revision: input.item.serverRevision || input.teamSync.revision,
-      baseRevision: input.item.baseRevision || input.teamSync.baseRevision,
-    },
-    createdAt: input.item.createdAt || new Date().toISOString(),
-  };
-}
-
 function localOnlyMessage(action: 'draft' | 'release'): string {
   return action === 'draft'
     ? 'Bugu 团队内容工作区 API 尚未接入；变更包已保存在本机，未同步为团队事实源。'
@@ -1485,7 +894,7 @@ export class LocalOnlyContentWorkspaceSyncAdapter implements ContentWorkspaceSyn
   }
 }
 
-export class BuguContentWorkspaceSyncAdapter implements ContentWorkspaceSyncAdapter, ContentKnowledgeMapSyncPort, ContentReviewTaskSyncAdapter, BrandCommandActionSyncAdapter, ContentMaterialCoverageSyncAdapter, BrandCommandExecutionQueueSyncAdapter, BrandCommandCenterSyncAdapter {
+export class BuguContentWorkspaceSyncAdapter implements ContentWorkspaceSyncAdapter, ContentKnowledgeMapSyncPort, ContentReviewTaskSyncAdapter, ContentMaterialCoverageSyncAdapter, ContentProductionHandoffActionSyncAdapter {
   private readonly apiBaseUrl: string;
   private readonly tenantId: string;
   private readonly tokenProvider?: () => Promise<string | undefined>;
@@ -1605,49 +1014,6 @@ export class BuguContentWorkspaceSyncAdapter implements ContentWorkspaceSyncAdap
       });
     } catch (error) {
       return this.errorSync(error, '生成流程已保存在本机，但未同步到 Bugu 团队事实源。');
-    }
-  }
-
-  async upsertCommandCenterSnapshot(input: {
-    record: BrandCommandCenterRecord;
-    authorLabel?: string;
-  }): Promise<ContentKnowledgeMapTeamSyncSummary> {
-    try {
-      const readyQueueItemCount = input.record.queueItems.filter((item) => item.status === 'ready').length;
-      const blockedQueueItemCount = input.record.queueItems.filter((item) => item.status === 'blocked').length;
-      const handedOffQueueItemCount = input.record.queueItems.filter((item) => item.status === 'handed-off').length;
-      const result = await this.post<BuguContentCommandCenterResult>('content-command-centers', {
-        tenantId: this.tenantId,
-        workspaceId: input.record.teamSync.workspaceId,
-        workspaceKey: contentWorkspaceKey(input.record.workspacePath),
-        id: input.record.id,
-        idempotencyKey: input.record.id,
-        title: input.record.title,
-        status: input.record.status,
-        sourceKnowledgeMapId: input.record.sourceKnowledgeMapId,
-        sourceKnowledgeMapTitle: input.record.sourceKnowledgeMapTitle,
-        signalCount: input.record.signals.length,
-        objectiveCount: input.record.objectives.length,
-        resourceBundleCount: input.record.resourceBundles.length,
-        campaignCellCount: input.record.campaignCells.length,
-        queueItemCount: input.record.queueItems.length,
-        actionRecordCount: input.record.actionRecords.length,
-        readyQueueItemCount,
-        blockedQueueItemCount,
-        handedOffQueueItemCount,
-        snapshot: commandCenterSnapshot(input.record),
-        baseRevision: input.record.teamSync.revision || input.record.teamSync.baseRevision,
-        authorLabel: input.authorLabel,
-        createdAt: input.record.createdAt,
-      });
-      return teamSyncFromResult({
-        message: '品牌内容作战系统已同步到 Bugu 团队事实源。',
-        workspace: result.workspace,
-        serverRevision: result.commandCenter?.serverRevision,
-        baseRevision: result.commandCenter?.baseRevision || input.record.teamSync.revision,
-      });
-    } catch (error) {
-      return this.errorSync(error, '品牌内容作战系统已保存在本机，但未同步到 Bugu 团队事实源。');
     }
   }
 
@@ -1783,26 +1149,6 @@ export class BuguContentWorkspaceSyncAdapter implements ContentWorkspaceSyncAdap
       .filter((record): record is ContentKnowledgeMapBuildRunRecord => Boolean(record));
   }
 
-  async listCommandCenters(input: {
-    workspacePath: string;
-    workspaceId?: string;
-    sourceKnowledgeMapId?: string;
-  }): Promise<BrandCommandCenterRecord[]> {
-    if (!input.workspaceId) return [];
-    const result = await this.listItems<BuguContentCommandCenter>('content-command-centers', {
-      workspaceId: input.workspaceId,
-      sourceKnowledgeMapId: input.sourceKnowledgeMapId,
-    });
-    return result.items
-      .map((item) => commandCenterFromResult({
-        workspacePath: input.workspacePath,
-        item,
-        listRevision: result.revision,
-        fallbackWorkspaceId: input.workspaceId,
-      }))
-      .filter((record): record is BrandCommandCenterRecord => Boolean(record));
-  }
-
   async resolveSyncConflict(input: {
     workspacePath: string;
     conflictId: string;
@@ -1903,93 +1249,6 @@ export class BuguContentWorkspaceSyncAdapter implements ContentWorkspaceSyncAdap
     }
   }
 
-  async appendActionRecord(input: {
-    workspacePath: string;
-    commandCenterId: string;
-    record: BrandCommandActionRecord;
-    authorLabel?: string;
-  }): Promise<ContentKnowledgeMapTeamSyncSummary> {
-    try {
-      const result = await this.post<BuguContentActionRecordsResult>('content-action-records', {
-        tenantId: this.tenantId,
-        workspaceKey: contentWorkspaceKey(input.workspacePath),
-        authorLabel: input.authorLabel || input.record.actorLabel,
-        baseRevision: input.record.teamSync?.revision || input.record.teamSync?.baseRevision,
-        records: [{
-          id: input.record.id,
-          commandCenterId: input.commandCenterId,
-          queueItemId: input.record.queueItemId,
-          campaignCellId: input.record.campaignCellId,
-          actionType: input.record.actionType,
-          title: input.record.title,
-          outcome: input.record.outcome,
-          actorLabel: input.record.actorLabel,
-          actorRole: input.record.actorRole,
-          inputSummary: input.record.inputSummary,
-          outputSummary: input.record.outputSummary,
-          blockedReason: input.record.blockedReason,
-          writeBackSummary: input.record.writeBackSummary,
-          promptDraftId: input.record.promptDraftId,
-          sceneCardId: input.record.sceneCardId,
-          workflowRunId: input.record.workflowRunId,
-          teamKnowledgeRelease: input.record.teamKnowledgeRelease,
-          materialCoverageChangeId: input.record.materialCoverageChangeId,
-          reviewTaskId: input.record.reviewTaskId,
-          artifactRefs: redactedLocalRefs(input.record.artifactRefs, input.workspacePath),
-          createdAt: input.record.createdAt,
-        }],
-      });
-      const firstItem = result.items?.[0];
-      return teamSyncFromResult({
-        message: '行动记录已同步到 Bugu 团队内容工作区。',
-        workspace: result.workspace,
-        serverRevision: firstItem?.serverRevision,
-        baseRevision: firstItem?.baseRevision || input.record.teamSync?.revision,
-      });
-    } catch (error) {
-      return this.errorSync(error, '行动记录已保存在本机，但未同步到 Bugu 团队内容工作区。');
-    }
-  }
-
-  async listActionRecords(input: {
-    workspacePath: string;
-    workspaceId?: string;
-    commandCenterId?: string;
-    limit?: number;
-  }): Promise<{
-    records: BrandCommandActionRecord[];
-    teamSync: ContentKnowledgeMapTeamSyncSummary;
-  }> {
-    if (!input.workspaceId) {
-      return {
-        records: [],
-        teamSync: {
-          backend: 'bugu',
-          status: 'blocked',
-          message: '当前内容工作区尚未绑定团队工作区，无法刷新团队行动记录。',
-        },
-      };
-    }
-    const result = await this.get<BuguContentActionRecordsResult>('content-action-records', {
-      workspaceId: input.workspaceId,
-      commandCenterId: input.commandCenterId,
-      limit: String(input.limit ?? 80),
-    });
-    const baseTeamSync: ContentKnowledgeMapTeamSyncSummary = {
-      backend: 'bugu',
-      status: 'synced',
-      message: '已从 Bugu 团队内容工作区刷新行动记录。',
-      workspaceId: input.workspaceId,
-      revision: result.workspace?.currentRevision || String(result.revision || ''),
-      lastSyncedAt: new Date().toISOString(),
-    };
-    const records = (result.items || [])
-      .filter((item) => !input.commandCenterId || item.commandCenterId === input.commandCenterId)
-      .map((item) => actionRecordFromResult({ item, teamSync: baseTeamSync }))
-      .filter((record): record is BrandCommandActionRecord => Boolean(record));
-    return { records, teamSync: baseTeamSync };
-  }
-
   async syncProductionHandoffActions(input: {
     workspacePath: string;
     sourceKnowledgeMapId?: string;
@@ -2010,16 +1269,13 @@ export class BuguContentWorkspaceSyncAdapter implements ContentWorkspaceSyncAdap
         authorLabel: input.authorLabel || input.actions[0]?.actorLabel,
         records: input.actions.map((action) => ({
           id: action.id,
-          commandCenterId: input.sourceKnowledgeMapId ? `content-production:${input.sourceKnowledgeMapId}` : 'content-production',
           queueItemId: action.batchId,
           campaignCellId: action.batchId,
           actionType: action.actionType === 'create-prompt-draft'
             ? 'generate-prompt-draft'
             : action.actionType === 'create-scene-card'
               ? 'create-scene-card'
-              : action.actionType === 'launch-sop-run'
-                ? 'launch-sop-run'
-                : 'content-production-blocked',
+              : 'content-production-blocked',
           title: action.title,
           outcome: action.outcome,
           actorLabel: action.actorLabel,
@@ -2076,52 +1332,6 @@ export class BuguContentWorkspaceSyncAdapter implements ContentWorkspaceSyncAdap
       });
     } catch (error) {
       return this.errorSync(error, '素材覆盖已回写到本机，但未同步到 Bugu 团队内容工作区。');
-    }
-  }
-
-  async syncExecutionQueue(input: {
-    workspacePath: string;
-    commandCenterId: string;
-    items: BrandCommandQueueItem[];
-    authorLabel?: string;
-  }): Promise<ContentKnowledgeMapTeamSyncSummary> {
-    if (!input.items.length) {
-      return {
-        backend: 'bugu',
-        status: 'synced',
-        message: '没有新的执行队列需要同步。',
-      };
-    }
-    try {
-      const result = await this.post<BuguContentExecutionQueueResult>('content-execution-queue', {
-        tenantId: this.tenantId,
-        workspaceKey: contentWorkspaceKey(input.workspacePath),
-        commandCenterId: input.commandCenterId,
-        authorLabel: input.authorLabel,
-        items: input.items.map((item) => ({
-          id: item.id,
-          campaignCellId: item.campaignCellId,
-          actionType: item.actionType,
-          title: item.title,
-          summary: item.summary,
-          status: item.status,
-          blockedReason: item.blockedReason,
-          recoveryAction: item.recoveryAction,
-          outputTarget: item.outputTarget,
-          resourceBundleId: item.resourceBundleId,
-          dimensions: item.dimensions,
-          createdAt: item.createdAt,
-        })),
-      });
-      const firstItem = result.items?.[0];
-      return teamSyncFromResult({
-        message: '执行队列已同步到 Bugu 团队内容工作区。',
-        workspace: result.workspace,
-        serverRevision: firstItem?.serverRevision,
-        baseRevision: firstItem?.baseRevision,
-      });
-    } catch (error) {
-      return this.errorSync(error, '执行队列已保存在本机，但未同步到 Bugu 团队内容工作区。');
     }
   }
 

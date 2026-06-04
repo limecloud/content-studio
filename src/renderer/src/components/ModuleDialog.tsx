@@ -1,7 +1,7 @@
 import { NAV_GROUPS } from '../app/constants';
 import { V2_FEATURES, isV2FeatureModule } from '../app/v2FeatureRegistry';
 import type { ReactNode } from 'react';
-import type { CoreModuleKey, ModuleKey } from '../app/types';
+import type { BusinessModuleKey, CoreModuleKey, ModuleKey } from '../app/types';
 
 type ModuleDialogMeta = { eyebrow: string; title: string; description: string };
 
@@ -16,6 +16,14 @@ const CORE_MODULE_TITLES: Record<CoreModuleKey, ModuleDialogMeta> = {
   skills: { eyebrow: 'skills 管理', title: 'skills 管理', description: '扫描、安装、启用并检查当前内容生成 skills。' },
 };
 
+const BUSINESS_MODULE_TITLES: Record<BusinessModuleKey, ModuleDialogMeta> = {
+  'content-batch': {
+    eyebrow: 'Ontology v2',
+    title: '内容制造',
+    description: '围绕当前批次推进接入、建模、矩阵、制造、审核、调优和复盘。',
+  },
+};
+
 function getModuleDialogMeta(module: ModuleKey): ModuleDialogMeta {
   if (isV2FeatureModule(module)) {
     const feature = V2_FEATURES[module];
@@ -26,7 +34,11 @@ function getModuleDialogMeta(module: ModuleKey): ModuleDialogMeta {
     };
   }
 
-  return CORE_MODULE_TITLES[module];
+  if (module in BUSINESS_MODULE_TITLES) {
+    return BUSINESS_MODULE_TITLES[module as BusinessModuleKey];
+  }
+
+  return CORE_MODULE_TITLES[module as CoreModuleKey];
 }
 
 interface ModuleDialogProps {

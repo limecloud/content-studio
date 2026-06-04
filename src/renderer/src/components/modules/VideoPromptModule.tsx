@@ -192,7 +192,7 @@ export function VideoPromptModule({
     [inputSources, videoDrafts],
   );
   const usableInputSources = useMemo(
-    () => inputSources.filter((source) => ['product-brief', 'user-feedback', 'brand-kb', 'ip-kb', 'competitor-observation', 'sop-input', 'reference'].includes(source.purpose)),
+    () => inputSources.filter((source) => ['product-brief', 'user-feedback', 'brand-kb', 'ip-kb', 'competitor-observation', 'task-input', 'sop-input', 'reference'].includes(source.purpose)),
     [inputSources],
   );
   const relatedAgentSessions = useMemo(

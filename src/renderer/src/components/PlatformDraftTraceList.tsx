@@ -7,7 +7,7 @@ interface PlatformDraftTraceListProps {
   copiedDraftId?: string | null;
   onRevealPath: (path: string) => void;
   onCopyPlatformDraft?: (draftId: string) => void;
-  onOpenWorkflowRun?: (workflowRunId: string) => void;
+  onOpenRunTrace?: (runTraceId: string) => void;
   onOpenPromptDraft?: (promptDraftId: string) => void;
   onOpenSourceLog?: (sourceLogId: string) => void;
 }
@@ -19,7 +19,7 @@ export function PlatformDraftTraceList({
   copiedDraftId,
   onRevealPath,
   onCopyPlatformDraft,
-  onOpenWorkflowRun,
+  onOpenRunTrace,
   onOpenPromptDraft,
   onOpenSourceLog,
 }: PlatformDraftTraceListProps) {
@@ -42,8 +42,8 @@ export function PlatformDraftTraceList({
             {draft.promptDraftId && onOpenPromptDraft ? (
               <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenPromptDraft(draft.promptDraftId as string)}>提示词</button>
             ) : null}
-            {draft.workflowRunId && onOpenWorkflowRun ? (
-              <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenWorkflowRun(draft.workflowRunId as string)}>回到 SOP</button>
+            {draft.workflowRunId && onOpenRunTrace ? (
+              <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenRunTrace(draft.workflowRunId as string)}>回到历史</button>
             ) : null}
             {draft.sourceLogId && onOpenSourceLog ? (
               <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenSourceLog(draft.sourceLogId as string)}>来源记录</button>

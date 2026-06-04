@@ -329,7 +329,7 @@ function buildPackageEntries(map: ContentKnowledgeMapRecord): KnowledgePackFileE
       '',
       `# ${map.title}`,
       '',
-      '本知识包是数据层导出，用于 Prompt、SOP 和 Agent 客户端按需读取；不包含工具脚本、自动发布指令或平台操控指令。',
+      '本知识包是数据层导出，用于 Prompt、内容制造和 Agent 客户端按需读取；不包含工具脚本、自动发布指令或平台操控指令。',
       '',
     ].join('\n')),
     jsonEntry('ontology/ontology.json', {

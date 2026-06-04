@@ -31,6 +31,9 @@ interface ImageShowcaseModuleProps {
   workspaceReady: boolean;
   productImageRefs: string[];
   referenceImageRefs: string[];
+  imageModel: string;
+  imageModels: string[];
+  setImageModel: (model: string) => void;
   mediaResult: MediaGenerationResult | null;
   authState: BuguAuthState | null;
   logs: GenerationLogEntry[];
@@ -52,6 +55,7 @@ export interface ShowcaseImageHandoff {
   referenceImageLabel: string;
   featureId?: string;
   featureTitle?: string;
+  imageModel?: string;
 }
 
 interface ShowcaseFeature {
@@ -1725,6 +1729,7 @@ function buildImageHandoff(
   feature: ShowcaseFeature,
   productImageRefs: string[],
   referenceImageRefs: string[] = [],
+  imageModel?: string,
 ): ShowcaseImageHandoff {
   const labels = controlProfileForFeature(feature);
   return {
@@ -1735,6 +1740,7 @@ function buildImageHandoff(
     referenceImageLabel: labels.referenceLabel,
     featureId: feature.id,
     featureTitle: feature.title,
+    imageModel: imageModel?.trim() || undefined,
   };
 }
 
@@ -1851,6 +1857,9 @@ export function ImageShowcaseModule({
   workspaceReady,
   productImageRefs,
   referenceImageRefs,
+  imageModel,
+  imageModels,
+  setImageModel,
   mediaResult,
   authState,
   logs,
@@ -2112,6 +2121,17 @@ export function ImageShowcaseModule({
   const assistantImageRefs = Array.from(new Set([...activeProductImageRefs, ...activeReferenceImageRefs]));
   const generatedImageRefs = mediaResult?.status === "succeeded" ? mediaResult.assetRefs : [];
   const canvasImageRefs = generatedImageRefs.length ? generatedImageRefs : assistantImageRefs;
+  const imageModelOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [imageModel, ...imageModels]
+            .map((model) => model.trim())
+            .filter(Boolean),
+        ),
+      ),
+    [imageModel, imageModels],
+  );
   const assistantImageRefsKey = assistantImageRefs.join("|");
   const workbenchUploadTitle = activeControlProfile.panelTitle === "上传素材"
     ? "上传素材图片"
@@ -2721,6 +2741,7 @@ export function ImageShowcaseModule({
       activeFeature,
       activeProductImageRefs,
       activeReferenceImageRefs,
+      imageModel,
     );
   }
 
@@ -2773,6 +2794,7 @@ export function ImageShowcaseModule({
       caseFeature,
       caseProductRefs,
       caseReferenceRefs,
+      imageModel,
     ));
   }
 
@@ -2924,6 +2946,20 @@ export function ImageShowcaseModule({
                 </div>
               </div>
             ) : null}
+            <div className="ai-refinement-control-line ai-model-row">
+              <strong>生图模型</strong>
+              <select
+                value={imageModel}
+                onChange={(event) => setImageModel(event.target.value)}
+                disabled={imageModelOptions.length <= 1}
+              >
+                {imageModelOptions.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+            </div>
           </section>
 
           {activeControlProfile.showPrompt ? (
@@ -3490,6 +3526,20 @@ export function ImageShowcaseModule({
               </div>
             </div>
           ) : null}
+          <div className="ai-control-row ai-model-row">
+            <span>生图模型</span>
+            <select
+              value={imageModel}
+              onChange={(event) => setImageModel(event.target.value)}
+              disabled={imageModelOptions.length <= 1}
+            >
+              {imageModelOptions.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </div>
           {showColorPicker ? (
             <div className="ai-color-row">
               <span>选择色号</span>

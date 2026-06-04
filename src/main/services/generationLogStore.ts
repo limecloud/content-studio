@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { AssetReworkSource, GenerationKind, GenerationLogEntry, GenerationStatus, KnowledgeCitation } from '../../shared/types';
+import type { AssetReworkSource, GenerationKind, GenerationLogEntry, GenerationLogReview, GenerationStatus, KnowledgeCitation } from '../../shared/types';
 import { readJsonFile, updateJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 
@@ -21,6 +21,7 @@ export interface CreateLogInput {
   output?: unknown;
   error?: string;
   durationMs?: number;
+  review?: GenerationLogReview;
 }
 
 export type UpdateLogInput = Partial<Omit<GenerationLogEntry, 'id' | 'workspacePath' | 'createdAt' | 'updatedAt'>>;
@@ -37,6 +38,13 @@ export class GenerationLogStore {
   async list(workspacePath: string): Promise<GenerationLogEntry[]> {
     const logs = await readJsonFile<GenerationLogEntry[]>(filePathFor(workspacePath), []);
     return sortLogs(logs);
+  }
+
+  async get(workspacePath: string, logId: string): Promise<GenerationLogEntry | null> {
+    const normalizedId = logId.trim();
+    if (!normalizedId) return null;
+    const logs = await readJsonFile<GenerationLogEntry[]>(filePathFor(workspacePath), []);
+    return logs.find((log) => log.id === normalizedId) ?? null;
   }
 
   async append(input: CreateLogInput): Promise<GenerationLogEntry> {
@@ -59,6 +67,7 @@ export class GenerationLogStore {
       output: input.output,
       error: input.error,
       durationMs: input.durationMs,
+      review: input.review,
       createdAt: now,
       updatedAt: now,
     };

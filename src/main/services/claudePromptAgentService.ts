@@ -25,7 +25,8 @@ function purposeLabel(purpose: PromptDraftPurpose): string {
   if (purpose === 'video') return '视频 Prompt';
   if (purpose === 'article') return '文案生成';
   if (purpose === 'green-screen') return '绿幕文案图';
-  if (purpose === 'sop') return 'SOP';
+  if (purpose === 'content-task') return '内容任务';
+  if (purpose === 'sop') return '流程草案';
   return 'Skill';
 }
 
@@ -48,6 +49,7 @@ function sourcePurposeLabel(purpose: InputSourceRecord['purpose']): string {
     reference: '参考素材',
     'product-brief': '产品资料',
     'user-feedback': '评论 / 客服问题',
+    'task-input': '任务输入',
     'sop-input': '任务输入',
     'successful-asset': '成功素材',
   };
@@ -339,7 +341,7 @@ export class PromptAgentService {
           '必须把知识库当事实源：只使用输入源中可追溯的信息，不编造功效、背书、品牌数据或用户案例。',
           input.teamKnowledgeRelease ? '本轮选择了团队知识包版本，必须沿用该版本的团队口径，但不得把包元数据当成产品事实。' : '',
           '如果资料缺失，要输出需要追问的问题；如果输入源被 blocked，要明确提醒人工确认。',
-          '输出的 prompt 要可直接进入图片、视频 Prompt、文案、绿幕文案图、SOP 或 Skill 下游，但仍允许用户多轮调整。',
+          '输出的 prompt 要可直接进入图片、视频 Prompt、文案、绿幕文案图、内容任务或 Skill 下游，但仍允许用户多轮调整。',
           skillContext.promptText ? '本轮用户选择了 skills，你必须先学习并遵守这些执行规范。' : '',
         ].join('\n'),
         prompt: [

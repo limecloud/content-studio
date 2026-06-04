@@ -1,9 +1,19 @@
 # 布谷AI内容工厂 v2 工作流模型
 
 更新时间：2026-05-20
-状态：Draft
+状态：Archived / Retired
 
-## 1. 设计结论
+## 0. 归档说明
+
+本文是 2026-05 早期的 SOP / WorkflowDefinition 方案记录，已经不再作为当前客户端实现计划。当前客户端事实源收敛为：
+
+- `current`：输入源、品牌 / IP 知识库、场景库、Prompt 草稿、内容制造批次、审核 / 生产交接行动记录和 `run-trace`。
+- `compat`：旧 `workflowRunId`、`.content-studio/workflow-runs.json`、`workflow-run` artifact kind 和 `sop-input` 只允许用于旧数据读取、验收追溯或归一化到 `run-trace`。
+- `dead`：`WorkflowStore`、`WorkflowEngine`、`WorkflowFeatureModule`、SOP 表单执行入口、工作流定义维护和 Canvas 编排不再恢复。
+
+后续新增业务能力不能继续基于本文的 `WorkflowDefinition` / `WorkflowRun` 运行时扩展；应接入内容制造批次、Prompt / 场景卡和运行追溯链路。
+
+## 1. 历史设计结论
 
 v2 的核心抽象不是页面，也不是 canvas，而是“知识体系 + 场景库 + Prompt 草稿 + 可执行 SOP”。`WorkflowDefinition` 负责描述已经跑顺的 SOP；Prompt 的生成和调整可以来自品牌 / 产品知识库抽取的场景库，也可以来自 IP 知识库的运营场景库，还可以来自视觉模型对参考图 / 参考视频的反推，或来自产品资料、SKU 表、竞品内容和历史成功素材。
 

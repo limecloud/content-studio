@@ -69,12 +69,12 @@ const LOCAL_SAMPLE = {
   ip: {
     title: '示例个人 IP 知识库',
     layers: {
-      identity: '内容工厂顾问，长期帮品牌把知识库转成可执行内容 SOP。',
+      identity: '内容工厂顾问，长期帮品牌把知识库转成可执行内容任务。',
       values: '真实、有来源、不过度承诺，宁可标记待补充也不编造。',
       language: '直接、具体、少口号，用运营能执行的话描述方法。',
       methodology: '先抽事实源，再拆场景，再生成 Prompt，最后进审核和复用。',
       materials: '可公开的工作坊记录、品牌访谈、提示词迭代和素材复盘。',
-      engine: '围绕知识库、场景库、PromptDraft、SOP 和素材审核形成循环。',
+      engine: '围绕知识库、场景库、PromptDraft、内容制造和素材审核形成循环。',
     },
   },
   productBrief: {
@@ -246,7 +246,7 @@ const LOCAL_SAMPLE = {
         purpose: 'successful-asset',
         title: '成功素材沉淀 / 已通过早餐桌素材',
         sourcePath: 'sample-approved-image.png',
-        tags: ['successful-asset', 'prompt-distilled', 'image', 'workflow-run'],
+        tags: ['successful-asset', 'prompt-distilled', 'image', 'run-trace'],
         relatedPromptDraftId: 'sample-image-prompt-draft',
         relatedSceneCardIds: ['sample-scene-card'],
         extractedText: [
@@ -2012,16 +2012,16 @@ function successfulAssetAcceptance(sample) {
         }),
       actual.workflowRunId
         ? workflowRefMissing.length === 0
-          ? passCheck('successful-asset-workflow-trace', '成功素材回写 SOP 运行', 'SOP 运行记录保留原素材、沉淀输入源和 PromptDraft 引用。', {
+          ? passCheck('successful-asset-workflow-trace', '成功素材回写历史运行', '历史运行记录保留原素材、沉淀输入源和 PromptDraft 引用。', {
             workflowRunId: actual.workflowRunId,
             workflowArtifactRefs: actual.workflowArtifactRefs,
           })
-          : failCheck('successful-asset-workflow-trace', '成功素材回写 SOP 运行', 'SOP 运行记录缺少成功素材沉淀引用。', {
+          : failCheck('successful-asset-workflow-trace', '成功素材回写历史运行', '历史运行记录缺少成功素材沉淀引用。', {
             workflowRunId: actual.workflowRunId,
             missingRefs: workflowRefMissing,
             workflowArtifactRefs: actual.workflowArtifactRefs,
           })
-        : passCheck('successful-asset-workflow-trace', '成功素材回写 SOP 运行', '该素材未关联 SOP 运行，仅校验输入源和 PromptDraft 追溯。'),
+        : passCheck('successful-asset-workflow-trace', '成功素材回写历史运行', '该素材未关联历史运行，仅校验输入源和 PromptDraft 追溯。'),
     ],
   };
 }
@@ -2106,7 +2106,7 @@ function deliveryAcceptance(sample) {
           missingFiles: missingVideoFiles,
         }),
       missingTraceFields.length === 0
-        ? passCheck('mix-package-trace', '混剪素材追溯字段完整', 'manifest 保留 SOP、PromptDraft、来源和打包路径。', {
+        ? passCheck('mix-package-trace', '混剪素材追溯字段完整', 'manifest 保留历史运行、PromptDraft、来源和打包路径。', {
           requiredTraceFields: sample.videoPackage.requiredTraceFields,
           actualTraceFields: videoTraceFields,
         })
@@ -2202,7 +2202,7 @@ function deliveryAcceptance(sample) {
           missingFiles: missingPlatformFiles,
         }),
       missingPlatformTraceFields.length === 0
-        ? passCheck('platform-draft-trace', '平台草稿包追溯字段完整', '平台草稿 manifest 保留 SOP、PromptDraft 和来源文章记录。', {
+        ? passCheck('platform-draft-trace', '平台草稿包追溯字段完整', '平台草稿 manifest 保留历史运行、PromptDraft 和来源文章记录。', {
           requiredTraceFields: sample.platformDraft.requiredTraceFields,
           actualTraceFields: platformTraceFields,
         })
@@ -2277,7 +2277,7 @@ function traceAcceptance(sample) {
     checks: [
       refs.length > 0
         ? passCheck('workflow-run-trace-present', '跨产物 runId 可追溯', '验收资料包含至少一个 workflowRunId。', { refs })
-        : failCheck('workflow-run-trace-present', '跨产物 runId 可追溯', '缺少 workflowRunId，无法证明产物来自同一条 SOP 运行。'),
+        : failCheck('workflow-run-trace-present', '跨产物 runId 可追溯', '缺少 workflowRunId，无法证明产物来自同一条历史运行。'),
       missingSources.length === 0
         ? passCheck('workflow-run-trace-coverage', '跨产物 runId 覆盖关键产物', '对标反推、视频拆解、视频脚本、视频生成、混剪包和平台草稿包均有 runId 证据。', {
           requiredSources: sample.trace.requiredSources,
@@ -2293,8 +2293,8 @@ function traceAcceptance(sample) {
         : failCheck('workflow-run-trace-consistent', '跨产物 runId 一致', '验收证据出现多个 workflowRunId。', { workflowRunIds: uniqueWorkflowRunIds, refs }),
       expectedWorkflowRunId
         ? uniqueWorkflowRunIds.length === 1 && uniqueWorkflowRunIds[0] === expectedWorkflowRunId
-          ? passCheck('workflow-run-trace-expected', '指定 runId 匹配', '验收证据指向指定 SOP 运行。', { expectedWorkflowRunId })
-          : failCheck('workflow-run-trace-expected', '指定 runId 匹配', '验收证据未指向指定 SOP 运行。', { expectedWorkflowRunId, workflowRunIds: uniqueWorkflowRunIds })
+          ? passCheck('workflow-run-trace-expected', '指定 runId 匹配', '验收证据指向指定历史运行。', { expectedWorkflowRunId })
+          : failCheck('workflow-run-trace-expected', '指定 runId 匹配', '验收证据未指向指定历史运行。', { expectedWorkflowRunId, workflowRunIds: uniqueWorkflowRunIds })
         : passCheck('workflow-run-trace-expected', '指定 runId 匹配', '未指定 expectedWorkflowRunId，仅校验一致性。'),
     ],
   };

@@ -4,11 +4,11 @@ import { ArticleModule } from './modules/ArticleModule';
 import { AssetsModule } from './modules/AssetsModule';
 import { ImageModule } from './modules/ImageModule';
 import { ImageShowcaseModule } from './modules/ImageShowcaseModule';
-import { BrandCommandCenterModule } from './modules/BrandCommandCenterModule';
 import { BrandKnowledgeModule } from './modules/BrandKnowledgeModule';
 import { InputSourcesModule } from './modules/InputSourcesModule';
 import { KnowledgeModule } from './modules/KnowledgeModule';
 import { GreenScreenModule } from './modules/GreenScreenModule';
+import { ContentBatchPipelineModule } from './modules/ContentBatchPipelineModule';
 import { ContentKnowledgeMapModule } from './modules/ContentKnowledgeMapModule';
 import { ContentReviewTasksModule } from './modules/ContentReviewTasksModule';
 import { IpKnowledgeModule } from './modules/IpKnowledgeModule';
@@ -22,7 +22,6 @@ import { VideoShowcaseModule } from './modules/VideoShowcaseModule';
 import { SkillsModule } from './modules/SkillsModule';
 import { V2FeatureModule } from './modules/V2FeatureModule';
 import { VideoModule } from './modules/VideoModule';
-import { WorkflowFeatureModule, isWorkflowFeatureModule } from './modules/WorkflowFeatureModule';
 import { isV2FeatureModule } from '../app/v2FeatureRegistry';
 import type { AgentActionResolver } from './agent/AgentSessionPanel';
 import { projectAgentRuntimeAction } from './agent/agentRuntimeProjection';
@@ -112,7 +111,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
       }
       onOpenPromptDraft={app.openTracePromptDraft}
       onOpenSceneCards={app.openTraceSceneCards}
-      onOpenWorkflowRun={app.openTraceWorkflowRun}
+      onOpenRunTrace={() => app.setActiveModule('assets-history')}
     />
   );
 
@@ -133,6 +132,9 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         setImagePromptMode={app.setImagePromptMode}
         imageGenerationMode={app.imageGenerationMode}
         setImageGenerationMode={app.setImageGenerationMode}
+        imageModel={app.params.imageModel}
+        imageModels={app.imageModelOptions}
+        setImageModel={(model) => app.setParams((current) => ({ ...current, imageModel: model }))}
         imageTemplate={app.imageTemplate}
         setImageTemplate={app.setImageTemplate}
         imageTemplateInputs={app.imageTemplateInputs}
@@ -162,6 +164,9 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         workspaceReady={Boolean(app.workspacePath)}
         productImageRefs={app.productImageRefs}
         referenceImageRefs={app.referenceImageRefs}
+        imageModel={app.params.imageModel}
+        imageModels={app.imageModelOptions}
+        setImageModel={(model) => app.setParams((current) => ({ ...current, imageModel: model }))}
         mediaResult={app.mediaResult}
         authState={app.authState}
         logs={app.logs}
@@ -207,6 +212,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
   }
 
   if (app.activeModule === 'video' || app.activeModule === 'video-script') {
+    const videoBreakdownLogs = app.logs.filter((log) => log.kind === 'video-breakdown' && log.status === 'succeeded');
+    const videoScriptLogs = app.logs.filter((log) => log.kind === 'video-script' && log.status === 'succeeded');
     return (
       <VideoModule
         initialStage={app.activeModule === 'video-script' ? 'script' : 'breakdown'}
@@ -235,6 +242,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         toggleVideoDimension={app.toggleVideoDimension}
         videoBreakdown={app.videoBreakdown}
         videoScript={app.videoScript}
+        videoBreakdownLogs={videoBreakdownLogs}
+        videoScriptLogs={videoScriptLogs}
         activeScenes={app.activeScenes}
         suggestedVideoPrompt={app.suggestedVideoPrompt}
         mediaResult={app.mediaResult}
@@ -244,8 +253,17 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
         onSelectVideo={() => app.runAction(() => app.selectAssetFiles('video'))}
         onAnalyzeReferenceVideo={() => app.runAction(app.analyzeReferenceVideo)}
+        onUseVideoBreakdownLog={(log) => app.useVideoBreakdownLog(log)}
+        onUseVideoScriptLog={(log) => app.useVideoScriptLog(log)}
+        onOpenVideoLog={(log) => app.openTraceGenerationLog(log.id)}
+        onUpdateVideoScriptReview={(input) => app.runAction(() => app.updateGenerationLogReview(input), '正在保存脚本反馈')}
         onGenerateVideoScript={() => app.runAction(app.generateVideoScript)}
+        onEvaluateVideoScript={(script, log) => app.runAction((context) => app.evaluateVideoScript(script, log, context), '正在 AI 质检脚本')}
+        onRewriteVideoScriptShot={(script, rowIndex, log) => app.runAction(async (context) => {
+          await app.rewriteVideoScriptShot(script, rowIndex, log, context);
+        }, '正在重写镜头')}
         onOpenVideoPromptHandoff={() => app.runAction(app.openVideoPromptHandoff, '正在准备视频 Prompt 交接')}
+        onOpenVideoImport={() => app.setActiveModule('video-import')}
         onGenerateVideo={() => app.runAction(app.generateVideo)}
       />
     );
@@ -279,7 +297,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onExportPlatformDraft={() => app.runAction(app.exportArticlePlatformDraft)}
         onCopyPlatformDraft={(draftId) => app.runAction(() => app.copyPlatformDraftText(draftId), '正在复制发布文案')}
         onRevealExportPath={(path) => app.runAction(() => app.revealPath(path))}
-        onOpenWorkflowRun={app.openTraceWorkflowRun}
+        onOpenRunTrace={app.openRunTrace}
         onOpenPromptDraft={app.openTracePromptDraft}
         onOpenSourceLog={app.openTraceGenerationLog}
       />
@@ -321,6 +339,22 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onGenerateSceneCards={() => app.runAction(app.generateSceneCards)}
         onSavePromptPackDraft={() => app.runAction(app.savePromptPackDraft)}
         onSaveSceneCardDraft={() => app.runAction(app.saveSceneCardDraft)}
+      />
+    );
+  }
+
+  if (app.activeModule === 'content-batch') {
+    return (
+      <ContentBatchPipelineModule
+        workspaceReady={Boolean(app.workspacePath)}
+        busy={app.busy}
+        batch={app.activeContentBatch}
+        onBuildContentBatch={() => app.runAction(app.buildContentBatch, '正在生成内容制造批次')}
+        onAdvanceStage={() => app.runAction(app.advanceContentBatchStage, '正在推进内容制造阶段')}
+        onRunStagePrimaryAction={(stageId) =>
+          app.runAction(() => app.runContentBatchStagePrimaryAction(stageId), '正在处理当前制造阶段')
+        }
+        onSelectModule={app.setActiveModule}
       />
     );
   }
@@ -396,7 +430,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onCreateContentProductionHandoffForRow={(rowId, target) =>
           app.runAction(
             () => app.createContentProductionHandoffForRow(rowId, target),
-            target === 'sop-run' ? '正在启动 SOP' : target === 'scene-card' ? '正在生成场景卡' : '正在生成 Prompt 草稿',
+            target === 'scene-card' ? '正在生成场景卡' : '正在生成 Prompt 草稿',
           )
         }
         contentKnowledgePackExport={app.contentKnowledgePackExport}
@@ -437,7 +471,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           app.runAction(() => app.submitContentReviewDecision(taskId, action, payload), '正在记录审核决策')
         }
         onCreateContentProductionHandoff={(taskId, target) =>
-          app.runAction(() => app.createContentProductionHandoff(taskId, target), target === 'sop-run' ? '正在启动 SOP' : '正在交给 Prompt 工作台')
+          app.runAction(() => app.createContentProductionHandoff(taskId, target), '正在交给 Prompt 工作台')
         }
         contentProductionHandoff={app.contentProductionHandoff}
         agentPromptSessions={app.agentPromptSessions}
@@ -449,57 +483,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         }
         onContinueAgentSession={(input) =>
           app.runAction(() => app.continueAgentPromptSession(input), '正在继续审核')
-        }
-        onResolveAgentAction={resolveAgentAction}
-        onSelectModule={app.setActiveModule}
-      />
-    );
-  }
-
-  const brandCommandTab =
-    app.activeModule === 'brand-command-objectives' ? 'objectives' :
-      app.activeModule === 'brand-command-bundles' ? 'bundles' :
-        app.activeModule === 'brand-command-queue' ? 'queue' :
-          app.activeModule === 'brand-command-logs' ? 'logs' :
-            app.activeModule === 'brand-command-center' ? 'signals' : null;
-
-  if (brandCommandTab) {
-    return (
-      <BrandCommandCenterModule
-        workspaceReady={Boolean(app.workspacePath)}
-        busy={app.busy}
-        contentKnowledgeMaps={app.contentKnowledgeMaps}
-        activeContentKnowledgeMap={app.activeContentKnowledgeMap}
-        brandCommandCenters={app.brandCommandCenters}
-        activeBrandCommandCenter={app.activeBrandCommandCenter}
-        activeBrandCommandCenterId={app.activeBrandCommandCenterId}
-        setActiveBrandCommandCenterId={app.setActiveBrandCommandCenterId}
-        agentPromptSessions={app.agentPromptSessions}
-        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-        textModel={app.params.textModel}
-        initialTab={brandCommandTab}
-        onBuildBrandCommandCenter={() => app.runAction(app.buildBrandCommandCenter, '正在生成品牌战情室')}
-        onRecordBrandCommandAction={(queueItemId) =>
-          app.runAction(() => app.recordBrandCommandAction(queueItemId), '正在记录作战动作')
-        }
-        onRecordBrandCommandReview={(summary) =>
-          app.runAction(() => app.recordBrandCommandReview(summary), '正在写入复盘记录')
-        }
-        onConfirmBrandCommandStage={(stage) =>
-          app.runAction(() => app.confirmBrandCommandStage(stage), '正在确认作战主动作')
-        }
-        onExportBrandCommandActionRecords={() =>
-          app.runAction(app.exportBrandCommandActionRecords, '正在导出行动记录')
-        }
-        onRefreshBrandCommandActions={() =>
-          app.runAction(app.refreshBrandCommandActions, '正在同步团队记录')
-        }
-        onSelectAgentSession={app.setActiveAgentPromptSessionId}
-        onStartAgentSession={(input) =>
-          app.runAction(() => app.startAgentPromptSession(input), '正在开始协作')
-        }
-        onContinueAgentSession={(input) =>
-          app.runAction(() => app.continueAgentPromptSession(input), '正在继续对话')
         }
         onResolveAgentAction={resolveAgentAction}
         onSelectModule={app.setActiveModule}
@@ -637,7 +620,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           enabledSkillKeys={app.enabledSkillKeys}
           textModel={app.params.textModel}
           textProtocol={app.modelConfig?.textProtocol}
-          textModels={app.modelCatalog?.textModels ?? []}
+          textModels={app.textModelOptions}
           activeDraftId={app.activePromptDraftId}
           activeSessionId={app.activeAgentPromptSessionId}
           onSelectDraft={app.setActivePromptDraftId}
@@ -659,15 +642,12 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onOpenVideoPrompt={app.usePromptDraftInVideo}
           onUsePromptInArticle={app.usePromptDraftInArticle}
           onOpenGreenScreen={app.usePromptDraftInGreenScreen}
-          onMaterializeDraftToSop={(input) =>
-            app.runAction(() => app.materializePromptDraftToWorkflow(input), '正在物化为 SOP 草案')
-          }
           onMaterializeDraftToSkill={(input) =>
             app.runAction(() => app.materializePromptDraftToSkill(input), '正在物化为 Skill')
           }
           onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
           onCopyPlatformDraft={(draftId) => app.runAction(() => app.copyPlatformDraftText(draftId), '正在复制发布文案')}
-          onOpenWorkflowRun={app.openTraceWorkflowRun}
+          onOpenRunTrace={() => app.setActiveModule('assets-history')}
           onOpenSourceLog={app.openTraceGenerationLog}
           onSelectModule={app.setActiveModule}
         />
@@ -775,7 +755,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
           onOpenPromptDraft={app.openTracePromptDraft}
           onOpenSceneCards={app.openTraceSceneCards}
-          onOpenWorkflowRun={app.openTraceWorkflowRun}
+          onOpenRunTrace={() => app.setActiveModule('assets-history')}
           onSelectModule={app.setActiveModule}
         />
       );
@@ -850,106 +830,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           }
           onResolveAgentAction={resolveAgentAction}
           onSelectModule={app.setActiveModule}
-        />
-      );
-    }
-
-    if (isWorkflowFeatureModule(app.activeModule)) {
-      return (
-        <WorkflowFeatureModule
-          module={app.activeModule}
-          workspaceReady={Boolean(app.workspacePath)}
-          busy={app.busy}
-          definitions={app.workflowDefinitions}
-          runs={app.workflowRuns}
-          logs={app.logs}
-          inputSources={app.inputSources}
-          assetReviews={app.assetReviews}
-          platformDrafts={app.platformDrafts}
-          teamKnowledgePackageVersions={app.contentKnowledgeReleases}
-          copiedPlatformDraftId={app.copiedPlatformDraftId}
-          activeDefinitionId={app.activeWorkflowDefinitionId}
-          activeRunId={app.activeWorkflowRunId}
-          onSelectDefinition={app.setActiveWorkflowDefinitionId}
-          onSelectRun={app.setActiveWorkflowRunId}
-          onCreateDraft={() => app.runAction(app.createWorkflowDraft, '正在生成 SOP 草案')}
-          onPublishDefinition={(definitionId) =>
-            app.runAction(() => app.publishWorkflowDefinition(definitionId), '正在发布工作流定义')
-          }
-          onUpdateDefinition={(definition) =>
-            app.runAction(() => app.updateWorkflowDefinition(definition), '正在保存 SOP 定义')
-          }
-          onStartRun={(definitionId, inputs, inputSourceIds, teamKnowledgeRelease) =>
-            app.runAction(() => app.startWorkflowRun(definitionId, inputs, inputSourceIds, teamKnowledgeRelease), '正在创建 SOP 运行记录')
-          }
-          onOpenInputSources={() => app.setActiveModule('knowledge-inputs')}
-          onRunAction={(action, runId) => {
-            if (action === 'open-brand-knowledge') {
-              app.openWorkflowRunBrandKnowledge(runId);
-              return;
-            }
-            if (action === 'open-ip-knowledge') {
-              app.openWorkflowRunIpKnowledge(runId);
-              return;
-            }
-            if (action === 'open-scene-library') {
-              app.openWorkflowRunSceneLibrary(runId);
-              return;
-            }
-            if (action === 'open-prompt-draft') {
-              app.openWorkflowRunPromptDraft(runId);
-              return;
-            }
-            if (action === 'open-asset-review') {
-              app.openWorkflowRunAssetReview(runId);
-              return;
-            }
-            if (action === 'open-material-breakdown') {
-              app.openWorkflowRunMaterialBreakdown(runId);
-              return;
-            }
-            if (action === 'open-image-workbench') {
-              app.openWorkflowRunImageWorkbench(runId);
-              return;
-            }
-            if (action === 'open-article-workbench') {
-              app.openWorkflowRunArticleWorkbench(runId);
-              return;
-            }
-            if (action === 'open-video-prompt') {
-              app.openWorkflowRunPrompt(runId);
-              return;
-            }
-            if (action === 'import-finished-video') {
-              app.runAction(() => app.importWorkflowRunFinishedVideo(runId), '正在导入成品视频');
-              return;
-            }
-            if (action === 'open-overlay') {
-              app.openWorkflowRunOverlay(runId);
-              return;
-            }
-            if (action === 'approve-workflow-review') {
-              app.runAction(() => app.approveWorkflowRunReview(runId), '正在确认 SOP 审核');
-              return;
-            }
-            if (action === 'archive-workflow-assets') {
-              app.runAction(() => app.archiveWorkflowRunAssets(runId), '正在归档 SOP 产物');
-              return;
-            }
-            if (action === 'open-platform-draft') {
-              app.runAction(() => app.openWorkflowRunPlatformDraft(runId), '正在打开平台草稿包');
-              return;
-            }
-            if (action === 'open-input-sources') {
-              app.setActiveModule('knowledge-inputs');
-              return;
-            }
-            app.openWorkflowRunMixExport(runId);
-          }}
-          onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
-          onCopyPlatformDraft={(draftId) => app.runAction(() => app.copyPlatformDraftText(draftId), '正在复制发布文案')}
-          onOpenPromptDraft={app.openTracePromptDraft}
-          onOpenSourceLog={app.openTraceGenerationLog}
         />
       );
     }

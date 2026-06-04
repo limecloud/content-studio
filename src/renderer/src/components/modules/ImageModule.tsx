@@ -115,6 +115,9 @@ interface ImageModuleProps {
   setImageGenerationMode: Dispatch<
     SetStateAction<ImageGenerationRequest["generationMode"]>
   >;
+  imageModel: string;
+  imageModels: string[];
+  setImageModel: (model: string) => void;
   imageTemplate: string;
   setImageTemplate: Dispatch<SetStateAction<string>>;
   imageTemplateInputs: Record<string, string | string[]>;
@@ -152,6 +155,9 @@ export function ImageModule({
   setImagePromptMode,
   imageGenerationMode,
   setImageGenerationMode,
+  imageModel,
+  imageModels,
+  setImageModel,
   imageTemplate,
   setImageTemplate,
   imageTemplateInputs,
@@ -265,6 +271,17 @@ export function ImageModule({
       })),
   ];
   const imageLogs = logs.filter((log) => log.kind === "image").slice(0, 8);
+  const imageModelOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [imageModel, ...imageModels]
+            .map((model) => model.trim())
+            .filter(Boolean),
+        ),
+      ),
+    [imageModel, imageModels],
+  );
   const previewAssetRefs = useMemo(
     () =>
       Array.from(
@@ -1067,6 +1084,24 @@ export function ImageModule({
             </button>
             <small>输入 @ 或 @图片 可点名重点参考图</small>
           </div>
+        </div>
+
+        <div className="image-model-select-card" aria-label="本次图片生成模型">
+          <div>
+            <span>图片模型</span>
+            <strong>{imageModel || "未选择模型"}</strong>
+          </div>
+          <select
+            value={imageModel}
+            onChange={(event) => setImageModel(event.target.value)}
+            disabled={imageModelOptions.length <= 1}
+          >
+            {imageModelOptions.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
         </div>
 
         <button

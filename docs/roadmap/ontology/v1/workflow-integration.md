@@ -7,13 +7,13 @@
 
 Ontology v1 是现有模块之间的中间层。它不替代知识库、场景库、Prompt 工作台、SOP 或素材库，而是为这些模块提供结构化、已审核、可追溯的上下文。
 
-当前实现已经让团队知识包进入下游消费链路：生产交接生成 Prompt 草稿、场景卡或 SOP 时会绑定团队知识包版本；品牌战情室直接生成 Prompt 草稿或启动 SOP 时也会绑定当前内容地图的已发布团队知识包版本，并把版本写入行动记录；Prompt 工作台手动生成草稿和启动 Prompt 协作时能选择已发布团队知识包，草稿和会话都会保留同一版本引用；SOP 执行表单也能选择已发布团队知识包，默认自动匹配当前内容知识地图版本，显式选择后会写入 `WorkflowRun.teamKnowledgeRelease` 和 `team-knowledge-release:<releaseId>` 产物线索；内容知识地图团队知识包详情页可以直接生成带版本引用、覆盖行、来源引用和禁用边界的 Prompt 草稿；SOP 不再只保存运行记录，而是进入 `WorkflowEngine` 执行到人工审核停顿点，并保留步骤产物引用；素材覆盖已进入待确认补充任务，团队知识包已支持多步骤确认和默认确认模板；内容知识地图矩阵已支持筛选、排序、分页和本批送审；内容知识地图生成会写入可审计流程记录，并新增 v1 在线验收总入口。生产证据仍需用真实账号、两台设备和生产对象存储归档验收报告。
+当前实现已经让团队知识包进入下游消费链路：生产交接生成 Prompt 草稿、场景卡或 SOP 时会绑定团队知识包版本，并把版本写入行动记录；Prompt 工作台手动生成草稿和启动 Prompt 协作时能选择已发布团队知识包，草稿和会话都会保留同一版本引用；SOP 执行表单也能选择已发布团队知识包，默认自动匹配当前内容知识地图版本，显式选择后会写入 `WorkflowRun.teamKnowledgeRelease` 和 `team-knowledge-release:<releaseId>` 产物线索；内容知识地图团队知识包详情页可以直接生成带版本引用、覆盖行、来源引用和禁用边界的 Prompt 草稿；SOP 不再只保存运行记录，而是进入 `WorkflowEngine` 执行到人工审核停顿点，并保留步骤产物引用；素材覆盖已进入待确认补充任务，团队知识包已支持多步骤确认和默认确认模板；内容知识地图矩阵已支持筛选、排序、分页和本批送审；内容制造批次已承接选品、意图、建模、卖点、矩阵、制造、审核、调优和复盘阶段恢复；内容知识地图生成会写入可审计流程记录，并新增 v1 在线验收总入口。生产证据仍需用真实账号、两台设备和生产对象存储归档验收报告。
 
 真实客户端行详情已接入生产交接服务：已审核的矩阵组合可以直接生成 Prompt 草稿、场景卡或启动 SOP；未审核组合会先创建审核任务并进入审核台。若当前工作区没有真实已发布团队知识包，SOP 仍保留本机输入、步骤和产物线索，但不能宣称已完成生产团队 release 绑定。
 
 真实客户端审核和团队共享页已补按钮级闭环：审核任务改名、合并、拆分会真实回写内容知识地图并同步变更包；内容知识地图页创建 / 提交 / 导出 / 导入变更包和创建团队知识包版本会落到本地事实源、Bugu HTTP 适配器和 release 元数据，不再只是原型动作反馈。
 
-真实客户端行动记录页已补复盘写入：普通用户可以把复盘结论写回 `BrandCommandCenterRecord.actionRecords`，并通过 Bugu `content-action-records` 通道同步到团队事实源；同一次复盘会在当前品牌战情室生成下一轮信号、复盘目标、资源包、作战单元和补资源 / 审核 / 下一轮 Prompt 队列动作，再同步到 Bugu `content-command-centers` 主事实源。复盘不改写产品事实，只作为下一轮内容行动的输入。品牌战情室列表刷新团队 `content-command-centers` 时，如果本机已同步快照比团队拉回的快照更新，会保留本机完整作战结构并只合并团队新增行动记录，避免旧团队快照或行动记录旁路覆盖复盘生成的下一轮作战结构。
+真实客户端行动记录已补复盘写入：普通用户可以把复盘结论写入生产交接行动记录，并通过 Bugu `content-action-records` 通道同步到团队事实源；同一次复盘会在内容制造批次的复盘阶段生成恢复任务、素材覆盖回写要求和下一轮输入补齐项。复盘不改写产品事实，只作为下一轮内容行动的输入。旧品牌战情室快照和执行队列不再作为当前客户端事实源读回。
 
 ## 2. 模块集成图
 
@@ -38,9 +38,9 @@ flowchart TD
   Handoff --> Prompt["PromptDraftStore"]
   Handoff --> SOP["WorkflowEngine"]
 
-  MapStore --> Command["BrandCommandCenterApplicationService"]
-  Command --> Queue["执行队列 / 行动记录"]
-  Queue --> Feedback["ContentMaterialFeedbackService"]
+  MapStore --> Batch["ContentBatchApplicationService"]
+  Batch --> Action["内容制造批次 / 行动记录"]
+  Action --> Feedback["ContentMaterialFeedbackService"]
   Feedback --> MapStore
   AssetStore --> Feedback
 
@@ -64,7 +64,7 @@ flowchart TD
 | `PromptDraftStore` | 接收提示词依据，生成可追溯 PromptDraft。 | 不直接拼接完整原始文档。 |
 | `WorkflowEngine` | 接收 ready 矩阵组合和提示词依据作为 SOP 输入。 | 不绕过发布检查执行动作。 |
 | `AssetReviewStore` | 构建时提供素材审核证据；生产后回写素材覆盖、审核结论和表现标签。 | 不把素材表现自动当成产品事实，不向模型或团队包写入本机素材路径。 |
-| `BrandCommandCenterApplicationService` | 将信号、目标、资源包、执行队列和行动记录产品化。 | 不做自动发布、刷量、虚假互动或伪装用户。 |
+| `ContentBatchApplicationService` | 将选品、意图、建模、卖点、矩阵、制造、审核、调优和复盘阶段产品化。 | 不回流旧作战入口，不做自动发布、刷量、虚假互动或伪装用户。 |
 | Agent Knowledge 导出 | 发布审核后的内容知识包和可选 answer-ready 层。 | 不把知识包变成可执行 Skill 或排名操控指令。 |
 
 ## 4. 构建时序
@@ -170,11 +170,11 @@ sequenceDiagram
 - 即使审核任务已通过，policy 仍会拦截禁用 / 绝对化表达、竞品观察直交、缺 IP 边界和 IP 漂移；拦截时只写入 blocked 交接记录。
 - 交接记录已升级为结构化行动记录：成功时记录 Prompt 草稿 / 场景卡 / SOP 运行产物、覆盖行、证据、来源、团队知识包版本、发布检查和下一步；拦截时记录 blocked 动作、原因和恢复路径，避免发布检查失败只停留在临时错误提示。
 - 生产交接行动记录已复用 Bugu `content-action-records` 通道同步到团队事实源；桌面端保留本机交接记录和团队同步状态，Bugu 控制台可继续按行动记录视角展示。
-- 生产交接行动记录会回填同一知识地图的品牌战情室行动记录，因此审核页完成的交接、拦截和下一步也能进入品牌内容作战系统复盘。
+- 生产交接行动记录会回填同一知识地图的内容制造批次运行历史，因此审核页完成的交接、拦截和下一步也能进入批次复盘。
 - 生产交接只绑定当前内容知识地图对应的已发布团队知识包版本；如果当前地图尚未发布团队知识包，仍可生成本机草稿，但不能把其他地图 release 伪装成本项目默认口径。
-- 品牌战情室执行队列复用同一版本边界：直接生成 Prompt 草稿或启动 SOP 时，只读取当前 `sourceKnowledgeMapId` 对应的已发布团队知识包；没有本项目 release 时，行动记录和下游产物不写其他项目团队知识包。
-- 品牌战情室资源包会同步更新交接产物字段：已生成 Prompt 草稿、场景卡、SOP 运行、交接摘要和发布检查 blocked 原因，避免资源包只显示原始卖点 / 证据而看不到后续生产结果。
-- 品牌战情室行动记录可导出为本机交付文件：`manifest.json`、`action-records.md` 和 `action-records.json` 只包含脱敏后的行动摘要、产物引用、团队状态和审计信息，不包含本机工作区路径、账号凭证或自动发布指令；导出动作会追加 `export-action-records` 团队记录。
+- 生产交接复用同一版本边界：生成 Prompt 草稿、场景卡或启动 SOP 时，只读取当前 `sourceKnowledgeMapId` 对应的已发布团队知识包；没有本项目 release 时，行动记录和下游产物不写其他项目团队知识包。
+- 内容制造批次会同步更新交接产物字段：已生成 Prompt 草稿、场景卡、SOP 运行、交接摘要和发布检查 blocked 原因，避免批次只显示输入资料而看不到后续生产结果。
+- 生产交接行动记录可导出为本机交付文件：`manifest.json`、`action-records.md` 和 `action-records.json` 只包含脱敏后的行动摘要、产物引用、团队状态和审计信息，不包含本机工作区路径、账号凭证或自动发布指令；导出动作会追加 `export-action-records` 团队记录。
 
 ### 6.2 用户反馈到场景穷举
 
@@ -259,18 +259,18 @@ IP 知识库
 - 缺素材组合可以从内容知识地图素材回写页直接创建补素材审核任务；任务写入审核任务 Store，普通用户在审核台看到“待补素材”和恢复路径，而不是只得到页面提示。
 - 素材库详情页不是只读复盘：已覆盖的卖点、痛点或场景组合旁可以直接创建补素材审核任务，客户端复用同一条 `material-supplement` 任务链路，并按内容地图分组，避免多地图素材误绑到当前地图。
 
-## 7. 品牌内容作战工作流
+## 7. 内容制造批次工作流
 
 ```mermaid
 flowchart LR
-  Signal["Signal: 评论痛点 / 竞品动作 / 素材表现"] --> Objective["Objective: 拉新 / 转化 / 解释异议 / 补证据"]
-  Objective --> Cell["CampaignCell: 人 / Agent / SOP"]
-  Cell --> Bundle["ResourceBundle: coverage rows / 素材 / Prompt / 场景"]
-  Bundle --> Gate{"发布检查"}
-  Gate -->|pass| Action["ActionType"]
+  Select["选品 / 输入源"] --> Intent["意图 / 人群 / 场景"]
+  Intent --> Model["建模 / 卖点 / 约束"]
+  Model --> Matrix["矩阵 / 审核组合"]
+  Matrix --> Gate{"发布检查"}
+  Gate -->|pass| Action["生产交接动作"]
   Gate -->|blocked| Blocked["blocked reason"]
   Action --> Log["行动记录"]
-  Log --> Feedback["FeedbackLoop"]
+  Log --> Feedback["复盘 / 素材覆盖"]
   Feedback --> Matrix["覆盖矩阵"]
 ```
 
@@ -280,7 +280,7 @@ flowchart LR
 | --- | --- | --- |
 | `generate-prompt-draft` | ready coverage rows、渠道、格式。 | PromptDraft。 |
 | `create-scene-card` | 人群、痛点、卖点、场景。 | SceneCard。 |
-| `request-review` | candidate concepts、claims、coverage rows。 | ReviewTask。 |
+| `request-review` | candidate claims、coverage rows。 | ReviewTask。 |
 | `request-evidence` | needs-verification claims。 | EvidenceTask。 |
 | `launch-sop-run` | ResourceBundle、SOP 模板。 | WorkflowRun。 |
 | `create-material-gap-list` | missing-material rows、资源包缺口、审核任务。 | 本机补素材交付包：`manifest.json`、`material-gap-list.md`、`material-gap-list.json`，并写入行动记录交付引用。 |
@@ -289,7 +289,8 @@ flowchart LR
 边界：
 
 - 操作层用于真实内容生产和获客复盘。
-- `content-command-centers` 是完整品牌作战系统 current；`content-action-records` 和 `content-execution-queue` 只能作为行动 / 队列旁路，不能替代或覆盖完整快照。
+- `content-action-records` 是生产交接行动记录 current；内容制造批次在本机缓存和团队行动记录之间保持可追溯，不读回旧作战快照。
+- 旧 `content-command-centers` 和 `content-execution-queue` 不再是当前客户端事实源。
 - 不做自动发布。
 - 不做虚假评论、刷量、伪装用户或绕过平台规则。
 - 所有动作都必须留下行动记录。
@@ -304,17 +305,16 @@ v1 已落地或纳入 readiness gate 的视图：
 | 卖点 / 场景矩阵 | 卖点 / 痛点 / 人群 / 场景 / 渠道 / 证据 / 素材状态。 | 筛选、排序、分页、本批选择、生成审核任务、创建补素材任务。 |
 | 审核任务 | 主张、证据、来源、风险、建议处理。 | 通过、驳回、合并、拆分、补证据、禁用。 |
 | 提示词依据预览 | 即将注入 Prompt 的卖点、证据、规则和禁用表达。 | 预览、确认、生成 PromptDraft。 |
-| 品牌战情室 | 评论、竞品、热点、投放、素材表现和品牌风险信号。 | 选择信号、建立作战目标、查看优先级和风险摘要。 |
-| 作战编组 | 目标、负责人、渠道、资源包、动作和发布检查。 | 组包、分配席位、生成执行队列、查看拦截原因。 |
-| 执行队列 | 可执行、待审核、待补资源、已拦截和已交接动作。 | 执行标准动作、创建补证据 / 补素材任务、送审。 |
+| 内容制造批次 | 选品、意图、建模、卖点、矩阵、制造、审核、调优和复盘阶段。 | 生成批次、推进阶段、处理恢复任务、查看产物链路。 |
+| 生产交接行动记录 | Prompt 草稿、场景卡、SOP 运行、素材覆盖回写和补素材交付包。 | 追溯产物、查看发布检查、导出行动记录、进入复盘。 |
 | 行动记录 / 复盘 | 行动、产物、审核、素材表现和回写。 | 过滤、追溯、复用高表现组合。 |
 
 主动作落地要求：
 
-- 目标树“确认目标优先级”写入 `confirm-objectives` 行动记录，用于确认信号已经转成目标、优先级、渠道和成功标准。
-- 作战编组“保存作战单元”写入 `confirm-resource-bundles` 行动记录，用于确认资源包、负责人、Agent 席位、发布检查和恢复路径。
-- 执行队列“同步执行队列”调用队列同步适配器并写入 `sync-execution-queue` 行动记录，用于团队共享当前可执行、待审核、待补资源和已拦截状态。
-- 普通用户界面只展示“目标 / 资源包 / 执行队列 / 行动记录”，不展示内部动作枚举。
+- 内容制造批次“生成批次”写入当前阶段、输入覆盖、产物引用和恢复任务。
+- 内容制造批次“推进阶段”只能在阶段门禁通过或人工处理恢复任务后执行。
+- 生产交接“生成 Prompt / 场景卡 / SOP”写入 `content-action-records` 行动记录，用于团队共享当前下游产物、发布检查和恢复路径。
+- 普通用户界面只展示“批次阶段 / 恢复任务 / 交接产物 / 行动记录”，不展示内部动作枚举。
 
 命名规则：
 
@@ -333,9 +333,9 @@ v1 IPC 应保持粗粒度业务接口，避免 renderer 直接操作内部文件
 - `contentReviewTasks:generate`
 - `contentReviewTasks:submitDecision`
 - `contentProductionHandoff:create`
-- `brandCommandCenters:list`
-- `brandCommandCenters:build`
-- `brandCommandCenters:recordAction`
+- `contentBatches:list`
+- `contentBatches:build`
+- `contentBatches:advanceStage`
 - `contentKnowledgePack:export`
 - `contentWorkspaceSync:pull`
 - `contentWorkspaceSync:submitDraftChange`
@@ -369,7 +369,7 @@ flowchart LR
 - `ReviewDecision` 和 `ActionLog` 保持 append-only。
 - Bugu 校验业务角色、revision 和发布检查；LimeCore 只校验租户、账号、权益、模型策略和发布中心边界。
 - 离线导出包不保存 API Key、登录凭证和本机绝对路径。
-- Prompt 工作台和 SOP 默认消费 `KnowledgeRelease`，不直接消费他人本地 draft；当前实现已在手动 PromptDraft、Prompt 协作会话、内容知识地图团队知识包详情生成的 PromptDraft、生产交接 PromptDraft / WorkflowRun，以及品牌战情室直接生成的 PromptDraft / WorkflowRun 中保存团队知识包版本引用。
+- Prompt 工作台和 SOP 默认消费 `KnowledgeRelease`，不直接消费他人本地 draft；当前实现已在手动 PromptDraft、Prompt 协作会话、内容知识地图团队知识包详情生成的 PromptDraft，以及生产交接 PromptDraft / WorkflowRun 中保存团队知识包版本引用。
 
 ## 11. 服务端拓扑
 

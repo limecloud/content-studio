@@ -35,6 +35,7 @@ export function inputSourcePurposeLabel(purpose: InputSourcePurpose): string {
     reference: '参考素材',
     'product-brief': '产品资料',
     'user-feedback': '评论 / 客服问题',
+    'task-input': '任务输入',
     'sop-input': '任务输入',
     'successful-asset': '成功素材',
   };
@@ -84,6 +85,8 @@ export function kindLabel(kind: GenerationLogEntry['kind']): string {
     video: '视频',
     'video-breakdown': '视频拆解',
     'video-script': '视频脚本',
+    'video-script-evaluation': '脚本质检',
+    'video-script-shot-rewrite': '镜头重写',
     'prompt-pack': '提示词包',
     'scene-card': '场景卡',
     'reference-reverse': '素材拆解',

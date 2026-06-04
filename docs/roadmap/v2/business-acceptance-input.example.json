@@ -308,7 +308,7 @@
           "successful-asset",
           "prompt-distilled",
           "image",
-          "workflow-run"
+          "run-trace"
         ],
         "relatedPromptDraftId": "image-prompt-real",
         "relatedSceneCardIds": [

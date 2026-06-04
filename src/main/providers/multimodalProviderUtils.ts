@@ -2,7 +2,30 @@ import { readFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 
 export function sanitizeProviderError(value: string): string {
-  return value.replace(/sk-[A-Za-z0-9_-]+/g, 'sk-***').replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer ***');
+  return value
+    .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-***')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer ***')
+    .replace(/(authorization["']?\s*[:=]\s*["']?)[^"',}\s]+/gi, '$1***');
+}
+
+function normalizedAuthPrefix(prefix: string): string {
+  const trimmed = prefix.trim();
+  if (!trimmed) return '';
+  if (/^(bearer|basic)$/i.test(trimmed)) return `${trimmed} `;
+  return prefix.endsWith(' ') ? prefix : trimmed;
+}
+
+export function resolveAuthorizationHeader(apiKey: string, endpoint: string): string {
+  if (process.env.LLM_AUTH_PREFIX !== undefined) {
+    return `${normalizedAuthPrefix(process.env.LLM_AUTH_PREFIX)}${apiKey}`;
+  }
+  try {
+    const hostname = new URL(endpoint).hostname.toLowerCase();
+    if (hostname === 'gptproto.com' || hostname.endsWith('.gptproto.com')) return apiKey;
+  } catch {
+    // 无法解析时沿用 OpenAI 兼容接口的常见 Bearer 写法。
+  }
+  return `Bearer ${apiKey}`;
 }
 
 export function resolveResponsesEndpoint(baseUrl: string): string {

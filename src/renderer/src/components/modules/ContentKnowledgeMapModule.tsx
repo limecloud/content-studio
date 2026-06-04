@@ -428,13 +428,13 @@ function rowRecoveryMessage(row: ContentKnowledgeMapMatrixRow): string {
   if (row.status === 'needs-evidence') return '先补产品报告、用户原声、客服记录或人工说明；补齐前不能写成确定性主张。';
   if (row.materialStatus === 'missing') return '先创建补素材任务，补齐可用图片、视频或案例后再进入生产交接。';
   if (row.tags.some((tag) => /竞品|不可搬运/.test(tag))) return '先转写为本品牌已审核机会，不能直接复制竞品表达或视觉元素。';
-  return '送审后由品牌负责人确认命名、证据和表达边界，再交给 Prompt、场景库或 SOP。';
+  return '送审后由品牌负责人确认命名、证据和表达边界，再交给 Prompt 或场景库。';
 }
 
 function rowDeliveryMessage(row: ContentKnowledgeMapMatrixRow): string {
   if (row.status !== 'ready') return '当前只能生成审核任务或补资料任务，不能直接交给生产。';
   if (row.materialStatus === 'missing') return '可先生成图文 Prompt；视频和混剪方向需要补素材后再交接。';
-  return '通过审核后可交给 Prompt 工作台、场景库、SOP 输入和品牌战情室。';
+  return '通过审核后可交给 Prompt 工作台、场景库和素材审核。';
 }
 
 function renderMatrixRows({
@@ -651,16 +651,8 @@ function renderMatrixRowDetail(
         >
           生成场景卡
         </button>
-        <button
-          className="ghost small"
-          disabled={productionActionDisabled}
-          title={!rowReady ? '先补证据或完成审核后再交给生产。' : undefined}
-          onClick={() => onCreateHandoff(row.id, 'sop-run')}
-        >
-          启动 SOP
-        </button>
-        <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('brand-command-center')}>
-          去品牌战情室
+        <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('assets-prompt-workbench')}>
+          去 Prompt 工作台
         </button>
       </div>
     </div>
@@ -833,8 +825,8 @@ function renderMaterialFeedbackContent(input: {
         <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={() => input.onSelectModule('assets')}>
           去素材库
         </button>
-        <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={() => input.onSelectModule('brand-command-logs')}>
-          看行动记录
+        <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={() => input.onSelectModule('assets-history')}>
+          看运行历史
         </button>
       </ActionGroup>
     </div>
@@ -965,7 +957,7 @@ function renderAdvancedExportContent(input: {
         </section>
         <section>
           <strong>下游消费</strong>
-          <p>Prompt 工作台、SOP、素材审核和品牌战情室都应引用同一团队知识包版本。</p>
+          <p>Prompt 工作台、场景库和素材审核都应引用同一团队知识包版本。</p>
           <p>{input.release?.packagePublicUrl ? '公开包地址已登记，可进入生产下载校验。' : '当前仍需真实 Bugu 工作区和公开包地址完成生产验收。'}</p>
         </section>
         <section>
@@ -1009,9 +1001,6 @@ function renderAdvancedExportContent(input: {
         </button>
         <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={() => input.onSelectModule('assets-prompt-workbench')}>
           去 Prompt 工作台
-        </button>
-        <button className="ghost small" disabled={!input.workspaceReady || input.busy} onClick={() => input.onSelectModule('assets-sop')}>
-          去 SOP 输入
         </button>
       </ActionGroup>
     </div>
@@ -1122,7 +1111,7 @@ function renderBuildRunDetailContent(input: {
       ) : null}
       <section className="content-map-build-detail-recovery">
         <strong>下一步</strong>
-        <p>{hasBlockedStep ? '先按问题清单补输入源、配置生成服务或处理缺证据项，再重新生成或送审。' : '生成结果可进入审核任务、团队知识包、Prompt 工作台、场景卡或 SOP。'}</p>
+        <p>{hasBlockedStep ? '先按问题清单补输入源、配置生成服务或处理缺证据项，再重新生成或送审。' : '生成结果可进入审核任务、团队知识包、Prompt 工作台或场景卡。'}</p>
         <ActionGroup align="left">
           <button
             className="primary small"
@@ -1380,7 +1369,7 @@ export function ContentKnowledgeMapModule({
             label: '创建知识包版本',
             onClick: onCreateTeamKnowledgePackage,
             disabled: !workspaceReady || busy,
-            hint: '发布后，Prompt 工作台、SOP 和自动化执行链路可以选择这个团队版本。',
+            hint: '发布后，Prompt 工作台和内容生产链路可以选择这个团队版本。',
           };
   const deliveryChecks = [
     {
@@ -1464,7 +1453,7 @@ export function ContentKnowledgeMapModule({
     {
       key: 'handoff',
       title: '生产交付',
-      detail: '交给场景库、Prompt 工作台、SOP 和审核任务',
+      detail: '交给场景库、Prompt 工作台和审核任务',
       state: hasMap ? 'active' : 'idle',
     },
   ];
@@ -1492,7 +1481,7 @@ export function ContentKnowledgeMapModule({
     if (!trimmed) return;
     onStartAgentSession({
       title: `${activeMap?.title ?? '内容知识地图'} / 内容知识地图协作`,
-      purpose: 'sop',
+      purpose: 'content-task',
       userIntent: [
         '内容知识地图协作',
         activeMap ? `当前地图：${activeMap.title}（${activeMap.id}）` : '当前还没有内容知识地图。',

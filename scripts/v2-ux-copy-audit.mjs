@@ -46,6 +46,8 @@ export const V2_UX_COPY_AUDITS = [
     path: 'src/renderer/src/app/v2FeatureRegistry.ts',
     rules: [
       ...prototypeRules(),
+      ...retiredBrandCommandEntryRules(),
+      ...retiredSopWorkflowEntryRules(),
       rule('internal-run-id', /\brun_[0-9A-Za-z_-]+/, 'v2 入口预览不能展示 run_* 内部编号。'),
       rule('visible-blocked-status', /status:\s*['"]blocked['"]/, 'v2 入口状态不能使用 blocked。'),
     ],
@@ -60,15 +62,6 @@ export const V2_UX_COPY_AUDITS = [
     path: 'src/renderer/src/components/modules/V2FeatureModule.tsx',
     rules: [
       rule('visible-blocked-status', /feature\.status\s*===\s*['"]blocked['"]/, 'v2 入口组件不能判断并显示 blocked 状态。'),
-    ],
-  },
-  {
-    path: 'src/renderer/src/components/modules/WorkflowFeatureModule.tsx',
-    rules: [
-      ...v1BusinessModuleRules(),
-      rule('workflow-step-key-label', /步骤快照\s*\//, '运行详情产物线索不能展示步骤 key。'),
-      rule('raw-artifact-title', /title=\{ref\}/, '运行详情产物线索 title 不能暴露原始 artifactRef。'),
-      rule('raw-artifact-fallback', /return\s+ref(?:\.length|\s*;)/, '运行详情未知产物不能回退展示内部引用字符串。'),
     ],
   },
   {
@@ -106,12 +99,37 @@ export const V2_UX_COPY_AUDITS = [
     rules: v1BusinessModuleRules(),
   },
   {
-    path: 'src/renderer/src/components/modules/BrandCommandCenterModule.tsx',
-    rules: v1BusinessModuleRules(),
+    path: 'src/renderer/src/components/modules/ContentBatchPipelineModule.tsx',
+    rules: [
+      ...v1BusinessModuleRules(),
+      ...intakeLevelCopyRules(),
+      ...retiredBrandCommandEntryRules(),
+      rule('content-batch-action-review-copy', /行动复盘|行动记录|执行队列|作战编组|品牌战情室/, '内容制造主链不能回流到旧作战模块语义，应使用运行复盘、运行历史和矩阵交接。'),
+    ],
   },
   {
     path: 'src/renderer/src/components/modules/PromptWorkbenchModule.tsx',
     rules: v1BusinessModuleRules(),
+  },
+  {
+    path: 'src/renderer/src/components/modules/InputSourcesModule.tsx',
+    rules: [...v1BusinessModuleRules(), ...intakeLevelCopyRules()],
+  },
+  {
+    path: 'src/renderer/src/app/constants.ts',
+    rules: [...retiredBrandCommandEntryRules(), ...retiredSopWorkflowEntryRules()],
+  },
+  {
+    path: 'src/renderer/src/components/ModuleOutlet.tsx',
+    rules: [...retiredBrandCommandEntryRules(), ...retiredSopWorkflowEntryRules()],
+  },
+  {
+    path: 'src/renderer/src/components/AppSidebar.tsx',
+    rules: [...retiredBrandCommandEntryRules(), ...retiredSopWorkflowEntryRules()],
+  },
+  {
+    path: 'src/main/services/contentBatchApplicationService.ts',
+    rules: [...retiredBrandCommandEntryRules(), ...retiredSopWorkflowEntryRules()],
   },
 ];
 
@@ -157,6 +175,31 @@ function v1BusinessModuleRules() {
       /\b(Ontology|Concept|Relation|CoverageMatrix|PromptGroundingContext|DecisionGate|ActionLog)\b/,
       'v1 普通用户页面不能暴露 Ontology / Concept / Relation 等工程术语。',
     ),
+  ];
+}
+
+function intakeLevelCopyRules() {
+  return [
+    rule(
+      'visible-intake-level-code',
+      /[>'"`]\s*L[0-2](?:\s|\/|，|。|<|['"`])/,
+      '普通用户界面应使用“手动补齐 / 文件映射 / 自动接入”，不能裸露 L0 / L1 / L2 分级。',
+    ),
+  ];
+}
+
+function retiredBrandCommandEntryRules() {
+  return [
+    rule('retired-brand-command-module-key', /brand-command-(?:center|objectives|bundles|queue|logs)/, '旧作战模块 key 不能回流到当前导航、路由、v2 registry 或内容制造主链。'),
+    rule('retired-brand-command-label', /批次工作台|目标树|作战编组|执行队列|品牌战情室/, '旧作战入口文案不能回流到当前导航、路由、v2 registry 或内容制造主链。'),
+  ];
+}
+
+function retiredSopWorkflowEntryRules() {
+  return [
+    rule('retired-sop-workflow-module-key', /assets-sop|workflow-definition|workflow-canvas/, '旧 SOP 工作流模块 key 不能回流到当前导航、路由、v2 registry 或内容制造主链。'),
+    rule('retired-sop-workflow-module-name', /WorkflowFeatureModule|WorkflowStore|WorkflowEngine/, '旧 SOP 工作流运行时不能回流到当前导航、路由、v2 registry 或内容制造主链。'),
+    rule('retired-sop-workflow-action', /SOP 工作流|工作流定义|Canvas 编排|启动 SOP|打开 SOP|沉淀为 SOP/, '旧 SOP 工作流入口文案不能回流到当前导航、路由、v2 registry 或内容制造主链。'),
   ];
 }
 

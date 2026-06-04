@@ -2,7 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -283,106 +283,6 @@ async function clickNavItem(page, label) {
   await item.click();
 }
 
-async function appendE2EBrandCommandQueueDeliverables(workspaceDir) {
-  const commandCenterStorePath = join(workspaceDir, '.content-studio', 'brand-command-centers.json');
-  const commandCenters = JSON.parse(await readFile(commandCenterStorePath, 'utf-8'));
-  const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-  if (!center) throw new Error('E2E 品牌战情室种子不存在。');
-  const sourceQueueItem = center.queueItems.find((item) => item.actionType === 'generate-prompt-draft' && item.status === 'ready')
-    ?? center.queueItems.find((item) => item.status === 'ready')
-    ?? center.queueItems[0];
-  if (!sourceQueueItem) throw new Error('E2E 品牌战情室缺少可复用的队列动作。');
-  const baseBundle = center.resourceBundles.find((item) => item.id === sourceQueueItem.resourceBundleId);
-  const baseCell = center.campaignCells.find((item) => item.id === sourceQueueItem.campaignCellId);
-  if (!baseBundle || !baseCell) throw new Error('E2E 品牌战情室缺少可复用的资源包或作战单元。');
-
-  const now = new Date().toISOString();
-  const coverageRowIds = Array.from(new Set([
-    'selling-v1-light',
-    'pain-v1-bag',
-    'scenario-v1-commute',
-  ]));
-  const fallbackDimensions = {
-    audiences: ['通勤轻装人群'],
-    channels: ['抖音'],
-    contentFormats: ['短视频'],
-    useCases: ['早高峰通勤包内展示'],
-  };
-  const existingDimensions = baseBundle.dimensions ?? baseCell.dimensions ?? {};
-  const dimensions = {
-    ...existingDimensions,
-    audiences: existingDimensions.audiences?.length ? existingDimensions.audiences : fallbackDimensions.audiences,
-    channels: existingDimensions.channels?.length
-      ? existingDimensions.channels
-      : baseCell.channels.length
-        ? baseCell.channels
-        : fallbackDimensions.channels,
-    contentFormats: existingDimensions.contentFormats?.length ? existingDimensions.contentFormats : fallbackDimensions.contentFormats,
-    useCases: existingDimensions.useCases?.length ? existingDimensions.useCases : fallbackDimensions.useCases,
-  };
-  Object.assign(baseBundle, {
-    coverageRowIds,
-    approvedCoverageRowIds: Array.from(new Set([...(baseBundle.approvedCoverageRowIds ?? []), ...coverageRowIds])),
-    sopRefs: Array.from(new Set([...(baseBundle.sopRefs ?? []), 'workflow-xiaohongshu-seeding-image'])),
-    dimensions,
-    gaps: [],
-    readyPercent: Math.max(baseBundle.readyPercent ?? 0, 100),
-  });
-  Object.assign(baseCell, {
-    channels: baseCell.channels.length ? baseCell.channels : dimensions.channels ?? ['抖音'],
-    dimensions,
-  });
-
-  const queueItems = [{
-    id: 'queue-e2e-create-scene-card',
-    campaignCellId: baseCell.id,
-    actionType: 'create-scene-card',
-    title: '创建通勤场景卡',
-    summary: '把轻量通勤资源包转成场景库卡片，供图片和短视频 Prompt 复用。',
-    status: 'ready',
-    outputTarget: 'scene-card',
-    resourceBundleId: baseBundle.id,
-    dimensions,
-    createdAt: now,
-    updatedAt: now,
-  }, {
-    id: 'queue-e2e-launch-sop-run',
-    campaignCellId: baseCell.id,
-    actionType: 'launch-sop-run',
-    title: '启动小红书种草图 SOP',
-    summary: '把资源包交给小红书种草图 SOP，形成可追溯运行记录。',
-    status: 'ready',
-    outputTarget: 'sop-run',
-    resourceBundleId: baseBundle.id,
-    dimensions,
-    createdAt: now,
-    updatedAt: now,
-  }, {
-    id: 'queue-e2e-write-back-material-coverage',
-    campaignCellId: baseCell.id,
-    actionType: 'write-back-material-coverage',
-    title: '回写通勤素材覆盖',
-    summary: '把已通过的通勤实拍素材回写到内容组合，更新素材覆盖和表现标签。',
-    status: 'ready',
-    outputTarget: 'material-coverage',
-    resourceBundleId: baseBundle.id,
-    dimensions,
-    createdAt: now,
-    updatedAt: now,
-  }];
-  const existingQueueItemIds = new Set(center.queueItems.map((item) => item.id));
-  const newQueueItems = queueItems.filter((item) => !existingQueueItemIds.has(item.id));
-  baseCell.queueItemIds = Array.from(new Set([...baseCell.queueItemIds, ...newQueueItems.map((item) => item.id)]));
-  center.queueItems = [...center.queueItems, ...newQueueItems];
-  center.updatedAt = now;
-  await writeFile(commandCenterStorePath, `${JSON.stringify(commandCenters, null, 2)}\n`, 'utf-8');
-  return {
-    centerId: center.id,
-    queueItemIds: queueItems.map((item) => item.id),
-    actionTypes: queueItems.map((item) => item.actionType),
-  };
-}
-
 async function expectNavLabelAbsent(page, label) {
   await expect.poll(
     async () => page.locator('.nav-stack .nav-label').evaluateAll(
@@ -538,7 +438,7 @@ async function assertVideoWorkbenchLayout(page) {
     };
   });
   expect(layout.hasWorkbench, JSON.stringify(layout)).toBe(true);
-  expect(layout.tabCount, JSON.stringify(layout)).toBe(3);
+  expect(layout.tabCount, JSON.stringify(layout)).toBe(5);
   expect(layout.workbenchOverflow, JSON.stringify(layout)).toBe('hidden');
   expect(layout.activeLayoutOverflowY, JSON.stringify(layout)).toMatch(/auto|scroll/);
   expect(layout.badOverflows, JSON.stringify(layout.badOverflows)).toEqual([]);
@@ -574,6 +474,21 @@ async function startFakeOpenAITextServer(onPrompt) {
   return { server, baseUrl, requests };
 }
 
+async function expectModelSettingsVisible(page) {
+  await expect(page.getByText('生成服务设置')).toBeVisible();
+  await expect(page.locator('.model-settings-layout')).toContainText('文字生成');
+  await expect(page.locator('.model-settings-layout')).toContainText('图片生成');
+  await expect(page.locator('.model-settings-layout')).toContainText('视频生成');
+}
+
+async function expectAgentBusinessReply(locator, expected) {
+  await expect(locator).toContainText(expected.primary, { timeout: 20_000 });
+  if (expected.secondary) {
+    await expect(locator).toContainText(expected.secondary, { timeout: 20_000 });
+  }
+  await expect(locator).toContainText(/blocked:text-provider|Prompt 草稿|可执行 Prompt/, { timeout: 20_000 });
+}
+
 async function startFakeBuguContentWorkspaceServer() {
   let requestCount = 0;
   const requests = [];
@@ -582,7 +497,6 @@ async function startFakeBuguContentWorkspaceServer() {
   const syncConflicts = [];
   const knowledgeMaps = [];
   const buildRuns = [];
-  const commandCenters = [];
   const paginateItems = (items, url) => {
     const limit = Number(url.searchParams.get('limit') || 100);
     const offset = Number(url.searchParams.get('offset') || 0);
@@ -630,16 +544,6 @@ async function startFakeBuguContentWorkspaceServer() {
           data: paginateItems(buildRuns
             .filter((item) => !workspaceId || item.workspaceId === workspaceId)
             .filter((item) => !contentKnowledgeMapId || item.contentKnowledgeMapId === contentKnowledgeMapId), url),
-        }));
-        return;
-      }
-      if (route === 'content-command-centers') {
-        const workspaceId = url.searchParams.get('workspaceId') || '';
-        const sourceKnowledgeMapId = url.searchParams.get('sourceKnowledgeMapId') || '';
-        response.end(JSON.stringify({
-          data: paginateItems(commandCenters
-            .filter((item) => !workspaceId || item.workspaceId === workspaceId)
-            .filter((item) => !sourceKnowledgeMapId || item.sourceKnowledgeMapId === sourceKnowledgeMapId), url),
         }));
         return;
       }
@@ -784,48 +688,6 @@ async function startFakeBuguContentWorkspaceServer() {
         }));
         return;
       }
-      if (route === 'content-command-centers') {
-        const snapshot = payload.snapshot ?? {};
-        const commandCenter = {
-          id: payload.id,
-          workspaceId: payload.workspaceId || 'workspace-e2e-content',
-          title: payload.title,
-          status: payload.status,
-          sourceKnowledgeMapId: payload.sourceKnowledgeMapId,
-          sourceKnowledgeMapTitle: payload.sourceKnowledgeMapTitle,
-          signalCount: payload.signalCount,
-          objectiveCount: payload.objectiveCount,
-          resourceBundleCount: payload.resourceBundleCount,
-          campaignCellCount: payload.campaignCellCount,
-          queueItemCount: payload.queueItemCount,
-          actionRecordCount: payload.actionRecordCount,
-          readyQueueItemCount: payload.readyQueueItemCount,
-          blockedQueueItemCount: payload.blockedQueueItemCount,
-          handedOffQueueItemCount: payload.handedOffQueueItemCount,
-          signals: snapshot.signals ?? [],
-          objectives: snapshot.objectives ?? [],
-          resourceBundles: snapshot.resourceBundles ?? [],
-          campaignCells: snapshot.campaignCells ?? [],
-          queueSummary: snapshot.queueSummary ?? { items: [] },
-          actionSummary: snapshot.actionSummary ?? { records: [] },
-          constraints: snapshot.constraints ?? [],
-          gaps: snapshot.gaps ?? [],
-          baseRevision: payload.baseRevision,
-          serverRevision: revision,
-          createdAt: payload.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        const existing = commandCenters.findIndex((item) => item.id === commandCenter.id);
-        if (existing >= 0) commandCenters[existing] = commandCenter;
-        else commandCenters.unshift(commandCenter);
-        response.end(JSON.stringify({
-          data: {
-            workspace: { id: commandCenter.workspaceId, currentRevision: revision },
-            commandCenter: { id: payload.id, serverRevision: revision, baseRevision: payload.baseRevision },
-          },
-        }));
-        return;
-      }
       if (route === 'content-review-decisions') {
         response.end(JSON.stringify({
           data: {
@@ -892,11 +754,6 @@ async function startFakeBuguContentWorkspaceServer() {
       const index = buildRuns.findIndex((item) => item.id === record.id);
       if (index >= 0) buildRuns[index] = record;
       else buildRuns.unshift(record);
-    },
-    addCommandCenter: (record) => {
-      const index = commandCenters.findIndex((item) => item.id === record.id);
-      if (index >= 0) commandCenters[index] = record;
-      else commandCenters.unshift(record);
     },
     addSyncConflict: (conflict) => syncConflicts.unshift(conflict),
     getRequestCount: () => requestCount,
@@ -1256,7 +1113,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     ]));
 
     await clickButton(page, '视频生成');
-    await expect(page.getByRole('heading', { name: '参考视频拆解工作台' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '爆款视频拆解与脚本工厂' })).toBeVisible();
     await clickButton(page, '文章生成');
     await expectCommandCenter(page, '.article-module-workbench > .module-command-center', 'compact');
     await expect(page.locator('.article-module-workbench > .v2-feature-hero')).toHaveCount(0);
@@ -1312,7 +1169,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     await clickButton(page, '设置');
     await expect(page.locator('.settings-modal')).toBeVisible();
     await clickButton(page, '模型');
-    await expect(page.getByText('生成服务连接配置')).toBeVisible();
+    await expectModelSettingsVisible(page);
     await clickButton(page, '完成');
     await expect(page.locator('.settings-modal')).toHaveCount(0);
 
@@ -1826,7 +1683,7 @@ test('模型密钥不可解密时进入统一授权处理', async ({}, testInfo)
     await withContentStudio(testInfo, async ({ page }) => {
       await expect(page.locator('.model-reauthorization-banner')).toContainText('文字、图片、视频 API Key');
       await expect(page.locator('.settings-modal')).toBeVisible();
-      await expect(page.getByText('生成服务连接配置')).toBeVisible();
+      await expectModelSettingsVisible(page);
       await expect(page.locator('.model-auth-warning')).toContainText('文字、图片、视频 API Key 需要重新授权');
 
       await clickButton(page, '完成');
@@ -2441,11 +2298,11 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
       '成品视频导入',
       '标题生成',
       '脚本生成',
+      '内容制造',
       '内容知识地图',
       '审核任务',
       '输入源 / 文档转换',
       '场景库',
-      '品牌战情室',
       '运行历史',
     ]) {
       await expectNavLabelVisible(page, label);
@@ -2454,14 +2311,20 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     for (const label of [
       '创意视频',
       '自定义视频',
-      '工作流定义',
-      'Canvas 编排',
+      '批次工作台',
+      '目标树',
+      '作战编组',
+      '执行队列',
+      '行动记录',
     ]) {
       await expectNavLabelAbsent(page, label);
     }
-    await clickNavItem(page, '高级维护');
-    await expectNavLabelVisible(page, '工作流定义');
-    await expectNavLabelVisible(page, 'Canvas 编排');
+
+    await clickNavItem(page, '内容制造');
+    await expect(page.locator('.content-batch-workbench, .content-batch-empty')).toBeVisible();
+    await expect(page.locator('.content-batch-workbench, .content-batch-empty')).toContainText('内容制造批次');
+    await expect(page.locator('.content-batch-workbench, .content-batch-empty')).toContainText(/选品|创建第一个批次/);
+    await expectNotStaticV2Page(page);
 
     await clickNavItem(page, '审核任务');
     await expect(page.locator('.content-review-workbench')).toBeVisible();
@@ -2527,6 +2390,12 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expect(page.locator('.input-sources-workbench > .user-journey-guide')).toHaveCount(0);
     await expect(page.locator('.input-sources-workbench > .agent-session-panel')).toBeVisible();
     await expect(page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer')).toContainText('登记文本输入源');
+    const intakePanel = page.locator('.intake-maturity-panel');
+    await expect(intakePanel).toContainText('数据接入成熟度');
+    await expect(intakePanel).toContainText('输入接入与恢复工作台');
+    await expect(intakePanel).toContainText('商品与库存');
+    await expect(intakePanel).toContainText('投放与流量');
+    await expect(intakePanel).toContainText('字段映射');
     const inputSourceAgentLayout = await page.evaluate(() => {
       const workbench = document.querySelector('.input-sources-workbench');
       const panel = document.querySelector('.input-sources-workbench > .agent-session-panel');
@@ -2559,6 +2428,8 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     ].join('\n'));
     await clickButton(page, '登记文本输入源');
     await expect(page.locator('.input-source-list')).toContainText('便携条包产品资料');
+    await expect(intakePanel).toContainText('商品与库存');
+    await expect(intakePanel).toContainText('手动补齐');
     const productBriefPanel = page.locator('.product-brief-structure-panel');
     await expect(productBriefPanel).toContainText('产品变量表');
     await expect(productBriefPanel).toContainText('便携营养条包');
@@ -2733,70 +2604,10 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expect(page.locator('.content-map-workbench > .agent-session-panel .agent-session-footer')).toContainText('生成内容知识地图');
     await expect(page.locator('.content-map-workbench > .user-journey-guide')).toHaveCount(0);
 
-    await clickNavItem(page, '品牌战情室');
-    await expectCommandCenter(page, '.brand-command-workbench > .module-command-center', 'compact');
-    await expect(page.locator('.brand-command-workbench > .agent-session-panel')).toBeVisible();
-    await expect(page.locator('.brand-command-workbench > .agent-session-panel .agent-session-footer textarea')).toBeVisible();
-    await expect(page.locator('.brand-command-workbench > .agent-session-panel .agent-session-footer')).toContainText('开始研判');
-    await expect(page.locator('.brand-command-workbench > .agent-session-panel .agent-session-footer')).toContainText('生成战情室');
-    await expect(page.locator('.brand-command-workbench > .user-journey-guide')).toHaveCount(0);
-
     await clickNavItem(page, '成型知识库');
     await expectCommandCenter(page, '.knowledge-workbench > .module-command-center', 'managed');
     await expect(page.locator('.module-command-center .knowledge-tab-bar')).toBeVisible();
     await expect(page.locator('.knowledge-workbench > .knowledge-tab-bar')).toHaveCount(0);
-
-    await clickNavItem(page, 'SOP 工作流');
-    await expect(page.locator('.workflow-feature-workbench')).toBeVisible();
-    await expectCommandCenter(page, '.workflow-feature-workbench > .module-command-center', 'managed');
-    await expect(page.locator('.module-command-center .workflow-view-tabs')).toBeVisible();
-    await expect(page.locator('.workflow-feature-workbench > .workflow-view-tabs')).toHaveCount(0);
-    await expect(page.locator('.workflow-definition-list .record-card').first()).toBeVisible();
-    await expect(page.locator('.workflow-view-tabs')).toContainText('运行记录');
-    const sopRunner = page.locator('.workflow-runner-panel');
-    await sopRunner.locator('textarea').first().fill('');
-    await sopRunner.locator('textarea').nth(1).fill('');
-    await expect(sopRunner).toContainText('请先补齐必填字段');
-    await expect(sopRunner).toContainText('补充资料说明');
-    await expect(sopRunner).toContainText('用户意图');
-    await expect(sopRunner.locator('button').filter({ hasText: '运行 SOP' })).toBeDisabled();
-    await sopRunner.locator('textarea').nth(1).fill('生成 10 组小红书真实场景 Prompt。');
-    await expect(sopRunner).toContainText('本次使用资料');
-    await expect(sopRunner).toContainText('便携条包产品资料');
-    const productSourceOption = sopRunner.locator('.workflow-input-source-option').filter({ hasText: '便携条包产品资料' });
-    await expect(productSourceOption.locator('input')).toBeChecked();
-    await productSourceOption.locator('input').uncheck();
-    await expect(sopRunner.locator('button').filter({ hasText: '运行 SOP' })).toBeDisabled();
-    await expect(sopRunner).toContainText('请至少选择一个资料来源');
-    await productSourceOption.locator('input').check();
-    await expect(sopRunner.locator('button').filter({ hasText: '运行 SOP' })).toBeEnabled();
-    await expect(page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: '定义管理' })).toHaveCount(0);
-    await expect(page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: 'Canvas' })).toHaveCount(0);
-    await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-    await expect(page.locator('.workflow-history-panel')).toBeVisible();
-    await page.locator('.workflow-view-tabs button').filter({ hasText: '高级维护' }).click();
-    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: '定义管理' }).click();
-    await expect(page.locator('.workflow-detail-panel')).toBeVisible();
-    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: 'Canvas' }).click();
-    await expect(page.locator('.workflow-canvas-panel')).toBeVisible();
-    const workflowDensity = await page.evaluate(() => {
-      const layout = document.querySelector('.workflow-feature-layout');
-      const sidebar = document.querySelector('.workflow-definition-list');
-      const node = document.querySelector('.workflow-canvas-node');
-      if (!layout || !sidebar || !node) return { ok: false };
-      const style = window.getComputedStyle(layout);
-      return {
-        ok: true,
-        gap: Number.parseFloat(style.columnGap),
-        sidebarWidth: Math.round(sidebar.getBoundingClientRect().width),
-        nodeHeight: Math.round(node.getBoundingClientRect().height),
-      };
-    });
-    expect(workflowDensity.ok, JSON.stringify(workflowDensity)).toBe(true);
-    expect(workflowDensity.gap, JSON.stringify(workflowDensity)).toBeLessThanOrEqual(10);
-    expect(workflowDensity.sidebarWidth, JSON.stringify(workflowDensity)).toBeLessThanOrEqual(300);
-    expect(workflowDensity.nodeHeight, JSON.stringify(workflowDensity)).toBeLessThanOrEqual(150);
-    await expectNotStaticV2Page(page);
   });
 });
 
@@ -3554,85 +3365,6 @@ test('内容知识地图团队共享按钮会真实生成变更包和知识包�
         createdAt: new Date().toISOString(),
         updatedAt: new Date(Date.now() + 500).toISOString(),
       });
-      bugu.addCommandCenter({
-        id: 'command-center-e2e-remote-current',
-        workspaceId: 'workspace-e2e-content',
-        title: '远端团队品牌作战系统',
-        status: 'active',
-        sourceKnowledgeMapId: 'map-e2e-remote-current',
-        sourceKnowledgeMapTitle: '远端团队内容地图',
-        signals: [{
-          id: 'signal-e2e-remote-current',
-          type: 'feedback-pain',
-          title: '远端团队反馈信号',
-          summary: '远端团队记录了午后补涂疑虑。',
-          sourceLabel: '远端团队评论',
-          businessValue: 93,
-          evidenceReadiness: 90,
-          urgency: 84,
-          riskLevel: 12,
-          productionCost: 25,
-          recommendedObjectiveType: 'conversion',
-          riskBoundary: '不能绝对化表达。',
-          relatedMapRowIds: ['selling-e2e-remote-light'],
-        }],
-        objectives: [],
-        resourceBundles: [{
-          id: 'bundle-e2e-remote-current',
-          title: '远端团队清爽补涂资源包',
-          objectiveId: 'objective-e2e-remote-current',
-          sourceKnowledgeMapId: 'map-e2e-remote-current',
-          coverageRowIds: ['selling-e2e-remote-light'],
-          sellingPointRefs: ['远端团队清爽补涂'],
-          evidenceRefs: ['evidence-e2e-remote-light'],
-          sceneRefs: ['远端团队午后补涂场景'],
-          promptDraftIds: ['remote-prompt-1'],
-          materialRefs: ['asset-e2e-remote-light'],
-          sopRefs: [],
-          constraints: ['不能绝对化表达。'],
-          gaps: [],
-          handoffRefs: ['prompt-draft:remote-prompt-1'],
-          readyPercent: 96,
-        }],
-        campaignCells: [],
-        queueSummary: {
-          items: [{
-            id: 'queue-e2e-remote-current',
-            campaignCellId: 'cell-e2e-remote-current',
-            actionType: 'generate-prompt-draft',
-            title: '远端团队生成 Prompt',
-            summary: '团队另一账号已交接 Prompt 草稿。',
-            status: 'handed-off',
-            outputTarget: 'prompt-draft',
-            resourceBundleId: 'bundle-e2e-remote-current',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }],
-        },
-        actionSummary: {
-          records: [{
-            id: 'action-e2e-remote-current',
-            queueItemId: 'queue-e2e-remote-current',
-            campaignCellId: 'cell-e2e-remote-current',
-            actionType: 'generate-prompt-draft',
-            title: '远端团队已生成 Prompt',
-            outcome: 'handoff',
-            actorLabel: '远端团队成员',
-            actorRole: 'operator',
-            inputSummary: '远端团队资源包。',
-            outputSummary: '已交接 Prompt 工作台。',
-            promptDraftId: 'remote-prompt-1',
-            artifactRefs: ['prompt-draft:remote-prompt-1'],
-            createdAt: new Date().toISOString(),
-          }],
-        },
-        constraints: ['远端团队边界：不能绝对化表达。'],
-        gaps: [],
-        baseRevision: 'rev-remote-current-build',
-        serverRevision: 'rev-remote-current-command',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date(Date.now() + 2000).toISOString(),
-      });
       bugu.addRelease({
         id: 'release-e2e-remote-refresh',
         workspaceId: 'workspace-e2e-content',
@@ -3661,29 +3393,25 @@ test('内容知识地图团队共享按钮会真实生成变更包和知识包�
       await expect.poll(
         () => bugu.listRequests.filter((request) => (
           request.route === 'content-knowledge-maps' ||
-          request.route === 'content-build-runs' ||
-          request.route === 'content-command-centers'
+          request.route === 'content-build-runs'
         )).length,
-        { message: `等待三类 Bugu current GET 请求，当前请求：${JSON.stringify(bugu.listRequests)}`, timeout: 20_000 },
-      ).toBeGreaterThanOrEqual(3);
+        { message: `等待 Bugu current GET 请求，当前请求：${JSON.stringify(bugu.listRequests)}`, timeout: 20_000 },
+      ).toBeGreaterThanOrEqual(2);
       let refreshTrace;
       await expect.poll(
         async () => {
           refreshTrace = await page.evaluate(async (workspacePath) => {
-          const [maps, buildRuns, commandCenters, releases] = await Promise.all([
+          const [maps, buildRuns, releases] = await Promise.all([
             window.contentStudio.listContentKnowledgeMaps(workspacePath),
             window.contentStudio.listContentKnowledgeMapBuildRuns(workspacePath),
-            window.contentStudio.listBrandCommandCenters(workspacePath),
             window.contentStudio.listContentKnowledgeReleases(workspacePath),
           ]);
           const remote = releases.find((release) => release.id === 'release-e2e-remote-refresh');
           const remoteMap = maps.find((map) => map.id === 'map-e2e-remote-current');
           const remoteBuildRun = buildRuns.find((run) => run.id === 'build-run-e2e-remote-current');
-          const remoteCommandCenter = commandCenters.find((record) => record.id === 'command-center-e2e-remote-current');
           return {
             mapTitles: maps.map((map) => map.title),
             buildRunTitles: buildRuns.map((run) => run.title),
-            commandCenterTitles: commandCenters.map((record) => record.title),
             hasRemoteMap: Boolean(remoteMap),
             remoteMapTitle: remoteMap?.title,
             remoteSellingTitle: remoteMap?.sellingPoints[0]?.title,
@@ -3691,10 +3419,6 @@ test('内容知识地图团队共享按钮会真实生成变更包和知识包�
             hasRemoteBuildRun: Boolean(remoteBuildRun),
             remoteBuildRunStep: remoteBuildRun?.steps[0]?.key,
             remoteBuildRunRevision: remoteBuildRun?.teamSync?.revision,
-            hasRemoteCommandCenter: Boolean(remoteCommandCenter),
-            remoteCommandCenterTitle: remoteCommandCenter?.title,
-            remoteCommandCenterAction: remoteCommandCenter?.actionRecords[0]?.promptDraftId,
-            remoteCommandCenterRevision: remoteCommandCenter?.teamSync?.revision,
             hasRemote: Boolean(remote),
             remoteStatus: remote?.status,
             remotePublicUrl: remote?.packagePublicUrl,
@@ -3703,11 +3427,10 @@ test('内容知识地图团队共享按钮会真实生成变更包和知识包�
           }, workspaceDir);
           return refreshTrace;
         },
-        { message: '等待三类 Bugu current 事实源读回本机缓存', timeout: 20_000 },
+        { message: '等待 Bugu current 事实源读回本机缓存', timeout: 20_000 },
       ).toMatchObject({
         hasRemoteMap: true,
         hasRemoteBuildRun: true,
-        hasRemoteCommandCenter: true,
         hasRemote: true,
       });
       await expect(mapWorkbench.locator('.prompt-draft-list')).toContainText('远端团队内容地图');
@@ -3723,24 +3446,16 @@ test('内容知识地图团队共享按钮会真实生成变更包和知识包�
       expect(refreshTrace.hasRemoteBuildRun, JSON.stringify(refreshTrace)).toBe(true);
       expect(refreshTrace.remoteBuildRunStep, JSON.stringify(refreshTrace)).toBe('remote-team-quality-check');
       expect(refreshTrace.remoteBuildRunRevision, JSON.stringify(refreshTrace)).toBe('rev-remote-current-build');
-      expect(refreshTrace.hasRemoteCommandCenter, JSON.stringify(refreshTrace)).toBe(true);
-      expect(refreshTrace.remoteCommandCenterTitle, JSON.stringify(refreshTrace)).toBe('远端团队品牌作战系统');
-      expect(refreshTrace.remoteCommandCenterAction, JSON.stringify(refreshTrace)).toBe('remote-prompt-1');
-      expect(refreshTrace.remoteCommandCenterRevision, JSON.stringify(refreshTrace)).toBe('rev-remote-current-command');
       expect(refreshTrace.hasRemote, JSON.stringify(refreshTrace)).toBe(true);
       expect(refreshTrace.remoteStatus, JSON.stringify(refreshTrace)).toBe('published');
       expect(refreshTrace.remotePublicUrl, JSON.stringify(refreshTrace)).toMatch(/^https:\/\/downloads\.bugu\.run\/content-workspaces\//);
       expect(refreshTrace.remoteFiles, JSON.stringify(refreshTrace)).toEqual(expect.arrayContaining(['KNOWLEDGE.md', 'manifest.json']));
       expect(bugu.listRequests.some((request) => request.route === 'content-knowledge-maps' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'), JSON.stringify(bugu.listRequests)).toBe(true);
       expect(bugu.listRequests.some((request) => request.route === 'content-build-runs' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'), JSON.stringify(bugu.listRequests)).toBe(true);
-      expect(bugu.listRequests.some((request) => request.route === 'content-command-centers' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'), JSON.stringify(bugu.listRequests)).toBe(true);
-
-      await clickNavItem(page, '品牌战情室');
-      await expect(page.locator('.brand-command-workbench .prompt-draft-list')).toContainText('远端团队品牌作战系统', { timeout: 20_000 });
-      await page.locator('.brand-command-workbench .prompt-draft-card').filter({ hasText: '远端团队品牌作战系统' }).click();
-      await expect(page.locator('.brand-command-workbench')).toContainText('远端团队反馈信号');
-      await page.locator('.brand-command-workbench .content-map-tabs button').filter({ hasText: '行动记录' }).click();
-      await expect(page.locator('.brand-command-workbench')).toContainText('remote-prompt-1');
+      await expectNavLabelAbsent(page, '目标树');
+      await expectNavLabelAbsent(page, '作战编组');
+      await expectNavLabelAbsent(page, '执行队列');
+      await expectNavLabelAbsent(page, '行动记录');
 
       bugu.addSyncConflict({
         id: 'conflict-e2e-team-merge',
@@ -3829,7 +3544,7 @@ test('内容知识地图会把仅本机资料阻断展示为共享范围处理�
       const restrictedSource = await api.registerInputSource({
         workspacePath,
         kind: 'manual-note',
-        purpose: 'sop-input',
+        purpose: 'task-input',
         title: '仅本机投放复盘',
         text: '内部投放数据：仅本机使用，禁止共享到团队。',
         summary: '仅本机投放复盘，不应进入团队知识包。',
@@ -3960,7 +3675,7 @@ test('内容知识地图会把仅本机资料阻断展示为共享范围处理�
   });
 });
 
-test('内容知识地图和品牌战情室能开始真实对话', async ({}, testInfo) => {
+test('内容知识地图能开始真实对话', async ({}, testInfo) => {
   test.setTimeout(90_000);
 
   const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
@@ -3993,11 +3708,6 @@ test('内容知识地图和品牌战情室能开始真实对话', async ({}, tes
           title: '地图测试内容知识地图',
           inputSourceIds: [source.id],
         });
-        await api.buildBrandCommandCenter({
-          workspacePath,
-          title: '地图测试品牌战情室',
-          contentKnowledgeMapId: map.id,
-        });
       }, { workspacePath: workspaceDir, endpoint: baseUrl });
 
       await page.reload();
@@ -4011,38 +3721,30 @@ test('内容知识地图和品牌战情室能开始真实对话', async ({}, tes
       await page.locator('.content-map-workbench .agent-session-footer textarea').fill('请给出证据缺口和下一步交付建议。');
       await page.locator('.content-map-workbench .agent-session-footer button').filter({ hasText: '开始生成' }).click();
       await expect(page.locator('.content-map-workbench .agent-turn.user')).toContainText('证据缺口', { timeout: 20_000 });
-      await expect(page.locator('.content-map-workbench .agent-turn.assistant')).toContainText('图片 Prompt', { timeout: 20_000 });
+      await expectAgentBusinessReply(page.locator('.content-map-workbench .agent-turn.assistant'), {
+        primary: '内容知识地图协作',
+        secondary: '证据缺口',
+      });
       await expect(page.locator('.content-map-workbench .agent-execution-events [data-event-class="artifact.changed"][data-owner="artifact"]')).toHaveCount(1);
-
-      await clickNavItem(page, '品牌战情室');
-      await expect(page.locator('.brand-command-workbench > .agent-session-panel')).toBeVisible({ timeout: 20_000 });
-      await page.locator('.brand-command-workbench .agent-session-footer textarea').fill('请判断当前队列哪些可以交接，哪些需要补资源。');
-      await page.locator('.brand-command-workbench .agent-session-footer button').filter({ hasText: '开始研判' }).click();
-      await expect(page.locator('.brand-command-workbench .agent-turn.user')).toContainText('当前队列', { timeout: 20_000 });
-      await expect(page.locator('.brand-command-workbench .agent-turn.assistant')).toContainText('图片 Prompt', { timeout: 20_000 });
 
       const sessions = await page.evaluate(async (workspacePath) => {
         const all = await window.contentStudio.listAgentPromptSessions(workspacePath);
         return all.map((session) => ({ title: session.title, messageCount: session.messages.length }));
       }, workspaceDir);
       expect(sessions.some((session) => session.title.includes('内容知识地图协作') && session.messageCount >= 2)).toBe(true);
-      expect(sessions.some((session) => session.title.includes('品牌战情室协作') && session.messageCount >= 2)).toBe(true);
+      await expectNavLabelAbsent(page, '目标树');
     });
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
   }
 });
 
-test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战入口', async ({}, testInfo) => {
+test('内容知识地图 v1 真实工作台支持下钻和素材回写', async ({}, testInfo) => {
   test.setTimeout(120_000);
 
   const bugu = await startFakeBuguContentWorkspaceServer();
   try {
     await withContentStudio(testInfo, async ({ page, workspaceDir, e2eProductAssetPath }) => {
-    const latestCommandCenterRequest = () => [...bugu.requests]
-      .reverse()
-      .find((request) => request.route === 'content-command-centers');
-
     const seedTrace = await page.evaluate(async ({ workspacePath, assetPath }) => {
       const api = window.contentStudio;
       await api.saveSettings({ workspacePath });
@@ -4276,18 +3978,12 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
           reason: 'E2E 种子内容已完成证据、素材和平台边界校验。',
         });
       }
-      const commandCenter = await api.buildBrandCommandCenter({
-        workspacePath,
-        contentKnowledgeMapId: readyMap.id,
-        title: 'BreezeGo Air 品牌战情室',
-      });
-      const [settings, maps, buildRuns, sources, releases, commandCenters, assetReviews] = await Promise.all([
+      const [settings, maps, buildRuns, sources, releases, assetReviews] = await Promise.all([
         api.getSettings(),
         api.listContentKnowledgeMaps(workspacePath),
         api.listContentKnowledgeMapBuildRuns(workspacePath),
         api.listInputSources(workspacePath),
         api.listContentKnowledgeReleases(workspacePath),
-        api.listBrandCommandCenters(workspacePath),
         api.listAssetReviews(workspacePath),
       ]);
       return {
@@ -4302,8 +3998,6 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
         sourceTitles: sources.map((item) => item.title),
         releaseCount: releases.length,
         releaseTitles: releases.map((item) => `${item.title} ${item.version}`),
-        commandCenterCount: commandCenters.length,
-        commandCenterTitles: commandCenters.map((item) => item.title),
         assetReviewCount: assetReviews.length,
         approvedReviewCount: reviewTasks.length,
       };
@@ -4315,23 +4009,9 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
     expect(seedTrace.buildRunMessages.join('\n'), JSON.stringify(seedTrace)).toContain('生成服务');
     expect(seedTrace.sourceCount, JSON.stringify(seedTrace)).toBeGreaterThanOrEqual(3);
     expect(seedTrace.releaseTitles, JSON.stringify(seedTrace)).toContain('BreezeGo Air 团队知识包 v1.4');
-    expect(seedTrace.commandCenterTitles, JSON.stringify(seedTrace)).toContain('BreezeGo Air 品牌战情室');
     expect(seedTrace.assetReviewCount, JSON.stringify(seedTrace)).toBeGreaterThanOrEqual(1);
     expect(seedTrace.approvedReviewCount, JSON.stringify(seedTrace)).toBe(6);
-    const queueSeedTrace = await appendE2EBrandCommandQueueDeliverables(workspaceDir);
-    expect(queueSeedTrace.centerId, JSON.stringify(queueSeedTrace)).toBeTruthy();
-    expect(queueSeedTrace.actionTypes, JSON.stringify(queueSeedTrace)).toEqual(expect.arrayContaining([
-      'create-scene-card',
-      'launch-sop-run',
-      'write-back-material-coverage',
-    ]));
-    const initialCommandCenterRequest = latestCommandCenterRequest();
-    expect(initialCommandCenterRequest?.route, JSON.stringify(bugu.requests)).toBe('content-command-centers');
-    expect(initialCommandCenterRequest?.payload.title, JSON.stringify(bugu.requests)).toBe('BreezeGo Air 品牌战情室');
-    expect(initialCommandCenterRequest?.payload.sourceKnowledgeMapId, JSON.stringify(bugu.requests)).toBe(seedTrace.mapId);
-    expect(initialCommandCenterRequest?.payload.snapshot?.signals?.length, JSON.stringify(bugu.requests)).toBeGreaterThan(0);
-    expect(initialCommandCenterRequest?.payload.snapshot?.resourceBundles?.length, JSON.stringify(bugu.requests)).toBeGreaterThan(0);
-    expect(initialCommandCenterRequest?.payload.snapshot?.queueSummary?.items?.length, JSON.stringify(bugu.requests)).toBeGreaterThan(0);
+
 
     await page.reload();
     await expect.poll(
@@ -4378,14 +4058,11 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
         ['listContentDraftChanges', () => api.listContentDraftChanges(workspacePath)],
         ['listContentKnowledgeReleases', () => api.listContentKnowledgeReleases(workspacePath)],
         ['listContentSyncConflicts', () => api.listContentSyncConflicts(workspacePath)],
-        ['listBrandCommandCenters', () => api.listBrandCommandCenters(workspacePath)],
         ['listContentReviewTasks', () => api.listContentReviewTasks(workspacePath)],
         ['listOverlayCards', () => api.listOverlayCards(workspacePath)],
         ['listAssetReviews', () => api.listAssetReviews(workspacePath)],
         ['listMixPackages', () => api.listMixPackages(workspacePath)],
         ['listPlatformDrafts', () => api.listPlatformDrafts(workspacePath)],
-        ['listWorkflowDefinitions', () => api.listWorkflowDefinitions(workspacePath)],
-        ['listWorkflowRuns', () => api.listWorkflowRuns(workspacePath)],
       ];
       const results = [];
       for (const [name, load] of calls) {
@@ -4431,7 +4108,6 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
     await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('恢复路径');
     await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('生成 Prompt 草稿');
     await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('生成场景卡');
-    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('启动 SOP');
     await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '生成 Prompt 草稿' }).click();
     await expect(page.locator('.prompt-workbench')).toBeVisible();
     await expect(page.locator('.prompt-workbench')).toContainText('轻量便携不压包 生产提示词');
@@ -4440,18 +4116,6 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
     await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '生成场景卡' }).click();
     await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
     await expect(page.locator('.scene-prompt-workbench')).toContainText('轻量便携不压包');
-    await clickNavItem(page, '内容知识地图');
-    await mapWorkbench.locator('.content-map-table tbody tr').filter({ hasText: '轻量便携不压包' }).click();
-    await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '启动 SOP' }).click();
-    await expect(page.locator('.workflow-feature-workbench')).toBeVisible();
-    await expect(page.locator('.workflow-feature-workbench')).toContainText('轻量便携不压包', { timeout: 20_000 });
-    const rowHandoffRun = await page.evaluate(async (workspacePath) => {
-      const runs = await window.contentStudio.listWorkflowRuns(workspacePath);
-      return runs.find((run) => String(run.inputs?.intent || '').includes('轻量便携不压包'));
-    }, workspaceDir);
-    expect(rowHandoffRun?.title, JSON.stringify(rowHandoffRun)).toBe('品牌知识库场景提示词 SOP');
-    expect(rowHandoffRun?.inputs?.source, JSON.stringify(rowHandoffRun)).toContain('审核任务：轻量便携不压包');
-    expect(rowHandoffRun?.artifactRefs?.some((ref) => ref.startsWith('workflow-run:')), JSON.stringify(rowHandoffRun)).toBe(true);
 
     await clickNavItem(page, '内容知识地图');
     await page.locator('.content-map-tabs button').filter({ hasText: '卖点矩阵' }).click();
@@ -4575,489 +4239,11 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
     expect(localPreviewTrace?.materialCoverageCount, JSON.stringify(localPreviewTrace)).toBeGreaterThanOrEqual(1);
     expect(localPreviewTrace?.interopFormats, JSON.stringify(localPreviewTrace)).toEqual(['JSON-LD', 'Turtle', 'RDF/XML']);
 
-    await clickNavItem(page, '目标树');
-    await expect(page.locator('.brand-command-workbench > .module-command-center h2')).toHaveText('目标树');
-    await expect(page.locator('.brand-command-view-brief')).toContainText('作战目标');
-    await expect(page.locator('.brand-command-view-brief')).toContainText('目标类型分布');
-    await expect(page.locator('.brand-command-workbench')).toContainText('成功标准');
-    await expect(page.locator('.brand-command-workbench')).toContainText('资源包');
-    await page.locator('.brand-command-view-brief button').filter({ hasText: '确认目标优先级' }).click();
-    await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const commandCenters = await window.contentStudio.listBrandCommandCenters(workspacePath);
-        const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-        return center?.actionRecords.some((record) => record.actionType === 'confirm-objectives' && record.outcome === 'recorded') ?? false;
-      }, workspaceDir),
-      { message: '等待目标树主动作写入行动记录', timeout: 20_000 },
-    ).toBe(true);
-    await clickNavItem(page, '作战编组');
-    await expect(page.locator('.brand-command-workbench > .module-command-center h2')).toHaveText('作战编组');
-    await expect(page.locator('.brand-command-view-brief')).toContainText('资源包');
-    await expect(page.locator('.brand-command-view-brief')).toContainText('资源包完整度');
-    await expect(page.locator('.brand-command-bundle-list')).toContainText('证据摘录');
-    await expect(page.locator('.brand-command-bundle-list')).toContainText('禁用边界');
-    await page.locator('.brand-command-view-brief button').filter({ hasText: '保存作战单元' }).click();
-    await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const commandCenters = await window.contentStudio.listBrandCommandCenters(workspacePath);
-        const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-        return center?.actionRecords.some((record) => record.actionType === 'confirm-resource-bundles' && record.outcome === 'recorded') ?? false;
-      }, workspaceDir),
-      { message: '等待作战编组主动作写入行动记录', timeout: 20_000 },
-    ).toBe(true);
-    await clickNavItem(page, '执行队列');
-    await expect(page.locator('.brand-command-workbench > .module-command-center h2')).toHaveText('执行队列');
-    await expect(page.locator('.brand-command-view-brief')).toContainText('队列动作');
-    await expect(page.locator('.brand-command-view-brief')).toContainText('队列状态分布');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('动作：生成 Prompt 草稿');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('交付：Prompt 草稿');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('动作：创建场景卡');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('交付：场景卡');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('动作：启动 SOP');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('交付：SOP 运行');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('动作：回写素材覆盖');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('交付：素材覆盖表');
-    await page.locator('.brand-command-view-brief button').filter({ hasText: '同步执行队列' }).click();
-    await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const commandCenters = await window.contentStudio.listBrandCommandCenters(workspacePath);
-        const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-        return Boolean(
-          center?.actionRecords.some((record) => record.actionType === 'sync-execution-queue' && record.outcome === 'recorded') &&
-          center.queueItems.some((item) => Boolean(item.syncStatus)),
-        );
-      }, workspaceDir),
-      { message: '等待执行队列主动作同步到事实源', timeout: 20_000 },
-    ).toBe(true);
-    await expect.poll(
-      async () => {
-        const request = latestCommandCenterRequest();
-        const payload = request?.payload;
-        const actionTypes = payload?.snapshot?.actionSummary?.records?.map((record) => record.actionType) ?? [];
-        const queueItems = payload?.snapshot?.queueSummary?.items ?? [];
-        return {
-          route: request?.route,
-          title: payload?.title,
-          hasObjectives: actionTypes.includes('confirm-objectives'),
-          hasBundles: actionTypes.includes('confirm-resource-bundles'),
-          hasQueue: actionTypes.includes('sync-execution-queue'),
-          queueSynced: queueItems.some((item) => Boolean(item.syncStatus)),
-          queueItemCount: payload?.queueItemCount,
-          actionRecordCount: payload?.actionRecordCount,
-        };
-      },
-      { message: '等待 Bugu 品牌作战系统快照包含三类主动作', timeout: 20_000 },
-    ).toEqual({
-      route: 'content-command-centers',
-      title: 'BreezeGo Air 品牌战情室',
-      hasObjectives: true,
-      hasBundles: true,
-      hasQueue: true,
-      queueSynced: true,
-      queueItemCount: expect.any(Number),
-      actionRecordCount: expect.any(Number),
-    });
-    const readyQueueCard = page.locator('.brand-command-queue-board article')
-      .filter({ hasText: '动作：生成 Prompt 草稿' })
-      .filter({ hasText: '可执行' })
-      .first();
-    await expect(readyQueueCard).toContainText('记录交接');
-    await readyQueueCard.locator('button').filter({ hasText: '记录交接' }).click();
-    await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const [drafts, commandCenters] = await Promise.all([
-          window.contentStudio.listPromptDrafts(workspacePath),
-          window.contentStudio.listBrandCommandCenters(workspacePath),
-        ]);
-        const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-        const handoffRecord = center?.actionRecords.find((record) => (
-          record.actionType === 'generate-prompt-draft' &&
-          Boolean(record.promptDraftId) &&
-          Boolean(record.queueItemId) &&
-          !record.queueItemId.startsWith('handoff:')
-        ));
-        const draft = drafts.find((item) => item.id === handoffRecord?.promptDraftId);
-        return Boolean(center && handoffRecord && draft);
-      }, workspaceDir),
-      { message: '等待执行队列写入真实 Prompt 草稿和行动记录', timeout: 20_000 },
-    ).toBe(true);
-    const commandQueueHandoff = await page.evaluate(async (workspacePath) => {
-      const [drafts, commandCenters] = await Promise.all([
-        window.contentStudio.listPromptDrafts(workspacePath),
-        window.contentStudio.listBrandCommandCenters(workspacePath),
-      ]);
-      const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-      const handoffRecord = center?.actionRecords.find((record) => (
-        record.actionType === 'generate-prompt-draft' &&
-        Boolean(record.promptDraftId) &&
-        Boolean(record.queueItemId) &&
-        !record.queueItemId.startsWith('handoff:')
-      ));
-      const draft = drafts.find((item) => item.id === handoffRecord?.promptDraftId);
-      return {
-        queueStatus: center?.queueItems.find((item) => item.id === handoffRecord?.queueItemId)?.status,
-        actionType: handoffRecord?.actionType,
-        outcome: handoffRecord?.outcome,
-        promptDraftId: handoffRecord?.promptDraftId,
-        draftTitle: draft?.title,
-        draftMapId: draft?.contentKnowledgeMapId,
-        draftCoverageRowCount: draft?.coverageRowIds?.length ?? 0,
-        draftSourceRefs: draft?.sourceRefs ?? [],
-      };
-    }, workspaceDir);
-    expect(commandQueueHandoff.queueStatus, JSON.stringify(commandQueueHandoff)).toBe('handed-off');
-    expect(commandQueueHandoff.actionType, JSON.stringify(commandQueueHandoff)).toBe('generate-prompt-draft');
-    expect(commandQueueHandoff.outcome, JSON.stringify(commandQueueHandoff)).toBe('handoff');
-    expect(commandQueueHandoff.promptDraftId, JSON.stringify(commandQueueHandoff)).toBeTruthy();
-    expect(commandQueueHandoff.draftTitle, JSON.stringify(commandQueueHandoff)).toContain('Prompt 草稿');
-    expect(commandQueueHandoff.draftMapId, JSON.stringify(commandQueueHandoff)).toBeTruthy();
-    expect(commandQueueHandoff.draftCoverageRowCount, JSON.stringify(commandQueueHandoff)).toBeGreaterThan(0);
-    expect(commandQueueHandoff.draftSourceRefs, JSON.stringify(commandQueueHandoff)).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^content-knowledge-map:/)]),
-    );
-    const sceneQueueCard = page.locator('.brand-command-queue-board article')
-      .filter({ hasText: '创建通勤场景卡' })
-      .filter({ hasText: '动作：创建场景卡' });
-    await expect(sceneQueueCard).toContainText('记录交接');
-    await sceneQueueCard.locator('button').filter({ hasText: '记录交接' }).click();
-    await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const [sceneCards, commandCenters] = await Promise.all([
-          window.contentStudio.listSceneCards(workspacePath),
-          window.contentStudio.listBrandCommandCenters(workspacePath),
-        ]);
-        const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-        const handoffRecord = center?.actionRecords.find((record) => (
-          record.actionType === 'create-scene-card' &&
-          record.queueItemId === 'queue-e2e-create-scene-card' &&
-          Boolean(record.sceneCardId)
-        ));
-        const sceneCard = sceneCards.find((item) => item.id === handoffRecord?.sceneCardId);
-        return Boolean(center && handoffRecord && sceneCard);
-      }, workspaceDir),
-      { message: '等待执行队列创建真实场景卡', timeout: 20_000 },
-    ).toBe(true);
-    const sopQueueCard = page.locator('.brand-command-queue-board article')
-      .filter({ hasText: '启动小红书种草图 SOP' })
-      .filter({ hasText: '动作：启动 SOP' });
-    await expect(sopQueueCard).toContainText('记录交接');
-    await sopQueueCard.locator('button').filter({ hasText: '记录交接' }).click();
-    await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const [runs, commandCenters] = await Promise.all([
-          window.contentStudio.listWorkflowRuns(workspacePath),
-          window.contentStudio.listBrandCommandCenters(workspacePath),
-        ]);
-        const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-        const handoffRecord = center?.actionRecords.find((record) => (
-          record.actionType === 'launch-sop-run' &&
-          record.queueItemId === 'queue-e2e-launch-sop-run' &&
-          Boolean(record.workflowRunId)
-        ));
-        const workflowRun = runs.find((item) => item.id === handoffRecord?.workflowRunId);
-        return Boolean(center && handoffRecord && workflowRun);
-      }, workspaceDir),
-      { message: '等待执行队列启动真实 SOP 运行', timeout: 20_000 },
-    ).toBe(true);
-    const materialCoverageQueueCard = page.locator('.brand-command-queue-board article')
-      .filter({ hasText: '回写通勤素材覆盖' })
-      .filter({ hasText: '动作：回写素材覆盖' });
-    await expect(materialCoverageQueueCard).toContainText('记录交接');
-    await materialCoverageQueueCard.locator('button').filter({ hasText: '记录交接' }).click();
-    await expect.poll(
-      async () => page.evaluate(async ({ workspacePath, mapId }) => {
-        const [maps, commandCenters] = await Promise.all([
-          window.contentStudio.listContentKnowledgeMaps(workspacePath),
-          window.contentStudio.listBrandCommandCenters(workspacePath),
-        ]);
-        const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-        const row = maps.find((item) => item.id === mapId)?.sellingPoints.find((item) => item.id === 'selling-v1-light');
-        const handoffRecord = center?.actionRecords.find((record) => (
-          record.actionType === 'write-back-material-coverage' &&
-          record.queueItemId === 'queue-e2e-write-back-material-coverage' &&
-          Boolean(record.materialCoverageChangeId)
-        ));
-        const queueStatus = center?.queueItems.find((item) => item.id === 'queue-e2e-write-back-material-coverage')?.status;
-        return {
-          hasRecord: Boolean(handoffRecord),
-          queueStatus,
-          rowMaterialStatus: row?.materialStatus,
-          rowMaterialRefCount: row?.materialRefs?.length ?? 0,
-          performanceTags: row?.performanceTags ?? [],
-        };
-      }, { workspacePath: workspaceDir, mapId: seedTrace.mapId }),
-      { message: '等待执行队列回写素材覆盖', timeout: 20_000 },
-    ).toEqual({
-      hasRecord: true,
-      queueStatus: 'written-back',
-      rowMaterialStatus: 'approved',
-      rowMaterialRefCount: expect.any(Number),
-      performanceTags: expect.arrayContaining(['高收藏']),
-    });
-    const commandQueueDeliverables = await page.evaluate(async ({ workspacePath, mapId }) => {
-      const [sceneCards, runs, maps, commandCenters] = await Promise.all([
-        window.contentStudio.listSceneCards(workspacePath),
-        window.contentStudio.listWorkflowRuns(workspacePath),
-        window.contentStudio.listContentKnowledgeMaps(workspacePath),
-        window.contentStudio.listBrandCommandCenters(workspacePath),
-      ]);
-      const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-      const sceneRecord = center?.actionRecords.find((record) => record.queueItemId === 'queue-e2e-create-scene-card');
-      const sopRecord = center?.actionRecords.find((record) => record.queueItemId === 'queue-e2e-launch-sop-run');
-      const coverageRecord = center?.actionRecords.find((record) => record.queueItemId === 'queue-e2e-write-back-material-coverage');
-      const sceneCard = sceneCards.find((item) => item.id === sceneRecord?.sceneCardId);
-      const workflowRun = runs.find((item) => item.id === sopRecord?.workflowRunId);
-      const map = maps.find((item) => item.id === mapId);
-      const sellingRow = map?.sellingPoints.find((item) => item.id === 'selling-v1-light');
-      const bundle = center?.resourceBundles.find((item) => (
-        item.handoffRefs?.includes(`scene-card:${sceneRecord?.sceneCardId}`) ||
-        item.handoffRefs?.includes(`workflow-run:${sopRecord?.workflowRunId}`) ||
-        item.handoffRefs?.includes(`material-coverage:${coverageRecord?.materialCoverageChangeId}`)
-      ));
-      return {
-        scene: {
-          queueStatus: center?.queueItems.find((item) => item.id === 'queue-e2e-create-scene-card')?.status,
-          actionType: sceneRecord?.actionType,
-          outcome: sceneRecord?.outcome,
-          sceneCardId: sceneRecord?.sceneCardId,
-          cardMapId: sceneCard?.contentKnowledgeMapId,
-          cardCoverageRowIds: sceneCard?.coverageRowIds ?? [],
-          cardSourceRefs: sceneCard?.sourceRefs ?? [],
-          audience: sceneCard?.audience,
-          usageScene: sceneCard?.usageScene,
-        },
-        sop: {
-          queueStatus: center?.queueItems.find((item) => item.id === 'queue-e2e-launch-sop-run')?.status,
-          actionType: sopRecord?.actionType,
-          outcome: sopRecord?.outcome,
-          workflowRunId: sopRecord?.workflowRunId,
-          workflowDefinitionId: workflowRun?.workflowDefinitionId,
-          runStatus: workflowRun?.status,
-          runPlatform: workflowRun?.inputs?.platform,
-          runIntent: workflowRun?.inputs?.intent,
-          teamReleaseVersion: workflowRun?.teamKnowledgeRelease?.version,
-          artifactRefs: workflowRun?.artifactRefs ?? [],
-        },
-        materialCoverage: {
-          queueStatus: center?.queueItems.find((item) => item.id === 'queue-e2e-write-back-material-coverage')?.status,
-          actionType: coverageRecord?.actionType,
-          outcome: coverageRecord?.outcome,
-          materialCoverageChangeId: coverageRecord?.materialCoverageChangeId,
-          rowMaterialStatus: sellingRow?.materialStatus,
-          rowMaterialRefs: sellingRow?.materialRefs ?? [],
-          rowPerformanceTags: sellingRow?.performanceTags ?? [],
-        },
-        bundleHandoffRefs: bundle?.handoffRefs ?? [],
-      };
-    }, { workspacePath: workspaceDir, mapId: seedTrace.mapId });
-    expect(commandQueueDeliverables.scene.queueStatus, JSON.stringify(commandQueueDeliverables)).toBe('handed-off');
-    expect(commandQueueDeliverables.scene.actionType, JSON.stringify(commandQueueDeliverables)).toBe('create-scene-card');
-    expect(commandQueueDeliverables.scene.outcome, JSON.stringify(commandQueueDeliverables)).toBe('handoff');
-    expect(commandQueueDeliverables.scene.sceneCardId, JSON.stringify(commandQueueDeliverables)).toBeTruthy();
-    expect(commandQueueDeliverables.scene.cardMapId, JSON.stringify(commandQueueDeliverables)).toBe(seedTrace.mapId);
-    expect(commandQueueDeliverables.scene.cardCoverageRowIds, JSON.stringify(commandQueueDeliverables)).toEqual(expect.arrayContaining(['selling-v1-light']));
-    expect(commandQueueDeliverables.scene.cardSourceRefs, JSON.stringify(commandQueueDeliverables)).toEqual(expect.arrayContaining([
-      `content-knowledge-map:${seedTrace.mapId}`,
-      expect.stringMatching(/^asset-review:/),
-    ]));
-    expect(commandQueueDeliverables.scene.audience, JSON.stringify(commandQueueDeliverables)).toContain('通勤');
-    expect(commandQueueDeliverables.scene.usageScene, JSON.stringify(commandQueueDeliverables)).toContain('通勤');
-    expect(commandQueueDeliverables.sop.queueStatus, JSON.stringify(commandQueueDeliverables)).toBe('handed-off');
-    expect(commandQueueDeliverables.sop.actionType, JSON.stringify(commandQueueDeliverables)).toBe('launch-sop-run');
-    expect(commandQueueDeliverables.sop.outcome, JSON.stringify(commandQueueDeliverables)).toBe('handoff');
-    expect(commandQueueDeliverables.sop.workflowDefinitionId, JSON.stringify(commandQueueDeliverables)).toBe('workflow-xiaohongshu-seeding-image');
-    expect(commandQueueDeliverables.sop.runStatus, JSON.stringify(commandQueueDeliverables)).toBeTruthy();
-    expect(commandQueueDeliverables.sop.runPlatform, JSON.stringify(commandQueueDeliverables)).toBeTruthy();
-    expect(commandQueueDeliverables.sop.runIntent, JSON.stringify(commandQueueDeliverables)).toContain('目标人群');
-    expect(commandQueueDeliverables.sop.runIntent, JSON.stringify(commandQueueDeliverables)).toContain('使用场景');
-    expect(commandQueueDeliverables.sop.teamReleaseVersion, JSON.stringify(commandQueueDeliverables)).toBe('v1.4');
-    expect(commandQueueDeliverables.sop.artifactRefs, JSON.stringify(commandQueueDeliverables)).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^team-knowledge-release:/)]),
-    );
-    expect(commandQueueDeliverables.materialCoverage.queueStatus, JSON.stringify(commandQueueDeliverables)).toBe('written-back');
-    expect(commandQueueDeliverables.materialCoverage.actionType, JSON.stringify(commandQueueDeliverables)).toBe('write-back-material-coverage');
-    expect(commandQueueDeliverables.materialCoverage.outcome, JSON.stringify(commandQueueDeliverables)).toBe('written-back');
-    expect(commandQueueDeliverables.materialCoverage.materialCoverageChangeId, JSON.stringify(commandQueueDeliverables)).toBeTruthy();
-    expect(commandQueueDeliverables.materialCoverage.rowMaterialStatus, JSON.stringify(commandQueueDeliverables)).toBe('approved');
-    expect(commandQueueDeliverables.materialCoverage.rowMaterialRefs.length, JSON.stringify(commandQueueDeliverables)).toBeGreaterThan(0);
-    expect(commandQueueDeliverables.materialCoverage.rowPerformanceTags, JSON.stringify(commandQueueDeliverables)).toEqual(expect.arrayContaining(['高收藏']));
-    expect(commandQueueDeliverables.bundleHandoffRefs, JSON.stringify(commandQueueDeliverables)).toEqual(expect.arrayContaining([
-      `scene-card:${commandQueueDeliverables.scene.sceneCardId}`,
-      `workflow-run:${commandQueueDeliverables.sop.workflowRunId}`,
-      `material-coverage:${commandQueueDeliverables.materialCoverage.materialCoverageChangeId}`,
-    ]));
-    await expect.poll(
-      async () => {
-        const payload = latestCommandCenterRequest()?.payload;
-        const actionRecords = payload?.snapshot?.actionSummary?.records ?? [];
-        const queueItems = payload?.snapshot?.queueSummary?.items ?? [];
-        return {
-          hasSceneCard: actionRecords.some((record) => record.actionType === 'create-scene-card' && Boolean(record.sceneCardId)),
-          hasSopRun: actionRecords.some((record) => record.actionType === 'launch-sop-run' && Boolean(record.workflowRunId)),
-          hasMaterialCoverage: actionRecords.some((record) => record.actionType === 'write-back-material-coverage' && Boolean(record.materialCoverageChangeId)),
-          sceneQueueStatus: queueItems.find((item) => item.id === 'queue-e2e-create-scene-card')?.status,
-          sopQueueStatus: queueItems.find((item) => item.id === 'queue-e2e-launch-sop-run')?.status,
-          materialQueueStatus: queueItems.find((item) => item.id === 'queue-e2e-write-back-material-coverage')?.status,
-          handedOffCount: payload?.snapshot?.queueSummary?.statusCounts?.['handed-off'] ?? 0,
-          writtenBackCount: payload?.snapshot?.queueSummary?.statusCounts?.['written-back'] ?? 0,
-        };
-      },
-      { message: '等待 Bugu 品牌作战系统快照包含三类真实队列交付', timeout: 20_000 },
-    ).toEqual({
-      hasSceneCard: true,
-      hasSopRun: true,
-      hasMaterialCoverage: true,
-      sceneQueueStatus: 'handed-off',
-      sopQueueStatus: 'handed-off',
-      materialQueueStatus: 'written-back',
-      handedOffCount: expect.any(Number),
-      writtenBackCount: expect.any(Number),
-    });
-    await clickNavItem(page, '行动记录');
-    await expect(page.locator('.brand-command-workbench > .module-command-center h2')).toHaveText('行动记录');
-    await expect(page.locator('.brand-command-view-brief')).toContainText('行动记录');
-    await expect(page.locator('.brand-command-view-brief')).toContainText('行动结果分布');
-    await expect(page.locator('.brand-command-log-list')).toContainText('已生成 Prompt 草稿');
-    await expect(page.locator('.brand-command-log-list')).toContainText('已生成场景卡');
-    await expect(page.locator('.brand-command-log-list')).toContainText('已启动 SOP 运行');
-    await expect(page.locator('.brand-command-log-list')).toContainText('已回写素材覆盖');
-    await page.locator('.brand-command-review-box textarea').fill('抖音图文 Prompt 已交接，下一轮优先补拍午后补涂 9:16 素材。');
-    await page.locator('.brand-command-review-box button').filter({ hasText: '写入复盘记录' }).click();
-    await expect(page.locator('.brand-command-log-list')).toContainText('午后补涂 9:16 素材', { timeout: 20_000 });
-    const reviewActionRecord = await page.evaluate(async (workspacePath) => {
-      const commandCenters = await window.contentStudio.listBrandCommandCenters(workspacePath);
-      const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-      return center?.actionRecords.find((record) => record.actionType === 'review-action-records');
-    }, workspaceDir);
-    expect(reviewActionRecord?.outcome, JSON.stringify(reviewActionRecord)).toBe('recorded');
-    expect(reviewActionRecord?.outputSummary, JSON.stringify(reviewActionRecord)).toContain('午后补涂 9:16 素材');
-    const reviewActionSyncRequest = [...bugu.requests]
-      .reverse()
-      .find((request) => request.route === 'content-action-records' && request.payload.records?.some((record) => record.actionType === 'review-action-records'));
-    expect(reviewActionSyncRequest?.payload.records?.[0]?.outputSummary, JSON.stringify(bugu.requests)).toContain('午后补涂 9:16 素材');
-    const reviewFeedbackTrace = await page.evaluate(async (workspacePath) => {
-      const commandCenters = await window.contentStudio.listBrandCommandCenters(workspacePath);
-      const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-      return {
-        signal: center?.signals.find((signal) => signal.sourceLabel === '行动记录复盘' && signal.summary.includes('午后补涂 9:16 素材')),
-        objective: center?.objectives.find((objective) => objective.type === 'material-gap' && objective.summary.includes('午后补涂 9:16 素材')),
-        resourceBundle: center?.resourceBundles.find((bundle) => bundle.gaps?.some((gap) => gap.includes('午后补涂 9:16 素材'))),
-        campaignCell: center?.campaignCells.find((cell) => cell.title.includes('补素材') && cell.queueItemIds.length > 0),
-        queueItem: center?.queueItems.find((item) => item.actionType === 'create-material-gap-list' && item.status === 'needs-resource' && item.summary.includes('午后补涂 9:16 素材')),
-        actionRecord: center?.actionRecords.find((record) => record.actionType === 'review-action-records' && record.writeBackSummary?.includes('下一轮信号')),
-      };
-    }, workspaceDir);
-    expect(reviewFeedbackTrace.signal?.riskBoundary, JSON.stringify(reviewFeedbackTrace)).toContain('不能自动改写产品事实');
-    expect(reviewFeedbackTrace.objective?.priority, JSON.stringify(reviewFeedbackTrace)).toBe('P0');
-    expect(reviewFeedbackTrace.resourceBundle?.readyPercent, JSON.stringify(reviewFeedbackTrace)).toBeLessThanOrEqual(64);
-    expect(reviewFeedbackTrace.campaignCell?.queueItemIds, JSON.stringify(reviewFeedbackTrace)).toContain(reviewFeedbackTrace.queueItem?.id);
-    expect(reviewFeedbackTrace.queueItem?.outputTarget, JSON.stringify(reviewFeedbackTrace)).toBe('material-gap');
-    expect(reviewFeedbackTrace.actionRecord?.writeBackSummary, JSON.stringify(reviewFeedbackTrace)).toContain('执行队列动作');
-    await expect.poll(
-      async () => {
-        const payload = latestCommandCenterRequest()?.payload;
-        const signals = payload?.snapshot?.signals ?? [];
-        const objectives = payload?.snapshot?.objectives ?? [];
-        const resourceBundles = payload?.snapshot?.resourceBundles ?? [];
-        const campaignCells = payload?.snapshot?.campaignCells ?? [];
-        const queueItems = payload?.snapshot?.queueSummary?.items ?? [];
-        return {
-          hasReviewSignal: signals.some((signal) => signal.sourceLabel === '行动记录复盘' && /午后补涂 9:16 素材/.test(signal.summary ?? '')),
-          hasMaterialObjective: objectives.some((objective) => objective.type === 'material-gap' && /午后补涂 9:16 素材/.test(objective.summary ?? '')),
-          hasReviewBundle: resourceBundles.some((bundle) => (bundle.gaps ?? []).some((gap) => /午后补涂 9:16 素材/.test(gap))),
-          hasReviewCell: campaignCells.some((cell) => /补素材/.test(cell.title ?? '') && (cell.queueItemIds ?? []).length > 0),
-          hasMaterialQueue: queueItems.some((item) => (
-            item.actionType === 'create-material-gap-list' &&
-            item.status === 'needs-resource' &&
-            item.outputTarget === 'material-gap' &&
-            /午后补涂 9:16 素材/.test(item.summary ?? '')
-          )),
-        };
-      },
-      { message: '等待 Bugu 品牌作战系统快照包含复盘反馈信号和补素材队列', timeout: 20_000 },
-    ).toEqual({
-      hasReviewSignal: true,
-      hasMaterialObjective: true,
-      hasReviewBundle: true,
-      hasReviewCell: true,
-      hasMaterialQueue: true,
-    });
-    await page.locator('.brand-command-workbench .content-map-tabs button').filter({ hasText: '信号雷达' }).click();
-    await expect(page.locator('.brand-command-signal-grid')).toContainText('复盘信号');
-    await expect(page.locator('.brand-command-signal-grid')).toContainText('午后补涂 9:16 素材');
-    await expect(page.locator('.brand-command-signal-grid')).toContainText('行动记录复盘');
-    await page.locator('.brand-command-workbench .content-map-tabs button').filter({ hasText: '执行队列' }).click();
-    await expect(page.locator('.brand-command-queue-board')).toContainText('复盘创建补素材清单');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('待补资源');
-    await expect(page.locator('.brand-command-queue-board')).toContainText('午后补涂 9:16 素材');
-    await page.locator('.brand-command-workbench .content-map-tabs button').filter({ hasText: '行动记录' }).click();
-    await expect(page.locator('.brand-command-log-list')).toContainText('午后补涂 9:16 素材', { timeout: 20_000 });
-    await page.locator('.brand-command-review-box button').filter({ hasText: '导出行动记录' }).click();
-    await expect(page.locator('.brand-command-log-list')).toContainText('行动记录导出', { timeout: 20_000 });
-    const exportedActionRecord = await page.evaluate(async (workspacePath) => {
-      const commandCenters = await window.contentStudio.listBrandCommandCenters(workspacePath);
-      const center = commandCenters.find((item) => item.title === 'BreezeGo Air 品牌战情室');
-      return center?.actionRecords.find((record) => record.actionType === 'export-action-records');
-    }, workspaceDir);
-    expect(exportedActionRecord?.outcome, JSON.stringify(exportedActionRecord)).toBe('recorded');
-    expect(exportedActionRecord?.outputSummary, JSON.stringify(exportedActionRecord)).toContain('action-records.md');
-    const commandCenterSyncRequest = latestCommandCenterRequest();
-    const commandCenterSyncPayload = commandCenterSyncRequest?.payload;
-    const commandCenterActionTypes = commandCenterSyncPayload?.snapshot?.actionSummary?.records?.map((record) => record.actionType) ?? [];
-    const commandCenterSignals = commandCenterSyncPayload?.snapshot?.signals ?? [];
-    const commandCenterObjectives = commandCenterSyncPayload?.snapshot?.objectives ?? [];
-    const commandCenterResourceBundles = commandCenterSyncPayload?.snapshot?.resourceBundles ?? [];
-    const commandCenterQueueItems = commandCenterSyncPayload?.snapshot?.queueSummary?.items ?? [];
-    expect(commandCenterSyncRequest?.route, JSON.stringify(commandCenterSyncRequest)).toBe('content-command-centers');
-    expect(commandCenterSyncPayload?.title, JSON.stringify(commandCenterSyncPayload)).toBe('BreezeGo Air 品牌战情室');
-    expect(commandCenterSyncPayload?.snapshot?.queueSummary?.statusCounts?.['handed-off'], JSON.stringify(commandCenterSyncPayload)).toBeGreaterThanOrEqual(3);
-    expect(commandCenterSyncPayload?.snapshot?.queueSummary?.statusCounts?.['written-back'], JSON.stringify(commandCenterSyncPayload)).toBeGreaterThanOrEqual(1);
-    expect(commandCenterQueueItems.find((item) => item.id === 'queue-e2e-create-scene-card')?.status, JSON.stringify(commandCenterSyncPayload)).toBe('handed-off');
-    expect(commandCenterQueueItems.find((item) => item.id === 'queue-e2e-launch-sop-run')?.status, JSON.stringify(commandCenterSyncPayload)).toBe('handed-off');
-    expect(commandCenterQueueItems.find((item) => item.id === 'queue-e2e-write-back-material-coverage')?.status, JSON.stringify(commandCenterSyncPayload)).toBe('written-back');
-    expect(commandCenterSignals.some((signal) => signal.sourceLabel === '行动记录复盘' && /午后补涂 9:16 素材/.test(signal.summary ?? '')), JSON.stringify(commandCenterSyncPayload)).toBe(true);
-    expect(commandCenterObjectives.some((objective) => objective.type === 'material-gap' && /午后补涂 9:16 素材/.test(objective.summary ?? '')), JSON.stringify(commandCenterSyncPayload)).toBe(true);
-    expect(commandCenterResourceBundles.some((bundle) => (bundle.gaps ?? []).some((gap) => /午后补涂 9:16 素材/.test(gap))), JSON.stringify(commandCenterSyncPayload)).toBe(true);
-    expect(commandCenterQueueItems.some((item) => (
-      item.actionType === 'create-material-gap-list' &&
-      item.status === 'needs-resource' &&
-      item.outputTarget === 'material-gap' &&
-      /午后补涂 9:16 素材/.test(item.summary ?? '')
-    )), JSON.stringify(commandCenterSyncPayload)).toBe(true);
-    expect(commandCenterActionTypes, JSON.stringify(commandCenterSyncPayload)).toEqual(expect.arrayContaining([
-      'confirm-objectives',
-      'confirm-resource-bundles',
-      'sync-execution-queue',
-      'generate-prompt-draft',
-      'create-scene-card',
-      'launch-sop-run',
-      'write-back-material-coverage',
-      'review-action-records',
-      'export-action-records',
-    ]));
-    expect(
-      commandCenterSyncPayload?.snapshot?.actionSummary?.records?.some((record) => record.actionType === 'create-scene-card' && Boolean(record.sceneCardId)),
-      JSON.stringify(commandCenterSyncPayload),
-    ).toBe(true);
-    expect(
-      commandCenterSyncPayload?.snapshot?.actionSummary?.records?.some((record) => record.actionType === 'launch-sop-run' && Boolean(record.workflowRunId)),
-      JSON.stringify(commandCenterSyncPayload),
-    ).toBe(true);
-    expect(
-      commandCenterSyncPayload?.snapshot?.actionSummary?.records?.some((record) => record.actionType === 'write-back-material-coverage' && Boolean(record.materialCoverageChangeId)),
-      JSON.stringify(commandCenterSyncPayload),
-    ).toBe(true);
-    expect(
-      commandCenterSyncPayload?.snapshot?.actionSummary?.records?.some((record) => (
-        record.actionType === 'export-action-records' &&
-        record.artifactRefs?.some((ref) => (
-          ref.startsWith('[本机工作区]/') &&
-          ref.endsWith('/action-records.json') &&
-          !ref.includes(workspaceDir)
-        ))
-      )),
-      JSON.stringify(commandCenterSyncPayload),
-    ).toBe(true);
+    await expectNavLabelAbsent(page, '批次工作台');
+    await expectNavLabelAbsent(page, '目标树');
+    await expectNavLabelAbsent(page, '作战编组');
+    await expectNavLabelAbsent(page, '执行队列');
+    await expectNavLabelAbsent(page, '行动记录');
 
     const needsEvidenceTrace = await page.evaluate(async (workspacePath) => {
       const api = window.contentStudio;
@@ -5145,7 +4331,7 @@ test('内容知识地图 v1 真实工作台支持下钻、素材回写和作战�
 test('内容知识地图页点击生成会调用真实结构化文字服务并显示模型矩阵', async ({}, testInfo) => {
   test.setTimeout(90_000);
 
-  const { server, baseUrl, requests } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
+  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
   const bugu = await startFakeBuguContentWorkspaceServer();
   try {
     await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
@@ -5288,7 +4474,7 @@ test('内容知识地图页点击生成会调用真实结构化文字服务并�
 test('对话里的待处理动作可以恢复到真实输入源页面', async ({}, testInfo) => {
   test.setTimeout(90_000);
 
-  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
+  const { server, baseUrl, requests } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
   try {
     await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
     await page.evaluate(async ({ workspacePath, endpoint }) => {
@@ -5299,6 +4485,7 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
         textApiEndpoint: endpoint,
         textApiKey: 'test-text-key',
         textModel: 'test-text-model',
+        textModels: ['test-text-model'],
       });
     }, { workspacePath: workspaceDir, endpoint: baseUrl });
 
@@ -5311,8 +4498,25 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
     await clickNavItem(page, 'Prompt 工作台');
     const promptPanel = page.locator('.prompt-workbench > .agent-session-panel');
     await expect(promptPanel).toBeVisible({ timeout: 20_000 });
+    await page.locator('.prompt-workbench .prompt-skill-chip-row button.active').evaluateAll((buttons) => {
+      buttons.forEach((button) => {
+        if (button instanceof HTMLButtonElement) button.click();
+      });
+    });
+    await expect(promptPanel).toContainText('0 个输入源 / 0 个 skill');
     await promptPanel.locator('.agent-session-footer textarea').fill('请先判断需要补哪些产品资料和参考素材。');
-    await promptPanel.locator('.agent-session-footer button').filter({ hasText: '开始协作' }).click();
+    const startSessionButton = promptPanel.locator('.agent-session-footer button').filter({ hasText: '开始协作' });
+    await expect(startSessionButton).toBeEnabled({ timeout: 20_000 });
+    await startSessionButton.evaluate((button) => {
+      if (button instanceof HTMLButtonElement) button.click();
+    });
+    await expect.poll(
+      async () => page.evaluate(async (workspacePath) => {
+        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+        return sessions.some((session) => session.userIntent === '请先判断需要补哪些产品资料和参考素材。');
+      }, workspaceDir),
+      { message: '等待 Prompt 工作台会话写入', timeout: 20_000 },
+    ).toBe(true);
 
     const actionButton = promptPanel.locator(
       '.agent-execution-events [data-event-class="action.required"][data-action-kind="add-input-source"] .agent-event-action',
@@ -5322,31 +4526,12 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
 
     await expect(page.locator('.input-sources-workbench')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer')).toContainText('登记文本输入源');
-    await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
-        const session = sessions.find((item) => item.userIntent === '请先判断需要补哪些产品资料和参考素材。');
-        return Boolean(session?.executionEvents?.some((event) => (
-          event.eventClass === 'action.resolved' &&
-          event.payload?.decision === 'open-input-source' &&
-          event.payload?.resolvedFromEventId
-        )));
-      }, workspaceDir),
-      { message: '等待补输入源动作写入运行事实', timeout: 20_000 },
-    ).toBe(true);
-    const resolvedActionEvent = page.locator(
-      '.input-sources-workbench > .agent-session-panel .agent-execution-events [data-event-class="action.required"][data-action-kind="add-input-source"]',
-    ).first();
-    await expect(resolvedActionEvent).toContainText('已处理', { timeout: 20_000 });
-    await expect(resolvedActionEvent.locator('.agent-event-action')).toHaveCount(0);
-    const inputRuntimeSummary = page.locator('.input-sources-workbench > .agent-session-panel .agent-runtime-summary');
-    await expect(inputRuntimeSummary.locator('[data-summary-kind="sources"]')).toContainText('0');
-    await expect(inputRuntimeSummary.locator('[data-summary-kind="actions"]')).toContainText('0');
-
     const registerPanel = page.locator('.input-source-register-panel');
     await registerPanel.locator('label').filter({ hasText: '标题' }).locator('input').fill('Playwright 补充产品资料');
     await registerPanel.locator('label').filter({ hasText: '文本 / 用户意图' }).locator('textarea').fill('产品事实：便携条包。使用场景：早餐后、办公室抽屉。合规边界：不承诺治疗。');
-    await page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer button').filter({ hasText: '登记文本输入源' }).click();
+    const registerInputButton = page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer button').filter({ hasText: '登记文本输入源' });
+    await expect(registerInputButton).toBeEnabled({ timeout: 20_000 });
+    await registerInputButton.click();
     await expect.poll(
       async () => page.evaluate(async (workspacePath) => {
         const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
@@ -5367,9 +4552,6 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
       }, workspaceDir),
       { message: '等待补充输入源绑定回原对话', timeout: 20_000 },
     ).toEqual({ linked: true, evidenceChanged: true, noteVisible: true });
-    await expect(inputRuntimeSummary.locator('[data-summary-kind="sources"]')).toContainText('1', { timeout: 20_000 });
-    await expect(inputRuntimeSummary.locator('[data-summary-kind="evidence"]')).toContainText('1');
-
     const inputAgentFooter = page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer');
     await inputAgentFooter.locator('textarea').fill('资料已补齐，请基于新资料重新生成图片 Prompt。');
     await inputAgentFooter.locator('button').filter({ hasText: '继续会话' }).click();
@@ -5391,755 +4573,10 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
       }, workspaceDir),
       { message: '等待补资料后继续生成草稿', timeout: 20_000 },
     ).toEqual({ hasAdjustment: true, hasDraft: true, modelCompleted: true });
-    await expect(inputRuntimeSummary.locator('[data-summary-kind="artifacts"]')).toContainText('1', { timeout: 20_000 });
     }, { requireExplicitTextKey: false });
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
   }
-});
-
-test('SOP 执行页显式选择资料并写入运行记录', async ({}, testInfo) => {
-  test.setTimeout(120_000);
-
-  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-    const setup = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      await api.saveSettings({ workspacePath });
-      const productSource = await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'product-brief',
-        title: '显式选择产品资料',
-        text: [
-          '产品名称：便携营养条包',
-          '卖点：早餐后和办公室抽屉随手取用',
-          '规格：15g * 20 条',
-          '适用场景：早餐后、通勤包、办公室抽屉',
-          '禁用表达：不得承诺治疗、见效或替代专业建议',
-        ].join('\n'),
-        summary: '显式选择产品资料',
-        tags: ['product'],
-      });
-      const feedbackSource = await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'user-feedback',
-        title: '不应误选的评论资料',
-        text: '用户：价格有点贵，值不值这个钱？',
-        summary: '不应误选的评论资料',
-        tags: ['feedback'],
-      });
-      return { productSourceId: productSource.id, feedbackSourceId: feedbackSource.id };
-    }, workspaceDir);
-    await mkdir(join(workspaceDir, '.content-studio'), { recursive: true });
-    await writeFile(join(workspaceDir, '.content-studio', 'content-knowledge-releases.json'), JSON.stringify([{
-      id: 'release-e2e-sop-selected',
-      workspacePath: workspaceDir,
-      workspaceId: 'workspace-e2e-sop-selected',
-      contentKnowledgeMapId: 'map-e2e-sop-selected',
-      contentKnowledgeMapTitle: 'E2E SOP 团队内容地图',
-      title: 'E2E SOP 团队知识包',
-      version: 'v1.6',
-      status: 'published',
-      packageObjectKey: 'content-workspaces/workspace-e2e-sop-selected/agentknowledge/release-e2e-sop-selected.zip',
-      packagePublicUrl: 'https://downloads.bugu.run/content-workspaces/workspace-e2e-sop-selected/agentknowledge/release-e2e-sop-selected.zip',
-      packageUploadStatus: 'stored',
-      approvalStatus: 'approved',
-      files: ['KNOWLEDGE.md', 'ontology/ontology.json'],
-      issues: [],
-      baseRevision: 'rev-e2e-sop-selected',
-      serverReleaseId: 'release-e2e-sop-selected',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }], null, 2));
-
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待 SOP 输入源选择测试工作区重新加载', timeout: 20_000 },
-    ).toBe(true);
-
-    await clickNavItem(page, 'SOP 工作流');
-    await page.locator('.workflow-definition-list .record-card').filter({ hasText: '产品商业素材 SOP' }).first().click();
-    const runner = page.locator('.workflow-runner-panel');
-    await expect(runner).toContainText('产品商业素材 SOP');
-    await expect(runner).toContainText('E2E SOP 团队知识包 v1.6');
-    const productOption = runner.locator('.workflow-input-source-option').filter({ hasText: '显式选择产品资料' });
-    await expect(productOption).toBeVisible();
-    await expect(productOption.locator('input')).toBeChecked();
-    await expect(runner.locator('.workflow-input-source-option').filter({ hasText: '不应误选的评论资料' })).toHaveCount(0);
-
-    await runner.locator('textarea').nth(1).fill('生成主图、卖点图和详情页模块三类素材 Prompt。');
-    await runner.locator('label').filter({ hasText: '电商平台' }).locator('select').selectOption('通用电商');
-    await productOption.locator('input').uncheck();
-    await expect(runner.getByRole('button', { name: '运行 SOP' })).toBeDisabled();
-    await expect(runner).toContainText('请至少选择一个资料来源');
-    await runner.locator('label').filter({ hasText: '补充资料说明' }).locator('textarea').fill([
-      '产品名称：便携营养条包',
-      '卖点：早餐后和办公室抽屉随手取用',
-      '规格：15g * 20 条',
-      '禁用表达：不得承诺治疗。',
-    ].join('\n'));
-    await expect(runner.getByRole('button', { name: '运行 SOP' })).toBeEnabled();
-    await expect(runner).toContainText('已粘贴临时资料，将自动留痕');
-    await runner.locator('label').filter({ hasText: '补充资料说明' }).locator('textarea').fill('');
-    await expect(runner.getByRole('button', { name: '运行 SOP' })).toBeDisabled();
-    await productOption.locator('input').check();
-    await expect(runner.getByRole('button', { name: '运行 SOP' })).toBeEnabled();
-    await runner.locator('.workflow-team-release-picker select').selectOption('release-e2e-sop-selected');
-    await expect(runner.locator('.workflow-team-release-picker')).toContainText('E2E SOP 团队知识包 v1.6');
-    await runner.getByRole('button', { name: '运行 SOP' }).click();
-
-    await expect(page.locator('.workflow-history-panel')).toBeVisible({ timeout: 20_000 });
-    const runDetail = page.locator('.workflow-run-detail-panel');
-    await expect(runDetail).toContainText('本次资料来源');
-    await expect(runDetail).toContainText('显式选择产品资料');
-    await expect(runDetail).toContainText('产品资料');
-    await expect(runDetail).toContainText('补充资料说明');
-    await expect(runDetail).not.toContainText('不应误选的评论资料');
-    const actionPanel = runDetail.locator('.workflow-run-action-panel');
-    await expect(actionPanel).toContainText('打开图片工作台');
-    await expect(actionPanel).toContainText('商业图片提示词');
-    const trace = await page.evaluate(async ({ workspacePath, productSourceId, feedbackSourceId }) => {
-      const runs = await window.contentStudio.listWorkflowRuns(workspacePath);
-      const run = runs.find((item) => item.workflowKey === 'product-commercial-assets');
-      return {
-        runId: run?.id,
-        status: run?.status,
-        inputSourceIds: run?.inputSourceIds ?? [],
-        hasProductSource: Boolean(run?.inputSourceIds?.includes(productSourceId)),
-        hasFeedbackSource: Boolean(run?.inputSourceIds?.includes(feedbackSourceId)),
-        productStepStatus: run?.steps.find((step) => step.stepId === 'product_brief_structure')?.status,
-        teamReleaseId: run?.teamKnowledgeRelease?.id,
-        teamReleaseVersion: run?.teamKnowledgeRelease?.version,
-        hasTeamReleaseArtifact: Boolean(run?.artifactRefs.includes('team-knowledge-release:release-e2e-sop-selected')),
-      };
-    }, { workspacePath: workspaceDir, ...setup });
-    expect(trace.runId, JSON.stringify(trace)).toBeTruthy();
-    expect(trace.hasProductSource, JSON.stringify(trace)).toBe(true);
-    expect(trace.hasFeedbackSource, JSON.stringify(trace)).toBe(false);
-    expect(trace.productStepStatus, JSON.stringify(trace)).toBe('succeeded');
-    expect(trace.teamReleaseId, JSON.stringify(trace)).toBe('release-e2e-sop-selected');
-    expect(trace.teamReleaseVersion, JSON.stringify(trace)).toBe('v1.6');
-    expect(trace.hasTeamReleaseArtifact, JSON.stringify(trace)).toBe(true);
-
-    await actionPanel.locator('button').filter({ hasText: '打开图片工作台' }).click();
-    await expect(page.locator('.image-workbench-layout')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.image-prompt-panel textarea')).toHaveValue(/主图 Prompt|卖点图 Prompt|详情页模块 Prompt/);
-    const promptValue = await page.locator('.image-prompt-panel textarea').inputValue();
-    expect(promptValue).toContain('追溯资料：已关联 1 份产品资料 / SKU 表');
-    expect(promptValue).not.toContain(setup.productSourceId);
-    expect(promptValue).not.toContain('追溯输入源');
-    expect(promptValue).not.toContain('类型：main-image');
-  });
-});
-
-test('新增 SOP 下一步动作能进入普通用户业务工作台', async ({}, testInfo) => {
-  test.setTimeout(120_000);
-
-  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
-
-  try {
-    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-      const setup = await page.evaluate(async ({ workspacePath, endpoint }) => {
-        const api = window.contentStudio;
-        await api.saveSettings({ workspacePath });
-        await api.saveModelConfig({
-          textProtocol: 'openai-chat',
-          textApiEndpoint: endpoint,
-          textApiKey: 'test-text-key',
-          textModel: 'test-text-model',
-        });
-        const definitions = await api.listWorkflowDefinitions(workspacePath);
-        const feedbackDefinition = definitions.find((item) => item.key === 'feedback-topic-matrix');
-        const greenDefinition = definitions.find((item) => item.key === 'green-screen-card-package');
-        if (!feedbackDefinition) throw new Error('缺少评论痛点选题 SOP');
-        if (!greenDefinition) throw new Error('缺少绿幕文案图 SOP');
-
-        const feedbackSource = await api.registerInputSource({
-          workspacePath,
-          kind: 'manual-note',
-          purpose: 'user-feedback',
-          title: '下一步测试评论原声',
-          text: [
-            '评论：价格有点贵，想知道到底值不值。',
-            '差评：早上总是忘记吃，坚持不下来。',
-            '客服：孩子和老人能不能吃，有没有禁忌？',
-            '私信：办公室抽屉里放一盒会不会方便一点？',
-          ].join('\n'),
-          summary: '下一步测试评论原声',
-          tags: ['feedback'],
-        });
-        const feedbackRun = await api.startWorkflowRun({
-          workspacePath,
-          workflowDefinitionId: feedbackDefinition.id,
-          inputSourceIds: [feedbackSource.id],
-          inputs: {
-            source: '评论、差评、客服问题和私信原声',
-            intent: '生成下周小红书选题、标题方向和客服异议话术。',
-            reviewOwner: '运营负责人',
-            platform: '小红书',
-          },
-        });
-
-        const greenRun = await api.startWorkflowRun({
-          workspacePath,
-          workflowDefinitionId: greenDefinition.id,
-          inputs: {
-            source: [
-              '标题卡：早餐后顺手一次',
-              '卖点卡：便携条包，包里抽屉都能放',
-              'CTA：先从每天顺手一次开始',
-            ].join('\n'),
-            intent: '拆成第三方混剪可叠加的绿幕文案图。',
-            reviewOwner: '短视频运营',
-            duration: '4',
-          },
-        });
-        return {
-          feedbackRunId: feedbackRun.id,
-          feedbackStatus: feedbackRun.status,
-          greenRunId: greenRun.id,
-          greenStatus: greenRun.status,
-        };
-      }, { workspacePath: workspaceDir, endpoint: baseUrl });
-
-      expect(setup.feedbackStatus, JSON.stringify(setup)).toBe('queued');
-      expect(setup.greenStatus, JSON.stringify(setup)).toBe('queued');
-      await page.reload();
-      await expect.poll(
-        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-        { message: '等待新增 SOP 下一步测试工作区重新加载', timeout: 20_000 },
-      ).toBe(true);
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      const runDetail = page.locator('.workflow-run-detail-panel');
-      const runList = page.locator('.workflow-run-list');
-
-      await runList.locator('.workflow-run-card').filter({ hasText: '评论痛点选题 SOP' }).first().click();
-      await expect(runDetail).toContainText('评论痛点选题 SOP');
-      await expect(runDetail.locator('.workflow-run-action-panel')).toContainText('审核选题提示词');
-      await runDetail.locator('.workflow-run-action-panel button').filter({ hasText: '审核选题提示词' }).click();
-      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/价格和信任顾虑|客服异议处理|真实用户原声/);
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await runList.locator('.workflow-run-card').filter({ hasText: '绿幕文案图 SOP' }).first().click();
-      await expect(runDetail).toContainText('绿幕文案图 SOP');
-      await expect(runDetail.locator('.workflow-run-action-panel')).toContainText('审核绿幕图');
-      await runDetail.locator('.workflow-run-action-panel button').filter({ hasText: '审核绿幕图' }).click();
-      await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.asset-library-workbench')).toContainText('合规检测 / 人工审核台');
-      await expect(page.locator('.asset-library-workbench')).toContainText('绿幕图 3', { timeout: 20_000 });
-      await expect(page.locator('.asset-tile').filter({ hasText: '绿幕文案图' }).first()).toContainText('待审核');
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await runList.locator('.workflow-run-card').filter({ hasText: '绿幕文案图 SOP' }).first().click();
-      const artifactPanel = runDetail.locator('.workflow-run-artifact-panel');
-      await expect(artifactPanel).toContainText('打开绿幕文案图');
-      await artifactPanel.locator('button').filter({ hasText: '打开绿幕文案图' }).click();
-      await expect(page.locator('.green-screen-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.green-screen-editor-panel')).toContainText('标题卡', { timeout: 20_000 });
-    });
-  } finally {
-    await new Promise((resolveClose) => server.close(resolveClose));
-  }
-});
-
-test('Prompt 工作台按用途收敛动作并能物化 Skill / SOP 草案', async ({}, testInfo) => {
-  test.setTimeout(90_000);
-
-  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-    const setup = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      await api.saveSettings({ workspacePath });
-      const source = await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'sop-input',
-        title: 'Skill 输入源',
-        text: '围绕品牌知识库和用户意图生成可复用 Prompt，不编造功效和案例。',
-        summary: 'Skill 输入源',
-        tags: ['skill'],
-      });
-      await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'brand-kb',
-        title: '品牌知识库输入源',
-        text: '品牌调性：专业、克制、真实。合规：不夸大效果，不做无依据承诺。',
-        summary: '品牌知识库输入源',
-        tags: ['brand'],
-      });
-      await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'ip-kb',
-        title: 'IP 知识库输入源',
-        text: 'IP 体系：身份、价值观、语言、判断方法、素材、创作引擎。',
-        summary: 'IP 知识库输入源',
-        tags: ['ip'],
-      });
-      await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'product-brief',
-        title: '产品资料输入源',
-        text: '产品事实：便携条包。场景：早餐后、办公室抽屉。',
-        summary: '产品资料输入源',
-        tags: ['product'],
-      });
-      const skillDraft = await api.generatePromptDraft({
-        workspacePath,
-        title: 'Product Prompt Skill',
-        purpose: 'skill',
-        userIntent: '沉淀为一个可复用的 Prompt 编排 skill。',
-        inputSourceIds: [source.id],
-      });
-      const sopDraft = await api.generatePromptDraft({
-        workspacePath,
-        title: 'Reusable SOP Method',
-        purpose: 'sop',
-        userIntent: '沉淀为一个通用 SOP，不应误套图片生成模板。',
-        inputSourceIds: [source.id],
-      });
-      return { skillDraftId: skillDraft.id, sopDraftId: sopDraft.id };
-    }, workspaceDir);
-
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待 Prompt Skill 草案测试工作区重新加载', timeout: 20_000 },
-    ).toBe(true);
-
-    await clickNavItem(page, 'Prompt 工作台');
-    let promptSourcePanel = await openPromptSupportDrawer(page);
-    await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
-    await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).toBeChecked();
-    await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).toBeChecked();
-    await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
-    await promptSourcePurposeSelect(promptSourcePanel).selectOption('skill');
-    await expect(promptSourceTitleInput(promptSourcePanel)).toHaveValue('Skill 草案');
-    await expect(promptSourceIntentInput(promptSourcePanel)).toHaveValue(/本地 skill/);
-    await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
-    await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).not.toBeChecked();
-    await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
-    await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).not.toBeChecked();
-    const editor = page.locator('.prompt-editor-panel');
-    await expect(editor).toContainText('Product Prompt Skill', { timeout: 20_000 });
-    await expect(editor.locator('button').filter({ hasText: '沉淀为 Skill' })).toBeVisible();
-    await expect(editor.locator('button').filter({ hasText: '发送到图片' })).toHaveCount(0);
-    await expect(editor.locator('button').filter({ hasText: '打开视频 Prompt' })).toHaveCount(0);
-    await expect(editor.locator('button').filter({ hasText: '沉淀为 SOP' })).toHaveCount(0);
-
-    await editor.locator('button').filter({ hasText: '沉淀为 Skill' }).click();
-    await expect(page.locator('.skills-manager-shell')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.skills-manager-list')).toContainText('product-prompt-skill', { timeout: 20_000 });
-
-    const persisted = await page.evaluate(async ({ workspacePath, draftId: id }) => {
-      const api = window.contentStudio;
-      const draft = (await api.listPromptDrafts(workspacePath)).find((item) => item.id === id);
-      const skill = (await api.scanSkills(workspacePath)).find((item) => item.slug === 'product-prompt-skill');
-      return {
-        draftStatus: draft?.status,
-        materializedTarget: draft?.materializedTarget,
-        skillContent: skill?.content ?? '',
-      };
-    }, { workspacePath: workspaceDir, draftId: setup.skillDraftId });
-
-    expect(persisted.draftStatus).toBe('materialized');
-    expect(persisted.materializedTarget).toBe('skill');
-    expect(persisted.skillContent).toContain('来源提示词草稿：Product Prompt Skill');
-    expect(persisted.skillContent).toContain('只使用用户提供的知识库');
-
-    await clickNavItem(page, 'Prompt 工作台');
-    promptSourcePanel = await openPromptSupportDrawer(page);
-    await promptSourcePurposeSelect(promptSourcePanel).selectOption('sop');
-    await expect(promptSourceTitleInput(promptSourcePanel)).toHaveValue('SOP 草案');
-    await expect(promptSourceIntentInput(promptSourcePanel)).toHaveValue(/发布运行的 SOP 草案/);
-    await expect(page.locator('.prompt-source-option').filter({ hasText: 'Skill 输入源' }).locator('input')).toBeChecked();
-    await expect(page.locator('.prompt-source-option').filter({ hasText: '品牌知识库输入源' }).locator('input')).not.toBeChecked();
-    await expect(page.locator('.prompt-source-option').filter({ hasText: 'IP 知识库输入源' }).locator('input')).not.toBeChecked();
-    await expect(page.locator('.prompt-source-option').filter({ hasText: '产品资料输入源' }).locator('input')).not.toBeChecked();
-    await expect(editor).toContainText('Reusable SOP Method', { timeout: 20_000 });
-    await expect(editor.locator('button').filter({ hasText: '沉淀为 SOP' })).toBeVisible();
-    await expect(editor.locator('button').filter({ hasText: '发送到图片' })).toHaveCount(0);
-    await expect(editor.locator('button').filter({ hasText: '沉淀为 Skill' })).toHaveCount(0);
-
-    await editor.locator('button').filter({ hasText: '沉淀为 SOP' }).click();
-    await expect(page.locator('.workflow-feature-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.workflow-detail-panel')).toContainText('Reusable SOP Method SOP 草案', { timeout: 20_000 });
-
-    const workflowPersisted = await page.evaluate(async ({ workspacePath, draftId: id }) => {
-      const api = window.contentStudio;
-      const draft = (await api.listPromptDrafts(workspacePath)).find((item) => item.id === id);
-      const workflow = (await api.listWorkflowDefinitions(workspacePath)).find((item) => item.title === 'Reusable SOP Method SOP 草案');
-      return {
-        draftStatus: draft?.status,
-        materializedTarget: draft?.materializedTarget,
-        workflowKey: workflow?.key,
-        stepIds: workflow?.steps.map((step) => step.id) ?? [],
-      };
-    }, { workspacePath: workspaceDir, draftId: setup.sopDraftId });
-
-    expect(workflowPersisted.draftStatus).toBe('materialized');
-    expect(workflowPersisted.materializedTarget).toBe('workflow');
-    expect(workflowPersisted.workflowKey).toMatch(/^custom-sop-draft-/);
-    expect(workflowPersisted.stepIds).toContain('agent_read');
-    expect(workflowPersisted.stepIds).not.toContain('image_generate');
-  });
-});
-
-test('视频素材包 SOP 运行详情可以推进 Prompt、导入、绿幕和混剪交接', async ({}, testInfo) => {
-  test.setTimeout(180_000);
-
-    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-      await page.evaluate(async (workspacePath) => {
-        await window.contentStudio.saveSettings({ workspacePath });
-        await window.contentStudio.registerInputSource({
-          workspacePath,
-          kind: 'manual-note',
-          purpose: 'product-brief',
-          title: '视频 SOP 产品资料',
-          text: [
-            '产品名称：便携营养条包',
-            '卖点：早餐后和办公室抽屉随手取用',
-            '规格：15g * 20 条',
-            '适用场景：早餐后、通勤、办公室',
-            '禁用表达：不得承诺治疗、见效或替代专业建议',
-          ].join('\n'),
-          summary: '视频 SOP 产品资料',
-          tags: ['video-sop'],
-        });
-      }, workspaceDir);
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待 SOP 业务链测试工作区重新加载', timeout: 20_000 },
-    ).toBe(true);
-
-    await clickNavItem(page, 'SOP 工作流');
-    const videoSopCard = page.locator('.workflow-definition-list .record-card').filter({ hasText: '视频素材包 SOP' }).first();
-    await expect(videoSopCard).toBeVisible();
-    await videoSopCard.click();
-    await expect(page.locator('.workflow-runner-panel')).toContainText('视频素材包 SOP');
-    await page.locator('.workflow-runner-panel textarea').nth(0).fill('品牌场景库、脚本和产品素材。');
-    await page.locator('.workflow-runner-panel textarea').nth(1).fill('生成 15 秒视频素材 Prompt，第三方生成后手动导入，再生成绿幕图和混剪清单。');
-    await page.locator('.workflow-runner-panel input[type="number"]').fill('15');
-    await page.locator('.workflow-runner-panel button').filter({ hasText: '运行 SOP' }).click();
-
-    const runDetail = page.locator('.workflow-run-detail-panel');
-    await expect(page.locator('.workflow-history-panel')).toBeVisible({ timeout: 20_000 });
-    await expect(runDetail).toContainText('视频素材包 SOP');
-    await expect(runDetail.locator('.workflow-run-action-panel')).toContainText(/打开视频 Prompt|进入视频 Prompt/);
-    await runDetail.locator('.workflow-run-action-panel button').click();
-
-    await expect(page.locator('.video-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.video-prompt-preview pre')).toContainText(/视频 Prompt|任务：/, { timeout: 20_000 });
-    await page.locator('.video-prompt-builder-panel button').filter({ hasText: '复制到第三方平台' }).click();
-    await expect(page.locator('.video-prompt-history-panel')).toContainText(/RunningHub|1/, { timeout: 20_000 });
-    await expect(page.locator('.video-prompt-handoff-card')).toContainText('已复制待导入', { timeout: 20_000 });
-    await page.locator('.video-prompt-handoff-card button').filter({ hasText: '去导入' }).click();
-    await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.video-import-filter-row')).toContainText('已复制待导入 1');
-    await expect(page.locator('.video-import-draft-panel')).toContainText('已复制待导入');
-    await expect(page.locator('.video-import-handoff-note')).toContainText('Prompt 已复制到第三方平台');
-
-    await clickNavItem(page, 'SOP 工作流');
-    const latestNextAction = page.locator('.workflow-latest-run-next');
-    await expect(latestNextAction).toContainText('导入成品视频', { timeout: 20_000 });
-    await latestNextAction.locator('button').filter({ hasText: '继续下一步' }).click();
-    await expect(latestNextAction).toContainText('编辑并生成绿幕图', { timeout: 20_000 });
-    await expect(page.locator('.workflow-latest-run')).toContainText('third-party-finished-video.mp4');
-    await clickNavItem(page, '成品视频导入');
-    await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.video-import-draft-panel')).toContainText('已导入成品');
-    await expect(page.locator('.video-import-card').filter({ hasText: 'third-party-finished-video.mp4' })).toContainText('提示词已关联');
-    await clickNavItem(page, 'SOP 工作流');
-    await latestNextAction.locator('button').filter({ hasText: '继续下一步' }).click();
-
-    await expect(page.locator('.green-screen-workbench')).toBeVisible({ timeout: 20_000 });
-    await page.locator('.green-screen-editor-panel button').filter({ hasText: '生成绿幕文案图' }).click();
-    await expect(page.locator('.overlay-card-tile').first()).toBeVisible({ timeout: 20_000 });
-
-    await clickNavItem(page, 'SOP 工作流');
-    await expect(latestNextAction).toContainText('审核混剪素材', { timeout: 20_000 });
-    await latestNextAction.locator('button').filter({ hasText: '继续下一步' }).click();
-
-    await expect(page.locator('.mix-export-workbench')).toBeVisible({ timeout: 20_000 });
-    const importedVideoCard = page.locator('.mix-asset-card').filter({ hasText: 'third-party-finished-video.mp4' }).first();
-    await expect(importedVideoCard).toBeVisible();
-    await expect(importedVideoCard).toContainText('SOP 已关联');
-    await expect(importedVideoCard.getByRole('button', { name: '提示词', exact: true })).toBeVisible();
-    await expect(importedVideoCard.getByRole('button', { name: 'SOP', exact: true })).toBeVisible();
-    await importedVideoCard.getByRole('button', { name: '通过', exact: true }).click();
-    await expect(importedVideoCard).toContainText('已通过');
-    await expect(importedVideoCard.getByRole('button', { name: '沉淀提示词', exact: true })).toBeVisible();
-    await importedVideoCard.getByRole('button', { name: '沉淀提示词', exact: true }).click();
-    await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.prompt-draft-editor')).toHaveValue(/成功素材反向沉淀 Prompt|third-party-finished-video\.mp4|视频 Prompt/, { timeout: 20_000 });
-    await expect(page.locator('.prompt-draft-editor')).not.toHaveValue(/原素材 Key|SOP Run|generation-log|input-source/);
-
-    const distilledVideoTrace = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      const runs = await api.listWorkflowRuns(workspacePath);
-      const sources = await api.listInputSources(workspacePath);
-      const drafts = await api.listPromptDrafts(workspacePath);
-      const run = runs.find((item) => item.workflowKey === 'video-material-package');
-      const distilledSource = sources.find((item) =>
-        item.workflowRunId === run?.id
-        && item.purpose === 'successful-asset'
-        && item.kind === 'video'
-        && item.tags.includes('prompt-distilled'),
-      );
-      const distilledDraft = drafts.find((item) =>
-        Boolean(distilledSource?.id && item.inputSourceIds.includes(distilledSource.id)),
-      );
-      const importedAssetSource = sources.find((item) =>
-        item.workflowRunId === run?.id
-        && item.purpose === 'successful-asset'
-        && item.kind === 'video'
-        && !item.tags.includes('prompt-distilled'),
-      );
-      return {
-        runId: run?.id,
-        importedAssetSourceId: importedAssetSource?.id,
-        sourceId: distilledSource?.id,
-        sourcePurpose: distilledSource?.purpose,
-        sourceKind: distilledSource?.kind,
-        sourcePath: distilledSource?.sourcePath,
-        draftPurpose: distilledDraft?.purpose,
-        draftModel: distilledDraft?.model,
-        draftWorkflowRunId: distilledDraft?.workflowRunId,
-        runHasDistilledSourceRef: distilledSource ? run?.artifactRefs.includes(`input-source:${distilledSource.id}`) : false,
-        runHasDistilledDraftRef: distilledDraft ? run?.artifactRefs.includes(`prompt-draft:${distilledDraft.id}`) : false,
-      };
-    }, workspaceDir);
-    expect(distilledVideoTrace.importedAssetSourceId, JSON.stringify(distilledVideoTrace)).toBeTruthy();
-    expect(distilledVideoTrace.sourcePurpose, JSON.stringify(distilledVideoTrace)).toBe('successful-asset');
-    expect(distilledVideoTrace.sourceKind, JSON.stringify(distilledVideoTrace)).toBe('video');
-    expect(distilledVideoTrace.sourcePath, JSON.stringify(distilledVideoTrace)).toContain('third-party-finished-video.mp4');
-    expect(distilledVideoTrace.draftPurpose, JSON.stringify(distilledVideoTrace)).toBe('video');
-    expect(distilledVideoTrace.draftModel, JSON.stringify(distilledVideoTrace)).toBe('local-successful-asset-distiller');
-    expect(distilledVideoTrace.draftWorkflowRunId, JSON.stringify(distilledVideoTrace)).toBe(distilledVideoTrace.runId);
-    expect(distilledVideoTrace.runHasDistilledSourceRef, JSON.stringify(distilledVideoTrace)).toBe(true);
-    expect(distilledVideoTrace.runHasDistilledDraftRef, JSON.stringify(distilledVideoTrace)).toBe(true);
-
-    await clickNavItem(page, 'Prompt 工作台');
-    const promptSourcePanel = await openPromptSupportDrawer(page);
-    const traceSourceInput = page.locator('.prompt-source-option').filter({ hasText: '追溯源' }).locator('input').first();
-    await expect(traceSourceInput).toBeDisabled();
-    await expect(traceSourceInput).not.toBeChecked();
-    await promptSourceTitleInput(promptSourcePanel).fill('追溯源隔离验证');
-    await promptSourceIntentInput(promptSourcePanel).fill('基于当前页面生成一个新视频 Prompt，但不要把成功素材反向沉淀的追溯源作为新输入源。');
-    await promptSourcePanel.locator('button').filter({ hasText: '仅生成草稿' }).click();
-    await expect(page.locator('.prompt-draft-editor')).toHaveValue(/Prompt 草稿|任务：/, { timeout: 20_000 });
-    const promptIsolationTrace = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      const sources = await api.listInputSources(workspacePath);
-      const drafts = await api.listPromptDrafts(workspacePath);
-      const traceSourceIds = sources
-        .filter((source) => source.tags.includes('prompt-distilled'))
-        .map((source) => source.id);
-      const generatedDraft = drafts.find((draft) => draft.title === '追溯源隔离验证');
-      return {
-        traceSourceIds,
-        draftInputSourceIds: generatedDraft?.inputSourceIds ?? [],
-      };
-    }, workspaceDir);
-    expect(promptIsolationTrace.traceSourceIds.length, JSON.stringify(promptIsolationTrace)).toBeGreaterThan(0);
-    expect(
-      promptIsolationTrace.traceSourceIds.some((id) => promptIsolationTrace.draftInputSourceIds.includes(id)),
-      JSON.stringify(promptIsolationTrace),
-    ).toBe(false);
-    await promptSourcePanel.locator('button').filter({ hasText: '补输入源' }).click();
-    await expect(page.locator('.input-sources-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.input-source-list .input-source-card').first()).toContainText('成功素材追溯', { timeout: 20_000 });
-    await expect(page.locator('.input-source-list .input-source-card').first()).toContainText('成功素材沉淀 / third-party-finished-video.mp4', { timeout: 20_000 });
-
-    await clickNavItem(page, '混剪包导出');
-    await expect(page.locator('.mix-export-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(importedVideoCard).toContainText('已通过', { timeout: 20_000 });
-    const overlayCard = page.locator('.mix-asset-card').filter({ hasText: /标题卡|早餐后顺手一次/ }).first();
-    await expect(overlayCard).toBeVisible();
-    await expect(overlayCard).toContainText('SOP 已关联');
-    await expect(overlayCard.getByRole('button', { name: '提示词', exact: true })).toBeVisible();
-    await overlayCard.getByRole('button', { name: '通过', exact: true }).click();
-    await expect(overlayCard).toContainText('已通过');
-    await expect(page.locator('.mix-export-config-panel button').filter({ hasText: '导出混剪包' })).toBeEnabled();
-    await page.locator('.mix-export-config-panel button').filter({ hasText: '导出混剪包' }).click();
-    await expect(page.locator('.mix-package-card').first()).toContainText('短视频混剪素材包', { timeout: 20_000 });
-    await expect(page.locator('.mix-package-card').first()).toContainText('SOP 已关联');
-    await expect(page.locator('.mix-package-card').first().getByRole('button', { name: '打开 SOP' })).toBeVisible();
-    const exportedPackageCard = page.locator('.mix-package-card').first();
-    await expect(exportedPackageCard).toContainText('待登记导入证据');
-    await exportedPackageCard.getByRole('button', { name: '登记导入证据' }).click();
-    const importEvidenceForm = exportedPackageCard.locator('.mix-import-evidence-form');
-    await expect(importEvidenceForm).toBeVisible();
-    await expect(importEvidenceForm.locator('label').filter({ hasText: '第三方工具' }).locator('input')).toHaveValue('剪映专业版');
-    await expect(importEvidenceForm.locator('label').filter({ hasText: '导入文件数' }).locator('input')).toHaveValue('2');
-    await expect(importEvidenceForm.locator('label').filter({ hasText: '清单文件已导入或已核对' }).locator('input')).toBeChecked();
-    await expect(importEvidenceForm.locator('label').filter({ hasText: '已在混剪工具创建时间线 / 工程' }).locator('input')).toBeChecked();
-    await importEvidenceForm.locator('label').filter({ hasText: '导入备注' }).locator('textarea').fill('E2E 验收：已按导入说明核对清单文件、成品视频和绿幕文案图。');
-    await importEvidenceForm.getByRole('button', { name: '保存导入证据' }).click();
-    await expect(exportedPackageCard).toContainText('导入证据已登记', { timeout: 20_000 });
-    await expect(exportedPackageCard.getByRole('button', { name: '打开导入证据' })).toBeVisible();
-
-    await clickNavItem(page, 'SOP 工作流');
-    await expect(page.locator('.workflow-latest-run')).toContainText('完成', { timeout: 20_000 });
-    await expect(latestNextAction).toContainText('查看混剪包');
-    await page.locator('.workflow-latest-run button').filter({ hasText: '查看运行详情' }).click();
-    await expect(runDetail.locator('.workflow-run-action-panel')).toContainText('查看混剪包');
-    const artifactPanel = runDetail.locator('.workflow-run-artifact-panel');
-    await expect(artifactPanel).toContainText('打开提示词草稿');
-    await expect(artifactPanel).toContainText('打开绿幕文案图');
-    await expect(artifactPanel).toContainText('打开混剪包');
-    await expect(runDetail.locator('.workflow-run-steps')).toContainText('混剪包');
-    await expect(runDetail.locator('.workflow-run-steps')).toContainText('绿幕文案图');
-
-    await artifactPanel.locator('button').filter({ hasText: '打开绿幕文案图' }).click();
-    await expect(page.locator('.green-screen-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.overlay-card-tile').first()).toBeVisible({ timeout: 20_000 });
-
-    await clickNavItem(page, 'SOP 工作流');
-    await page.locator('.workflow-latest-run button').filter({ hasText: '查看运行详情' }).click();
-    await artifactPanel.locator('button').filter({ hasText: '打开混剪包' }).click();
-    await expect(page.locator('.mix-export-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.mix-package-card').first()).toContainText('短视频混剪素材包', { timeout: 20_000 });
-
-    const exportedTrace = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      const [pack] = await api.listMixPackages(workspacePath);
-      const relatedRun = (await api.listWorkflowRuns(workspacePath))
-        .find((run) => run.id === pack?.workflowRunId);
-      return {
-        workflowRunId: pack?.workflowRunId,
-        runStatus: relatedRun?.status,
-        runRefs: relatedRun?.artifactRefs ?? [],
-        packageDir: pack?.packageDir,
-        externalImportEvidencePath: pack?.externalImportEvidencePath,
-        externalImportEvidence: pack?.externalImportEvidence,
-      };
-    }, workspaceDir);
-    expect(exportedTrace.workflowRunId, JSON.stringify(exportedTrace)).toBeTruthy();
-    expect(exportedTrace.runStatus, JSON.stringify(exportedTrace)).toBe('succeeded');
-    expect(exportedTrace.runRefs.some((ref) => ref.startsWith('mix-package:')), JSON.stringify(exportedTrace)).toBe(true);
-    expect(exportedTrace.externalImportEvidencePath, JSON.stringify(exportedTrace)).toContain('import-evidence.json');
-    expect(existsSync(exportedTrace.externalImportEvidencePath), JSON.stringify(exportedTrace)).toBe(true);
-    expect(existsSync(join(exportedTrace.packageDir, 'import-check.md')), JSON.stringify(exportedTrace)).toBe(true);
-    expect(exportedTrace.externalImportEvidence.toolName, JSON.stringify(exportedTrace)).toBe('剪映专业版');
-    expect(exportedTrace.externalImportEvidence.importedFileCount, JSON.stringify(exportedTrace)).toBe(2);
-    expect(exportedTrace.externalImportEvidence.importedAssetKinds.sort(), JSON.stringify(exportedTrace)).toEqual(['overlay', 'video']);
-    expect(exportedTrace.externalImportEvidence.manifestImported, JSON.stringify(exportedTrace)).toBe(true);
-    expect(exportedTrace.externalImportEvidence.timelineCreated, JSON.stringify(exportedTrace)).toBe(true);
-    expect(exportedTrace.externalImportEvidence.evidenceFiles, JSON.stringify(exportedTrace)).toContain('import-check.md');
-    expect(exportedTrace.runRefs.includes(exportedTrace.externalImportEvidencePath), JSON.stringify(exportedTrace)).toBe(true);
-
-    await clickNavItem(page, 'SOP 工作流');
-    await page.locator('.workflow-view-tabs button').filter({ hasText: '执行表单' }).click();
-    await expect(page.locator('.workflow-view-tabs button[aria-selected="true"]')).toContainText('执行表单');
-    const repeatedVideoSopCard = page.locator('.workflow-definition-list .record-card').filter({ hasText: '视频素材包 SOP' }).first();
-    await expect(repeatedVideoSopCard).toBeVisible();
-    await repeatedVideoSopCard.click();
-    await expect(page.locator('.workflow-runner-panel')).toContainText('视频素材包 SOP');
-    await page.locator('.workflow-runner-panel textarea').nth(0).fill('品牌场景库、脚本和产品素材。');
-    await page.locator('.workflow-runner-panel textarea').nth(1).fill('生成 15 秒视频素材 Prompt，第三方生成后手动导入，再生成绿幕图和混剪清单。');
-    await page.locator('.workflow-runner-panel input[type="number"]').fill('15');
-    await page.locator('.workflow-runner-panel button').filter({ hasText: '运行 SOP' }).click();
-
-    const repeatedRunTrace = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      const runs = await api.listWorkflowRuns(workspacePath);
-      const latestRun = runs
-        .filter((item) => item.workflowKey === 'video-material-package')
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-      return {
-        runId: latestRun?.id,
-        inputSourceIds: latestRun?.inputSourceIds ?? [],
-      };
-    }, workspaceDir);
-    expect(repeatedRunTrace.runId, JSON.stringify(repeatedRunTrace)).toBeTruthy();
-    expect(repeatedRunTrace.inputSourceIds, JSON.stringify(repeatedRunTrace)).not.toContain(distilledVideoTrace.sourceId);
-    expect(repeatedRunTrace.inputSourceIds, JSON.stringify(repeatedRunTrace)).not.toContain(distilledVideoTrace.importedAssetSourceId);
-  });
-});
-
-test('独立视频 Prompt 复制不会误推进无关联 SOP', async ({}, testInfo) => {
-  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-    const setup = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      await api.saveSettings({ workspacePath });
-      const definitions = await api.listWorkflowDefinitions(workspacePath);
-      const definition = definitions.find((item) => item.key === 'video-material-package');
-      if (!definition) throw new Error('缺少视频素材包 SOP');
-      const run = await api.startWorkflowRun({
-        workspacePath,
-        workflowDefinitionId: definition.id,
-        inputs: {
-          source: '一个未完成的视频素材包 SOP',
-          intent: '用于验证无关联 Prompt 不能误推进 SOP。',
-          reviewOwner: '视频负责人',
-          duration: '15',
-        },
-      });
-      const source = await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'product-brief',
-        title: '独立视频产品资料',
-        text: '这是一个独立视频 Prompt 的输入源，不属于上面的 SOP run。',
-        summary: '独立视频产品资料',
-        tags: ['独立 Prompt'],
-      });
-      const draft = await api.generatePromptDraft({
-        workspacePath,
-        title: '独立视频 Prompt',
-        purpose: 'video',
-        userIntent: '生成一个独立复制到 RunningHub 的视频 Prompt。',
-        inputSourceIds: [source.id],
-      });
-      return {
-        runId: run.id,
-        draftId: draft.id,
-        promptGenerateStatus: run.steps.find((step) => step.stepId === 'prompt_generate')?.status ?? '',
-      };
-    }, workspaceDir);
-
-    expect(setup.promptGenerateStatus).toBe('blocked');
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待独立视频 Prompt 测试工作区重新加载', timeout: 20_000 },
-    ).toBe(true);
-
-    await clickNavItem(page, '视频 Prompt');
-    const promptPanel = page.locator('.video-prompt-builder-panel');
-    await page.locator('.video-prompt-draft').filter({ hasText: '独立视频 Prompt' }).click();
-    await expect(promptPanel.locator('.agent-session-head h3')).toContainText('独立视频 Prompt', { timeout: 20_000 });
-    await promptPanel.locator('button').filter({ hasText: '复制到第三方平台' }).click();
-    await expect(promptPanel.getByRole('button', { name: '已复制', exact: true })).toBeVisible();
-
-    const result = await page.evaluate(async ({ workspacePath, runId, draftId }) => {
-      const [run] = (await window.contentStudio.listWorkflowRuns(workspacePath)).filter((item) => item.id === runId);
-      const draft = (await window.contentStudio.listPromptDrafts(workspacePath)).find((item) => item.id === draftId);
-      return {
-        promptGenerateStatus: run?.steps.find((step) => step.stepId === 'prompt_generate')?.status ?? '',
-        promptCopyStatus: run?.steps.find((step) => step.stepId === 'prompt_copy')?.status ?? '',
-        runArtifactRefs: run?.artifactRefs ?? [],
-        copyCount: draft?.copyCount ?? 0,
-        lastCopiedTarget: draft?.lastCopiedTarget ?? '',
-      };
-    }, { workspacePath: workspaceDir, runId: setup.runId, draftId: setup.draftId });
-
-    expect(result.copyCount).toBe(1);
-    expect(result.lastCopiedTarget).toBe('runninghub');
-    expect(result.promptGenerateStatus).toBe('blocked');
-    expect(result.promptCopyStatus).toBe('queued');
-    expect(result.runArtifactRefs).not.toEqual(expect.arrayContaining([`prompt-draft:${setup.draftId}`]));
-  });
 });
 
 test('视频 Prompt 需要可追溯资料并支持临时资料自动留痕', async ({}, testInfo) => {
@@ -6204,708 +4641,12 @@ test('视频 Prompt 需要可追溯资料并支持临时资料自动留痕', asy
       };
     }, workspaceDir);
     expect(trace.sourceId, JSON.stringify(trace)).toBeTruthy();
-    expect(trace.sourcePurpose, JSON.stringify(trace)).toBe('sop-input');
+    expect(trace.sourcePurpose, JSON.stringify(trace)).toBe('task-input');
     expect(trace.sourceTags, JSON.stringify(trace)).toEqual(expect.arrayContaining(['video-prompt', '临时资料']));
     expect(trace.sourceText, JSON.stringify(trace)).toContain('便携营养条包');
     expect(trace.draftPurpose, JSON.stringify(trace)).toBe('video');
     expect(trace.draftInputSourceIds, JSON.stringify(trace)).toContain(trace.sourceId);
   });
-});
-
-test('SOP 定义草案可以编辑、发布并从表单运行', async ({}, testInfo) => {
-  test.setTimeout(120_000);
-
-  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-    await page.evaluate(async (workspacePath) => {
-      await window.contentStudio.saveSettings({ workspacePath });
-      await window.contentStudio.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'sop-input',
-        title: 'UI SOP 测试资料',
-        text: '用于验证自定义 SOP 发布后，普通用户需要显式选择资料再运行。',
-        summary: 'UI SOP 测试资料',
-        tags: ['ui-sop'],
-      });
-    }, workspaceDir);
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待 UI SOP 测试工作区重新加载', timeout: 20_000 },
-    ).toBe(true);
-
-    await clickNavItem(page, 'SOP 工作流');
-    await page.locator('.workflow-view-tabs button').filter({ hasText: '高级维护' }).click();
-    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: '定义管理' }).click();
-    await expect(page.locator('.workflow-detail-panel')).toBeVisible();
-    await page.locator('.workflow-detail-panel button').filter({ hasText: '生成 SOP 草案' }).click();
-
-    const editor = page.locator('.workflow-definition-editor');
-    await expect(editor).toBeVisible({ timeout: 20_000 });
-    await editor.locator('label').filter({ hasText: 'SOP 名称' }).locator('input').fill('功能测试 UI 可运行 SOP');
-    await editor.locator('label').filter({ hasText: '版本' }).locator('input').fill('v0.3');
-    await editor.locator('label').filter({ hasText: '描述' }).locator('textarea').fill('通过 UI 编辑、发布并运行的 SOP 定义。');
-    await editor.locator('label').filter({ hasText: '标签' }).locator('textarea').fill('UI 验证\n自定义 SOP');
-    await editor.locator('label').filter({ hasText: '审核规则' }).locator('textarea').fill('资料来源必须清楚\n执行目标必须明确');
-    await editor.locator('label').filter({ hasText: '输出规格' }).locator('textarea').fill('RunArchive');
-    await editor.locator('label').filter({ hasText: '输入字段（高级配置）' }).locator('textarea').fill(JSON.stringify([
-      { key: 'source', label: '资料来源', type: 'textarea', required: true },
-      { key: 'intent', label: '执行目标', type: 'textarea', required: true },
-    ], null, 2));
-    await editor.locator('label').filter({ hasText: '执行步骤（高级配置）' }).locator('textarea').fill(JSON.stringify([
-      { id: 'input_register', title: '登记输入源', kind: 'input', description: '登记资料和目标。', dependsOn: [], outputKeys: ['InputSource'] },
-      { id: 'human_review', title: '人工审核', kind: 'review', description: '确认输入和执行目标。', dependsOn: ['input_register'], outputKeys: ['ReviewResult'] },
-      { id: 'asset_store', title: '入历史', kind: 'asset-store', description: '归档本次 SOP 运行。', dependsOn: ['human_review'], outputKeys: ['RunArchive'] },
-    ], null, 2));
-    await editor.getByRole('button', { name: '保存 SOP 定义' }).click();
-    await expect(page.locator('.workflow-definition-list')).toContainText('功能测试 UI 可运行 SOP', { timeout: 20_000 });
-
-    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: 'Canvas' }).click();
-    const canvas = page.locator('.workflow-canvas-panel');
-    await expect(canvas).toContainText('节点轻编辑');
-    await canvas.locator('.workflow-canvas-node').filter({ hasText: '登记输入源' }).click();
-    const canvasEditor = canvas.locator('.workflow-canvas-editor');
-    await canvasEditor.locator('label').filter({ hasText: '节点标题' }).locator('input').fill('登记事实源');
-    await canvasEditor.locator('label').filter({ hasText: '节点说明' }).locator('textarea').fill('从 Canvas 轻编辑输入源节点。');
-    await canvasEditor.getByRole('button', { name: '保存节点到定义' }).click();
-    await expect(canvas.locator('.workflow-canvas-node').filter({ hasText: '登记事实源' })).toBeVisible({ timeout: 20_000 });
-
-    await page.locator('.workflow-view-tabs button[role="tab"]').filter({ hasText: '定义管理' }).click();
-    await expect(editor.locator('label').filter({ hasText: '执行步骤（高级配置）' }).locator('textarea')).toHaveValue(/登记事实源/);
-    await expect(editor.locator('label').filter({ hasText: '执行步骤（高级配置）' }).locator('textarea')).toHaveValue(/从 Canvas 轻编辑输入源节点/);
-
-    await page.locator('.workflow-detail-panel button').filter({ hasText: '发布为可运行' }).click();
-    await expect(page.locator('.workflow-detail-panel .workflow-meta-grid')).toContainText('已发布', { timeout: 20_000 });
-
-    await page.locator('.workflow-view-tabs button').filter({ hasText: '执行表单' }).click();
-    const runner = page.locator('.workflow-runner-panel');
-    await expect(runner).toContainText('功能测试 UI 可运行 SOP');
-    await runner.locator('label').filter({ hasText: '补充资料说明' }).locator('textarea').fill('UI 测试输入资料');
-    await runner.locator('label').filter({ hasText: '执行目标' }).locator('textarea').fill('验证编辑发布后的 SOP 可以运行。');
-    await runner.getByRole('button', { name: '运行 SOP' }).click();
-    await expect(page.locator('.workflow-history-panel')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.workflow-run-detail-panel')).toContainText('功能测试 UI 可运行 SOP');
-    await expect(page.locator('.workflow-run-detail-panel')).toContainText('排队');
-    await expect(page.locator('.workflow-run-detail-panel')).toContainText('登记事实源');
-    const artifactTracePanel = page.locator('.workflow-run-detail-panel article').filter({ hasText: '产物线索' }).last();
-    await expect(artifactTracePanel).toContainText('步骤快照');
-    await expect(artifactTracePanel).toContainText('输入源转换稿');
-    await expect(artifactTracePanel).not.toContainText('workflow-run:');
-    await expect(artifactTracePanel).not.toContainText('input_register');
-    await expect(artifactTracePanel).not.toContainText(/[0-9a-f-]{36}\.md/i);
-    const artifactLabels = await artifactTracePanel.locator('span').evaluateAll((items) =>
-      items.map((item) => ({
-        text: item.textContent ?? '',
-        title: item.getAttribute('title') ?? '',
-      })),
-    );
-    expect(JSON.stringify(artifactLabels)).not.toContain('workflow-run:');
-    expect(JSON.stringify(artifactLabels)).not.toContain('input_register');
-    expect(JSON.stringify(artifactLabels)).not.toMatch(/[0-9a-f-]{36}\.md/i);
-  });
-});
-
-test('视频 SOP 草案发布运行后执行页仍显示下一步动作', async ({}, testInfo) => {
-  test.setTimeout(120_000);
-
-  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-    await page.evaluate(async (workspacePath) => {
-      await window.contentStudio.saveSettings({ workspacePath });
-    }, workspaceDir);
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待视频 SOP 草案测试工作区重新加载', timeout: 20_000 },
-    ).toBe(true);
-
-    const setup = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      const definitions = await api.listWorkflowDefinitions(workspacePath);
-      const base = definitions.find((item) => item.key === 'video-material-package');
-      if (!base) throw new Error('缺少视频素材包 SOP');
-      const draft = await api.createWorkflowDraft({
-        workspacePath,
-        templateKey: base.key,
-        title: '客户自定义视频素材 SOP',
-      });
-      const published = await api.updateWorkflowDefinition({
-        ...draft,
-        status: 'published',
-      });
-      const run = await api.startWorkflowRun({
-        workspacePath,
-        workflowDefinitionId: published.id,
-        inputs: {
-          source: '客户自定义脚本和素材。',
-          intent: '生成 15 秒视频 Prompt 并交给第三方生成。',
-          duration: '15',
-        },
-      });
-      return { workflowKey: run.workflowKey, runId: run.id };
-    }, workspaceDir);
-    expect(setup.workflowKey).toMatch(/^video-material-package-draft-/);
-
-    await page.reload();
-    await clickNavItem(page, 'SOP 工作流');
-    const latestRun = page.locator('.workflow-latest-run');
-    await expect(latestRun).toContainText('客户自定义视频素材 SOP', { timeout: 20_000 });
-    await expect(latestRun.locator('.workflow-latest-run-next')).toContainText(/打开视频 Prompt|进入视频 Prompt/);
-    await latestRun.locator('button').filter({ hasText: '继续下一步' }).click();
-    await expect(page.locator('.video-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-  });
-});
-
-test('品牌 SOP 运行详情可以打开知识库、场景库和 Prompt 产物', async ({}, testInfo) => {
-  test.setTimeout(180_000);
-
-  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
-
-  try {
-    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-      const setup = await page.evaluate(async ({ workspacePath, endpoint }) => {
-        const api = window.contentStudio;
-        await api.saveSettings({ workspacePath });
-        await api.saveModelConfig({
-          textProtocol: 'openai-chat',
-          textApiEndpoint: endpoint,
-          textApiKey: 'test-text-key',
-          textModel: 'test-text-model',
-        });
-        await api.installBuiltinKnowledgeBase('product-demo', workspacePath);
-        const searchResults = await api.searchKnowledge({
-          workspacePath,
-          query: '早餐 办公 便携 合规',
-          baseType: 'product-kb',
-          sectionType: 'all',
-        });
-        const citations = searchResults.slice(0, 4).map((item) => ({
-          knowledgeBaseId: item.knowledgeBaseId,
-          sectionId: item.section.id,
-          title: `${item.baseTitle} / ${item.section.title}`,
-          sectionType: item.section.sectionType,
-          excerpt: (item.section.content || item.section.summary || item.section.title).slice(0, 650),
-        }));
-        const definitions = await api.listWorkflowDefinitions(workspacePath);
-        const definition = definitions.find((item) => item.key === 'brand-scene-prompts');
-        if (!definition) throw new Error('缺少品牌知识库场景提示词 SOP');
-        const run = await api.startWorkflowRun({
-          workspacePath,
-          workflowDefinitionId: definition.id,
-          inputs: {
-            source: '便携条包品牌知识库',
-            intent: '生成品牌知识库、提示词包、场景库和可继续审核的 Prompt 草稿。',
-            reviewOwner: '品牌负责人',
-          },
-          citations,
-        });
-        return { runId: run.id, status: run.status, summary: run.summary };
-      }, { workspacePath: workspaceDir, endpoint: baseUrl });
-
-      expect(setup.status, JSON.stringify(setup)).toBe('queued');
-      await page.reload();
-      await expect.poll(
-        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-        { message: '等待品牌 SOP 产物入口测试工作区重新加载', timeout: 20_000 },
-      ).toBe(true);
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      const runDetail = page.locator('.workflow-run-detail-panel');
-      const actionPanel = runDetail.locator('.workflow-run-action-panel');
-      const artifactPanel = runDetail.locator('.workflow-run-artifact-panel');
-      await expect(runDetail).toContainText('品牌知识库场景提示词 SOP');
-      await expect(actionPanel).toContainText('确认审核通过');
-      await expect(artifactPanel).toContainText('打开品牌知识库');
-      await expect(artifactPanel).toContainText('打开场景库');
-      await expect(artifactPanel).toContainText('打开提示词草稿');
-
-      await artifactPanel.locator('button').filter({ hasText: '打开品牌知识库' }).click();
-      await expect(page.locator('.knowledge-brand-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.brand-kb-detail')).toContainText('便携条包', { timeout: 20_000 });
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await artifactPanel.locator('button').filter({ hasText: '打开场景库' }).click();
-      await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.agent-session-panel')).toBeVisible();
-      await expect(page.locator('.scene-agent-attachment-list')).toContainText('早餐后便携场景');
-      await expect(page.locator('.scene-prompt-workbench .workflow-summary-stack')).toContainText('已确认');
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await artifactPanel.locator('button').filter({ hasText: '打开提示词草稿' }).click();
-      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-editor-panel')).toContainText('品牌知识库场景提示词 SOP Prompt 组');
-      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/早餐后便携场景|图片 Prompt|场景/);
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await actionPanel.locator('button').filter({ hasText: '确认审核通过' }).click();
-      await expect(actionPanel).toContainText('入历史留痕', { timeout: 20_000 });
-      await actionPanel.locator('button').filter({ hasText: '入历史留痕' }).click();
-      await expect(runDetail).toContainText('品牌知识库场景提示词 SOP 已完成', { timeout: 20_000 });
-      await expect(runDetail.locator('.workflow-summary-stack')).toContainText('完成');
-    });
-  } finally {
-    await new Promise((resolveClose) => server.close(resolveClose));
-  }
-});
-
-test('小红书图片 SOP 运行详情可以进入图片工作台和素材审核', async ({}, testInfo) => {
-  test.setTimeout(180_000);
-
-  let capturedVisionRequest;
-  let capturedImageRequest;
-  const server = createServer((request, response) => {
-    if (request.url === '/vision') {
-      let body = '';
-      request.on('data', (chunk) => { body += chunk.toString(); });
-      request.on('end', () => {
-        capturedVisionRequest = JSON.parse(body);
-        response.setHeader('content-type', 'application/json');
-        response.end(JSON.stringify({
-          composition: '4:5 竖版，产品在右下三分之一，左上保留标题区。',
-          lighting: '早餐桌自然光，手机实拍质感。',
-          textArea: '左上角留白适合标题，底部不放大段文字。',
-          style: '小红书 UGC，真实手部动作，避免棚拍广告感。',
-          reusableElements: ['三分法构图', '自然光', '真实手部动作'],
-          replacementRules: ['竞品包装替换为本方便携条包', '只使用产品资料里的便携场景和合规事实'],
-          generationControls: ['保持 4:5 竖版', '产品主体清晰但不夸张放大', '标题区留白稳定'],
-          risks: ['不能复制竞品包装和可识别文案'],
-          prompt: '图片 Prompt：早餐桌自然光，手拿便携条包，产品主体清晰，4:5，小红书 UGC 手机实拍，不出现疗效承诺。',
-          negativePrompt: '不要竞品 Logo，不要医疗化承诺，不要夸张疗效。',
-          qualityChecklist: ['产品清晰', '标题区留白', '无竞品元素'],
-        }));
-      });
-      return;
-    }
-    if (request.url === '/v1/responses') {
-      let body = '';
-      request.on('data', (chunk) => { body += chunk.toString(); });
-      request.on('end', () => {
-        capturedImageRequest = JSON.parse(body);
-        response.setHeader('content-type', 'application/json');
-        response.end(JSON.stringify({ output: [{ type: 'image_generation_call', result: ONE_PIXEL_PNG }] }));
-      });
-      return;
-    }
-    response.statusCode = 404;
-    response.end('not found');
-  });
-  const baseUrl = await new Promise((resolveListen) => {
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      if (!address || typeof address === 'string') throw new Error('无法启动本地图片 SOP 服务。');
-      resolveListen(`http://127.0.0.1:${address.port}`);
-    });
-  });
-
-  try {
-    await withContentStudio(testInfo, async ({ page, workspaceDir, e2eProductAssetPath }) => {
-      const setup = await page.evaluate(async ({ workspacePath, endpoint, referenceImagePath }) => {
-        const api = window.contentStudio;
-        await api.saveSettings({ workspacePath });
-        await api.saveModelConfig({
-          imageProvider: 'openai-responses',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: endpoint,
-          imageApiKey: 'test-image-key',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-        });
-        const reference = await api.registerInputSource({
-          workspacePath,
-          kind: 'image',
-          purpose: 'reference',
-          title: '小红书对标图',
-          sourcePath: referenceImagePath,
-          text: '参考图：早餐桌自然光，手拿条包，左上留白，手机实拍。',
-          summary: '小红书对标图描述',
-          tags: ['参考图', '测试图片'],
-        });
-        const product = await api.registerInputSource({
-          workspacePath,
-          kind: 'manual-note',
-          purpose: 'product-brief',
-          title: '便携条包产品资料',
-          text: '产品事实：便携条包。场景：早餐后、办公室抽屉。合规：不承诺治疗。',
-          summary: '便携条包产品资料',
-          tags: ['产品资料'],
-        });
-        const definitions = await api.listWorkflowDefinitions(workspacePath);
-        const definition = definitions.find((item) => item.key === 'xiaohongshu-seeding-image');
-        if (!definition) throw new Error('缺少小红书种草图 SOP');
-        const run = await api.startWorkflowRun({
-          workspacePath,
-          workflowDefinitionId: definition.id,
-          inputs: {
-            source: '小红书对标图和便携条包产品资料',
-            intent: '生成早餐后场景的小红书真实种草图。',
-            reviewOwner: '图片负责人',
-            platform: '小红书',
-          },
-          inputSourceIds: [reference.id, product.id],
-        });
-        return { runId: run.id, status: run.status, summary: run.summary };
-      }, { workspacePath: workspaceDir, endpoint: baseUrl, referenceImagePath: e2eProductAssetPath });
-
-      expect(setup.status, JSON.stringify(setup)).toBe('queued');
-      await page.reload();
-      await expect.poll(
-        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-        { message: '等待图片 SOP 测试工作区重新加载', timeout: 20_000 },
-      ).toBe(true);
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      const runDetail = page.locator('.workflow-run-detail-panel');
-      const actionPanel = runDetail.locator('.workflow-run-action-panel');
-      const artifactPanel = runDetail.locator('.workflow-run-artifact-panel');
-      await expect(runDetail).toContainText('小红书种草图 SOP');
-      await expect(actionPanel).toContainText('打开素材审核');
-      await expect(artifactPanel).toContainText('打开提示词草稿');
-      await expect(artifactPanel).toContainText('打开素材审核');
-
-      await artifactPanel.locator('button').filter({ hasText: '打开提示词草稿' }).click();
-      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/早餐桌自然光|小红书 UGC|图片 Prompt/);
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await artifactPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
-      await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.asset-library-workbench')).toContainText('合规检测 / 人工审核台');
-      const generatedAsset = page.locator('.asset-tile').filter({ hasText: 'test-image-model' }).first();
-      await expect(generatedAsset).toBeVisible();
-      await expect(generatedAsset).toContainText('待审核');
-      await generatedAsset.getByRole('button', { name: '详情', exact: true }).click();
-      const reviewDialog = page.locator('.asset-detail-dialog');
-      await expect(reviewDialog).toContainText('审核决策');
-      await expect(reviewDialog).toContainText('质检结果');
-      await expect(reviewDialog).toContainText('产品清晰');
-      await expect(reviewDialog).toContainText('标题区留白');
-      await expect(reviewDialog).toContainText('无竞品元素');
-      await expect(reviewDialog).toContainText('不能复制竞品包装和可识别文案');
-      await expect(reviewDialog).toContainText('来源可追溯');
-      await expect(reviewDialog).toContainText('建议下一步');
-      await expect(reviewDialog).toContainText('任务可追溯');
-      await reviewDialog.getByRole('button', { name: '关闭', exact: true }).click();
-      await generatedAsset.getByRole('button', { name: '驳回素材', exact: true }).click();
-      const rejectDialog = page.locator('.asset-reject-dialog');
-      await expect(rejectDialog).toContainText('填写驳回原因');
-      await rejectDialog.locator('.asset-reject-reasons button').filter({ hasText: '画面构图不可用' }).click();
-      await rejectDialog.locator('textarea').fill('主体位置偏移，标题区不稳定。');
-      await rejectDialog.getByRole('button', { name: '确认驳回', exact: true }).click();
-      await expect(generatedAsset).toContainText('已驳回', { timeout: 20_000 });
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await expect(runDetail).toContainText(/已驳回素材并等待回炉|驳回|回炉/, { timeout: 20_000 });
-      await expect(runDetail.locator('.workflow-summary-stack')).toContainText('待配置');
-      await expect(runDetail).toContainText('原驳回素材', { timeout: 20_000 });
-      await expect(runDetail).toContainText('画面构图不可用', { timeout: 20_000 });
-
-      await artifactPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
-      await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
-      await generatedAsset.getByRole('button', { name: '回炉重做', exact: true }).click();
-      await expect(page.locator('.image-workbench-layout')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.image-prompt-composer textarea')).toHaveValue(/回炉原因|驳回素材|真实手机实拍/, { timeout: 20_000 });
-      await page.locator('.image-render-button').click();
-      await expect(page.locator('.image-generated-grid')).toBeVisible({ timeout: 20_000 });
-      await expect.poll(
-        async () => page.locator('.image-generated-card').count(),
-        { message: '等待回炉图片进入预览大盘', timeout: 20_000 },
-      ).toBeGreaterThanOrEqual(2);
-      await page.getByRole('tab', { name: '生成日志' }).click();
-      await expect(page.locator('.image-preview-log-list')).toContainText('test-image-model', { timeout: 20_000 });
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await expect(runDetail.locator('.workflow-summary-stack')).toContainText('排队', { timeout: 20_000 });
-      await expect(runDetail).toContainText('回炉生成', { timeout: 20_000 });
-
-      await actionPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
-      await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
-      const reworkedAsset = page.locator('.asset-tile').filter({ hasText: '回炉生成' }).first();
-      await expect(reworkedAsset).toBeVisible({ timeout: 20_000 });
-      await reworkedAsset.getByRole('button', { name: '通过并入库', exact: true }).click();
-      await expect(reworkedAsset).toContainText('已通过', { timeout: 20_000 });
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await expect(runDetail).toContainText('小红书种草图 SOP 已完成', { timeout: 20_000 });
-      await expect(runDetail.locator('.workflow-summary-stack')).toContainText('完成');
-      await expect(runDetail).toContainText('新通过素材', { timeout: 20_000 });
-
-      await artifactPanel.locator('button').filter({ hasText: '打开素材审核' }).click();
-      await expect(page.locator('.asset-library-workbench')).toBeVisible({ timeout: 20_000 });
-      const approvedReworkedAsset = page.locator('.asset-tile').filter({ hasText: '回炉生成' }).first();
-      await approvedReworkedAsset.getByRole('button', { name: '沉淀提示词', exact: true }).click();
-      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/成功素材反向沉淀 Prompt|复用 Prompt 草稿|真实手机实拍/, { timeout: 20_000 });
-      await expect(page.locator('.prompt-draft-editor')).not.toHaveValue(/原素材 Key|SOP Run|generation-log|input-source/);
-
-      const persistedTrace = await page.evaluate(async ({ workspacePath, runId }) => {
-        const api = window.contentStudio;
-        const logs = await api.listGenerationLogs(workspacePath);
-        const reviews = await api.listAssetReviews(workspacePath);
-        const sources = await api.listInputSources(workspacePath);
-        const drafts = await api.listPromptDrafts(workspacePath);
-        const runs = await api.listWorkflowRuns(workspacePath);
-        const imageLogs = logs.filter((log) => log.workflowRunId === runId && log.kind === 'image');
-        const reworkLog = imageLogs.find((log) => log.reworkSource);
-        const review = reviews.find((item) => item.workflowRunId === runId && item.sourceId === reworkLog?.id);
-        const rejected = reviews.find((item) => item.workflowRunId === runId && item.status === 'rejected');
-        const distilledSource = sources.find((item) => item.workflowRunId === runId && item.purpose === 'successful-asset');
-        const distilledDraft = drafts.find((item) => distilledSource?.id && item.inputSourceIds.includes(distilledSource.id));
-        const run = runs.find((item) => item.id === runId);
-        return {
-          imageLogWorkflowRunId: reworkLog?.workflowRunId,
-          reworkSourceAssetKey: reworkLog?.reworkSource?.assetKey,
-          rejectedAssetKey: rejected?.assetKey,
-          reviewWorkflowRunId: review?.workflowRunId,
-          reviewStatus: review?.status,
-          distilledSourcePurpose: distilledSource?.purpose,
-          distilledSourcePromptDraftId: distilledSource?.relatedPromptDraftId,
-          distilledDraftWorkflowRunId: distilledDraft?.workflowRunId,
-          distilledDraftModel: distilledDraft?.model,
-          distilledDraftStatus: distilledDraft?.status,
-          runHasDistilledSourceRef: distilledSource ? run?.artifactRefs.includes(`input-source:${distilledSource.id}`) : false,
-          runHasDistilledDraftRef: distilledDraft ? run?.artifactRefs.includes(`prompt-draft:${distilledDraft.id}`) : false,
-        };
-      }, { workspacePath: workspaceDir, runId: setup.runId });
-      expect(persistedTrace.imageLogWorkflowRunId, JSON.stringify(persistedTrace)).toBe(setup.runId);
-      expect(persistedTrace.reworkSourceAssetKey, JSON.stringify(persistedTrace)).toBe(persistedTrace.rejectedAssetKey);
-      expect(persistedTrace.reviewWorkflowRunId, JSON.stringify(persistedTrace)).toBe(setup.runId);
-      expect(persistedTrace.reviewStatus, JSON.stringify(persistedTrace)).toBe('approved');
-      expect(persistedTrace.distilledSourcePurpose, JSON.stringify(persistedTrace)).toBe('successful-asset');
-      expect(persistedTrace.distilledSourcePromptDraftId, JSON.stringify(persistedTrace)).toBeTruthy();
-      expect(persistedTrace.distilledDraftWorkflowRunId, JSON.stringify(persistedTrace)).toBe(setup.runId);
-      expect(persistedTrace.distilledDraftModel, JSON.stringify(persistedTrace)).toBe('local-successful-asset-distiller');
-      expect(persistedTrace.distilledDraftStatus, JSON.stringify(persistedTrace)).toBe('confirmed');
-      expect(persistedTrace.runHasDistilledSourceRef, JSON.stringify(persistedTrace)).toBe(true);
-      expect(persistedTrace.runHasDistilledDraftRef, JSON.stringify(persistedTrace)).toBe(true);
-    }, {
-      env: {
-        CONTENT_STUDIO_VISION_ENDPOINT: `${baseUrl}/vision`,
-        CONTENT_STUDIO_VISION_MODEL: 'test-vision-model',
-        CONTENT_STUDIO_VISION_API_KEY: 'test-vision-key',
-      },
-    });
-  } finally {
-    await new Promise((resolveClose) => server.close(resolveClose));
-  }
-
-  expect(capturedVisionRequest?.operation).toBe('reference-reverse');
-  expect(capturedImageRequest?.tools?.[0]?.model).toBe('test-image-model');
-});
-
-test('IP 长文 SOP 运行详情可以打开文章 Prompt 并进入文章生成', async ({}, testInfo) => {
-  test.setTimeout(180_000);
-
-  const { server, baseUrl } = await startFakeOpenAITextServer((prompt) => {
-    if (prompt.includes('"task": "generate_article"')) {
-      return {
-        titleCandidates: ['IP 内容工程方法论', '从知识库到内容生产', '把个人 IP 写作变成流程'],
-        outline: ['IP 定位', '知识库事实', '方法论展开', '场景案例', '发布检查'],
-        summary: '基于 IP 知识库和文章 Prompt 生成长文。',
-        markdown: [
-          '# IP 内容工程方法论',
-          '',
-          '个人 IP 内容不是临场发挥，而是从身份、价值观、语言和方法论中抽取稳定表达。',
-          '',
-          '这次 SOP 已经先构建 IP 知识库，再读取输入源和用户意图，最后进入文章生成。',
-          '',
-          '正文必须保留事实边界，不把缺少资料的案例写成真实经历。',
-        ].join('\n'),
-        publishCheck: [
-          { level: 'info', message: '已使用 IP 知识库作为事实源。' },
-          { level: 'warning', message: '发布前复核缺少案例的段落。' },
-        ],
-      };
-    }
-    return fakeBusinessChainTextOutput(prompt);
-  });
-
-  try {
-    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-      const setup = await page.evaluate(async ({ workspacePath, endpoint }) => {
-        const api = window.contentStudio;
-        await api.saveSettings({ workspacePath });
-        await api.saveModelConfig({
-          textProtocol: 'openai-chat',
-          textApiEndpoint: endpoint,
-          textApiKey: 'test-text-key',
-          textModel: 'test-text-model',
-        });
-        await api.installBuiltinKnowledgeBase('personal-ip-demo', workspacePath);
-        const searchResults = await api.searchKnowledge({
-          workspacePath,
-          query: '身份 方法论 语言 场景',
-          baseType: 'personal-ip-kb',
-          sectionType: 'all',
-        });
-        const citations = searchResults.slice(0, 5).map((item) => ({
-          knowledgeBaseId: item.knowledgeBaseId,
-          sectionId: item.section.id,
-          title: `${item.baseTitle} / ${item.section.title}`,
-          sectionType: item.section.sectionType,
-          excerpt: (item.section.content || item.section.summary || item.section.title).slice(0, 800),
-        }));
-        const definitions = await api.listWorkflowDefinitions(workspacePath);
-        const definition = definitions.find((item) => item.key === 'ip-longform');
-        if (!definition) throw new Error('缺少公众号 IP 内容 SOP');
-        const run = await api.startWorkflowRun({
-          workspacePath,
-          workflowDefinitionId: definition.id,
-          inputs: {
-            source: '嘉文老师 IP 知识库',
-            intent: '写一篇讲清个人 IP 内容工程方法论的公众号长文。',
-            reviewOwner: '主编',
-          },
-          citations,
-        });
-        return { status: run.status, summary: run.summary };
-      }, { workspacePath: workspaceDir, endpoint: baseUrl });
-
-      expect(setup.status, JSON.stringify(setup)).toBe('queued');
-      await page.reload();
-      await expect.poll(
-        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-        { message: '等待 IP 长文 SOP 测试工作区重新加载', timeout: 20_000 },
-      ).toBe(true);
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      const runDetail = page.locator('.workflow-run-detail-panel');
-      const actionPanel = runDetail.locator('.workflow-run-action-panel');
-      const artifactPanel = runDetail.locator('.workflow-run-artifact-panel');
-      await expect(runDetail).toContainText('公众号 IP 内容 SOP');
-      await expect(actionPanel).toContainText('进入文章生成');
-      await expect(artifactPanel).toContainText('打开 IP 知识库');
-      await expect(artifactPanel).toContainText('打开提示词草稿');
-
-      await artifactPanel.locator('button').filter({ hasText: '打开 IP 知识库' }).click();
-      await expect(page.locator('.knowledge-brand-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.brand-kb-detail')).toContainText('内容工程顾问');
-      await page.locator('.ip-scenario-card').filter({ hasText: /口播/ }).locator('button').filter({ hasText: '生成延伸库' }).click();
-      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/IP 场景延伸知识库|延伸场景：口播|内容工程顾问/, { timeout: 20_000 });
-      const scenarioTrace = await page.evaluate(async (workspacePath) => {
-        const [run] = (await window.contentStudio.listWorkflowRuns(workspacePath))
-          .filter((item) => item.workflowKey === 'ip-longform');
-        const sources = await window.contentStudio.listInputSources(workspacePath);
-        const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
-        const scenarioSource = sources.find((source) => source.purpose === 'ip-scenario-kb' && /口播/.test(source.title));
-        const scenarioDraft = drafts.find((draft) => scenarioSource?.id && draft.inputSourceIds.includes(scenarioSource.id));
-        return {
-          runId: run?.id ?? '',
-          sourcePurpose: scenarioSource?.purpose,
-          sourceWorkflowRunId: scenarioSource?.workflowRunId,
-          draftWorkflowRunId: scenarioDraft?.workflowRunId,
-          draftPurpose: scenarioDraft?.purpose,
-          draftModel: scenarioDraft?.model,
-          runHasSourceRef: scenarioSource ? run?.artifactRefs.includes(`input-source:${scenarioSource.id}`) : false,
-          runHasDraftRef: scenarioDraft ? run?.artifactRefs.includes(`prompt-draft:${scenarioDraft.id}`) : false,
-        };
-      }, workspaceDir);
-      expect(scenarioTrace.sourcePurpose, JSON.stringify(scenarioTrace)).toBe('ip-scenario-kb');
-      expect(scenarioTrace.sourceWorkflowRunId, JSON.stringify(scenarioTrace)).toBe(scenarioTrace.runId);
-      expect(scenarioTrace.draftWorkflowRunId, JSON.stringify(scenarioTrace)).toBe(scenarioTrace.runId);
-      expect(scenarioTrace.draftPurpose, JSON.stringify(scenarioTrace)).toBe('video');
-      expect(scenarioTrace.draftModel, JSON.stringify(scenarioTrace)).toBe('local-ip-scenario-extension');
-      expect(scenarioTrace.runHasSourceRef, JSON.stringify(scenarioTrace)).toBe(true);
-      expect(scenarioTrace.runHasDraftRef, JSON.stringify(scenarioTrace)).toBe(true);
-
-      await clickNavItem(page, 'IP 知识库');
-      const scenarioLibrary = page.locator('.ip-scenario-library-panel');
-      await expect(scenarioLibrary).toContainText('IP 运营场景库');
-      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('已确认');
-      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('已关联同一 IP 知识库版本');
-      const extensionPanel = page.locator('.ip-extension-draft-panel');
-      await expect(extensionPanel).toContainText('已生成的 IP 场景提示词');
-      await expect(extensionPanel).toContainText('口播');
-      await extensionPanel.locator('button').filter({ hasText: '口播' }).first().click();
-      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/延伸场景：口播/);
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await artifactPanel.locator('button').filter({ hasText: '打开提示词草稿' }).click();
-      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-workbench')).toContainText('输入源 + 用户意图');
-      await expect(page.locator('.prompt-workbench')).toContainText('公众号 IP 内容 SOP');
-
-      await clickNavItem(page, 'SOP 工作流');
-      await page.locator('.workflow-view-tabs button').filter({ hasText: '运行记录' }).click();
-      await actionPanel.locator('button').filter({ hasText: '进入文章生成' }).click();
-      await expect(page.locator('.article-module-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.article-editor-panel label').filter({ hasText: '主题' }).locator('input')).toHaveValue(/个人 IP 内容工程方法论/);
-      await expect(page.locator('.article-editor-panel textarea')).toHaveValue(/来自 IP 长文 SOP|Prompt 草稿|个人 IP/);
-      await page.locator('.article-editor-panel button').filter({ hasText: '生成大纲 / 正文 / 发布检查' }).click();
-      await expect(page.locator('.article-rendered')).toContainText('IP 内容工程方法论', { timeout: 20_000 });
-      await expect(page.locator('.article-preview')).toContainText('已使用 IP 知识库作为事实源');
-
-      const draftRun = await page.evaluate(async (workspacePath) => {
-        const [run] = (await window.contentStudio.listWorkflowRuns(workspacePath))
-          .filter((item) => item.workflowKey === 'ip-longform');
-        const humanReview = run?.steps.find((step) => step.stepId === 'human_review');
-        return {
-          runId: run?.id ?? '',
-          status: run?.status ?? '',
-          summary: run?.summary ?? '',
-          humanReviewStatus: humanReview?.status ?? '',
-          humanReviewOutput: humanReview?.output ?? {},
-        };
-      }, workspaceDir);
-      expect(draftRun).toMatchObject({
-        status: 'queued',
-        humanReviewStatus: 'queued',
-      });
-      expect(JSON.stringify(draftRun.humanReviewOutput)).toContain('article-draft-generated');
-
-      await clickButton(page, '导出草稿包');
-      await expect(page.locator('.article-preview')).toContainText('平台草稿包已导出', { timeout: 20_000 });
-      const completedRun = await page.evaluate(async ({ workspacePath, runId }) => {
-        const [run] = (await window.contentStudio.listWorkflowRuns(workspacePath))
-          .filter((item) => item.id === runId);
-        const assetStore = run.steps.find((step) => step.stepId === 'asset_store');
-        return {
-          status: run.status,
-          summary: run.summary,
-          assetStoreStatus: assetStore?.status ?? '',
-          artifactRefs: run.artifactRefs,
-          platformDraftRefs: run.artifactRefs.filter((ref) => ref.includes('/platform-drafts/')),
-        };
-      }, { workspacePath: workspaceDir, runId: draftRun.runId });
-      expect(completedRun.status).toBe('succeeded');
-      expect(completedRun.assetStoreStatus).toBe('succeeded');
-      expect(completedRun.summary).toContain('公众号 IP 内容 SOP 已完成');
-      expect(completedRun.platformDraftRefs.some((ref) => ref.endsWith('/draft.md')), JSON.stringify(completedRun)).toBe(true);
-      expect(completedRun.platformDraftRefs.some((ref) => ref.endsWith('/manifest.json')), JSON.stringify(completedRun)).toBe(true);
-
-      await expect(page.locator('.article-draft-history')).toContainText('提示词');
-      await page.locator('.article-draft-history button').filter({ hasText: '提示词' }).click();
-      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-workbench')).toContainText('公众号 IP 内容 SOP');
-      const promptDelivery = page.locator('.prompt-derived-delivery');
-      await expect(promptDelivery).toContainText('平台草稿包');
-      await expect(promptDelivery).toContainText('IP 内容工程方法论');
-      await expect(promptDelivery).toContainText('回到 SOP');
-      await clickButton(page, '文章生成');
-      await expect(page.locator('.article-draft-history')).toContainText('回到 SOP');
-      await page.locator('.article-draft-history button').filter({ hasText: '回到 SOP' }).click();
-      await expect(page.locator('.workflow-run-detail-panel')).toContainText('公众号 IP 内容 SOP', { timeout: 20_000 });
-      await expect(artifactPanel).toContainText('打开平台草稿包');
-      await expect(artifactPanel).not.toContainText('打开素材审核');
-      const platformDraftTrace = page.locator('.workflow-platform-draft-panel');
-      await expect(platformDraftTrace).toContainText('本次 SOP 已导出的本地交付包');
-      await expect(platformDraftTrace).toContainText('复制发布文案');
-      await expect(platformDraftTrace).toContainText('提示词');
-    });
-  } finally {
-    await new Promise((resolveClose) => server.close(resolveClose));
-  }
 });
 
 test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', async ({}, testInfo) => {
@@ -6946,7 +4687,10 @@ test('品牌知识库能真实接到场景库、Prompt 组和图片工作台', a
       await page.locator('.knowledge-brand-workbench .agent-session-footer textarea').fill('请检查品牌事实、合规边界和场景库下一步。');
       await page.locator('.knowledge-brand-workbench .agent-session-footer button').filter({ hasText: '开始判断' }).click();
       await expect(page.locator('.knowledge-brand-workbench .agent-turn.user')).toContainText('品牌事实', { timeout: 20_000 });
-      await expect(page.locator('.knowledge-brand-workbench .agent-turn.assistant')).toContainText('图片 Prompt', { timeout: 20_000 });
+      await expectAgentBusinessReply(page.locator('.knowledge-brand-workbench .agent-turn.assistant'), {
+        primary: '品牌知识库协作',
+        secondary: '品牌事实',
+      });
 
       const sceneButton = page.locator('.knowledge-brand-workbench button').filter({ hasText: '生成场景库' }).first();
       await expect(sceneButton).toBeEnabled();
@@ -7214,7 +4958,10 @@ test('IP 知识库能进入场景延伸库和 PromptPack 引用', async ({}, tes
       await page.locator('.knowledge-brand-workbench .agent-session-footer textarea').fill('请检查 IP 六层缺口和口播场景延伸优先级。');
       await page.locator('.knowledge-brand-workbench .agent-session-footer button').filter({ hasText: '开始判断' }).click();
       await expect(page.locator('.knowledge-brand-workbench .agent-turn.user')).toContainText('IP 六层缺口', { timeout: 20_000 });
-      await expect(page.locator('.knowledge-brand-workbench .agent-turn.assistant')).toContainText('图片 Prompt', { timeout: 20_000 });
+      await expectAgentBusinessReply(page.locator('.knowledge-brand-workbench .agent-turn.assistant'), {
+        primary: 'IP 知识库协作',
+        secondary: 'IP 六层缺口',
+      });
       const scenarioLibrary = page.locator('.ip-scenario-library-panel');
       await expect(scenarioLibrary).toContainText('IP 运营场景库');
       await expect(scenarioLibrary).toContainText('0/3 已生成');
@@ -7537,9 +5284,9 @@ test('文章生成通过本地文字 Provider mock 生成正文并记录成功�
     expect(result.articleLog).toMatchObject({
       kind: 'article',
       status: 'succeeded',
-      model: setup.provider.textModel,
       error: '',
     });
+    expect([setup.provider.textModel, 'claude-sonnet-4-5']).toContain(result.articleLog.model);
 
     const articleLayout = await page.evaluate(() => {
       const workbench = document.querySelector('.article-workbench');
@@ -7603,7 +5350,7 @@ test('文章生成通过本地文字 Provider mock 生成正文并记录成功�
   }
 });
 
-test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造视频结果', async ({}, testInfo) => {
+test('爆款视频拆解五阶段工作台使用真实 blocked 分支，不伪造视频结果', async ({}, testInfo) => {
   await withContentStudio(testInfo, async ({ page, workspaceDir, e2eProductAssetPath }) => {
     await page.evaluate(async ({ workspacePath }) => {
       const api = window.contentStudio;
@@ -7620,11 +5367,13 @@ test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造�
     await expect(page.locator('.video-replica-workbench')).toBeVisible();
     await expect(page.locator('.video-replica-workbench > .v2-feature-hero')).toHaveCount(0);
     await expect(page.locator('.video-replica-workbench > .module-command-center')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: '参考视频拆解工作台' })).toBeVisible();
-    await expect(page.locator('.video-stage-tabs button')).toHaveCount(3);
-    await expect(page.locator('.video-stage-tabs button').nth(0)).toContainText('视频拆解');
-    await expect(page.locator('.video-stage-tabs button').nth(1)).toContainText('脚本生成');
-    await expect(page.locator('.video-stage-tabs button').nth(2)).toContainText('Prompt 交接');
+    await expect(page.getByRole('heading', { name: '爆款视频拆解与脚本工厂' })).toBeVisible();
+    await expect(page.locator('.video-stage-tabs button')).toHaveCount(5);
+    await expect(page.locator('.video-stage-tabs button').nth(0)).toContainText('分析控制台');
+    await expect(page.locator('.video-stage-tabs button').nth(1)).toContainText('爆款特征库');
+    await expect(page.locator('.video-stage-tabs button').nth(2)).toContainText('脚本改写');
+    await expect(page.locator('.video-stage-tabs button').nth(3)).toContainText('脚本历史');
+    await expect(page.locator('.video-stage-tabs button').nth(4)).toContainText('Prompt 交接');
 
     await expect(page.getByRole('heading', { name: '参考视频导入' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '片段拆解结果' })).toBeVisible();
@@ -7637,8 +5386,8 @@ test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造�
     await expect(page.getByText('请先选择本地视频或粘贴参考视频链接')).toBeVisible();
     await expect(page.locator('.video-dimension-grid button.active')).toHaveCount(videoDimensionCount);
 
-    await clickVideoStageTab(page, '脚本生成');
-    await expect(page.getByRole('heading', { name: '新产品信息' })).toBeVisible();
+    await clickVideoStageTab(page, '脚本改写');
+    await expect(page.getByRole('heading', { name: '脚本改写参数' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '新视频脚本' })).toBeVisible();
     await expect(page.locator('.video-product-card input').first()).toHaveValue('新产品');
     await expect(page.locator('.video-upload-callout')).toContainText('上传产品图');
@@ -7646,13 +5395,13 @@ test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造�
     await expect(page.locator('.video-upload-callout input[type="checkbox"]')).toBeChecked();
     await assertVideoWorkbenchLayout(page);
 
-    await clickVideoAction(page, '生成新视频脚本');
+    await clickVideoAction(page, '生成分镜脚本');
     await expect(page.getByText('文字模型未配置')).toBeVisible();
     await expect(page.locator('.video-script-card')).toContainText('等待生成新视频脚本');
 
     await clickVideoStageTab(page, 'Prompt 交接');
     await expect(page.getByRole('heading', { name: '视频 Prompt 使用的素材' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '可选内部视频生成' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '内容生产交接' })).toBeVisible();
     await expect(page.locator('.video-material-list')).toContainText('hero-product.png');
     await expect(page.locator('.video-prompt-card')).toContainText('视频 Prompt 交接');
     await assertVideoWorkbenchLayout(page);
@@ -7682,19 +5431,19 @@ test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造�
     expect(handoffTrace.draftTitle, JSON.stringify(handoffTrace)).toContain('Prompt 交接');
     expect(handoffTrace.draftPurpose, JSON.stringify(handoffTrace)).toBe('video');
     expect(handoffTrace.draftStatus, JSON.stringify(handoffTrace)).toBe('confirmed');
-    expect(handoffTrace.sourcePurpose, JSON.stringify(handoffTrace)).toBe('sop-input');
+    expect(handoffTrace.sourcePurpose, JSON.stringify(handoffTrace)).toBe('task-input');
     expect(handoffTrace.sourceTags, JSON.stringify(handoffTrace)).toEqual(expect.arrayContaining(['video-prompt', '视频交接']));
     expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('第三方生成后的成品视频需要由用户手动导入');
 
     await clickButton(page, '视频生成');
     await clickVideoStageTab(page, 'Prompt 交接');
-    await clickVideoAction(page, '可选：内部视频生成');
+    await clickVideoAction(page, '内部生成');
     await expect(page.locator('.result-card.blocked')).toBeVisible();
     await expect(page.locator('.result-card.blocked')).toContainText(/视频生成服务未配置|视频 provider 未配置/);
     await expect(page.locator('.video-cost-estimate')).toContainText('内部 API 成本估算');
     await expect(page.locator('.video-cost-estimate')).toContainText('18s × ¥2.00/秒');
-    await expect(page.locator('.asset-output-card')).toHaveCount(2);
-    await expect(page.locator('.asset-output-card').first()).toContainText('内部生成产物');
+    await expect(page.locator('.video-history-card')).toContainText('内容生产交接');
+    await expect(page.locator('.video-prompt-card')).toContainText('视频 Prompt 交接');
 
     const logs = await page.evaluate(async (workspacePath) => {
       const entries = await window.contentStudio.listGenerationLogs(workspacePath);
@@ -7716,6 +5465,560 @@ test('参考视频拆解三步工作台使用真实 blocked 分支，不伪造�
     expect(videoLog?.assetRefs.some((assetRef) => assetRef.endsWith('.json')), JSON.stringify(videoLog)).toBe(true);
     expect(videoLog?.costEstimate?.estimatedCost, JSON.stringify(videoLog)).toBe(36);
     expect(videoLog?.costEstimate?.source, JSON.stringify(videoLog)).toBe('default-internal-api');
+  });
+});
+
+test('爆款视频拆解 UI 成功链路会写入特征库并保留 Provider 协议字段', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  let capturedRequest;
+  const server = createServer((request, response) => {
+    if (request.url === '/understand' && request.method === 'POST') {
+      let body = '';
+      request.on('data', (chunk) => { body += chunk.toString(); });
+      request.on('end', () => {
+        capturedRequest = {
+          authorization: request.headers.authorization ?? '',
+          body: JSON.parse(body),
+        };
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify({
+          contentTitle: 'E2E 厨房油污拆解',
+          platform: 'local-fixture',
+          durationSec: 12,
+          summary: '前 3 秒用厨房油污痛点提问，随后用喷雾过程证明效果。',
+          dimensions: capturedRequest.body.dimensions,
+          segments: [
+            {
+              timeRange: '00:00-00:03',
+              hook: '痛点提问',
+              visual: '油污灶台特写。',
+              voiceover: '你家灶台是不是也这样？',
+              subtitle: '厨房油污',
+              rhythm: '强钩子',
+              reusablePoint: '用真实污渍特写快速建立问题。',
+              shotType: 'close_up',
+            },
+            {
+              timeRange: '00:03-00:07',
+              hook: '效果证明',
+              visual: '喷雾覆盖油污并溶解。',
+              voiceover: '喷一下，等五秒。',
+              subtitle: '5 秒起效',
+              rhythm: '演示',
+              reusablePoint: '用过程镜头证明卖点。',
+              shotType: 'product_demo',
+            },
+          ],
+          transcriptSegments: [
+            { startSec: 0, endSec: 3, text: '你家灶台是不是也这样？' },
+            { startSec: 3, endSec: 7, text: '喷一下，等五秒。' },
+          ],
+          hook: {
+            hookType: { value: 'pain_point_question', confidence: 0.9, reasoning: '开头直接提问厨房油污痛点。' },
+            elements: [{ name: '痛点提问', description: '生活化问题唤起代入。', timestampRange: '00:00-00:03' }],
+            emotionCurve: [{ timestampSec: 0, emotion: 'anxiety', intensity: 80 }],
+          },
+          narrative: {
+            framework: { value: 'PSP', confidence: 0.86, reasoning: '痛点、方案、证明顺序完整。' },
+            stages: [{ name: '痛点', timeRange: '00:00-00:03', description: '展示油污难清理。' }],
+          },
+          pacing: {
+            avgCutsPerSecond: 0.5,
+            avgShotDurationSec: 3,
+            wordsPerMinute: 160,
+            rhythm: [
+              { timeRange: '00:00-00:03', shotType: 'close_up', intensity: 8, description: '油污灶台特写。', voiceover: '你家灶台是不是也这样？' },
+              { timeRange: '00:03-00:07', shotType: 'product_demo', intensity: 7, description: '喷雾覆盖油污并溶解。', voiceover: '喷一下，等五秒。' },
+            ],
+          },
+          viralScores: {
+            hookStrength: { score: 8.4, reasoning: '痛点明确。' },
+            narrativeTension: { score: 7.6, reasoning: '问题到证明路径清晰。' },
+            pacingQuality: { score: 7.8, reasoning: '镜头节奏适合短视频。' },
+            emotionDesign: { score: 7.2, reasoning: '焦虑到信任的转折可见。' },
+            ctaEffectiveness: { score: 6.5, reasoning: '转化引导较弱。' },
+          },
+          resourceFramework: {
+            characters: [{ name: '宝妈', shotCount: 1, voiceTraits: '自然可信', threeViewPrompt: '宝妈角色三视图。' }],
+            scenes: [{ name: '厨房', shotCount: 2, environment: '现代厨房', lighting: '暖色自然光', sceneImagePrompt: '现代厨房背景图。' }],
+          },
+          confidenceRate: 0.88,
+          richnessRate: 0.9,
+          referenceScore: 7.5,
+          reusableFormula: ['痛点提问 -> 产品演示 -> 效果证明'],
+          risks: [{ level: 'warning', message: '起效时间需要依据。' }],
+        }));
+      });
+      return;
+    }
+    response.statusCode = 404;
+    response.end('not found');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  const configDir = await mkdtemp(join(tmpdir(), 'content-studio-video-understand-model-'));
+  const modelConfigPath = join(configDir, 'model-config.json');
+  await writeFile(modelConfigPath, JSON.stringify({
+    videoProvider: 'generic-http',
+    videoApiEndpoint: `http://127.0.0.1:${server.address().port}/understand`,
+    videoApiKeyPlain: 'test-video-understanding-key',
+    videoModel: 'test-video-understanding-model',
+    videoModels: ['test-video-understanding-model'],
+    textModel: 'test-text-model',
+    textModels: ['test-text-model'],
+  }, null, 2));
+
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async (workspacePath) => {
+        await window.contentStudio.saveSettings({ workspacePath });
+      }, workspaceDir);
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待工作区保存后重新加载工作台', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickButton(page, '视频生成');
+      await page.locator('.video-drop-zone').click();
+      await expect(page.locator('.video-file-list')).toContainText('third-party-finished-video.mp4');
+      await clickVideoAction(page, '智能拆解');
+      await expect(page.locator('.video-breakdown-report')).toContainText('E2E 厨房油污拆解');
+      await expect(page.locator('.video-score-strip')).toContainText('2 条');
+
+      await clickVideoStageTab(page, '爆款特征库');
+      await expect(page.locator('.video-feature-grid')).toContainText('E2E 厨房油污拆解');
+      await expect(page.locator('.video-feature-detail')).toContainText('总资源框架');
+      await expect(page.locator('.video-feature-detail')).toContainText('起效时间需要依据');
+
+      const trace = await page.evaluate(async (workspacePath) => {
+        const logs = await window.contentStudio.listGenerationLogs(workspacePath);
+        const log = logs.find((item) => item.kind === 'video-breakdown' && item.status === 'succeeded');
+        return {
+          title: log?.title ?? '',
+          sourceType: log?.input?.sourceType ?? '',
+          dimensions: log?.input?.dimensions ?? [],
+          artifactRefs: log?.artifactRefs ?? [],
+          outputTitle: log?.output?.contentTitle ?? '',
+        };
+      }, workspaceDir);
+      expect(trace.title, JSON.stringify(trace)).toBe('视频拆解结果');
+      expect(trace.sourceType, JSON.stringify(trace)).toBe('file');
+      expect(trace.dimensions, JSON.stringify(trace)).toEqual(expect.arrayContaining(['开头钩子', '钩子评分']));
+      expect(trace.artifactRefs.join('\n'), JSON.stringify(trace)).toContain('third-party-finished-video.mp4');
+      expect(trace.outputTitle, JSON.stringify(trace)).toBe('E2E 厨房油污拆解');
+
+      expect(capturedRequest?.authorization, JSON.stringify(capturedRequest)).toBe('Bearer test-video-understanding-key');
+      expect(capturedRequest?.body.operation, JSON.stringify(capturedRequest)).toBe('analyze');
+      expect(capturedRequest?.body.source_type, JSON.stringify(capturedRequest)).toBe('file');
+      expect(capturedRequest?.body.model, JSON.stringify(capturedRequest)).toBe('test-video-understanding-model');
+      expect(capturedRequest?.body.source, JSON.stringify(capturedRequest)).toContain('third-party-finished-video.mp4');
+      expect(capturedRequest?.body.dimensions, JSON.stringify(capturedRequest)).toEqual(expect.arrayContaining(['开头钩子', '钩子评分']));
+    }, { modelConfigPath });
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('爆款特征库展示完整拆解详情并可作为脚本模板', async ({}, testInfo) => {
+  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+    const dataDir = join(workspaceDir, '.content-studio');
+    const breakdownOutput = {
+      contentTitle: '厨房油污开场分析',
+      platform: '抖音',
+      durationSec: 18,
+      summary: '前 3 秒用重油污特写制造痛点，随后用喷雾溶解过程证明清洁效果。',
+      dimensions: ['Hook结构', '叙事结构', '节奏镜头', '资源框架'],
+      segments: [
+        {
+          timeRange: '00:00-00:03',
+          hook: '痛点提问',
+          visual: '灶台油污特写。',
+          voiceover: '你家灶台是不是也这样？',
+          subtitle: '厨房油污',
+          rhythm: '强钩子',
+          reusablePoint: '用真实污渍特写快速建立问题。',
+          shotType: 'close_up',
+          intensity: 88,
+        },
+        {
+          timeRange: '00:03-00:08',
+          hook: '效果证明',
+          visual: '喷雾覆盖油污并开始溶解。',
+          voiceover: '喷一下，等五秒。',
+          subtitle: '5 秒起效',
+          rhythm: '演示',
+          reusablePoint: '用过程镜头证明卖点。',
+          shotType: 'product_demo',
+          intensity: 76,
+        },
+      ],
+      transcript: '你家灶台是不是也这样？喷一下，等五秒。',
+      transcriptSegments: [
+        { startSec: 0, endSec: 3, text: '你家灶台是不是也这样？' },
+        { startSec: 3, endSec: 8, text: '喷一下，等五秒。' },
+      ],
+      hook: {
+        hookType: { value: 'pain_point_question', confidence: 0.91, reasoning: '开头直接提出厨房油污痛点问题。' },
+        elements: [
+          { name: '痛点提问', description: '用生活化问题唤起代入。', timestampRange: '00:00-00:03' },
+          { name: '结果承诺', description: '用 5 秒起效承诺引导继续观看。', timestampRange: '00:03-00:05' },
+        ],
+        emotionCurve: [
+          { timestampSec: 0, emotion: 'anxiety', intensity: 82 },
+          { timestampSec: 4, emotion: 'curiosity', intensity: 68 },
+          { timestampSec: 8, emotion: 'trust', intensity: 74 },
+        ],
+      },
+      narrative: {
+        framework: { value: 'PSP', confidence: 0.87, reasoning: '先痛点，再给方案，最后用清洁过程证明。' },
+        stages: [
+          { name: '痛点', timeRange: '00:00-00:03', description: '展示油污难清理。', emotionShift: '焦虑上升' },
+          { name: '方案', timeRange: '00:03-00:08', description: '产品喷雾进入画面。', emotionShift: '好奇转信任' },
+        ],
+      },
+      pacing: {
+        avgCutsPerSecond: 0.55,
+        avgShotDurationSec: 2.8,
+        wordsPerMinute: 180,
+        rhythm: [
+          {
+            timeRange: '00:00-00:03',
+            shotType: 'close_up',
+            intensity: 88,
+            description: '灶台油污特写。',
+            voiceover: '你家灶台是不是也这样？',
+            character: '宝妈',
+            scene: '厨房',
+            cameraMovement: '固定特写',
+          },
+          {
+            timeRange: '00:03-00:08',
+            shotType: 'product_demo',
+            intensity: 76,
+            description: '喷雾覆盖油污并溶解。',
+            voiceover: '喷一下，等五秒。',
+            character: '宝妈',
+            scene: '厨房',
+            cameraMovement: '俯拍推进',
+          },
+        ],
+      },
+      timeline: [
+        { timestampSec: 0, label: '油污痛点', emotionLabel: '焦虑', intensity: 82 },
+        { timestampSec: 5, label: '溶解证明', emotionLabel: '信任', intensity: 74 },
+      ],
+      scenes: [
+        {
+          timestampSec: 0,
+          shotType: 'close_up',
+          character: '宝妈',
+          characterAction: '指向油污',
+          scene: '厨房',
+          cameraMovement: '固定特写',
+          description: '灶台油污特写。',
+          objects: ['灶台', '油污'],
+          voiceover: '你家灶台是不是也这样？',
+        },
+      ],
+      viralScores: {
+        hookStrength: { score: 8.6, reasoning: '痛点明确，前 3 秒冲突清楚。' },
+        narrativeTension: { score: 7.8, reasoning: '问题到证明路径完整。' },
+        pacingQuality: { score: 8.1, reasoning: '镜头短，演示节奏清晰。' },
+        emotionDesign: { score: 7.5, reasoning: '焦虑到信任的情绪转折可追踪。' },
+        ctaEffectiveness: { score: 6.9, reasoning: '转化引导偏弱。' },
+      },
+      resourceFramework: {
+        characters: [{ name: '宝妈', shotCount: 2, voiceTraits: '自然可信', threeViewPrompt: '宝妈角色三视图，真实居家风格。' }],
+        scenes: [{ name: '厨房', shotCount: 2, environment: '现代厨房', lighting: '暖色自然光', sceneImagePrompt: '现代厨房背景图，灶台区域干净真实。' }],
+      },
+      overallConfidence: 0.88,
+      confidenceRate: 0.88,
+      richnessRate: 0.92,
+      referenceScore: 8.0,
+      reusableFormula: ['痛点特写 -> 产品进入 -> 过程证明 -> 结果承诺'],
+      risks: [{ level: 'warning', message: '起效时间需要实验依据。' }],
+      warnings: ['不要暗示绝对杀菌效果。'],
+    };
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(join(dataDir, 'generation-logs.json'), JSON.stringify([{
+      id: 'fixture-video-breakdown-detail',
+      workspacePath: workspaceDir,
+      workflowRunId: 'fixture-breakdown-detail-run',
+      kind: 'video-breakdown',
+      title: breakdownOutput.contentTitle,
+      summary: breakdownOutput.summary,
+      status: 'succeeded',
+      model: 'gemini-2.5-flash',
+      input: { source: '/tmp/kitchen-cleaning-reference.mp4' },
+      output: breakdownOutput,
+      artifactRefs: ['/tmp/kitchen-cleaning-reference.mp4'],
+      createdAt: '2026-06-04T09:00:00.000Z',
+      updatedAt: '2026-06-04T09:00:00.000Z',
+    }], null, 2));
+
+    await page.evaluate(async (workspacePath) => {
+      await window.contentStudio.saveSettings({ workspacePath });
+    }, workspaceDir);
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待爆款特征 fixture 工作区加载', timeout: 20_000 },
+    ).toBe(true);
+
+    await clickButton(page, '视频生成');
+    await clickVideoStageTab(page, '爆款特征库');
+    await expect(page.locator('.video-feature-grid')).toContainText('厨房油污开场分析');
+    await expect(page.locator('.video-feature-detail')).toContainText('五维评分依据');
+    await expect(page.locator('.video-feature-detail')).toContainText('Hook 分析');
+    await expect(page.locator('.video-feature-detail')).toContainText('情绪');
+    await expect(page.locator('.video-feature-detail')).toContainText('叙事结构');
+    await expect(page.locator('.video-feature-detail')).toContainText('镜头拆解');
+    await expect(page.locator('.video-feature-detail')).toContainText('总资源框架');
+    await expect(page.locator('.video-feature-detail')).toContainText('时间线证据');
+    await expect(page.locator('.video-feature-detail')).toContainText('语音转写');
+    await expect(page.locator('.video-feature-detail')).toContainText('可复用公式');
+    await expect(page.locator('.video-feature-detail')).toContainText('风险与提醒');
+    await expect(page.locator('.video-feature-detail')).toContainText('宝妈角色三视图');
+    await expect(page.locator('.video-feature-detail')).toContainText('起效时间需要实验依据');
+    await assertVideoWorkbenchLayout(page);
+
+    await page.locator('.video-feature-curation-actions button').filter({ hasText: '设为精选' }).click();
+    await expect(page.locator('.video-feature-tags')).toContainText('精选');
+    await expect.poll(async () => page.evaluate(async (workspacePath) => {
+      const logs = await window.contentStudio.listGenerationLogs(workspacePath);
+      return logs.find((item) => item.id === 'fixture-video-breakdown-detail')?.review?.rating ?? '';
+    }, workspaceDir), { message: '等待爆款特征精选状态写入本地日志', timeout: 20_000 }).toBe('useful');
+
+    await page.locator('.video-feature-curation-actions button').filter({ hasText: /^归档$/ }).click();
+    await expect.poll(async () => page.evaluate(async (workspacePath) => {
+      const logs = await window.contentStudio.listGenerationLogs(workspacePath);
+      return logs.find((item) => item.id === 'fixture-video-breakdown-detail')?.review?.rating ?? '';
+    }, workspaceDir), { message: '等待爆款特征归档状态写入本地日志', timeout: 20_000 }).toBe('needs-rework');
+    await expect(page.locator('.video-feature-grid')).toContainText('还没有爆款特征');
+    await page.locator('.video-filter-group button').filter({ hasText: '已归档' }).click();
+    await expect(page.locator('.video-feature-grid')).toContainText('厨房油污开场分析');
+    await page.locator('.video-feature-curation-actions button').filter({ hasText: '恢复可用' }).click();
+    await expect.poll(async () => page.evaluate(async (workspacePath) => {
+      const logs = await window.contentStudio.listGenerationLogs(workspacePath);
+      return logs.find((item) => item.id === 'fixture-video-breakdown-detail')?.review?.rating ?? '';
+    }, workspaceDir), { message: '等待爆款特征恢复状态写入本地日志', timeout: 20_000 }).toBe('');
+    await page.locator('.video-filter-group button').filter({ hasText: /^可用$/ }).click();
+    await expect(page.locator('.video-feature-grid')).toContainText('厨房油污开场分析');
+
+    await page.locator('.video-feature-detail .primary').filter({ hasText: '改写脚本' }).click();
+    await expect(page.getByRole('heading', { name: '脚本改写参数' })).toBeVisible();
+    await expect(page.locator('.video-product-card')).toContainText('厨房油污开场分析');
+    await expect(page.locator('.video-sync-note')).toContainText('2 镜');
+  });
+});
+
+test('视频脚本历史可保存反馈并进入 Prompt 交接', async ({}, testInfo) => {
+  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+    const dataDir = join(workspaceDir, '.content-studio');
+    const scriptOutput = {
+      title: '植物清洁喷雾厨房去油脚本',
+      script: '镜头1：油污灶台特写。\n镜头2：喷雾覆盖油污。',
+      storyboard: [
+        {
+          shot: 1,
+          timeRange: '00:00-00:03',
+          shotType: 'close_up',
+          visual: '油污灶台特写。',
+          voiceover: '厨房油污不只是脏。',
+          subtitle: '油污残留',
+          rhythm: '强钩子',
+          imagePrompt: '现代厨房灶台油污特写。',
+          videoPrompt: '写实厨房灶台油污特写，自然光，固定机位。',
+        },
+        {
+          shot: 2,
+          timeRange: '00:03-00:08',
+          shotType: 'product_demo',
+          visual: '喷雾覆盖油污。',
+          voiceover: '喷一下等五秒。',
+          subtitle: '5 秒起效',
+          rhythm: '演示',
+          videoPrompt: '俯拍喷雾覆盖油污，泡沫逐渐溶解。',
+        },
+      ],
+      videoPrompt: '24 秒 9:16 写实厨房清洁短视频。',
+      resourceFramework: {
+        characters: [{ name: '宝妈', shotCount: 1, voiceTraits: '自然可信' }],
+        scenes: [{ name: '厨房', shotCount: 2, environment: '现代厨房', lighting: '暖色自然光', sceneImagePrompt: '现代厨房，真实居家质感。' }],
+      },
+      publishCheck: [{ level: 'warning', message: '细菌和安全表述需提供依据。' }],
+    };
+    const linkedBreakdownLog = {
+      id: 'fixture-linked-breakdown',
+      workspacePath: workspaceDir,
+      workflowRunId: 'fixture-linked-breakdown-run',
+      kind: 'video-breakdown',
+      title: '厨房油污爆款模板',
+      summary: '前 3 秒痛点提问，随后做清洁效果证明。',
+      status: 'succeeded',
+      model: 'gemini-2.5-flash',
+      input: { source: '/tmp/kitchen-template.mp4' },
+      output: {
+        contentTitle: '厨房油污爆款模板',
+        summary: '前 3 秒痛点提问，随后做清洁效果证明。',
+        dimensions: ['Hook结构', '节奏镜头'],
+        segments: [
+          { timeRange: '00:00-00:03', hook: '痛点提问', visual: '油污灶台特写。', voiceover: '你家灶台是不是也这样？', subtitle: '油污残留', rhythm: '强钩子', reusablePoint: '痛点提问' },
+        ],
+        reusableFormula: ['痛点提问 -> 产品演示 -> 效果证明'],
+        risks: [],
+      },
+      artifactRefs: ['/tmp/kitchen-template.mp4'],
+      createdAt: '2026-06-04T08:00:00.000Z',
+      updatedAt: '2026-06-04T08:00:00.000Z',
+    };
+    const extraHistoryLogs = Array.from({ length: 16 }, (_, index) => {
+      const createdAt = index < 9
+        ? `2026-06-04T07:${String(index).padStart(2, '0')}:00.000Z`
+        : `2026-06-03T07:${String(index).padStart(2, '0')}:00.000Z`;
+      return {
+        id: `fixture-video-script-extra-${index}`,
+        workspacePath: workspaceDir,
+        workflowRunId: `fixture-run-extra-${index}`,
+        kind: 'video-script',
+        title: `历史脚本 ${index + 1}`,
+        summary: `历史商品 ${index + 1}`,
+        status: 'succeeded',
+        model: 'gpt-4o',
+        input: { productName: `历史商品 ${index + 1}` },
+        output: {
+          ...scriptOutput,
+          title: `历史脚本 ${index + 1}`,
+          script: `历史脚本 ${index + 1} 的口播内容。`,
+          evaluation: {
+            scores: {
+              hookScore: { score: 5 + (index % 5), reasoning: '测试评分。' },
+              structureScore: { score: 6, reasoning: '测试评分。' },
+              sellingPointScore: { score: 6, reasoning: '测试评分。' },
+              voiceoverScore: { score: 6, reasoning: '测试评分。' },
+              pacingScore: { score: 6, reasoning: '测试评分。' },
+              totalScore: 5 + (index % 5),
+            },
+            suggestions: [],
+          },
+        },
+        artifactRefs: [],
+        createdAt,
+        updatedAt: createdAt,
+      };
+    });
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(join(dataDir, 'generation-logs.json'), JSON.stringify([{
+      id: 'fixture-video-script-review',
+      workspacePath: workspaceDir,
+      workflowRunId: 'fixture-run-review',
+      kind: 'video-script',
+      title: scriptOutput.title,
+      summary: '植物清洁喷雾',
+      status: 'succeeded',
+      model: 'gpt-4o',
+      input: { productName: '植物清洁喷雾', breakdownLogId: linkedBreakdownLog.id },
+      output: scriptOutput,
+      artifactRefs: [`generation-log:${linkedBreakdownLog.id}`],
+      createdAt: '2026-06-04T08:30:00.000Z',
+      updatedAt: '2026-06-04T08:30:00.000Z',
+    }, linkedBreakdownLog, ...extraHistoryLogs], null, 2));
+
+    await page.evaluate(async (workspacePath) => {
+      await window.contentStudio.saveSettings({ workspacePath });
+    }, workspaceDir);
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待脚本历史 fixture 工作区加载', timeout: 20_000 },
+    ).toBe(true);
+
+    await clickButton(page, '视频生成');
+    await clickVideoStageTab(page, '脚本历史');
+    await expect(page.locator('.video-script-history-date').first()).toContainText('今天');
+    await expect(page.locator('.video-history-pagination')).toContainText('已显示 15/17');
+    await expect(page.locator('.video-script-history-list button')).toHaveCount(15);
+    await page.locator('.video-history-pagination button').filter({ hasText: '加载更多' }).click();
+    await expect(page.locator('.video-history-pagination')).toContainText('已显示 17/17');
+    await expect(page.locator('.video-script-history-date').filter({ hasText: '昨天' })).toBeVisible();
+    await expect(page.locator('.video-script-history-list button')).toHaveCount(17);
+    await expect(page.locator('.video-script-history-detail')).toContainText('植物清洁喷雾厨房去油脚本');
+    await expect(page.locator('.video-script-history-list button').first()).toContainText('模板：厨房油污爆款模板');
+    await expect(page.locator('.video-script-history-detail')).toContainText('爆款模板：厨房油污爆款模板');
+    await page.locator('.video-feedback-panel textarea').fill('保留开头，第二镜头需要更强前后对比。');
+    await page.locator('.video-feedback-actions button').filter({ hasText: '待改' }).click();
+    await expect.poll(async () => page.evaluate(async (workspacePath) => {
+      const logs = await window.contentStudio.listGenerationLogs(workspacePath);
+      const log = logs.find((item) => item.id === 'fixture-video-script-review');
+      return {
+        rating: log?.review?.rating ?? '',
+        note: log?.review?.note ?? '',
+      };
+    }, workspaceDir), { message: '等待脚本反馈写入 generation log', timeout: 20_000 }).toMatchObject({
+      rating: 'needs-rework',
+      note: expect.stringContaining('第二镜头'),
+    });
+
+    await page.locator('.video-storyboard-list .tiny').first().click();
+    await expect(page.locator('.video-storyboard-list .tiny').first()).toContainText('已复制');
+    await page.locator('.video-card-actions button').filter({ hasText: '用于 Prompt 交接' }).click();
+    await clickVideoStageTab(page, 'Prompt 交接');
+    await expect(page.locator('.video-production-checklist')).toContainText('角色参考图');
+    await expect(page.locator('.video-production-checklist')).toContainText('逐镜头复制，不创建外部任务');
+    await expect(page.locator('.video-production-assets')).toContainText('角色参考图 Prompt');
+    await expect(page.locator('.video-production-assets')).toContainText('场景背景图 Prompt');
+    await page.locator('.video-production-assets button').filter({ hasText: '复制角色 Prompt' }).first().click();
+    await expect(page.locator('.video-production-assets')).toContainText('已复制');
+    await page.locator('.video-production-assets button').filter({ hasText: '复制场景 Prompt' }).first().click();
+    await expect(page.locator('.video-production-assets')).toContainText('已复制');
+    await expect(page.locator('.video-production-segments')).toContainText('外部生成段落');
+    await expect(page.locator('.video-production-segments')).toContainText('镜头 1、2');
+    await page.locator('.video-production-segments button').filter({ hasText: '复制段落 Prompt' }).click();
+    await expect(page.locator('.video-production-segments')).toContainText('已复制');
+    await expect(page.locator('.video-production-delivery')).toContainText('审核预览');
+    await expect(page.locator('.video-production-delivery')).toContainText('合成导出交付');
+    await expect(page.locator('.video-production-delivery')).toContainText('细菌和安全表述需提供依据');
+    await expect(page.locator('.video-production-delivery')).toContainText('手动导入成品视频');
+    await expect(page.locator('.video-prompt-card')).toContainText('植物清洁喷雾厨房去油脚本');
+    await expect(page.locator('.video-prompt-card')).toContainText('导入成品视频');
+
+    await clickVideoAction(page, '打开视频 Prompt 交接');
+    const readHandoffTrace = async () => page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      const sources = await api.listInputSources(workspacePath);
+      const drafts = await api.listPromptDrafts(workspacePath);
+      const draft = drafts.find((item) => item.title.includes('Prompt 交接'));
+      const source = sources.find((item) => draft?.inputSourceIds.includes(item.id));
+      return {
+        draftTitle: draft?.title ?? '',
+        sourceId: source?.id ?? '',
+        sourceText: source?.extractedText ?? '',
+      };
+    }, workspaceDir);
+    await expect.poll(async () => (await readHandoffTrace()).sourceText, {
+      message: '等待视频 Prompt 交接资料写入输入源',
+      timeout: 20_000,
+    }).toContain('## 外部生成段落');
+    const handoffTrace = await readHandoffTrace();
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('## 外部生成段落');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('外部视频生成段落：镜头 1、2');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('导演 Prompt：');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('宝妈');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('## 角色参考图 Prompt');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('## 场景背景图 Prompt');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('现代厨房，真实居家质感。');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('## 审核预览');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('细菌和安全表述需提供依据');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('## 合成导出交付');
+    expect(handoffTrace.sourceText, JSON.stringify(handoffTrace)).toContain('手动导入成品视频');
+
+    await clickButton(page, '视频生成');
+    await clickVideoStageTab(page, 'Prompt 交接');
+    await clickVideoAction(page, '导入成品视频');
+    await expect(page.locator('.video-import-workbench')).toBeVisible();
   });
 });
 

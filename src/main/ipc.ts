@@ -10,17 +10,16 @@ import type {
   CreateContentProductionHandoffInput,
   CreateSceneCardFromContentInput,
   CreateTeamKnowledgePromptDraftInput,
+  AdvanceContentBatchStageInput,
+  BuildContentBatchInput,
   BuildContentKnowledgeMapInput,
   ExportContentDraftChangeInput,
   GenerateBrandKnowledgeBaseInput,
   GenerateIpKnowledgeBaseInput,
   ReviewAssetInput,
   AssetFileKind,
-  CreateWorkflowDraftInput,
   ExportAssetInput,
-  ExportBrandCommandActionRecordsInput,
   ExportContentKnowledgePackInput,
-  ConfirmBrandCommandStageInput,
   ExportMixPackageInput,
   ExportMarkdownInput,
   ExportPlatformDraftInput,
@@ -35,12 +34,10 @@ import type {
   KnowledgeSearchInput,
   PromptPack,
   ReferenceReverseRequest,
-  RecordWorkflowManualEventInput,
   RecordPromptDraftCopyInput,
   RecordMixPackageImportEvidenceInput,
   ReadPlatformDraftCopyTextInput,
   ReadContentKnowledgePackFileInput,
-  RefreshBrandCommandActionsInput,
   SubmitContentReviewDecisionInput,
   SubmitContentDraftChangeInput,
   WriteBackContentMaterialCoverageInput,
@@ -50,19 +47,18 @@ import type {
   SceneCard,
   SkillRef,
   StageSkillPackageInput,
-  StartWorkflowRunInput,
   UpdatePromptDraftInput,
   VideoBreakdownRequest,
   VideoGenerationRequest,
+  VideoScriptEvaluationRequest,
   VideoScriptGenerationRequest,
-  WorkflowDefinition,
+  VideoScriptShotRewriteRequest,
   BrandKnowledgeBaseRecord,
   ContentKnowledgeMapRecord,
   IpKnowledgeBaseRecord,
   BuguEmailCodeSendInput,
   BuguEmailCodeVerifyInput,
   BuguPasswordLoginInput,
-  BuildBrandCommandCenterInput,
   ImportInputSourceFromFileOptions,
   ImportContentDraftChangeInput,
   InputSourcePurpose,
@@ -72,12 +68,11 @@ import type {
   RenameSkillInput,
   ReplaceSkillPackageInput,
   RegisterInputSourceInput,
-  RecordBrandCommandActionInput,
-  RecordBrandCommandReviewInput,
   RespondAgentPromptActionInput,
   ResolveContentSyncConflictInput,
   SkillWorkspaceInput,
   SubmitGenerationTaskInput,
+  UpdateGenerationLogReviewInput,
 } from '../shared/types';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, extname, join, dirname, isAbsolute, resolve } from 'node:path';
@@ -86,8 +81,6 @@ import { MediaProvider } from './providers/mediaProvider';
 import { AgentKnowledgeContentExportService } from './services/agentKnowledgeContentExportService';
 import { ArticleGenerationService } from './services/articleGenerationService';
 import { AgentPromptSessionStore } from './services/agentPromptSessionStore';
-import { BrandCommandCenterApplicationService } from './services/brandCommandCenterApplicationService';
-import { BrandCommandCenterStore } from './services/brandCommandCenterStore';
 import { BrandKnowledgeBaseStore } from './services/brandKnowledgeBaseStore';
 import { AssetReviewStore } from './services/assetReviewStore';
 import { AutoUpdateService } from './services/autoUpdateService';
@@ -107,6 +100,8 @@ import { ContentReviewTaskApplicationService } from './services/contentReviewTas
 import { ContentReviewTaskStore } from './services/contentReviewTaskStore';
 import { ContentTeamKnowledgePromptDraftService } from './services/contentTeamKnowledgePromptDraftService';
 import { ContentWorkspaceSyncService } from './services/contentWorkspaceSyncService';
+import { ContentBatchApplicationService } from './services/contentBatchApplicationService';
+import { ContentBatchStore } from './services/contentBatchStore';
 import { FileAssociationService } from './services/fileAssociationService';
 import { GenerationLogStore } from './services/generationLogStore';
 import { GenerationTaskService } from './services/generationTaskService';
@@ -128,8 +123,6 @@ import { SkillManager } from './services/skillManager';
 import { SkillSelectionStore } from './services/skillSelectionStore';
 import { TextGenerationService } from './services/textGenerationService';
 import { VideoWorkflowService } from './services/videoWorkflowService';
-import { WorkflowEngine } from './services/workflowEngine';
-import { WorkflowStore } from './services/workflowStore';
 
 function readE2eAssetSelection(kind: AssetFileKind): string[] | null {
   if (process.env.CONTENT_STUDIO_E2E !== '1') return null;
@@ -425,27 +418,12 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     contentKnowledgeReleaseStore,
     promptDrafts,
   );
-  const workflows = new WorkflowStore();
-  const brandCommandCenterStore = new BrandCommandCenterStore();
+  const contentBatchStore = new ContentBatchStore();
   const contentReviewTaskStore = new ContentReviewTaskStore();
   const referenceReverse = new ReferenceReverseService(logs, inputSources, promptDrafts, modelConfig);
   const articles = new ArticleGenerationService(logs, textGeneration);
   const videoWorkflow = new VideoWorkflowService(logs, textGeneration, modelConfig);
   const media = new MediaProvider(modelConfig, logs);
-  const workflowEngine = new WorkflowEngine(
-    workflows,
-    inputSources,
-    promptDrafts,
-    agentPromptSessions,
-    media,
-    assetReviews,
-    brandKnowledgeBases,
-    promptPacks,
-    sceneCards,
-    referenceReverse,
-    ipKnowledgeBases,
-    overlayCards,
-  );
   const contentMaterialFeedback = new ContentMaterialFeedbackService(
     contentKnowledgeMapStore,
     assetReviews,
@@ -453,26 +431,20 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     contentReviewTaskStore,
     buguContentSync,
   );
-  const brandCommandCenters = new BrandCommandCenterApplicationService(
-    brandCommandCenterStore,
-    contentKnowledgeMapStore,
-    buguContentSync,
-    buguContentSync,
-    buguContentSync,
-    promptDrafts,
-    contentReviewTaskStore,
-    buguContentSync,
-    sceneCards,
-    workflowEngine,
-    contentMaterialFeedback,
-    buguContentSync,
-    contentKnowledgeReleaseStore,
-  );
   const contentReviewTasks = new ContentReviewTaskApplicationService(
     contentReviewTaskStore,
     contentKnowledgeMapStore,
     buguContentSync,
     contentWorkspaceSync,
+  );
+  const contentBatches = new ContentBatchApplicationService(
+    contentBatchStore,
+    inputSources,
+    contentKnowledgeMapStore,
+    contentReviewTaskStore,
+    assetReviews,
+    logs,
+    promptDrafts,
   );
   const contentProductionHandoffs = new ContentProductionHandoffService(
     contentReviewTaskStore,
@@ -482,8 +454,6 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     sceneCards,
     new ContentProductionHandoffStore(),
     buguContentSync,
-    brandCommandCenterStore,
-    workflowEngine,
   );
   const generationTasks = new GenerationTaskService(
     logs,
@@ -665,13 +635,9 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('contentKnowledgeReleases:create', (_event, input: CreateContentKnowledgeReleaseInput) => contentWorkspaceSync.createKnowledgeRelease(input));
   ipcMain.handle('contentSyncConflicts:list', (_event, workspacePath: string) => contentWorkspaceSync.listSyncConflicts(workspacePath));
   ipcMain.handle('contentSyncConflicts:resolve', (_event, input: ResolveContentSyncConflictInput) => contentWorkspaceSync.resolveSyncConflict(input));
-  ipcMain.handle('brandCommandCenters:list', (_event, workspacePath: string) => brandCommandCenters.list(workspacePath));
-  ipcMain.handle('brandCommandCenters:build', (_event, input: BuildBrandCommandCenterInput) => brandCommandCenters.build(input));
-  ipcMain.handle('brandCommandCenters:recordAction', (_event, input: RecordBrandCommandActionInput) => brandCommandCenters.recordAction(input));
-  ipcMain.handle('brandCommandCenters:recordReview', (_event, input: RecordBrandCommandReviewInput) => brandCommandCenters.recordReview(input));
-  ipcMain.handle('brandCommandCenters:confirmStage', (_event, input: ConfirmBrandCommandStageInput) => brandCommandCenters.confirmStage(input));
-  ipcMain.handle('brandCommandCenters:exportActions', (_event, input: ExportBrandCommandActionRecordsInput) => brandCommandCenters.exportActionRecords(input));
-  ipcMain.handle('brandCommandCenters:refreshActions', (_event, input: RefreshBrandCommandActionsInput) => brandCommandCenters.refreshActions(input));
+  ipcMain.handle('contentBatches:list', (_event, workspacePath: string) => contentBatches.list(workspacePath));
+  ipcMain.handle('contentBatches:build', (_event, input: BuildContentBatchInput) => contentBatches.build(input));
+  ipcMain.handle('contentBatches:advanceStage', (_event, input: AdvanceContentBatchStageInput) => contentBatches.advanceStage(input));
   ipcMain.handle('contentKnowledgePack:export', (_event, input: ExportContentKnowledgePackInput) => agentKnowledgeContentExport.exportPack(input));
   ipcMain.handle('contentKnowledgePack:readFile', (_event, input: ReadContentKnowledgePackFileInput) => agentKnowledgeContentExport.readPackFile(input));
   ipcMain.handle('contentReviewTasks:list', (_event, workspacePath: string) => contentReviewTasks.list(workspacePath));
@@ -723,13 +689,6 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('mixPackages:list', (_event, workspacePath: string) => mixPackages.list(workspacePath));
   ipcMain.handle('mixPackages:export', (_event, input: ExportMixPackageInput) => mixPackages.exportPackage(input));
   ipcMain.handle('mixPackages:recordImportEvidence', (_event, input: RecordMixPackageImportEvidenceInput) => mixPackages.recordImportEvidence(input));
-  ipcMain.handle('workflow:listDefinitions', (_event, workspacePath: string) => workflows.listDefinitions(workspacePath));
-  ipcMain.handle('workflow:createDraft', (_event, input: CreateWorkflowDraftInput) => workflows.createDraft(input));
-  ipcMain.handle('workflow:updateDefinition', (_event, input: WorkflowDefinition) => workflows.updateDefinition(input));
-  ipcMain.handle('workflow:listRuns', (_event, workspacePath: string) => workflows.listRuns(workspacePath));
-  ipcMain.handle('workflow:startRun', (_event, input: StartWorkflowRunInput) => workflowEngine.startRun(input));
-  ipcMain.handle('workflow:recordManualEvent', (_event, input: RecordWorkflowManualEventInput) => workflows.recordManualEvent(input));
-
   ipcMain.handle('assets:selectFiles', async (_event, kind: AssetFileKind) => {
     const e2eSelection = readE2eAssetSelection(kind);
     if (e2eSelection) return e2eSelection;
@@ -782,6 +741,8 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('referenceReverse:generate', (_event, input: ReferenceReverseRequest) => referenceReverse.generate(input));
   ipcMain.handle('video:analyze', (_event, input: VideoBreakdownRequest) => videoWorkflow.analyze(input));
   ipcMain.handle('video:script', (_event, input: VideoScriptGenerationRequest) => videoWorkflow.generateScript(input));
+  ipcMain.handle('video:script:evaluate', (_event, input: VideoScriptEvaluationRequest) => videoWorkflow.evaluateScript(input));
+  ipcMain.handle('video:script:rewriteShot', (_event, input: VideoScriptShotRewriteRequest) => videoWorkflow.rewriteScriptShot(input));
   ipcMain.handle('image:generate', (_event, input: ImageGenerationRequest) => media.generateImage(input));
   ipcMain.handle('imageSkills:generate', (_event, input: GenerateImageSkillInput) => imageSkills.generate(input));
   ipcMain.handle('imageSkills:importFromFile', async () => {
@@ -800,6 +761,20 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('generationTasks:submit', (_event, input: SubmitGenerationTaskInput) => generationTasks.submit(input));
   ipcMain.handle('generationTasks:list', (_event, workspacePath: string) => generationTasks.list(workspacePath));
   ipcMain.handle('generationLogs:list', (_event, workspacePath: string) => logs.list(workspacePath));
+  ipcMain.handle('generationLogs:updateReview', (_event, input: UpdateGenerationLogReviewInput) => {
+    const note = input.note?.trim();
+    const rating = input.rating ?? undefined;
+    return logs.update(input.workspacePath, input.logId, {
+      review: rating || note
+        ? {
+          rating,
+          note: note || undefined,
+          source: 'script-history',
+          updatedAt: new Date().toISOString(),
+        }
+        : undefined,
+    });
+  });
 
   ipcMain.handle('agent:run', async (_event, input: RunTaskInput) => ({ taskId: await agent.run(input, publish) }));
   ipcMain.handle('agent:cancel', (_event, taskId: string) => agent.cancel(taskId));

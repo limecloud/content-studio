@@ -6,6 +6,7 @@
 ## 当前仓库级 skills
 
 - `bugu-product-design-cheatsheet`：基于 PRD、用户故事、用户用例和业务 UI 契约生成布谷AI桌面端产品原型，默认阻断功能罗列式 UI。
+- `content-studio-design-language`：统一布谷AI内容工厂桌面工作台的布局、控件密度和视觉语言，覆盖左侧参数栏、顶部能力带、案例网格、右侧历史抽屉等模式。
 - `content-studio-oem-release`：发布或修复 bugu / seenx OEM 桌面包分发链路，覆盖控制面 latest、Cloudflare R2、全局 download-manifest 和官网验证。
 
 ## 入口关系
@@ -15,6 +16,7 @@
 - 业务 UI 契约：看 `docs/aiprompts/business-ux-contract.md`
 - OEM 发布事实源：看 `docs/aiprompts/oem-release.md` 和 `oem/README.md`
 - 高频 UI / 原型入口：看 `.codex/skills/bugu-product-design-cheatsheet/`
+- 统一工作台设计语言：看 `.codex/skills/content-studio-design-language/`
 - 高频发布执行入口：看 `.codex/skills/content-studio-oem-release/`
 
 ## 维护规则

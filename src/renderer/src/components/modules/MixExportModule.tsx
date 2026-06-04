@@ -87,7 +87,7 @@ interface MixExportModuleProps {
   onRevealPath: (path: string) => void;
   onOpenPromptDraft: (draftId: string) => void;
   onOpenSceneCards: (sceneCardIds: string[]) => void;
-  onOpenWorkflowRun: (workflowRunId: string) => void;
+  onOpenRunTrace: (runTraceId: string) => void;
   onSelectModule: (module: ModuleKey) => void;
 }
 
@@ -284,7 +284,7 @@ export function MixExportModule({
   onRevealPath,
   onOpenPromptDraft,
   onOpenSceneCards,
-  onOpenWorkflowRun,
+  onOpenRunTrace,
   onSelectModule,
 }: MixExportModuleProps) {
   const feature = V2_FEATURES['video-mix-export'];
@@ -584,7 +584,7 @@ export function MixExportModule({
                   <strong>{candidate.title}</strong>
                   <small>{kindLabelForMix(candidate.kind)} · {sourceLabel(candidate.source)} · {candidate.subtitle}</small>
                   <small>
-                    {candidate.workflowRunId ? 'SOP 已关联' : 'SOP 未关联'}
+                    {candidate.workflowRunId ? '历史已关联' : '历史未关联'}
                     {candidate.promptDraftId ? ' · 提示词已关联' : ''}
                     {candidate.relatedSceneCardIds?.length ? ` · 场景 ${candidate.relatedSceneCardIds.length}` : ''}
                     {candidate.reworkSource ? ' · 回炉生成' : ''}
@@ -601,7 +601,7 @@ export function MixExportModule({
                     <button className="ghost small" onClick={() => onOpenSceneCards(candidate.relatedSceneCardIds ?? [])}>场景</button>
                   ) : null}
                   {candidate.workflowRunId ? (
-                    <button className="ghost small" onClick={() => onOpenWorkflowRun(candidate.workflowRunId as string)}>SOP</button>
+                    <button className="ghost small" onClick={() => onOpenRunTrace(candidate.workflowRunId as string)}>历史</button>
                   ) : null}
                   <button className="ghost small" onClick={() => reviewCandidate(candidate, 'rejected')}>驳回</button>
                   <button className="primary small" onClick={() => reviewCandidate(candidate, 'approved')}>通过</button>
@@ -706,7 +706,7 @@ export function MixExportModule({
                   <span>图片 {pack.assets.filter((asset) => asset.kind === 'image').length}</span>
                   <span>视频 {pack.assets.filter((asset) => asset.kind === 'video').length}</span>
                   <span>绿幕 {pack.assets.filter((asset) => asset.kind === 'overlay').length}</span>
-                  {pack.workflowRunId ? <span>SOP 已关联</span> : null}
+                  {pack.workflowRunId ? <span>历史已关联</span> : null}
                   {pack.externalImportEvidence ? <span className="ready">导入证据已登记</span> : <span>待登记导入证据</span>}
                 </div>
                 {pack.externalImportEvidence ? (
@@ -732,7 +732,7 @@ export function MixExportModule({
                     {pack.externalImportEvidence ? '更新导入证据' : '登记导入证据'}
                   </button>
                   {pack.workflowRunId ? (
-                    <button className="ghost small" onClick={() => onOpenWorkflowRun(pack.workflowRunId as string)}>打开 SOP</button>
+                    <button className="ghost small" onClick={() => onOpenRunTrace(pack.workflowRunId as string)}>打开历史</button>
                   ) : null}
                 </div>
                 {activeEvidencePackId === pack.id ? (

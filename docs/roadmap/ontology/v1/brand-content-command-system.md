@@ -1,7 +1,9 @@
 # 品牌内容作战系统 v1
 
 更新时间：2026-05-31
-状态：Local Verified / Production Evidence Pending
+状态：Historical Archive / Retired From Current Client
+
+> 归档说明：本文记录旧品牌战情室方案的历史设计语义。当前 Content Studio 客户端已退役品牌战情室、目标树、作战编组和执行队列运行时；可复用语义只允许沉淀到内容制造批次、阶段恢复任务和生产交接行动记录。当前事实源以 `content-knowledge-maps`、`content-build-runs`、`content-review-tasks`、`content-action-records` 和 `content-knowledge-releases` 为准。
 
 ## 1. 设计结论
 

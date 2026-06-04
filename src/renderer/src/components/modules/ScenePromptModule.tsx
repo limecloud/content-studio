@@ -208,7 +208,7 @@ function sourceSummary(scene?: SceneCard): string {
   const parts = ['已关联提示词包'];
   if (scene.inputSourceIds?.length) parts.push(`输入资料 ${scene.inputSourceIds.length} 份`);
   if (scene.citations.length) parts.push(`知识引用 ${scene.citations.length} 条`);
-  if (scene.workflowRunId) parts.push('已关联 SOP');
+  if (scene.workflowRunId) parts.push('已关联历史');
   return parts.join(' · ');
 }
 
@@ -835,7 +835,7 @@ export function ScenePromptModule({
                 <small>
                   来源：{draft.inputSourceIds.length} 份资料
                   {draft.sceneCardIds?.length ? ` · ${draft.sceneCardIds.length} 张场景卡` : ''}
-                  {draft.workflowRunId ? ' · 已关联 SOP' : ''}
+                  {draft.workflowRunId ? ' · 已关联历史' : ''}
                 </small>
                 <small>更新于 {formatTime(draft.updatedAt)}</small>
               </article>

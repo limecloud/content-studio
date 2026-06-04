@@ -107,10 +107,22 @@ export async function buildSkillRuntimeContext(
     selectedSkillSlugs?: string[];
   },
 ): Promise<SkillRuntimeContext> {
+  const selectedRefs = uniqueSkillRefs(input.selectedSkills);
+  const selectedSlugs = uniqueSlugs(input.selectedSkillSlugs);
+  if (!selectedRefs.length && !selectedSlugs.length) {
+    return {
+      skillRefs: [],
+      selectedSkills: [],
+      promptText: '',
+      summaryText: '未选择 skill。',
+      sdkSkillNames: [],
+      additionalDirectories: [],
+    };
+  }
   const selectedSkills = resolveSelectedSkills(
     await skillManager.scan(workspacePath),
-    input.selectedSkills,
-    input.selectedSkillSlugs,
+    selectedRefs,
+    selectedSlugs,
   );
   if (!selectedSkills.length) {
     return {

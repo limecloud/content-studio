@@ -418,7 +418,7 @@ export function ContentReviewTasksModule({
         </div>
         <div>
           <strong>问题标签</strong>
-          <div className="brand-command-checks">
+          <div className="content-review-chip-list">
             {task.issueLabels.map((label) => <span key={label} className={task.risk === 'low' ? 'ready' : 'warn'}>{label}</span>)}
             {task.issueLabels.length === 0 ? <span className="ready">无明显问题</span> : null}
           </div>
@@ -433,7 +433,7 @@ export function ContentReviewTasksModule({
           <strong>恢复路径</strong>
           <p>
             {task.suggestedAction === 'approve'
-              ? '证据和风险可接受，可通过后交接到 Prompt 工作台、场景卡或 SOP。'
+              ? '证据和风险可接受，可通过后交接到 Prompt 工作台或场景卡。'
               : task.suggestedAction === 'request-evidence'
                 ? '先补用户原声、产品资料、测试数据或客服记录，再重新审核。'
                 : task.suggestedAction === 'request-material'
@@ -502,7 +502,7 @@ export function ContentReviewTasksModule({
             <strong>{contentProductionHandoff.grounding?.title ?? '生产交接检查'}</strong>
             <p>
               {contentProductionHandoff.status === 'created'
-                ? `${contentProductionHandoff.record?.actionRecords[0]?.outputSummary ?? `已生成 ${contentProductionHandoff.promptDraft ? 'Prompt 草稿' : ''}${contentProductionHandoff.promptDraft && contentProductionHandoff.sceneCard ? '和' : ''}${contentProductionHandoff.sceneCard ? '场景卡' : ''}${contentProductionHandoff.workflowRun ? 'SOP 运行' : ''}`}，可在下游工作台继续确认。`
+                ? `${contentProductionHandoff.record?.actionRecords[0]?.outputSummary ?? `已生成 ${contentProductionHandoff.promptDraft ? 'Prompt 草稿' : ''}${contentProductionHandoff.promptDraft && contentProductionHandoff.sceneCard ? '和' : ''}${contentProductionHandoff.sceneCard ? '场景卡' : ''}`}，可在下游工作台继续确认。`
                 : contentProductionHandoff.issues[0] ?? '发布检查未通过。'}
             </p>
             {contentProductionHandoff.record ? (
@@ -519,13 +519,13 @@ export function ContentReviewTasksModule({
             ) : null}
           </div>
           {contentProductionHandoff.status === 'created' ? (
-            <button className="primary small" onClick={() => onSelectModule(contentProductionHandoff.workflowRun && !contentProductionHandoff.promptDraft ? 'assets-sop' : 'assets-prompt-workbench')}>
-              {contentProductionHandoff.workflowRun && !contentProductionHandoff.promptDraft ? '打开 SOP 工作流' : '打开 Prompt 工作台'}
+            <button className="primary small" onClick={() => onSelectModule('assets-prompt-workbench')}>
+              打开 Prompt 工作台
             </button>
           ) : null}
         </div>
       ) : null}
-      <div className="brand-command-log-list">
+      <div className="content-review-decision-list">
         {task.decisions.map((decision) => (
           <article key={decision.id}>
             <time>{new Date(decision.createdAt).toLocaleString()}</time>
@@ -546,7 +546,7 @@ export function ContentReviewTasksModule({
     if (!trimmed) return;
     onStartAgentSession({
       title: `${task?.title ?? '内容审核'} / 内容审核协作`,
-      purpose: 'sop',
+      purpose: 'content-task',
       userIntent: [
         '内容审核协作',
         task ? `当前审核任务：${task.title}（${task.id}）` : '当前还没有选中的审核任务。',
@@ -593,7 +593,6 @@ export function ContentReviewTasksModule({
             <button className="ghost small" disabled={busy} onClick={() => onSubmitContentReviewDecision(task.id, 'mark-forbidden')}>标记禁用</button>
             <button className="ghost small" disabled={busy} onClick={() => onSubmitContentReviewDecision(task.id, 'downgrade-to-needs-verification')}>降级待确认</button>
             <button className="ghost small" disabled={busy || task.status !== 'approved'} onClick={() => onCreateContentProductionHandoff(task.id)}>交给 Prompt 工作台</button>
-            <button className="ghost small" disabled={busy || task.status !== 'approved'} onClick={() => onCreateContentProductionHandoff(task.id, 'sop-run')}>启动 SOP</button>
           </>
         ) : (
           <>

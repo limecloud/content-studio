@@ -121,8 +121,9 @@ function promptPurposeLabel(purpose: PromptDraft['purpose']): string {
     video: '视频提示词',
     article: '文案提示词',
     'green-screen': '绿幕文案图提示词',
+    'content-task': '内容任务',
     skill: '技能提示词',
-    sop: 'SOP 提示词',
+    sop: '流程提示词',
   };
   return labels[purpose] ?? '提示词';
 }
@@ -377,7 +378,7 @@ export function IpKnowledgeModule({
                   <strong>{draft.title}</strong>
                   <small>
                     {promptPurposeLabel(draft.purpose)} · {draft.versions.length} 个版本
-                    {draft.workflowRunId ? ' · 已关联 SOP' : ''}
+                    {draft.workflowRunId ? ' · 已关联历史' : ''}
                   </small>
                 </button>
               ))}
@@ -425,7 +426,7 @@ export function IpKnowledgeModule({
     if (!trimmed) return;
     onStartAgentSession({
       title: `${activeIpKnowledgeBase?.title ?? 'IP 知识库'} / IP 知识库协作`,
-      purpose: 'sop',
+      purpose: 'content-task',
       userIntent: [
         'IP 知识库协作',
         activeIpKnowledgeBase ? `当前 IP 知识库：${activeIpKnowledgeBase.title}（${activeIpKnowledgeBase.id}）` : '当前还没有 IP 知识库。',

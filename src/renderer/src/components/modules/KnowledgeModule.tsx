@@ -311,7 +311,7 @@ export function KnowledgeModule({
                     <small>
                       引用 {activePromptPack.citations.length} 条
                       {activePromptPack.inputSourceIds?.length ? ` · 资料 ${activePromptPack.inputSourceIds.length} 份` : ''}
-                      {activePromptPack.workflowRunId ? ' · 已关联 SOP' : ''}
+                      {activePromptPack.workflowRunId ? ' · 已关联历史' : ''}
                     </small>
                     <label><span>品牌口吻</span><textarea value={promptPackDraft.brandVoice} onChange={(event) => setPromptPackDraft((current) => ({ ...current, brandVoice: event.target.value }))} /></label>
                     <label><span>视觉风格</span><textarea value={promptPackDraft.visualStyle} onChange={(event) => setPromptPackDraft((current) => ({ ...current, visualStyle: event.target.value }))} /></label>
@@ -345,7 +345,7 @@ export function KnowledgeModule({
                   已关联提示词包
                   {activeEditableScene.inputSourceIds?.length ? ` · 资料 ${activeEditableScene.inputSourceIds.length} 份` : ''}
                   {activeEditableScene.citations.length ? ` · 引用 ${activeEditableScene.citations.length} 条` : ''}
-                  {activeEditableScene.workflowRunId ? ' · 已关联 SOP' : ''}
+                  {activeEditableScene.workflowRunId ? ' · 已关联历史' : ''}
                 </small>
                 <label><span>场景标题</span><input value={sceneCardDraft.title} onChange={(event) => setSceneCardDraft((current) => ({ ...current, title: event.target.value }))} /></label>
                 <label><span>图片素材建议</span><textarea value={sceneCardDraft.imageMaterialSuggestion} onChange={(event) => setSceneCardDraft((current) => ({ ...current, imageMaterialSuggestion: event.target.value }))} /></label>

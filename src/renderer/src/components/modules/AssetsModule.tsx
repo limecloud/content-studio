@@ -76,7 +76,7 @@ interface AssetsModuleProps {
   }>) => void;
   onOpenPromptDraft: (draftId: string) => void;
   onOpenSceneCards: (sceneCardIds: string[]) => void;
-  onOpenWorkflowRun: (workflowRunId: string) => void;
+  onOpenRunTrace: (runTraceId: string) => void;
 }
 
 type AssetKind = ReviewAssetInput['kind'];
@@ -369,7 +369,7 @@ function collectOverlayReviewAssets(
       subtitle: `绿幕文案图 · ${fileNameFromPath(review.path)}`,
       prompt: activeDraftContent(relatedDraft) || review.note || '',
       createdAt: review.createdAt,
-      tags: Array.from(new Set(['绿幕文案图', 'SOP 审核', ...review.tags].filter(Boolean))),
+      tags: Array.from(new Set(['绿幕文案图', '素材审核', ...review.tags].filter(Boolean))),
       promptDraftId: relatedDraft?.id,
       workflowRunId: review.workflowRunId,
       reviewRecord: review,
@@ -514,7 +514,7 @@ export function AssetsModule({
   onGenerateContentMaterialTasksForCoverageRows,
   onOpenPromptDraft,
   onOpenSceneCards,
-  onOpenWorkflowRun,
+  onOpenRunTrace,
 }: AssetsModuleProps) {
   const [assetFilter, setAssetFilter] = useState<AssetKind | 'all'>(variant === 'retouch' ? 'image' : 'all');
   const [reviewFilter, setReviewFilter] = useState<AssetReviewStatus | 'all'>('all');
@@ -970,7 +970,7 @@ export function AssetsModule({
                   </button>
                 ) : null}
                 {selectedAsset.workflowRunId ? (
-                  <button className="ghost" onClick={() => onOpenWorkflowRun(selectedAsset.workflowRunId as string)}>
+                  <button className="ghost" onClick={() => onOpenRunTrace(selectedAsset.workflowRunId as string)}>
                     打开运行记录
                   </button>
                 ) : null}

@@ -10,8 +10,6 @@ import type {
   ContentProductionHandoffTarget,
   ContentReviewTask,
   CreateContentProductionHandoffInput,
-  StartWorkflowRunInput,
-  WorkflowRunRecord,
 } from '../../shared/types';
 import { ContentKnowledgeMapStore } from './contentKnowledgeMapStore';
 import { ContentKnowledgeReleaseStore } from './contentKnowledgeReleaseStore';
@@ -23,7 +21,6 @@ import { SceneLibraryStore } from './sceneLibraryStore';
 import { buildPromptGroundingSummary } from './promptGroundingAssembler';
 import { buildSceneCardFromKnowledgeMap } from './sceneCardAssembler';
 import type { ContentProductionHandoffActionSyncAdapter } from './buguContentWorkspaceSyncAdapter';
-import { BrandCommandCenterStore } from './brandCommandCenterStore';
 
 const localOnlyHandoffActionSync: ContentProductionHandoffActionSyncAdapter = {
   async syncProductionHandoffActions() {
@@ -34,10 +31,6 @@ const localOnlyHandoffActionSync: ContentProductionHandoffActionSyncAdapter = {
     };
   },
 };
-
-export interface ContentWorkflowRunStarter {
-  startRun(input: StartWorkflowRunInput): Promise<WorkflowRunRecord>;
-}
 
 function rowsForTarget(map: ContentKnowledgeMapRecord, targetType: ContentReviewTask['targetType']): ContentKnowledgeMapMatrixRow[] {
   if (targetType === 'selling-point') return map.sellingPoints;
@@ -54,15 +47,11 @@ function inputSourceIdsFromRefs(sourceRefs: string[]): string[] {
 }
 
 function targetIncludesPrompt(target: ContentProductionHandoffTarget): boolean {
-  return target === 'prompt-draft' || target === 'prompt-and-scene' || target === 'prompt-scene-sop';
+  return target === 'prompt-draft' || target === 'prompt-and-scene';
 }
 
 function targetIncludesScene(target: ContentProductionHandoffTarget): boolean {
-  return target === 'scene-card' || target === 'prompt-and-scene' || target === 'prompt-scene-sop';
-}
-
-function targetIncludesSop(target: ContentProductionHandoffTarget): boolean {
-  return target === 'sop-run' || target === 'prompt-scene-sop';
+  return target === 'scene-card' || target === 'prompt-and-scene';
 }
 
 function buildPromptContent(groundingContent: string): string {
@@ -85,7 +74,7 @@ function buildPromptContent(groundingContent: string): string {
     '- 给出 15-30 秒分镜：痛点进入、卖点解释、证据露出、行动建议。',
     '- 标注口播语气、节奏和必须避免的表达。',
     '',
-    '## 4. SOP 输入',
+    '## 4. 人工确认',
     '- 列出需要人工确认的素材、证据和发布检查项。',
   ].join('\n');
 }
@@ -93,8 +82,6 @@ function buildPromptContent(groundingContent: string): string {
 function handoffTargetLabel(target: ContentProductionHandoffTarget): string {
   if (target === 'prompt-draft') return 'Prompt 草稿';
   if (target === 'scene-card') return '场景卡';
-  if (target === 'sop-run') return 'SOP 运行';
-  if (target === 'prompt-scene-sop') return 'Prompt 草稿、场景卡和 SOP 运行';
   return 'Prompt 草稿和场景卡';
 }
 
@@ -114,14 +101,12 @@ function outputSummary(input: {
   status: ContentProductionHandoffRecord['status'];
   promptDraftId?: string;
   sceneCardId?: string;
-  workflowRunId?: string;
   issues: string[];
 }): string {
   if (input.status === 'blocked') return input.issues[0] || '发布检查未通过，未生成下游产物。';
   const outputs = [
     input.promptDraftId ? `Prompt 草稿 ${input.promptDraftId}` : '',
     input.sceneCardId ? `场景卡 ${input.sceneCardId}` : '',
-    input.workflowRunId ? `SOP 运行 ${input.workflowRunId}` : '',
   ].filter(Boolean);
   return outputs.length ? `已生成${handoffTargetLabel(input.target)}：${outputs.join(' / ')}` : `已完成${handoffTargetLabel(input.target)}交接。`;
 }
@@ -191,38 +176,6 @@ function selectTeamRelease(
   return published.find((release) => release.contentKnowledgeMapId === map.id);
 }
 
-function buildWorkflowRunInput(input: {
-  workspacePath: string;
-  workflowDefinitionId?: string;
-  actorLabel: string;
-  grounding: ReturnType<typeof buildPromptGroundingSummary>;
-  map: ContentKnowledgeMapRecord;
-  row: ContentKnowledgeMapMatrixRow;
-  task: ContentReviewTask;
-  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
-}): StartWorkflowRunInput {
-  return {
-    workspacePath: input.workspacePath,
-    workflowDefinitionId: input.workflowDefinitionId || 'workflow-brand-scene-prompts',
-    inputSourceIds: inputSourceIdsFromRefs(input.grounding.sourceRefs),
-    teamKnowledgeRelease: input.teamKnowledgeRelease,
-    inputs: {
-      source: [
-        `内容知识地图：${input.map.title}`,
-        `审核任务：${input.task.title}`,
-        `证据引用：${input.grounding.evidenceRefs.join(' / ') || '待确认'}`,
-      ].join('\n'),
-      intent: [
-        `把已审核组合「${input.row.title}」作为 SOP 输入。`,
-        `目标：基于内容知识地图生成可执行生产流程，保留证据、来源和发布边界。`,
-        `边界：${input.grounding.constraints.join(' / ') || '遵守品牌口径和平台规则。'}`,
-      ].join('\n'),
-      reviewOwner: input.actorLabel,
-      platform: '小红书',
-    },
-  };
-}
-
 export class ContentProductionHandoffService {
   constructor(
     private readonly tasks: ContentReviewTaskStore,
@@ -232,8 +185,6 @@ export class ContentProductionHandoffService {
     private readonly sceneCards: SceneLibraryStore,
     private readonly handoffs: ContentProductionHandoffStore,
     private readonly actionSync: ContentProductionHandoffActionSyncAdapter = localOnlyHandoffActionSync,
-    private readonly commandCenters?: BrandCommandCenterStore,
-    private readonly workflows?: ContentWorkflowRunStarter,
   ) {}
 
   async create(input: CreateContentProductionHandoffInput): Promise<ContentProductionHandoffResult> {
@@ -268,25 +219,6 @@ export class ContentProductionHandoffService {
       });
       return { status: 'blocked', issues: policy.issues, record: blockedRecord };
     }
-    if (targetIncludesSop(target) && !this.workflows) {
-      const issues = ['SOP 工作流服务尚未接入，不能创建 SOP 运行记录。'];
-      const blockedRecord = await this.appendRecord({
-        input,
-        target,
-        status: 'blocked',
-        issues,
-        actorLabel,
-        map,
-        row,
-        task,
-        readyEvidenceCount: readyEvidence.length,
-        promptDraftId: undefined,
-        sceneCardId: undefined,
-        workflowRunId: undefined,
-      });
-      return { status: 'blocked', issues, record: blockedRecord };
-    }
-
     const teamKnowledgeRelease = releaseReference(selectTeamRelease(await this.releases.list(input.workspacePath), map));
     const grounding = buildPromptGroundingSummary({ map, task, row, readyEvidence, teamKnowledgeRelease });
     const sceneCard = targetIncludesScene(target)
@@ -302,7 +234,7 @@ export class ContentProductionHandoffService {
         workspacePath: input.workspacePath,
         title: `${row.title} 生产提示词`,
         purpose: 'article',
-        userIntent: `基于已审核内容知识地图组合生成文案、图片、视频和 SOP 的生产 Prompt。`,
+        userIntent: `基于已审核内容知识地图组合生成文案、图片和视频的生产 Prompt。`,
         inputSourceIds: inputSourceIdsFromRefs(grounding.sourceRefs),
         sceneCardIds: sceneCard ? [sceneCard.id] : [],
         content: buildPromptContent(grounding.content),
@@ -315,18 +247,6 @@ export class ContentProductionHandoffService {
         coverageRowIds: grounding.coverageRowIds,
         sourceRefs: grounding.sourceRefs,
       })
-      : undefined;
-    const workflowRun = targetIncludesSop(target) && this.workflows
-      ? await this.workflows.startRun(buildWorkflowRunInput({
-        workspacePath: input.workspacePath,
-        workflowDefinitionId: input.workflowDefinitionId,
-        actorLabel,
-        grounding,
-        map,
-        row,
-        task,
-        teamKnowledgeRelease,
-      }))
       : undefined;
     const record = await this.appendRecord({
       input,
@@ -341,9 +261,8 @@ export class ContentProductionHandoffService {
       readyEvidenceCount: readyEvidence.length,
       promptDraftId: promptDraft?.id,
       sceneCardId: sceneCard?.id,
-      workflowRunId: workflowRun?.id,
     });
-    return { status: 'created', issues: [], grounding, record, promptDraft, sceneCard, workflowRun };
+    return { status: 'created', issues: [], grounding, record, promptDraft, sceneCard };
   }
 
   private async appendRecord(input: {
@@ -359,7 +278,6 @@ export class ContentProductionHandoffService {
     readyEvidenceCount: number;
     promptDraftId?: string;
     sceneCardId?: string;
-    workflowRunId?: string;
   }): Promise<ContentProductionHandoffRecord> {
     const now = new Date().toISOString();
     const batchId = `handoff:${input.task.sourceKnowledgeMapId ?? 'unknown'}:${input.task.targetId ?? input.task.id}`;
@@ -377,7 +295,6 @@ export class ContentProductionHandoffService {
         status: input.status,
         promptDraftId: input.promptDraftId,
         sceneCardId: input.sceneCardId,
-        workflowRunId: input.workflowRunId,
         issues: input.issues,
       }),
       actorLabel: input.actorLabel,
@@ -387,7 +304,6 @@ export class ContentProductionHandoffService {
       sourceRefs: input.row?.sourceRefs ?? [],
       promptDraftId: input.promptDraftId,
       sceneCardId: input.sceneCardId,
-      workflowRunId: input.workflowRunId,
       teamKnowledgeRelease: input.teamKnowledgeRelease,
       checks: buildHandoffChecks({
         status: input.status,
@@ -398,7 +314,7 @@ export class ContentProductionHandoffService {
         teamKnowledgeRelease: input.teamKnowledgeRelease,
       }),
       nextStep: input.status === 'created'
-        ? '在 Prompt 工作台确认草稿，或在场景库继续拆成图片、视频和 SOP 任务。'
+        ? '在 Prompt 工作台确认草稿，或在场景库继续拆成图片和视频任务。'
         : '先处理发布检查问题，再重新发起生产交接。',
       createdAt: now,
     };
@@ -419,12 +335,6 @@ export class ContentProductionHandoffService {
           ...(input.sceneCardId ? [{
             id: randomUUID(),
             actionType: 'create-scene-card' as const,
-            outcome: 'handoff' as const,
-            ...shared,
-          }] : []),
-          ...(input.workflowRunId ? [{
-            id: randomUUID(),
-            actionType: 'launch-sop-run' as const,
             outcome: 'handoff' as const,
             ...shared,
           }] : []),
@@ -456,98 +366,12 @@ export class ContentProductionHandoffService {
       evidenceRefs: input.task.evidenceRefs,
       promptDraftId: input.promptDraftId,
       sceneCardId: input.sceneCardId,
-      workflowRunId: input.workflowRunId,
       actorLabel: input.actorLabel,
       syncStatus: teamSync.status,
       teamSync,
       actionRecords: syncedActionRecords,
       createdAt: now,
     };
-    await this.appendToBrandCommandCenter(input.input.workspacePath, input.map?.id, syncedActionRecords);
     return this.handoffs.append(record);
-  }
-
-  private async appendToBrandCommandCenter(
-    workspacePath: string,
-    sourceKnowledgeMapId: string | undefined,
-    actions: ContentProductionHandoffActionRecord[],
-  ): Promise<void> {
-    if (!this.commandCenters || !sourceKnowledgeMapId || !actions.length) return;
-    const records = await this.commandCenters.list(workspacePath);
-    const commandCenter = records.find((record) => record.sourceKnowledgeMapId === sourceKnowledgeMapId);
-    if (!commandCenter) return;
-    const mappedActions = actions.map((action) => ({
-      id: action.id,
-      queueItemId: action.batchId,
-      campaignCellId: action.batchId,
-      actionType: action.actionType === 'create-prompt-draft'
-        ? 'generate-prompt-draft' as const
-        : action.actionType === 'create-scene-card'
-          ? 'create-scene-card' as const
-          : action.actionType === 'launch-sop-run'
-            ? 'launch-sop-run' as const
-            : 'content-production-blocked' as const,
-      title: action.title,
-      outcome: action.outcome,
-      actorLabel: action.actorLabel,
-      inputSummary: action.inputSummary,
-      outputSummary: action.outputSummary,
-      blockedReason: action.outcome === 'blocked' ? action.outputSummary : undefined,
-      writeBackSummary: action.nextStep,
-      promptDraftId: action.promptDraftId,
-      sceneCardId: action.sceneCardId,
-      workflowRunId: action.workflowRunId,
-      syncStatus: action.syncStatus,
-      teamSync: action.teamSync,
-      createdAt: action.createdAt,
-    }));
-    const promptDraftIds = actions.map((action) => action.promptDraftId).filter((id): id is string => Boolean(id));
-    const sceneCardIds = actions.map((action) => action.sceneCardId).filter((id): id is string => Boolean(id));
-    const handoffRefs = actions.flatMap((action) => [
-      action.promptDraftId ? `prompt-draft:${action.promptDraftId}` : '',
-      action.sceneCardId ? `scene-card:${action.sceneCardId}` : '',
-      action.workflowRunId ? `workflow-run:${action.workflowRunId}` : '',
-    ]).filter(Boolean);
-    const blockedReason = actions.find((action) => action.outcome === 'blocked')?.outputSummary;
-    const targetBundles = commandCenter.resourceBundles.some((bundle) => bundle.sourceKnowledgeMapId === sourceKnowledgeMapId)
-      ? commandCenter.resourceBundles
-      : [{
-          id: `${actions[0]?.batchId ?? sourceKnowledgeMapId}:resource-bundle`,
-          title: `${actions[0]?.title ?? commandCenter.title} 交接资源包`,
-          objectiveId: actions[0]?.batchId ?? sourceKnowledgeMapId,
-          sourceKnowledgeMapId,
-          coverageRowIds: actions.flatMap((action) => action.coverageRowIds),
-          approvedCoverageRowIds: actions.flatMap((action) => action.coverageRowIds),
-          sellingPointRefs: actions.flatMap((action) => action.coverageRowIds),
-          evidenceRefs: Array.from(new Set(actions.flatMap((action) => action.evidenceRefs))),
-          sceneRefs: [],
-          sceneCardIds: [],
-          promptDraftIds: [],
-          materialRefs: [],
-          sopRefs: [],
-          constraints: [],
-          gaps: blockedReason ? [blockedReason] : [],
-          handoffStatus: 'none' as const,
-          readyPercent: blockedReason ? 0 : 100,
-        }, ...commandCenter.resourceBundles];
-    const nextResourceBundles = targetBundles.map((bundle) => {
-      if (bundle.sourceKnowledgeMapId !== sourceKnowledgeMapId) return bundle;
-      return {
-        ...bundle,
-        promptDraftIds: Array.from(new Set([...bundle.promptDraftIds, ...promptDraftIds])),
-        sceneCardIds: Array.from(new Set([...(bundle.sceneCardIds ?? []), ...sceneCardIds])),
-        handoffStatus: blockedReason ? 'blocked' as const : 'handed-off' as const,
-        handoffRefs: Array.from(new Set([...(bundle.handoffRefs ?? []), ...handoffRefs])),
-        lastHandoffSummary: actions[0]?.outputSummary ?? bundle.lastHandoffSummary,
-        lastBlockedReason: blockedReason ?? bundle.lastBlockedReason,
-      };
-    });
-    await this.commandCenters.update({
-      ...commandCenter,
-      resourceBundles: nextResourceBundles,
-      actionRecords: [...mappedActions, ...commandCenter.actionRecords],
-      syncStatus: actions[0].syncStatus ?? commandCenter.syncStatus,
-      teamSync: actions[0].teamSync ?? commandCenter.teamSync,
-    });
   }
 }

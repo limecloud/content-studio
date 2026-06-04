@@ -65,7 +65,7 @@ export function buildPromptGroundingSummary(input: {
     '- 只使用上面的可用主张、已通过证据和生成边界。',
     '- 不补写没有证据支持的功效、背书、销量、平台表现或医学承诺。',
     '- 如需要扩展创意，只能扩展表达方式，不能扩展事实本身。',
-    '- 输出需要同时服务文案、图片 Prompt、视频 Prompt 和 SOP 任务拆解。',
+    '- 输出需要同时服务文案、图片 Prompt、视频 Prompt 和内容任务拆解。',
   ].filter(Boolean).join('\n');
 
   return {

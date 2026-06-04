@@ -29,9 +29,9 @@ Renderer View
 核心原则：
 
 - Content Studio 只做桌面工作台、本地缓存、离线草稿和交互编排。
-- Bugu 是业务后端事实源，承载团队工作区、知识地图、审核、作战队列、行动记录、素材覆盖和知识包 release。
+- Bugu 是业务后端事实源，承载团队工作区、知识地图、生成流程、审核任务、生产交接行动记录、素材覆盖和知识包 release。
 - LimeCore 只做 OEM 云服务端，承载租户、账号、权益、模型策略、Gateway、发布中心和 Agent App enablement，不承载布谷内容业务对象。
-- 普通用户界面只出现“内容知识地图、卖点矩阵、痛点矩阵、场景矩阵、团队知识包、品牌战情室、发布检查、行动记录”等业务语言。
+- 普通用户界面只出现“内容知识地图、卖点矩阵、痛点矩阵、场景矩阵、团队知识包、内容制造批次、发布检查、行动记录”等业务语言。
 - 内部代码可以保留 `ContentKnowledgeMap`、`Coverage`、`Ontology` 等工程名，但不得泄漏到普通用户主路径。
 - 每个新能力先落 Application Service + Store + UI View 的最小纵向闭环，再决定是否拆 strategy / policy / adapter 文件。
 
@@ -63,7 +63,7 @@ flowchart TB
     MapApp["内容知识地图 Application Service"]
     ReviewApp["审核任务 Application Service"]
     HandoffApp["生产交接 Application Service"]
-    CommandApp["品牌战情室 Application Service"]
+    BatchApp["内容制造批次 Application Service"]
     ExportApp["团队知识包导出 Service"]
 
     Builder["Builder / Strategy"]
@@ -83,7 +83,7 @@ flowchart TB
   IPC --> MapApp
   IPC --> ReviewApp
   IPC --> HandoffApp
-  IPC --> CommandApp
+  IPC --> BatchApp
   IPC --> ExportApp
 
   MapApp --> Builder --> Validator --> Stores
@@ -91,14 +91,14 @@ flowchart TB
   HandoffApp --> Validator
   HandoffApp --> Assembler
   HandoffApp --> Stores
-  CommandApp --> Assembler
-  CommandApp --> Validator
-  CommandApp --> Stores
+  BatchApp --> Assembler
+  BatchApp --> Validator
+  BatchApp --> Stores
   ExportApp --> Stores
 
   MapApp --> SyncPort
   ReviewApp --> SyncPort
-  CommandApp --> SyncPort
+  BatchApp --> SyncPort
   ExportApp --> SyncPort
   SyncPort --> Bugu
   Bugu --> LimeCore
@@ -113,7 +113,7 @@ flowchart TB
 | Review | 审核任务、证据、来源、禁用表达、风险处理、改名 / 合并 / 拆分。 | `ContentReviewTaskApplicationService` | State Machine + Append Decision + Map Mutation | 不替用户自动通过，不把未通过内容交给生产链路，不在 renderer 中直接改矩阵。 |
 | Production Handoff | 提示词依据、生成 Prompt 草稿、创建场景卡、SOP 输入。 | `ContentProductionHandoffService` | Policy + Assembler + Target Adapter | 不绕过审核，不注入完整原文，不直接自动发布平台。 |
 | Team Knowledge Prompt | 团队知识包详情页生成 Prompt 草稿。 | `ContentTeamKnowledgePromptDraftService` | Application Service + Release Scope Gate + Prompt Assembler | 不在 React 中拼业务依据，不允许其他地图的 release 误绑定当前项目，不把包元数据当产品事实。 |
-| Brand Command | 品牌战情室、信号雷达、资源包、执行队列、行动记录。 | `BrandCommandCenterApplicationService` | Command Pattern + Policy Gate + Action Record | 不做虚假互动、刷量、伪装用户或自动发帖。 |
+| Content Batch | 内容制造批次、阶段门禁、恢复任务、运行历史、行动记录。 | `ContentBatchApplicationService` | Stage Pipeline + Gate Result + Recovery Task | 不回流旧作战入口，不做自动发布、刷量、伪装用户或自动发帖。 |
 | Material Feedback | 素材覆盖、表现标签、待确认补充、高表现组合。 | `ContentMaterialFeedbackService` | Feedback Loop + Supplement Policy | 不把素材表现自动当成产品事实证据，不改写已发布主文案。 |
 | Team Sharing | 团队工作区、未同步草稿、变更包、冲突、影响内容、知识包版本。 | `ContentWorkspaceSyncService` | Port / Adapter + Revision Policy | 不把本地 JSON 或共享目录当团队事实源，不做未审核自动合并。 |
 | Knowledge Pack | 团队知识包、Agent Knowledge v0.7.x 导出、发布包 zip。 | `AgentKnowledgeContentExportService` | Export Assembler + Validation | 不导出凭证、本机绝对路径和未审核高风险主张。 |
@@ -129,7 +129,7 @@ flowchart TB
 | Repository / Store | 本地缓存、离线草稿、运行临时产物。 | 不作为团队事实源，不判断业务通过。 |
 | Builder Strategy | 抽取卖点、痛点、场景、IP 口径、竞品结构。 | 不直接落盘，不绕过校验。 |
 | Policy / Specification | 审核、发布检查、团队同步、导出安全。 | 不散落在 UI 条件判断中。 |
-| State Machine | 审核任务、执行队列、同步状态、知识包版本。 | 不靠自由字符串随意改状态。 |
+| State Machine | 审核任务、内容制造批次、同步状态、知识包版本。 | 不靠自由字符串随意改状态。 |
 | Assembler | 生产交接、资源包、知识包导出。 | 不把完整原文或完整知识地图塞给下游。 |
 | Port / Adapter | Bugu 同步、模型能力、对象存储、Agent Knowledge 发布。 | 不在业务模块里直接拼 URL。 |
 
@@ -156,7 +156,7 @@ UI action
 
 - `ContentKnowledgeMapApplicationService`
 - `ContentReviewTaskApplicationService`
-- `BrandCommandCenterApplicationService`
+- `ContentBatchApplicationService`
 
 后续继续按这个命名和职责扩展：
 
@@ -209,13 +209,13 @@ append(record)      # 只用于审核决策、行动记录等 append-like 数据
 | `ContentMatrixRiskPolicy` | 统一识别禁用表达、禁用标记、竞品直交和 IP 口径漂移，供校验、审核任务和生产交接复用。 |
 | `ReviewDecisionPolicy` | 将审核动作转换为任务状态，限制非法状态迁移。 |
 | `ProductionHandoffPolicy` | 只允许审核通过、证据可追溯、无禁用表达、无竞品直交、无 IP 漂移的组合进入 Prompt / 场景 / SOP。 |
-| `BrandCommandExecutionPolicy` | 执行队列动作前检查证据、审核、资源、渠道、权限和疲劳重复。 |
+| `ContentBatchGatePolicy` | 批次阶段推进前检查输入完整度、审核、素材、权限、渠道边界和恢复任务。 |
 | `TeamSyncRevisionPolicy` | 检查 `baseRevision`、冲突、幂等键和 append-only 对象。 |
 | `KnowledgePackExportPolicy` | 导出前检查敏感数据、本机路径、凭证和未审核主张。 |
 
 ### 4.5 State Machine
 
-审核任务、执行队列、团队同步和知识包版本都必须有显式状态机，禁止靠字符串随意改状态。
+审核任务、内容制造批次、团队同步和知识包版本都必须有显式状态机，禁止靠字符串随意改状态。
 
 审核任务：
 
@@ -230,15 +230,16 @@ approved -> open (改名 / 合并 / 拆分后重新审核)
 needs-evidence -> needs-evidence (缺证据条目调整后仍需补证据)
 ```
 
-执行队列：
+内容制造批次：
 
 ```text
-ready
--> handed-off
-needs-review
-needs-resource
+draft
+-> ready
+-> running
+-> approved
+needs-human
 blocked
-written-back
+rejected
 ```
 
 团队同步：
@@ -286,7 +287,7 @@ interface ContentKnowledgeMapSyncPort {
 实现分两类：
 
 - `LocalOnlyContentKnowledgeMapSyncAdapter`：离线兜底，只返回“本机草稿，待同步 Bugu”。
-- `BuguContentWorkspaceSyncAdapter`：已接入 `/Users/coso/Documents/dev/ai/bugu/bugu` 的最小团队工作区、变更包、审核任务、审核结论、同步冲突、执行队列、行动记录、素材覆盖、知识包版本和发布包对象登记 API；Bugu 控制台已完成团队内容工作区面板、同步冲突查看、逐项合并处理清单、清单落库审计、处理方向记录、知识包可分发状态展示、默认版本回滚、待确认版本批准、多步骤确认进度展示和工作区默认确认模板切换；Content Studio 桌面端已完成同步冲突列表、版本差异提示、逐项合并处理清单、处理方向记录、素材覆盖待确认补充、团队知识包可下载状态、Prompt 草稿版本绑定和 SOP 运行记录版本追溯；生产公开下载执行报告和真实双账号验收仍属于生产证据待补。
+- `BuguContentWorkspaceSyncAdapter`：已接入 `/Users/coso/Documents/dev/ai/bugu/bugu` 的最小团队工作区、变更包、审核任务、审核结论、同步冲突、行动记录、素材覆盖、知识包版本和发布包对象登记 API；Bugu 控制台已完成团队内容工作区面板、同步冲突查看、逐项合并处理清单、清单落库审计、处理方向记录、知识包可分发状态展示、默认版本回滚、待确认版本批准、多步骤确认进度展示和工作区默认确认模板切换；Content Studio 桌面端已完成同步冲突列表、版本差异提示、逐项合并处理清单、处理方向记录、素材覆盖待确认补充、团队知识包可下载状态、Prompt 草稿版本绑定、SOP 运行记录版本追溯和内容制造批次阶段恢复；生产公开下载执行报告和真实双账号验收仍属于生产证据待补。
 
 禁止新增 `LimeCoreContentSyncAdapter` 承载业务对象。LimeCore 只能由 Bugu 侧用于租户、账号、权益、模型策略、Gateway、发布中心和 Agent App enablement。
 
@@ -377,15 +378,14 @@ src/main/services/contentKnowledgeMapSyncPort.ts
 src/main/services/contentReviewTaskStore.ts
 src/main/services/contentReviewTaskBuilder.ts
 src/main/services/contentReviewTaskApplicationService.ts
-src/main/services/brandCommandCenterStore.ts
-src/main/services/brandCommandCenterBuilder.ts
-src/main/services/brandCommandCenterApplicationService.ts
+src/main/services/contentBatchStore.ts
+src/main/services/contentBatchApplicationService.ts
 src/main/services/agentKnowledgeContentExportService.ts
 src/main/ipc.ts
 src/preload/index.ts
 src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx
 src/renderer/src/components/modules/ContentReviewTasksModule.tsx
-src/renderer/src/components/modules/BrandCommandCenterModule.tsx
+src/renderer/src/components/modules/ContentBatchPipelineModule.tsx
 ```
 
 ### 5.2 P5 生产交接模块
@@ -522,9 +522,9 @@ IPC 命名必须是粗粒度业务动作，不暴露本地 JSON 细节：
 | 生成审核任务 | `generateContentReviewTasks(input)`；可传 `targetRowIds` 只生成本批矩阵行审核任务。 | `ContentReviewTask[]` |
 | 提交审核决策 | `submitContentReviewDecision(input)` | `ContentReviewTask` |
 | 生产交接 | `createContentProductionHandoff(input)` | `ContentProductionHandoffResult` |
-| 品牌战情室列表 | `listBrandCommandCenters(workspacePath)` | `BrandCommandCenterRecord[]` |
-| 生成品牌战情室 | `buildBrandCommandCenter(input)` | `BrandCommandCenterRecord` |
-| 记录作战动作 | `recordBrandCommandAction(input)` | `BrandCommandCenterRecord` |
+| 内容制造批次列表 | `listContentBatches(workspacePath)` | `ContentBatchRecord[]` |
+| 生成内容制造批次 | `buildContentBatch(input)` | `ContentBatchRecord` |
+| 推进批次阶段 | `advanceContentBatchStage(input)` | `ContentBatchRecord` |
 | 导出团队知识包 | `exportContentKnowledgePack(input)` | `ContentKnowledgePackExportResult` |
 
 新增 IPC 必须同步四侧：
@@ -543,9 +543,8 @@ Bugu 业务后端需要提供：
 - `build runs`
 - `review tasks`
 - `coverage`
-- `signals`
-- `campaigns`
-- `execution queue`
+- `content batches`
+- `stage recovery tasks`
 - `action records`
 - `material coverage`
 - `knowledge releases`
@@ -556,10 +555,10 @@ Content Studio 只通过 main 进程同步服务调用 Bugu API。renderer 不�
 
 - `content-knowledge-maps` 是团队内容知识地图 current 服务端事实源，承载可审核矩阵快照、覆盖摘要、质量摘要和服务端版本。
 - `content-build-runs` 是生成流程 current 服务端事实源，承载模型、输入集合、步骤、blocked 原因和质量问题。
-- `content-command-centers` 是品牌内容作战系统 current 服务端事实源，承载信号、目标、资源包、作战单元、执行队列摘要、行动记录摘要和服务端版本。
+- `content-action-records` 是生产交接行动记录 current 服务端事实源，承载 Prompt 草稿、场景卡、SOP 运行、素材覆盖回写、补素材交付包、操作者角色和服务端版本。
 - `content-draft-changes` 是 compat 变更包入口，只用于提交本机变更、冲突检测和离线协作，不再承载团队主快照。
-- `content-execution-queue` 和 `content-action-records` 是 compat 旁路事实：前者同步队列条目状态，后者追加行动审计和交付物引用；完整品牌作战系统快照必须回到 `content-command-centers`。
-- `.content-studio/content-knowledge-maps.json`、`.content-studio/content-knowledge-map-build-runs.json` 和 `.content-studio/brand-command-centers.json` 是桌面本机缓存和离线草稿，不是团队共享事实源。
+- 旧 `content-command-centers` 和 `content-execution-queue` 不再是当前客户端事实源；历史语义只允许沉淀为内容制造批次、阶段恢复任务和生产交接行动记录。
+- `.content-studio/content-knowledge-maps.json`、`.content-studio/content-knowledge-map-build-runs.json` 和 `.content-studio/content-batches.json` 是桌面本机缓存和离线草稿，不是团队共享事实源。
 
 构建链路：
 
@@ -571,7 +570,7 @@ Renderer
 -> BuguContentWorkspaceSyncAdapter
 -> /api/v1/oem/content-knowledge-maps
 -> /api/v1/oem/content-build-runs
--> /api/v1/oem/content-command-centers
+-> /api/v1/oem/content-action-records
 ```
 
 LimeCore 只在 Bugu 侧作为 OEM 云底座被调用，典型场景包括租户、账号、权益、模型策略、Gateway、发布中心和 Agent App enablement。

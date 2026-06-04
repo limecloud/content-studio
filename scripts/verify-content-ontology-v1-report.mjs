@@ -225,7 +225,7 @@ function validateProductionReport(report, issues, warnings, options) {
     });
   }
   if (!isPlainObject(team.summaries?.actorA) || !isPlainObject(team.summaries?.actorB)) {
-    addIssue(issues, 'team-summaries', '生产归档报告必须包含两账号审核任务和执行队列摘要。');
+    addIssue(issues, 'team-summaries', '生产归档报告必须包含两账号审核任务和生产交接行动记录摘要。');
   } else {
     const summaryA = team.summaries.actorA;
     const summaryB = team.summaries.actorB;
@@ -263,30 +263,6 @@ function validateProductionReport(report, issues, warnings, options) {
       addIssue(issues, 'team-build-run-present', '生产归档报告必须证明至少一条团队构建运行对两账号可见。', {
         actorA: summaryA.buildRunCount,
         actorB: summaryB.buildRunCount,
-      });
-    }
-    if (Number(summaryA.commandCenterCount) !== Number(summaryB.commandCenterCount)) {
-      addIssue(issues, 'team-command-center-count-match', '两个账号看到的品牌作战系统数量不一致。', {
-        actorA: summaryA.commandCenterCount,
-        actorB: summaryB.commandCenterCount,
-      });
-    }
-    if (Number(summaryA.commandCenterCount) <= 0 || Number(summaryB.commandCenterCount) <= 0) {
-      addIssue(issues, 'team-command-center-present', '生产归档报告必须证明至少一个品牌作战系统快照对两账号可见。', {
-        actorA: summaryA.commandCenterCount,
-        actorB: summaryB.commandCenterCount,
-      });
-    }
-    if (Number(summaryA.executionQueueCount) !== Number(summaryB.executionQueueCount)) {
-      addIssue(issues, 'team-queue-count-match', '两个账号看到的执行队列数量不一致。', {
-        actorA: summaryA.executionQueueCount,
-        actorB: summaryB.executionQueueCount,
-      });
-    }
-    if (Number(summaryA.executionQueueCount) <= 0 || Number(summaryB.executionQueueCount) <= 0) {
-      addIssue(issues, 'team-queue-present', '生产归档报告必须证明至少一条团队执行队列对两账号可见。', {
-        actorA: summaryA.executionQueueCount,
-        actorB: summaryB.executionQueueCount,
       });
     }
     if (Number(summaryA.actionRecordCount) !== Number(summaryB.actionRecordCount)) {
@@ -331,18 +307,6 @@ function validateProductionReport(report, issues, warnings, options) {
         actorB: summaryB.buildRunListComplete,
       });
     }
-    if (summaryA.commandCenterListComplete !== true || summaryB.commandCenterListComplete !== true) {
-      addIssue(issues, 'team-command-center-list-complete', '生产归档报告必须证明两账号品牌作战系统已完整拉取，并包含完整 ID 清单。', {
-        actorA: summaryA.commandCenterListComplete,
-        actorB: summaryB.commandCenterListComplete,
-      });
-    }
-    if (summaryA.executionQueueListComplete !== true || summaryB.executionQueueListComplete !== true) {
-      addIssue(issues, 'team-queue-list-complete', '生产归档报告必须证明两账号执行队列已完整拉取，并包含完整 ID 清单。', {
-        actorA: summaryA.executionQueueListComplete,
-        actorB: summaryB.executionQueueListComplete,
-      });
-    }
     if (summaryA.actionRecordListComplete !== true || summaryB.actionRecordListComplete !== true) {
       addIssue(issues, 'team-action-list-complete', '生产归档报告必须证明两账号行动记录已完整拉取，并包含完整 ID 清单。', {
         actorA: summaryA.actionRecordListComplete,
@@ -361,10 +325,6 @@ function validateProductionReport(report, issues, warnings, options) {
     const knowledgeMapIdsB = normalizeIdList(summaryB.knowledgeMapIds);
     const buildRunIdsA = normalizeIdList(summaryA.buildRunIds);
     const buildRunIdsB = normalizeIdList(summaryB.buildRunIds);
-    const commandCenterIdsA = normalizeIdList(summaryA.commandCenterIds);
-    const commandCenterIdsB = normalizeIdList(summaryB.commandCenterIds);
-    const queueIdsA = normalizeIdList(summaryA.executionQueueIds);
-    const queueIdsB = normalizeIdList(summaryB.executionQueueIds);
     const actionIdsA = normalizeIdList(summaryA.actionRecordIds);
     const actionIdsB = normalizeIdList(summaryB.actionRecordIds);
     const actionArtifactIdsA = normalizeIdList(summaryA.actionArtifactRecordIds);
@@ -381,12 +341,6 @@ function validateProductionReport(report, issues, warnings, options) {
     }
     if (!buildRunIdsA.length && Number(summaryA.buildRunCount) > 0) {
       addIssue(issues, 'team-build-run-ids-present', '生产归档报告有构建运行数量，但缺少构建运行 ID 清单。');
-    }
-    if (!commandCenterIdsA.length && Number(summaryA.commandCenterCount) > 0) {
-      addIssue(issues, 'team-command-center-ids-present', '生产归档报告有品牌作战系统数量，但缺少品牌作战系统 ID 清单。');
-    }
-    if (!queueIdsA.length && Number(summaryA.executionQueueCount) > 0) {
-      addIssue(issues, 'team-queue-ids-present', '生产归档报告有执行队列数量，但缺少执行队列 ID 清单。');
     }
     if (!actionIdsA.length && Number(summaryA.actionRecordCount) > 0) {
       addIssue(issues, 'team-action-ids-present', '生产归档报告有行动记录数量，但缺少行动记录 ID 清单。');
@@ -410,18 +364,6 @@ function validateProductionReport(report, issues, warnings, options) {
       addIssue(issues, 'team-build-run-ids-complete', '生产归档报告的构建运行 ID 清单数量必须等于构建运行数量。', {
         actorA: { count: summaryA.buildRunCount, ids: buildRunIdsA.length },
         actorB: { count: summaryB.buildRunCount, ids: buildRunIdsB.length },
-      });
-    }
-    if (commandCenterIdsA.length !== Number(summaryA.commandCenterCount) || commandCenterIdsB.length !== Number(summaryB.commandCenterCount)) {
-      addIssue(issues, 'team-command-center-ids-complete', '生产归档报告的品牌作战系统 ID 清单数量必须等于品牌作战系统数量。', {
-        actorA: { count: summaryA.commandCenterCount, ids: commandCenterIdsA.length },
-        actorB: { count: summaryB.commandCenterCount, ids: commandCenterIdsB.length },
-      });
-    }
-    if (queueIdsA.length !== Number(summaryA.executionQueueCount) || queueIdsB.length !== Number(summaryB.executionQueueCount)) {
-      addIssue(issues, 'team-queue-ids-complete', '生产归档报告的执行队列 ID 清单数量必须等于执行队列数量。', {
-        actorA: { count: summaryA.executionQueueCount, ids: queueIdsA.length },
-        actorB: { count: summaryB.executionQueueCount, ids: queueIdsB.length },
       });
     }
     if (actionIdsA.length !== Number(summaryA.actionRecordCount) || actionIdsB.length !== Number(summaryB.actionRecordCount)) {
@@ -457,22 +399,6 @@ function validateProductionReport(report, issues, warnings, options) {
         addIssue(issues, 'team-build-run-ids-match', '两个账号看到的构建运行 ID 清单不一致。', {
           actorA: buildRunIdsA,
           actorB: buildRunIdsB,
-        });
-      }
-    }
-    if (commandCenterIdsA.length || commandCenterIdsB.length) {
-      if (!sameIdList(commandCenterIdsA, commandCenterIdsB)) {
-        addIssue(issues, 'team-command-center-ids-match', '两个账号看到的品牌作战系统 ID 清单不一致。', {
-          actorA: commandCenterIdsA,
-          actorB: commandCenterIdsB,
-        });
-      }
-    }
-    if (queueIdsA.length || queueIdsB.length) {
-      if (!sameIdList(queueIdsA, queueIdsB)) {
-        addIssue(issues, 'team-queue-ids-match', '两个账号看到的执行队列 ID 清单不一致。', {
-          actorA: queueIdsA,
-          actorB: queueIdsB,
         });
       }
     }

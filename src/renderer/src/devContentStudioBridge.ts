@@ -3,22 +3,24 @@ import type {
   AgentPromptSession,
   AppSettingsView,
   AutoUpdateState,
-  BrandCommandCenterRecord,
+  BuildContentBatchInput,
   BuguAuthState,
-  BuildBrandCommandCenterInput,
   BuildContentKnowledgeMapInput,
+  ContentBatchRecord,
+  ContentBatchStageId,
   ContentKnowledgeReleaseReference,
   ContentKnowledgeMapBuildRunRecord,
   ContentKnowledgeMapRecord,
   ContentReviewDecisionAction,
   ContentReviewTask,
   ContentStudioApi,
-  ExportBrandCommandActionRecordsInput,
   ExportContentKnowledgePackInput,
   GeneratePromptDraftInput,
   ImageGenerationRequest,
+  InputSourceKind,
   InputSourcePurpose,
   InputSourceSensitivity,
+  RegisterInputSourceInput,
   MediaGenerationResult,
   ModelCatalogView,
   ModelConfigView,
@@ -88,6 +90,7 @@ const modelConfig: ModelConfigView = {
   hasTextApiKey: true,
   textApiKeyStatus: "available",
   textModel: "claude-sonnet-4-5",
+  textModels: ["claude-sonnet-4-5"],
   imageProvider: "openai-responses",
   imageProtocol: "openai-responses",
   imageApiEndpoint: "",
@@ -95,18 +98,19 @@ const modelConfig: ModelConfigView = {
   hasImageApiKey: true,
   imageApiKeyStatus: "available",
   imageModels: ["gpt-image-2"],
-  videoProvider: "generic-http",
+  videoProvider: "video-understanding-openai-compatible",
   videoApiEndpoint: "",
   hasVideoApiKey: true,
   videoApiKeyStatus: "available",
-  videoModel: "veo-3.1",
+  videoModel: "gemini-2.5-flash",
+  videoModels: ["gemini-2.5-flash", "gpt-4o", "veo-3.1"],
   updatedAt: new Date().toISOString(),
 };
 
 const modelCatalog: ModelCatalogView = {
   textModels: ["claude-sonnet-4-5"],
   imageModels: ["gpt-image-2"],
-  videoModels: ["veo-3.1"],
+  videoModels: ["gemini-2.5-flash", "gpt-4o", "veo-3.1"],
   source: "offline-seed",
   updatedAt: new Date().toISOString(),
 };
@@ -119,7 +123,7 @@ const devContentKnowledgeMaps: ContentKnowledgeMapRecord[] = [];
 const devContentKnowledgeMapBuildRuns: ContentKnowledgeMapBuildRunRecord[] = [];
 const devContentDraftChanges: Awaited<ReturnType<ContentStudioApi["listContentDraftChanges"]>> = [];
 const devContentKnowledgeReleases: Awaited<ReturnType<ContentStudioApi["listContentKnowledgeReleases"]>> = [];
-const devBrandCommandCenters: BrandCommandCenterRecord[] = [];
+const devContentBatches: ContentBatchRecord[] = [];
 const devContentReviewTasks: ContentReviewTask[] = [];
 const devAssetReviews: Awaited<ReturnType<ContentStudioApi["listAssetReviews"]>> = [];
 
@@ -230,6 +234,7 @@ function generationTask(input: SubmitGenerationTaskInput) {
 
 function promptDraft(input: Pick<GeneratePromptDraftInput, "workspacePath" | "purpose" | "userIntent"> & Partial<PromptDraft>): PromptDraft {
   const createdAt = new Date().toISOString();
+  const content = input.versions?.[0]?.content ?? input.userIntent;
   return {
     id: `browser-dev-draft-${Date.now()}`,
     workspacePath: input.workspacePath,
@@ -238,7 +243,7 @@ function promptDraft(input: Pick<GeneratePromptDraftInput, "workspacePath" | "pu
     teamKnowledgeRelease: input.teamKnowledgeRelease,
     coverageRowIds: input.coverageRowIds,
     sourceRefs: input.sourceRefs,
-    title: input.userIntent.slice(0, 24) || "浏览器开发 Prompt",
+    title: input.title || input.userIntent.slice(0, 24) || "浏览器开发 Prompt",
     purpose: input.purpose,
     status: "confirmed",
     userIntent: input.userIntent,
@@ -248,7 +253,7 @@ function promptDraft(input: Pick<GeneratePromptDraftInput, "workspacePath" | "pu
       {
         id: "browser-dev-version",
         version: 1,
-        content: input.userIntent,
+        content,
         createdAt,
       },
     ],
@@ -280,6 +285,38 @@ function inputSource(
     extractedText: kind === "manual-note" ? title : undefined,
     artifactRefs: sourcePath ? [sourcePath] : [],
     blockedReason: kind === "image" ? "浏览器开发模式已登记图片文件。" : undefined,
+    createdAt,
+    updatedAt: createdAt,
+  };
+}
+
+function inputSourceFromRegistration(input: RegisterInputSourceInput) {
+  const createdAt = new Date().toISOString();
+  const sourcePath = input.sourcePath?.trim() || undefined;
+  const fallbackKind: InputSourceKind = sourcePath ? "image" : "manual-note";
+  const kind = input.kind || fallbackKind;
+  const text = input.text?.trim();
+  const status: "converted" | "blocked" = text || kind === "manual-note" || kind === "sku-table" ? "converted" : "blocked";
+  const title = (input.title || sourcePath || text || "浏览器开发输入源").trim();
+  const tags = Array.from(new Set([...(input.tags ?? []), input.purpose, kind].map((tag) => tag.trim()).filter(Boolean)));
+  return {
+    id: `browser-dev-source-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    workspacePath: input.workspacePath || DEV_WORKSPACE_PATH,
+    workflowRunId: input.workflowRunId,
+    kind,
+    status,
+    purpose: input.purpose,
+    sensitivity: input.sensitivity ?? "internal",
+    title,
+    sourcePath,
+    sourceUrl: input.sourceUrl?.trim() || undefined,
+    tags,
+    summary: input.summary?.trim() || (sourcePath ? `已登记文件：${title}` : title),
+    extractedText: text || undefined,
+    artifactRefs: sourcePath ? [sourcePath] : [],
+    relatedPromptDraftId: input.relatedPromptDraftId,
+    relatedSceneCardIds: input.relatedSceneCardIds,
+    blockedReason: text || kind === "manual-note" || kind === "sku-table" ? undefined : "浏览器开发模式已登记文件。",
     createdAt,
     updatedAt: createdAt,
   };
@@ -460,100 +497,176 @@ function contentKnowledgeMapBuildRun(record: ContentKnowledgeMapRecord): Content
   };
 }
 
-function brandCommandCenter(input: BuildBrandCommandCenterInput): BrandCommandCenterRecord {
-  const createdAt = new Date().toISOString();
+const DEV_BATCH_STAGES: ContentBatchStageId[] = [
+  "selection",
+  "intent",
+  "modeling",
+  "selling",
+  "matrix",
+  "manufacturing",
+  "review",
+  "optimization",
+  "feedback",
+];
+
+function contentBatch(input: BuildContentBatchInput): ContentBatchRecord {
+  const now = new Date().toISOString();
   const map = input.contentKnowledgeMapId
     ? devContentKnowledgeMaps.find((item) => item.id === input.contentKnowledgeMapId)
     : devContentKnowledgeMaps[0];
-  const signalId = `browser-dev-signal-${Date.now()}`;
-  const objectiveId = `browser-dev-objective-${Date.now()}`;
-  const bundleId = `browser-dev-bundle-${Date.now()}`;
-  const cellId = `browser-dev-cell-${Date.now()}`;
-  const queueId = `browser-dev-queue-${Date.now()}`;
+  const batchId = `browser-dev-batch-${Date.now()}`;
+  const hasProductSource = devInputSources.some((source) => source.purpose === "product-brief" || source.kind === "sku-table");
+  const hasFeedbackSource = devInputSources.some((source) => source.purpose === "user-feedback");
+  const manufacturingDrafts = devPromptDrafts.filter((draft) => draft.purpose === "video" || draft.purpose === "image" || draft.purpose === "green-screen");
+  const convertedCount = devInputSources.filter((source) => source.status === "converted").length;
+
+  const gateFor = (stageId: ContentBatchStageId) => {
+    if (stageId === "selection" && !hasProductSource) {
+      return {
+        status: "needs-input" as const,
+        title: "缺商品资料",
+        message: "浏览器开发模式还没有产品资料或 SKU 表。",
+        recoveryAction: "去输入源登记产品 brief 或 SKU 表。",
+      };
+    }
+    if (stageId === "intent" && !hasFeedbackSource) {
+      return {
+        status: "needs-input" as const,
+        title: "缺流量意图",
+        message: "还没有评论、客服问答或搜索词输入。",
+        recoveryAction: "去输入源登记用户反馈。",
+      };
+    }
+    if (stageId === "modeling" && !map) {
+      return {
+        status: "needs-input" as const,
+        title: "缺内容知识地图",
+        message: "先把输入源整理成卖点、痛点、场景和证据矩阵。",
+        recoveryAction: "打开内容知识地图生成事实层。",
+      };
+    }
+    if (stageId === "matrix" && !map && !manufacturingDrafts.length) {
+      return {
+        status: "needs-input" as const,
+        title: "缺矩阵交接",
+        message: "还没有把卖点、证据、场景和素材排成 Prompt、场景卡和补资源任务。",
+        recoveryAction: "打开 Prompt 工作台或场景库处理矩阵交接。",
+      };
+    }
+    if (stageId === "manufacturing" && !manufacturingDrafts.length) {
+      return {
+        status: "needs-input" as const,
+        title: "缺制造产物",
+        message: "还没有图片候选、视频 Prompt、绿幕文案图或混剪素材。",
+        recoveryAction: "打开制造工具生成可审核素材。",
+      };
+    }
+    return {
+      status: "passed" as const,
+      title: "阶段门禁",
+      message: "浏览器开发模式当前没有阻断项。",
+    };
+  };
+
+  const currentStageId: ContentBatchStageId = !hasProductSource
+    ? "selection"
+    : !hasFeedbackSource
+      ? "intent"
+      : !map
+        ? "modeling"
+        : "manufacturing";
+
   return {
-    id: `browser-dev-command-${Date.now()}`,
+    id: batchId,
     workspacePath: input.workspacePath,
-    title: input.title || "浏览器开发品牌战情室",
-    status: map ? "active" : "blocked",
-    syncStatus: "local-only",
+    title: input.title || map?.title?.replace(/内容知识地图$/g, "制造批次") || "浏览器开发制造批次",
+    objective: input.objective || "把当前输入源、知识地图、Prompt 草稿、工作流和素材审核记录组织成九阶段内容制造批次。",
+    ownerIds: [],
+    status: "active",
+    currentStageId,
     sourceKnowledgeMapId: map?.id,
     sourceKnowledgeMapTitle: map?.title,
-    signals: map ? [{
-      id: signalId,
-      type: "feedback-pain",
-      title: "浏览器开发信号",
-      summary: "用于预览品牌战情室交互。",
-      sourceLabel: "浏览器开发",
-      businessValue: 72,
-      evidenceReadiness: 42,
-      urgency: 50,
-      riskLevel: 30,
-      productionCost: 40,
-      recommendedObjectiveType: "objection-handling",
-      riskBoundary: "浏览器开发模式不模拟真实发布检查。",
-      relatedMapRowIds: [],
-    }] : [],
-    objectives: map ? [{
-      id: objectiveId,
-      type: "objection-handling",
-      title: "异议解释：浏览器开发信号",
-      summary: "预览从信号到队列的闭环。",
-      priority: "P1",
-      channels: ["小红书", "私域"],
-      successCriteria: ["生成可交接 Prompt 草稿。"],
-      signalIds: [signalId],
-    }] : [],
-    resourceBundles: map ? [{
-      id: bundleId,
-      title: "浏览器开发资源包",
-      objectiveId,
-      sourceKnowledgeMapId: map.id,
-      sellingPointRefs: map.sellingPoints.slice(0, 2).map((row) => row.title),
-      evidenceRefs: map.evidence.slice(0, 2).map((item) => item.id),
-      sceneRefs: map.scenarios.slice(0, 2).map((row) => row.title),
-      promptDraftIds: [],
-      materialRefs: [],
-      sopRefs: [],
-      constraints: map.constraints.slice(0, 2),
-      gaps: ["浏览器开发模式只预览界面。"],
-      readyPercent: 48,
-    }] : [],
-    campaignCells: map ? [{
-      id: cellId,
-      title: "浏览器开发作战单元",
-      objectiveId,
-      ownerRole: "内容运营",
-      agentRole: "内容工程 Agent",
-      channels: ["小红书"],
-      timeWindow: "今天",
-      resourceBundleId: bundleId,
-      decisionChecks: [{ key: "dev", label: "发布检查", status: "needs-resource", message: "浏览器开发模式需要真实数据后再执行。" }],
-      queueItemIds: [queueId],
-    }] : [],
-    queueItems: map ? [{
-      id: queueId,
-      campaignCellId: cellId,
-      actionType: "generate-prompt-draft",
-      title: "生成内容 Prompt 草稿",
-      summary: "浏览器开发模式预览队列动作。",
-      status: "needs-resource",
-      blockedReason: "缺少真实资源。",
-      recoveryAction: "在 Electron 中生成内容知识地图。",
-      outputTarget: "prompt-draft",
-      resourceBundleId: bundleId,
-      createdAt,
-      updatedAt: createdAt,
-    }] : [],
-    actionRecords: [],
-    constraints: map?.constraints ?? [],
-    gaps: map ? ["浏览器开发模式只预览界面。"] : ["缺少内容知识地图。"],
-    teamSync: {
-      backend: "bugu",
-      status: "local-only",
-      message: "浏览器开发模式未连接 Bugu 业务后端。",
+    intakeSummary: {
+      inputSourceCount: devInputSources.length,
+      convertedCount,
+      blockedCount: devInputSources.filter((source) => source.status === "blocked").length,
+      coveragePercent: devInputSources.length ? Math.round((convertedCount / devInputSources.length) * 100) : 0,
+      missingInputs: [],
     },
-    createdAt,
-    updatedAt: createdAt,
+    stageRuns: DEV_BATCH_STAGES.map((stageId, index) => {
+      const gate = gateFor(stageId);
+      const isCurrent = stageId === currentStageId;
+      const stageIndex = DEV_BATCH_STAGES.indexOf(currentStageId);
+      const targetModule = stageId === "manufacturing"
+        ? "video-prompt"
+          : stageId === "modeling"
+            ? "knowledge-map"
+            : stageId === "matrix"
+              ? "assets-prompt-workbench"
+              : "knowledge-inputs";
+      const recoveryTasks = gate.status === "passed" ? [] : [{
+        id: `${batchId}:${stageId}:recovery`,
+        stageId,
+        status: "open" as const,
+        title: gate.title,
+        message: gate.message,
+        recoveryAction: gate.recoveryAction || "处理阶段缺口。",
+        targetModule,
+        ownerLabel: "运营确认",
+        createdAt: now,
+      }];
+      return {
+        id: `${batchId}:${stageId}`,
+        batchId,
+        stageId,
+        status: gate.status !== "passed" ? "needs-human" : index < stageIndex ? "approved" : isCurrent ? "ready" : "draft",
+        inputRefs: devInputSources.slice(0, 3).map((source) => ({
+          kind: "input-source",
+          id: source.id,
+          summary: `${source.title} · ${source.status === "converted" ? "已解析" : "待处理"}`,
+          path: source.sourcePath,
+          targetModule: "knowledge-inputs",
+        })),
+        outputRefs: [
+          ...(map && (stageId === "modeling" || stageId === "selling") ? [{
+            kind: "content-knowledge-map",
+            id: map.id,
+            summary: `${map.title} · ${map.coverage.readyPercent}% 就绪`,
+            targetModule: "knowledge-map",
+          }] : []),
+          ...(map && stageId === "matrix" ? [{
+            kind: "matrix-handoff",
+            id: `${map.id}:matrix`,
+            summary: `${map.title} · ${map.sellingPoints.length + map.painPoints.length + map.scenarios.length} 个事实行可交接`,
+            targetModule: "assets-prompt-workbench",
+          }] : []),
+          ...(stageId === "manufacturing" ? manufacturingDrafts.slice(0, 6).map((draft) => ({
+            kind: "prompt-draft",
+            id: draft.id,
+            summary: `${draft.title} · ${draft.status}`,
+            targetModule: draft.purpose === "video" ? "video-prompt" : draft.purpose === "green-screen" ? "image-green-screen" : "image",
+          })) : []),
+        ],
+        gateResults: [{
+          id: `${batchId}:${stageId}:gate`,
+          stageId,
+          status: gate.status,
+          title: gate.title,
+          message: gate.message,
+          recoveryAction: gate.recoveryAction,
+        }],
+        recoveryTasks,
+        agentRunRefs: stageId === "manufacturing" ? manufacturingDrafts.slice(0, 3).map((draft) => ({
+          kind: "prompt-draft",
+          id: draft.id,
+          summary: `${draft.title} · ${draft.status}`,
+          targetModule: draft.purpose === "video" ? "video-prompt" : draft.purpose === "green-screen" ? "image-green-screen" : "image",
+        })) : [],
+        updatedAt: now,
+      };
+    }),
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -1067,20 +1180,22 @@ export function createDevBridge(): ContentStudioApi {
     session.updatedAt = now;
     return { session, draft };
   };
-  const createReviewRecord = () => {
+  const createReviewRecord = (input?: Parameters<ContentStudioApi["reviewAsset"]>[0]) => {
     const createdAt = new Date().toISOString();
     return {
-      id: "browser-dev-review",
-      workspacePath: DEV_WORKSPACE_PATH,
-      assetKey: "browser-dev-asset",
-      kind: "image" as const,
-      sourceType: "manual" as const,
-      path: "",
-      title: "浏览器开发素材",
-      status: "approved" as const,
-      tags: [],
-      notes: "",
-      evidenceFiles: [],
+      id: `browser-dev-review-${Date.now()}`,
+      workspacePath: input?.workspacePath ?? DEV_WORKSPACE_PATH,
+      workflowRunId: input?.workflowRunId,
+      assetKey: input?.assetKey ?? "browser-dev-asset",
+      kind: input?.kind ?? "image" as const,
+      sourceType: input?.sourceType ?? "manual" as const,
+      sourceId: input?.sourceId,
+      path: input?.path ?? "",
+      title: input?.title ?? "浏览器开发素材",
+      status: input?.status ?? "approved" as const,
+      note: input?.note,
+      tags: input?.tags ?? [],
+      reviewedAt: input?.status && input.status !== "pending" ? createdAt : undefined,
       createdAt,
       updatedAt: createdAt,
     };
@@ -1095,48 +1210,6 @@ export function createDevBridge(): ContentStudioApi {
       packageDir: "",
       manifestPath: "",
       assets: [],
-      createdAt,
-      updatedAt: createdAt,
-    };
-  };
-  const createWorkflowDefinition = () => {
-    const createdAt = new Date().toISOString();
-    return {
-      id: "browser-dev-workflow",
-      workspacePath: DEV_WORKSPACE_PATH,
-      key: "browser-dev-workflow",
-      version: "v0.1",
-      title: "浏览器开发工作流",
-      description: "",
-      status: "draft" as const,
-      priority: "P2" as const,
-      inputSchema: [],
-      steps: [],
-      reviewRules: [],
-      outputSpec: [],
-      tags: [],
-      createdAt,
-      updatedAt: createdAt,
-    };
-  };
-  const createWorkflowRun = (id = "browser-dev-workflow-run", teamKnowledgeRelease?: ContentKnowledgeReleaseReference) => {
-    const createdAt = new Date().toISOString();
-    const artifactRefs = teamKnowledgeRelease && typeof teamKnowledgeRelease === "object" && "id" in teamKnowledgeRelease
-      ? [`team-knowledge-release:${String(teamKnowledgeRelease.id)}`]
-      : [];
-    return {
-      id,
-      workspacePath: DEV_WORKSPACE_PATH,
-      workflowDefinitionId: "browser-dev-workflow",
-      workflowKey: "browser-dev-workflow",
-      workflowVersion: "v0.1",
-      title: "浏览器开发工作流",
-      status: "running" as const,
-      summary: "",
-      inputs: {},
-      teamKnowledgeRelease,
-      steps: [],
-      artifactRefs,
       createdAt,
       updatedAt: createdAt,
     };
@@ -1340,124 +1413,37 @@ export function createDevBridge(): ContentStudioApi {
       devContentKnowledgeReleases.unshift(release);
       return { status: "blocked" as const, issues: release.issues, release };
     },
-    listBrandCommandCenters: async () => devBrandCommandCenters,
-    buildBrandCommandCenter: async (input) => {
-      const record = brandCommandCenter(input);
-      devBrandCommandCenters.unshift(record);
+    listContentBatches: async (workspacePath) => {
+      if (devContentBatches.length) return devContentBatches;
+      const record = contentBatch({ workspacePath });
+      devContentBatches.splice(0, devContentBatches.length, record);
+      return devContentBatches;
+    },
+    buildContentBatch: async (input) => {
+      const record = contentBatch(input);
+      devContentBatches.splice(0, devContentBatches.length, record, ...devContentBatches.filter((item) => item.id !== record.id));
       return record;
     },
-    recordBrandCommandAction: async (input) => {
-      const record = devBrandCommandCenters.find((item) => item.id === input.commandCenterId);
-      if (!record) return brandCommandCenter({ workspacePath: input.workspacePath });
-      const queueItem = record.queueItems.find((item) => item.id === input.queueItemId);
-      if (!queueItem) return record;
-      const now = new Date().toISOString();
-      queueItem.updatedAt = now;
-      if (queueItem.status === "ready") queueItem.status = "handed-off";
-      record.actionRecords.unshift({
-        id: `browser-dev-action-${Date.now()}`,
-        queueItemId: queueItem.id,
-        campaignCellId: queueItem.campaignCellId,
-        actionType: queueItem.actionType,
-        title: queueItem.title,
-        outcome: queueItem.status === "handed-off" ? "handoff" : "needs-resource",
-        actorLabel: input.actorLabel || "浏览器开发",
-        actorRole: input.actorRole,
-        inputSummary: queueItem.summary,
-        outputSummary: input.note || "浏览器开发模式已记录动作。",
-        createdAt: now,
-      });
-      record.updatedAt = now;
-      return record;
-    },
-    recordBrandCommandReview: async (input) => {
-      const record = devBrandCommandCenters.find((item) => item.id === input.commandCenterId);
-      if (!record) return brandCommandCenter({ workspacePath: input.workspacePath });
-      const now = new Date().toISOString();
-      record.actionRecords.unshift({
-        id: `browser-dev-review-${Date.now()}`,
-        actionType: "review-action-records",
-        title: `${record.title} 行动复盘`,
-        outcome: "recorded",
-        actorLabel: input.actorLabel || "浏览器开发",
-        actorRole: input.actorRole,
-        inputSummary: `${record.actionRecords.length} 条行动记录，${record.queueItems.length} 个队列动作。`,
-        outputSummary: input.summary,
-        writeBackSummary: "浏览器开发模式已记录复盘；Electron 主进程会同步到团队行动记录。",
-        createdAt: now,
-      });
-      record.updatedAt = now;
-      return record;
-    },
-    confirmBrandCommandStage: async (input) => {
-      const record = devBrandCommandCenters.find((item) => item.id === input.commandCenterId);
-      if (!record) return brandCommandCenter({ workspacePath: input.workspacePath });
-      const now = new Date().toISOString();
-      const stageText = input.stage === "objectives" ? "确认目标优先级" : input.stage === "bundles" ? "保存作战单元" : "同步执行队列";
-      const actionType = input.stage === "objectives"
-        ? "confirm-objectives"
-        : input.stage === "bundles"
-          ? "confirm-resource-bundles"
-          : "sync-execution-queue";
-      if (input.stage === "queue") {
-        record.queueItems = record.queueItems.map((item) => ({
-          ...item,
-          syncStatus: "blocked",
-          teamSync: {
-            backend: "bugu",
-            status: "blocked",
-            message: "浏览器开发模式未连接团队队列接口。",
-          },
-          updatedAt: now,
-        }));
-      }
-      record.actionRecords.unshift({
-        id: `browser-dev-confirm-${input.stage}-${Date.now()}`,
-        actionType,
-        title: `${record.title} / ${stageText}`,
-        outcome: "recorded",
-        actorLabel: input.actorLabel || "浏览器开发",
-        actorRole: input.actorRole,
-        inputSummary: `${record.signals.length} 个信号 / ${record.objectives.length} 个目标 / ${record.queueItems.length} 个队列动作。`,
-        outputSummary: `浏览器开发模式已记录：${stageText}。`,
-        writeBackSummary: "Electron 主进程会写入本机事实源并同步团队记录。",
-        createdAt: now,
-      });
-      record.updatedAt = now;
-      return record;
-    },
-    exportBrandCommandActionRecords: async (input: ExportBrandCommandActionRecordsInput) => {
-      const record = devBrandCommandCenters.find((item) => item.id === input.commandCenterId);
-      if (!record) return { status: "blocked" as const, files: [], issues: ["请先生成品牌战情室。"] };
-      if (!record.actionRecords.length) return { status: "blocked" as const, commandCenter: record, files: [], issues: ["暂无行动记录，先处理队列动作或写入复盘记录。"] };
-      const now = new Date().toISOString();
-      record.actionRecords.unshift({
-        id: `browser-dev-export-actions-${Date.now()}`,
-        actionType: "export-action-records",
-        title: `${record.title} 行动记录导出`,
-        outcome: "recorded",
-        actorLabel: input.actorLabel || "浏览器开发",
-        actorRole: input.actorRole,
-        inputSummary: `${record.actionRecords.length} 条行动记录。`,
-        outputSummary: "浏览器开发模式已生成导出记录；Electron 主进程会写入本机交付文件。",
-        writeBackSummary: "浏览器开发模式不会写本机文件。",
-        createdAt: now,
-      });
-      record.updatedAt = now;
-      return {
-        status: "exported" as const,
-        commandCenter: record,
-        packageDir: `${input.workspacePath}/.content-studio/exports/brand-command-actions/browser-dev`,
-        manifestPath: `${input.workspacePath}/.content-studio/exports/brand-command-actions/browser-dev/manifest.json`,
-        markdownPath: `${input.workspacePath}/.content-studio/exports/brand-command-actions/browser-dev/action-records.md`,
-        jsonPath: `${input.workspacePath}/.content-studio/exports/brand-command-actions/browser-dev/action-records.json`,
-        files: ["manifest.json", "action-records.md", "action-records.json"],
-        issues: [],
+    advanceContentBatchStage: async (input) => {
+      const record = devContentBatches.find((item) => item.id === input.batchId) ?? contentBatch({ workspacePath: input.workspacePath });
+      const currentIndex = DEV_BATCH_STAGES.indexOf(record.currentStageId);
+      const nextStageId = input.stageId ?? DEV_BATCH_STAGES[Math.min(currentIndex + 1, DEV_BATCH_STAGES.length - 1)];
+      const updated = {
+        ...record,
+        currentStageId: nextStageId,
+        updatedAt: new Date().toISOString(),
+        stageRuns: record.stageRuns.map((stage, index) => ({
+          ...stage,
+          status: stage.stageId === nextStageId
+            ? "ready" as const
+            : index < DEV_BATCH_STAGES.indexOf(nextStageId)
+              ? "approved" as const
+              : stage.status,
+          updatedAt: new Date().toISOString(),
+        })),
       };
-    },
-    refreshBrandCommandActions: async (input) => {
-      const record = devBrandCommandCenters.find((item) => item.id === input.commandCenterId);
-      return record || brandCommandCenter({ workspacePath: input.workspacePath });
+      devContentBatches.splice(0, devContentBatches.length, updated, ...devContentBatches.filter((item) => item.id !== updated.id));
+      return updated;
     },
     exportContentKnowledgePack: async (input) => contentKnowledgePackExport(input),
     readContentKnowledgePackFile: async (input) => ({
@@ -1625,7 +1611,7 @@ export function createDevBridge(): ContentStudioApi {
               status: "passed" as const,
               message: `${row.evidenceRefs.length} 条证据可追溯。`,
             }],
-            nextStep: "在 Prompt 工作台确认草稿，或在场景库继续拆成图片、视频和 SOP 任务。",
+            nextStep: "在 Prompt 工作台确认草稿，或在场景库继续拆成图片、视频和生产任务。",
             createdAt: new Date().toISOString(),
           }],
           createdAt: new Date().toISOString(),
@@ -1691,12 +1677,24 @@ export function createDevBridge(): ContentStudioApi {
     createPromptDraftFromContent: async (input) => createDraft({
       workspacePath: input.workspacePath,
       purpose: input.purpose,
-      userIntent: input.content,
+      userIntent: input.userIntent,
+      title: input.title,
       contentKnowledgeMapId: input.contentKnowledgeMapId,
       contentKnowledgeMapTitle: input.contentKnowledgeMapTitle,
       teamKnowledgeRelease: input.teamKnowledgeRelease,
       coverageRowIds: input.coverageRowIds,
       sourceRefs: input.sourceRefs,
+      inputSourceIds: input.inputSourceIds,
+      sceneCardIds: input.sceneCardIds,
+      status: input.status,
+      model: input.model,
+      versions: [{
+        id: "browser-dev-version",
+        version: 1,
+        content: input.content,
+        note: input.note,
+        createdAt: new Date().toISOString(),
+      }],
     }),
     createTeamKnowledgePromptDraft: async (input) => {
       const map = input.contentKnowledgeMapId
@@ -2011,8 +2009,8 @@ export function createDevBridge(): ContentStudioApi {
     listOverlayCards: async () => [],
     generateOverlayCards: async () => [],
     listAssetReviews: async () => devAssetReviews,
-    reviewAsset: async () => {
-      const review = createReviewRecord();
+    reviewAsset: async (input) => {
+      const review = createReviewRecord(input);
       devAssetReviews.unshift(review);
       return review;
     },
@@ -2020,16 +2018,10 @@ export function createDevBridge(): ContentStudioApi {
     exportMixPackage: async () => createMixPackageRecord(),
     recordMixPackageImportEvidence: async () => createMixPackageRecord(),
     listPlatformDrafts: async () => [],
-    listWorkflowDefinitions: async () => [],
-    createWorkflowDraft: async () => createWorkflowDefinition(),
-    updateWorkflowDefinition: async (input) => input,
-    listWorkflowRuns: async () => [],
-    startWorkflowRun: async (input) => createWorkflowRun(undefined, input.teamKnowledgeRelease),
-    recordWorkflowManualEvent: async (input) => createWorkflowRun(input.workflowRunId),
     listGenerationLogs: async () => [],
 
     registerInputSource: async (input) => {
-      const source = inputSource(input.purpose, input.title || input.text || "浏览器开发输入源", input.sourcePath, input.sensitivity);
+      const source = inputSourceFromRegistration(input);
       devInputSources.unshift(source);
       return source;
     },
@@ -2103,20 +2095,157 @@ export function createDevBridge(): ContentStudioApi {
     },
     analyzeVideo: async () => ({
       logId: "browser-dev-video-analysis",
-      summary: "浏览器开发模式未启用视频拆解。",
-      dimensions: [],
-      segments: [],
-      reusableFormula: [],
-      risks: [],
+      summary: "浏览器开发模式示例拆解：展示爆款结构字段，不代表真实视频分析结果。",
+      dimensions: ["开头钩子", "卖点逻辑", "画面构图", "节奏密度", "转化设计"],
+      contentTitle: "痛点提问 · 居家清洁演示",
+      platform: "browser-dev",
+      durationSec: 18,
+      transcript: "台面油污总是擦不干净？先看这一步，喷上之后等一会儿，轻轻一擦就干净。",
+      transcriptSegments: [
+        { startSec: 0, endSec: 4, text: "台面油污总是擦不干净？" },
+        { startSec: 4, endSec: 11, text: "先看这一步，喷上之后等一会儿。" },
+        { startSec: 11, endSec: 18, text: "轻轻一擦就干净。" },
+      ],
+      scenes: [
+        {
+          timestampSec: 0,
+          startSec: 0,
+          endSec: 4,
+          shotType: "close_up",
+          scene: "厨房台面",
+          cameraMovement: "固定机位",
+          description: "厨房台面油污特写，画面先给问题。",
+          objects: ["台面", "油污"],
+          voiceover: "台面油污总是擦不干净？",
+        },
+      ],
+      hook: {
+        hookType: { value: "pain_point_question", confidence: 0.78, reasoning: "开头直接提问并展示油污特写。" },
+        elements: [
+          { name: "痛点提问", description: "用清洁难题打断滑动。", timestampRange: "00:00-00:04" },
+          { name: "效果期待", description: "快速转入可见演示。", timestampRange: "00:04-00:11" },
+        ],
+        emotionCurve: [
+          { timestampSec: 0, emotion: "anxiety", intensity: 65 },
+          { timestampSec: 11, emotion: "trust", intensity: 72 },
+        ],
+      },
+      narrative: {
+        framework: { value: "PSP", confidence: 0.74, reasoning: "问题、方案、证明三段清晰。" },
+        stages: [
+          { name: "问题", description: "台面油污难清理。", timeRange: "00:00-00:04", emotionShift: "焦虑" },
+          { name: "方案", description: "展示喷涂和等待。", timeRange: "00:04-00:11", emotionShift: "好奇" },
+          { name: "证明", description: "轻擦后的结果展示。", timeRange: "00:11-00:18", emotionShift: "信任" },
+        ],
+      },
+      pacing: {
+        avgCutsPerSecond: 0.33,
+        avgShotDurationSec: 3.0,
+        wordsPerMinute: 170,
+        rhythm: [
+          { timeRange: "00:00-00:04", shotType: "close_up", intensity: 7, description: "油污特写 + 痛点提问", voiceover: "台面油污总是擦不干净？", scene: "厨房台面" },
+          { timeRange: "00:04-00:11", shotType: "product_demo", intensity: 6, description: "喷涂演示", voiceover: "先看这一步，喷上之后等一会儿。" },
+          { timeRange: "00:11-00:18", shotType: "comparison", intensity: 8, description: "前后对比", voiceover: "轻轻一擦就干净。" },
+        ],
+      },
+      timeline: [
+        { timestampSec: 0, label: "问题出现", emotionLabel: "anxiety", intensity: 7 },
+        { timestampSec: 11, label: "效果证明", emotionLabel: "trust", intensity: 8 },
+      ],
+      viralScores: {
+        hookStrength: { score: 7.5, reasoning: "痛点明确但信息密度偏常规。" },
+        narrativeTension: { score: 7.0, reasoning: "PSP 清楚，反转较弱。" },
+        pacingQuality: { score: 7.2, reasoning: "切镜紧凑。" },
+        emotionDesign: { score: 6.8, reasoning: "从焦虑到信任。" },
+        ctaEffectiveness: { score: 6.0, reasoning: "未展示明确 CTA。" },
+      },
+      resourceFramework: {
+        characters: [],
+        scenes: [{ name: "厨房台面", shotCount: 3, environment: "居家厨房台面", lighting: "自然光", sceneImagePrompt: "A realistic home kitchen countertop with natural window light, clean white surface, photorealistic" }],
+      },
+      overallConfidence: 0.72,
+      confidenceRate: 0.72,
+      richnessRate: 0.75,
+      referenceScore: 7.0,
+      segments: [
+        {
+          timeRange: "00:00-00:04",
+          hook: "痛点提问",
+          visual: "油污特写",
+          voiceover: "台面油污总是擦不干净？",
+          subtitle: "油污总擦不干净？",
+          rhythm: "快节奏开头",
+          reusablePoint: "开头直接抛痛点，并用真实场景画面承接。",
+          shotType: "close_up",
+          scene: "厨房台面",
+          intensity: 7,
+        },
+      ],
+      reusableFormula: ["痛点提问 -> 产品演示 -> 效果证明"],
+      risks: [{ level: "warning", message: "浏览器开发模式不是视频真实分析结果；Electron 中需配置真实视频理解服务。" }],
+      warnings: ["dev mock only"],
     }),
     generateVideoScript: async () => ({
       logId: "browser-dev-video-script",
-      title: "浏览器开发脚本",
-      script: "",
-      videoPrompt: "",
-      storyboard: [],
+      title: "居家清洁演示脚本",
+      script: "镜头 1：先给台面油污特写，用痛点提问进入。\n镜头 2：展示本方产品喷涂动作。\n镜头 3：用前后对比承接效果证明。",
+      videoPrompt: "30岁中国女性在明亮厨房中指向台面油污，中景固定机位，自然窗光，写实手机实拍风格。\n产品喷涂到厨房台面油污处，俯拍特写，泡沫覆盖污渍，写实电影质感。\n清洁前后分屏对比，固定机位，画面干净明亮，真实居家短视频风格。",
+      resourceFramework: {
+        characters: [{ name: "居家达人", shotCount: 2, voiceTraits: "亲切中速", threeViewPrompt: "photorealistic Chinese woman, casual home outfit, front side back view" }],
+        scenes: [{ name: "明亮厨房", shotCount: 3, environment: "白色台面和自然窗光的居家厨房", lighting: "柔和自然光", sceneImagePrompt: "Bright modern kitchen with white countertop, natural window light, realistic home cleaning video background, photorealistic" }],
+      },
+      storyboard: [
+        {
+          shot: 1,
+          duration: "00:00-00:04",
+          timeRange: "00:00-00:04",
+          shotType: "close_up",
+          character: "居家达人",
+          characterAction: "手指向台面油污",
+          scene: "明亮厨房",
+          cameraMovement: "固定机位",
+          visual: "台面油污特写，居家达人手指油污位置。",
+          voiceover: "台面油污总是擦不干净？",
+          subtitle: "油污总擦不干净？",
+          rhythm: "快节奏痛点开场",
+          imagePrompt: "Close-up shot of kitchen countertop oil stains, a woman's finger pointing at the stain, natural window light, photorealistic.",
+          videoPrompt: "30岁中国女性在明亮厨房中指向台面油污，特写固定机位，自然窗光，写实手机实拍风格。",
+          transitionHint: "cut",
+          voiceStyle: "疑问中速",
+        },
+      ],
       publishCheck: [],
     }),
+    evaluateVideoScript: async (input) => ({
+      logId: "browser-dev-video-script-evaluation",
+      sourceScriptLogId: input.sourceScriptLogId,
+      scores: {
+        hookScore: { score: 7.2, reasoning: "首镜头直接抛出油污痛点，有停留理由。" },
+        structureScore: { score: 7.0, reasoning: "脚本按痛点、演示、证明推进，结构完整。" },
+        sellingPointScore: { score: 6.8, reasoning: "卖点能进入演示，但缺少成分或证据补强。" },
+        voiceoverScore: { score: 7.4, reasoning: "口播较口语化，适合短视频带货语境。" },
+        pacingScore: { score: 7.0, reasoning: "三镜头节奏紧凑，结尾 CTA 可再明确。" },
+        totalScore: 7.1,
+      },
+      suggestions: ["补一个证据镜头", "结尾 CTA 更明确", "避免绝对化效果"],
+    }),
+    rewriteVideoScriptShot: async (input) => {
+      const currentShot = input.script.storyboard[input.rowIndex];
+      return {
+        logId: "browser-dev-video-shot-rewrite",
+        sourceScriptLogId: input.sourceScriptLogId,
+        rowIndex: input.rowIndex,
+        shot: {
+          ...currentShot,
+          visual: `${currentShot.visual} 加入更清楚的前后对比构图。`,
+          voiceover: `${currentShot.voiceover} 这一步重点看油污变化。`,
+          subtitle: currentShot.subtitle || "看油污变化",
+          videoPrompt: `${currentShot.videoPrompt || currentShot.visual}，强化前后对比，真实手机短视频质感。`,
+        },
+        reasoning: "浏览器开发模式：保留镜头功能并增强对比。",
+        publishCheck: [{ level: "warning", message: "开发模式结果需要在 Electron 中用真实模型复核。" }],
+      };
+    },
     generateImage: async (input: ImageGenerationRequest) =>
       generationResult("image", [...(input.productImageRefs || []), ...(input.referenceImageRefs || [])]),
     generateImageSkill: async () => ({

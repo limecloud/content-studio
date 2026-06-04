@@ -4,6 +4,16 @@
 状态：Local Verified
 技术栈：Electron + React + TypeScript + 本地工作区文件 + 协议化模型 provider
 
+## 0.1 当前治理结论
+
+SOP 工作流运行时已从客户端退役。本文中早期 P4-P6/P9 对 `WorkflowStore`、`WorkflowEngine`、`WorkflowFeatureModule`、SOP 表单执行和 Canvas 编排的描述只保留为历史切片，不再作为 current 计划。
+
+当前事实源分类：
+
+- `current`：`inputSourceStore.ts`、知识库 / 场景库 / Prompt 草稿、内容制造批次、审核 / 生产交接、素材库、混剪包、平台草稿包和 `run-trace`。
+- `compat`：旧 `workflowRunId`、`workflow-runs.json`、`sop-input`、`workflow-run` kind 只用于旧数据读取和验收追溯。
+- `dead`：`workflowStore.ts`、`workflowEngine.ts`、`WorkflowFeatureModule.tsx`、SOP 表单入口、工作流定义维护和 Canvas 编排。
+
 ## 0. 当前基线
 
 当前项目已经具备：
@@ -14,7 +24,7 @@
 - 文章生成、图片生成、视频脚本 / 视频队列。
 - 生成日志和素材库雏形。
 - 图片 provider、视频 provider 与文本 provider 的显式协议路由。
-- v2 输入源、品牌 / IP 知识库、场景库、PromptDraft、SOP 运行记录、素材审核、混剪包、平台草稿包的本地文件事实源。
+- v2 输入源、品牌 / IP 知识库、场景库、PromptDraft、内容制造批次、运行追溯、素材审核、混剪包、平台草稿包的本地文件事实源。
 
 当前仍未完成到“生产发布 v2”的标准：
 
@@ -22,13 +32,13 @@
 - 本地总闸 `npm run verify:local` 已通过；后续发布前仍需在最终提交状态重跑一次。
 - 已新增 `npm run verify:v2:providers` 作为真实 provider 联调入口；默认 dry-run 不外发，显式开启 `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK=1` / `CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_MEDIA=1` 后再调用真实服务。
 - 已新增 `npm run verify:v2:acceptance` 作为 v2 业务验收报告入口；默认 local-sample 不外发，先固化品牌、IP、产品资料结构化、主图 / 卖点图 / 详情页 Prompt 追溯、用户反馈痛点聚类、标题方向、客服异议话术、对标图、参考视频拆解、绿幕文案图、成功素材回炉、混剪包导入说明、平台草稿包、视频成本边界、跨产物 runId 关键覆盖和一致性的验收结构；也支持 `-- --input <json>` 读取真实验收输入，或 `-- --workspace <path>` 直接从 `.content-studio` 读取真实工作区产物，并可从输入源、PromptDraft、审核记录、SOP 运行记录、绿幕文案图、混剪包 / 平台草稿包目录、视频 generation log、manifest 和 `import-guide.md` 自动提取交付证据，真实素材验收复用同一报告 schema；如需把真实第三方混剪导入作为门槛，追加 `-- --require-external-mix-evidence`，验收脚本会读取混剪包目录中的 `import-evidence.json` 并校验证据文件真实存在且非空；如需证明完整真实工作区闭环，追加 `-- --require-real-workspace-evidence`，该门槛会自动要求真实第三方混剪导入证据，并拒绝 local-sample、手填清单、sample / mock / 示例占位和 provider dry-run。
-- 功能测试已新增真实服务写工作区的验收护栏：由 `WorkflowEngine` 和各 Store 写出品牌 / IP / 产品 / 评论 / 绿幕 / 视频素材包 / 成功素材 / 平台草稿产物，再通过 `loadWorkspaceAcceptanceInput` 读取同一工作区，避免验收口径只停在手写 JSON fixture。
+- 功能测试已新增真实服务写工作区的验收护栏：由当前 Store / ApplicationService 写出品牌 / IP / 产品 / 评论 / 绿幕 / 视频素材包 / 成功素材 / 平台草稿产物，再通过 `loadWorkspaceAcceptanceInput` 读取同一工作区，避免验收口径只停在手写 JSON fixture。
 - provider 联调和业务验收都支持 `--output <json>` 写入报告文件，真实联调不再只依赖终端输出。
 - 已新增 `npm run verify:v2:evidence` 作为成套证据目录入口，一次性生成 provider 报告、业务验收报告、manifest 和人可读摘要；默认无 Key 本地不失败，只有业务验收失败或显式 `--provider-strict` 时 provider strict 未过才退出非 0。
 - `npm run verify:v2` 聚合 provider dry-run 诊断和业务验收，并已纳入 `npm run verify:local`，避免 v2 验收和本地总闸分裂。
 - 审核后的长期复用、Prompt / Skill / SOP 回炉和平台草稿辅助仍是局部闭环，不应标记为云端发布或自动发布能力。
 
-v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知识库 + 场景库 + Prompt 工作台 + 大模型玩法”层，再把跑稳的玩法沉淀为通用 SOP 工作流。
+v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知识库 + 场景库 + Prompt 工作台 + 大模型玩法”层，再把跑稳的玩法沉淀为 Prompt / Skill 草稿、内容制造批次模板和可追溯运行记录。
 
 ## 1. 模块事实源
 
@@ -47,21 +57,24 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 | current | `src/main/services/referenceReverseService.ts` | 参考图 / 参考视频反推与 PromptDraft 生成。 |
 | current | `src/main/services/generationLogStore.ts` | 生成日志。 |
 | current | `src/main/providers/mediaProvider.ts` | 图片 / 视频生成入口。 |
-| current | `src/shared/types.ts` | v2 输入源、Prompt 会话、工作流定义、运行和产物类型事实源。 |
-| current | `src/main/services/workflowStore.ts` | 工作流定义保存、读取、内置定义安装和运行记录。 |
-| planned | `src/main/services/workflowArtifactStore.ts` | 独立工作流产物登记；当前先由运行记录、生成日志和审核记录共同承接。 |
-| current | `src/main/services/workflowEngine.ts` | 工作流步骤执行编排。 |
+| current | `src/shared/types.ts` | v2 输入源、Prompt 会话、内容制造批次、运行追溯和产物类型事实源。 |
+| current | `src/shared/ontologyV2.ts` | ontology v2 批次 / 阶段 / 产物归一化模型；旧 `workflow-run` kind 在边界归一化为 `run-trace`。 |
+| current | `src/main/services/contentBatchStore.ts` | 内容制造批次本地文件事实源。 |
+| current | `src/main/services/contentBatchApplicationService.ts` | 从输入源、Prompt、生成日志、审核和交接记录投影内容制造批次阶段状态。 |
+| compat | `.content-studio/workflow-runs.json` | 旧工作区追溯文件；只读兼容，不再新增 SOP 运行逻辑。 |
+| dead | `src/main/services/workflowStore.ts` | 已删除；旧工作流定义 / SOP 运行记录运行时不再恢复。 |
+| dead | `src/main/services/workflowEngine.ts` | 已删除；步骤编排改由当前业务服务和内容制造批次投影承接。 |
 | current | `src/main/services/overlayCardStore.ts` | 本地绿幕文案图素材生成与登记。 |
 | current | `src/main/services/assetReviewStore.ts` | 本地素材通过 / 驳回审核记录，作为混剪导出门槛。 |
 | current | `src/main/services/mixPackageStore.ts` | 混剪素材包导出、manifest / CSV / import-guide 写入。 |
-| current | `src/renderer/src/components/modules/WorkflowFeatureModule.tsx` | SOP 执行、运行前资料选择和运行详情。 |
+| dead | `src/renderer/src/components/modules/WorkflowFeatureModule.tsx` | 已删除；普通用户不再通过 SOP 表单 / Canvas 维护旧工作流。 |
 | future | 云端协作、复杂权限、完整剪辑时间线、自动发布、多租户后台 | v2 不实现。 |
 
 > 注：`PromptGroupStore` 不再作为单独的运行事实源命名，当前由 `PromptPackService + SceneLibraryStore + PromptDraftStore` 共同承接；`visionAnalysisService.ts` 已由 `referenceReverseService.ts` 替代。
 
 ## 2. 开发切片
 
-### P0：v2 文档、输入源和工作流类型
+### P0：v2 文档、输入源和运行追溯类型
 
 写集：
 
@@ -73,7 +86,7 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 1. 明确 v2 产品边界：品牌 / 产品知识库先到场景库，IP 知识库独立成体系，不是知识库单链，也不是纯 canvas。
 2. 定义 `BrandKnowledgeBase`、`IpKnowledgeBase`、`SceneLibrary`、`SceneCard`、`PromptGroup`。
 3. 定义 `WorkflowInputSource`、`AgentPromptSession`、`PromptDraft`。
-4. 定义 `WorkflowDefinition`、`WorkflowRun`、`WorkflowStepRun`、`WorkflowArtifact`。
+4. 旧 `WorkflowDefinition`、`WorkflowRun`、`WorkflowStepRun`、`WorkflowArtifact` 只保留为历史类型兼容；当前新增类型应落到内容制造批次、运行追溯和 `src/shared/ontologyV2.ts`。
 5. 定义视频生成路径：`internal-api`、`manual-external-prompt`、`manual-video-import`。
 
 验收：
@@ -158,7 +171,7 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 - `SceneLibraryStore` 已能基于提示词包生成结构化场景卡。
 - `ReferenceReverseService` 已接入真实视觉理解 endpoint，未配置时 blocked，不伪造素材拆解结果；成功后会生成 `PromptDraft` 和 `generation-log:reference-reverse`。
 - `MaterialBreakdownModule` 是当前前端事实源，可以把参考图 / 产品源 / 用户意图直接送入 PromptDraft；旧独立页面组件已删除。
-- `WorkflowEngine` 已通过品牌场景 SOP 把 `BrandKnowledgeBaseRecord -> PromptPack -> SceneCard[] -> PromptDraft` 串成同一条可追溯运行记录。
+- 品牌场景链路已由 `BrandKnowledgeBaseRecord -> PromptPack -> SceneCard[] -> PromptDraft` 串成可追溯记录；旧 `WorkflowEngine` 不再作为当前编排底座。
 
 ### P2：Prompt 工作台和 Agent 会话
 
@@ -218,7 +231,9 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 - 未配置多模态模型时 blocked，并引导到设置 - 模型。
 - 生成图片能追溯参考图和 Prompt 版本。
 
-### P4：工作流定义和内置 SOP
+### P4：工作流定义和内置 SOP（已退役历史切片）
+
+> 该切片对应早期 SOP 工作流方案。`workflowStore.ts`、`workflowEngine.ts` 和 `WorkflowFeatureModule.tsx` 已删除，不能继续按本节扩展。当前只保留旧 `workflow-runs.json` / `workflowRunId` 追溯兼容，新能力接入内容制造批次和 `run-trace`。
 
 写集：
 
@@ -248,25 +263,27 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 - 有工作区时可安装并读取工作区 SOP。
 - Definition 使用版本号和 `inputSourceRequirements`。
 
-当前落地状态：
+历史落地状态：
 
-- `WorkflowStore` 已内置品牌知识库场景提示词、小红书种草图、产品商业素材、评论痛点选题、绿幕文案图、公众号 IP 内容、视频素材包 7 条定义。
+- `WorkflowStore` 曾内置品牌知识库场景提示词、小红书种草图、产品商业素材、评论痛点选题、绿幕文案图、公众号 IP 内容、视频素材包 7 条定义；该运行时现已退役。
 - 已有工作区会自动补齐缺失的内置定义，不覆盖用户已有定义或草案。
-- `WorkflowFeatureModule` 已可以列出定义、查看输入字段、审核规则和运行历史，不依赖 canvas 作为唯一执行入口。
-- SOP 执行页和运行 hook 共用 `src/shared/inputSourcePolicy.ts` 的输入源匹配策略，避免 UI 看不到或运行时暗中改用另一批资料。
+- `WorkflowFeatureModule` 曾列出定义、查看输入字段、审核规则和运行历史；该客户端模块现已删除。
+- SOP 执行页和运行 hook 曾共用 `src/shared/inputSourcePolicy.ts` 的输入源匹配策略；当前该策略只作为普通输入源匹配兼容，不再驱动 SOP 运行。
 
-### P5：工作流运行记录和最小执行器
+### P5：工作流运行记录和最小执行器（已退役历史切片）
 
-写集：
+> 该切片对应旧 `WorkflowRun` 运行时。当前新产物必须写入现有业务 store、内容制造批次投影和 `run-trace` 追溯；旧 `workflowRunId` 只作为 compat 字段保留。
 
-- `src/main/services/workflowStore.ts`
+历史写集（已删除 / 兼容，不再照此新增文件）：
+
+- `src/main/services/workflowStore.ts`（已删除）
 - `src/main/services/assetReviewStore.ts`
-- `src/main/services/workflowEngine.ts`
+- `src/main/services/workflowEngine.ts`（已删除）
 - `src/main/ipc.ts`
 - `src/preload/index.ts`
 - `src/shared/types.ts`
 
-任务：
+历史任务：
 
 1. 保存 `workflow-runs.json` 和 `workflow-artifacts.json`。
 2. 实现顺序执行，不先做复杂 DAG。
@@ -295,41 +312,43 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 4. 遇到 `review` 停止并进入 `waiting-review`。
 5. 遇到 provider 未配置时写 blocked；第三方生成路径只记录 Prompt 和复制动作。
 
-验收：
+历史验收：
 
 - 能跑通无知识库小红书扒图 SOP。
 - 能跑通品牌知识库 -> 场景库 -> 提示词组 SOP。
 - 能跑通 IP 知识库 -> 口播 / 文章内容 SOP。
 - artifact 能追溯到 runId、stepId、sourceRefs、promptDraftId 和 logId。
 
-当前落地状态：
+历史落地状态：
 
-- `WorkflowStore` 已能保存 `workflow-runs.json`，并为每次运行记录步骤输入、步骤输出、summary、错误、artifactRefs 和运行时间。
-- `WorkflowStore.startRun` 会把 `source` 和 `intent` 作为事实级必填输入校验；即使旧版内置定义缺少 `required` 标记，也不会让 SOP 缺输入后继续进入后续步骤。
-- `WorkflowEngine` 已接入 IPC `workflow:startRun`，先做顺序执行：登记输入源 -> Agent 会话 / PromptDraft -> 图片生成 / 视频 Prompt -> 人工审核停顿。
-- `StartWorkflowRunInput` 和 `WorkflowRunRecord` 已支持携带 `KnowledgeCitation[]`，运行详情页可查看本次 SOP 使用的知识引用。
-- 品牌场景 SOP 已能执行：登记输入源 -> 抽取品牌知识库 -> 生成提示词包 -> 生成场景库 -> 生成 Prompt 组 -> 人工审核停顿。
-- 产品商业素材 SOP 已能执行：登记产品资料 -> 结构化产品 brief / SKU -> 生成主图、卖点图和详情页模块 Prompt -> 图片 provider；字段缺失会 blocked 并要求补齐，不进入下游编造。
-- 评论痛点选题 SOP 已能执行：登记评论 / 差评 / 客服问题 -> 聚类真实用户痛点 -> 生成选题方向、客服异议话术和文案 Prompt -> 人工审核停顿。
-- 绿幕文案图 SOP 已能执行：登记口播脚本 / 卖点 / CTA -> 生成绿幕文案 Prompt -> 本地生成 9:16 绿幕 SVG 卡片 -> 自动创建 pending 审核记录 -> 人工审核停顿。
+- `WorkflowStore` 曾保存 `workflow-runs.json`，并为每次运行记录步骤输入、步骤输出、summary、错误、artifactRefs 和运行时间；当前仅作为旧数据追溯兼容。
+- `WorkflowStore.startRun` 曾校验 `source` 和 `intent`；当前已不再新增 SOP 运行。
+- `WorkflowEngine` 曾接入 IPC `workflow:startRun` 并做顺序执行；该 IPC 和执行器现已退役。
+- `StartWorkflowRunInput` 和 `WorkflowRunRecord` 曾支持携带 `KnowledgeCitation[]`，运行详情页可查看本次 SOP 使用的知识引用；当前只保留旧记录读取语义。
+- 品牌场景链路现在应表达为：登记输入源 -> 抽取品牌知识库 -> 生成提示词包 -> 生成场景库 -> 生成 Prompt 组 -> 审核 / 运行追溯。
+- 产品商业素材链路现在应表达为：登记产品资料 -> 结构化产品 brief / SKU -> 生成主图、卖点图和详情页模块 Prompt -> 图片 provider -> 审核 / 运行追溯。
+- 评论痛点选题链路现在应表达为：登记评论 / 差评 / 客服问题 -> 聚类真实用户痛点 -> 生成选题方向、客服异议话术和文案 Prompt -> 审核 / 运行追溯。
+- 绿幕文案图链路现在应表达为：登记口播脚本 / 卖点 / CTA -> 生成绿幕文案 Prompt -> 本地生成 9:16 绿幕卡片 -> 创建 pending 审核记录 -> 运行追溯。
 - `--workspace` 业务验收已覆盖真实服务写出的工作区产物：产品资料、评论原声、绿幕卡、混剪包、平台草稿包、成功素材沉淀和跨产物 runId 均能从 `.content-studio` 文件事实源自动提取。
 - `BrandKnowledgeBaseStore` 的默认合规边界已补齐“治疗 / 专业建议”和“绝对化收益”两类硬限制，防止品牌场景 Prompt 在无模型或模型漏字段时丢关键边界。
-- IP 内容 SOP 已能从输入源生成 `AgentPromptSession` 和 `PromptDraft`，并在 `review` 步骤以 queued 状态等待人工确认。
+- IP 内容链路已能从输入源生成 `AgentPromptSession` 和 `PromptDraft`，并等待人工确认。
 - 图片步骤已串到真实 `MediaProvider`：未配置图片 provider 时 blocked；真实生成成功时写入 `GenerationLogStore`，并自动创建 `AssetReviewStore` 的 pending 审核记录。
-- `WorkflowFeatureModule` 已能在 SOP 历史里查看单条运行的输入、步骤轨迹、artifact refs 和步骤级 JSON 快照。
-- `WorkflowEngine` 还可执行 `build-brand-knowledge-base`、`generate-prompt-pack`、`generate-scene-library`、`generate-prompt-group`、`reference-reverse`、`asset-store`、`export` 等步骤，参考图反推和品牌场景 SOP 已打通。
+- `WorkflowFeatureModule` 曾在 SOP 历史里查看单条运行的输入、步骤轨迹、artifact refs 和步骤级 JSON 快照；当前追溯入口收敛为运行追溯。
+- `WorkflowEngine` 曾执行 `build-brand-knowledge-base`、`generate-prompt-pack`、`generate-scene-library`、`generate-prompt-group`、`reference-reverse`、`asset-store`、`export` 等步骤；这些能力当前由对应业务 store / service 直接承接。
 - `AssetReviewStore` 与 `MixPackageStore` 已形成图片 / 视频 / 绿幕图到混剪包的审核门禁。
 
-### P6：SOP 执行页和审核台
+### P6：SOP 执行页和审核台（已退役历史切片）
 
-写集：
+> SOP 执行页已从客户端删除。审核台仍是 current，但入口应来自素材库、内容审核任务和内容制造批次阶段，不来自旧 SOP 表单。
 
-- `src/renderer/src/components/modules/WorkflowFeatureModule.tsx`
+历史写集（已删除 / 兼容，不再照此新增文件）：
+
+- `src/renderer/src/components/modules/WorkflowFeatureModule.tsx`（已删除）
 - `src/renderer/src/components/ModuleOutlet.tsx`
 - `src/renderer/src/app/constants.ts`
 - `src/renderer/src/styles/modules.css`
 
-任务：
+历史任务：
 
 1. SOP 列表。
 2. 输入源选择摘要。
@@ -338,37 +357,38 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 5. 产物预览。
 6. 质检结果和审核操作。
 
-验收：
+历史验收：
 
 - 普通用户不打开 canvas 也能运行 SOP。
 - 缺少资料选择或用户意图时，执行页必须在运行前提示缺口并禁用“运行 SOP”，不能让普通用户通过一条 blocked 运行记录才发现问题。
 - 当前输入源、Prompt 版本、步骤和状态清晰。
 - 产物可以进入素材库。
 
-当前落地状态：
+历史落地状态：
 
-- `WorkflowFeatureModule` 已把 `intent` 作为表单化 SOP 执行的固定必填字段，并把资料来源改为显式输入源选择；缺用户意图或缺资料选择时会禁用运行按钮。
-- `WorkflowFeatureModule` 已在执行页显示“本次使用资料”，按当前 SOP 默认勾选匹配的输入源；普通用户可取消或重新选择，运行时把显式选择的 `inputSourceIds` 写入 `WorkflowRun`。
-- 执行页没有可用资料或用户取消全部资料时，会禁用“运行 SOP”，并给出“去输入源 / 文档转换”的恢复路径，避免用户创建一条缺资料的 blocked 运行后才发现问题。
-- 原 `source` 文本字段在执行页显示为“补充资料说明”，有已选择资料时不再必填；普通用户只需选择资料并填写用户意图即可运行，补充说明只记录本次口径、平台或限制。
-- `WorkflowStore.startRun` 与前端校验保持一致：有 `inputSourceIds` 时允许 `source` 为空；没有资料选择且没有补充说明时才返回“资料来源”缺口。
-- 运行详情已新增“本次资料来源”，用中文业务字段展示输入源标题、用途、状态和摘要，并把系统生成的运行补充记录单独标注，避免审核人员只看到 `input-source:*` 或空 `source` 字段。
-- 新增 SOP 的运行后下一步动作已补齐：产品商业素材会按状态进入输入源、图片工作台或素材审核；评论痛点选题会进入输入源或 Prompt 工作台；绿幕文案图会进入输入源、绿幕工作台、素材审核或混剪包导出，普通用户不用从运行历史里猜下游入口。
+- `WorkflowFeatureModule` 曾把 `intent` 作为表单化 SOP 执行的固定必填字段，并把资料来源改为显式输入源选择；该页面现已删除。
+- `WorkflowFeatureModule` 曾在执行页显示“本次使用资料”，并把显式选择的 `inputSourceIds` 写入 `WorkflowRun`；当前新写入不再创建 SOP 运行。
+- 执行页曾在没有可用资料或用户取消全部资料时禁用“运行 SOP”，并给出“去输入源 / 文档转换”的恢复路径。
+- 原 `source` 文本字段曾在执行页显示为“补充资料说明”，有已选择资料时不再必填。
+- `WorkflowStore.startRun` 与前端校验曾保持一致；当前旧 startRun 已退役。
+- 运行详情曾新增“本次资料来源”；当前这类展示应落到运行追溯和内容制造批次阶段详情。
+- 旧 SOP 的运行后下一步动作已退役；当前下一步动作应来自具体模块、审核任务和生产交接。
 
 ### P7：视频 Prompt 复制、成品导入和绿幕图
 
-写集：
+历史写集（已删除，不再照此新增文件）：
 
 - `src/main/services/overlayCardStore.ts`
 - `src/main/providers/mediaProvider.ts`
 - `src/shared/types.ts`
 - `src/shared/imageTemplates.ts`
 - `src/main/providers/imageGenerationProvider.ts`
-- `src/renderer/src/components/modules/WorkflowFeatureModule.tsx`
+- `src/renderer/src/components/modules/GreenScreenModule.tsx`
+- `src/renderer/src/components/modules/VideoPromptModule.tsx`
 - `src/renderer/src/components/modules/AssetsModule.tsx`
 - `src/renderer/src/components/modules/ImageModule.tsx`
 
-任务：
+历史任务：
 
 1. 生成视频 Prompt artifact。
 2. 支持复制 Prompt 到 RunningHub / 第三方平台。
@@ -377,7 +397,7 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 5. 导入后生成 `video-clip` artifact。
 6. 新增绿幕文案图模板，支持绿色 / 透明 / 纯色背景。
 
-验收：
+历史验收：
 
 - 不配置视频 API 也能生成并复制视频 Prompt。
 - 手动导入视频能追溯原提示词和参考图。
@@ -412,10 +432,12 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 
 - `MixPackageStore` 已复制通过审核的图片 / 视频 / 绿幕图到本地包目录，并写入 `manifest.json`、`manifest.csv` 和 `import-guide.md`。
 - `AssetsModule` 已能按审核状态选择素材，未通过审核的素材不能进入混剪包。
-- `WorkflowStore.recordManualEvent` 已支持把 `mix-package:*`、`manifestPath`、`manifestCsvPath`、`importGuidePath` 和 `packageDir` 回写到视频素材包 SOP 运行记录。
+- 混剪导出会把 `mix-package:*`、`manifestPath`、`manifestCsvPath`、`importGuidePath` 和 `packageDir` 写入当前交付 / 追溯链路；旧 SOP 运行记录只作为兼容读取对象。
 - `MixExportModule` 可打开本地包目录、JSON manifest、CSV manifest 和导入说明。
 
-### P9：Canvas 视图
+### P9：Canvas 视图（已退役历史切片）
+
+> Canvas 编排不再作为客户端当前路径或高级维护入口恢复。复杂依赖后续如需表达，应先在内容制造批次和 Agent runtime 契约中定义事实源，再决定是否需要只读可视化。
 
 写集：
 
@@ -436,12 +458,12 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 - 能修改节点名称和基础配置。
 - 普通执行流不依赖 canvas。
 
-当前落地状态：
+历史落地状态：
 
-- Canvas 已作为 `WorkflowFeatureModule` 内部 tab 落地，不新增一级导航。
-- 节点标题、说明、依赖、输出键和 blocked 原因会回写同一份 `WorkflowDefinition`。
-- 已发布定义需要先复制草案再编辑，避免直接修改已发布 SOP。
-- 普通 SOP 表单运行不依赖 Canvas。
+- Canvas 曾作为 `WorkflowFeatureModule` 内部 tab 落地，不新增一级导航；该模块现已删除。
+- 节点标题、说明、依赖、输出键和 blocked 原因曾回写同一份 `WorkflowDefinition`；当前该定义维护入口已退役。
+- 已发布定义复制草案再编辑是历史规则；当前不再发布 SOP 定义。
+- 普通用户当前不依赖 Canvas，也不依赖 SOP 表单运行。
 
 ## 3. 迁移策略
 

@@ -245,7 +245,7 @@ export function BrandKnowledgeModule({
     if (!trimmed) return;
     onStartAgentSession({
       title: `${activeBrandKnowledgeBase?.title ?? '品牌 / 产品知识库'} / 品牌知识库协作`,
-      purpose: 'sop',
+      purpose: 'content-task',
       userIntent: [
         '品牌知识库协作',
         activeBrandKnowledgeBase ? `当前品牌知识库：${activeBrandKnowledgeBase.title}（${activeBrandKnowledgeBase.id}）` : '当前还没有品牌 / 产品知识库。',

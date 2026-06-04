@@ -71,6 +71,7 @@ function sourcePurposeLabel(purpose: InputSourceRecord['purpose']): string {
     reference: '参考素材',
     'product-brief': '产品资料',
     'user-feedback': '评论 / 客服问题',
+    'task-input': '任务输入',
     'sop-input': '任务输入',
     'successful-asset': '成功素材',
   };

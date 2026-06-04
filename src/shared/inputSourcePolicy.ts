@@ -21,7 +21,7 @@ function pushUnique<T>(items: T[], value: T): void {
 
 export function workflowInputPurposesForDefinitionKey(definitionKey: string): InputSourcePurpose[] {
   const key = definitionKey.toLowerCase();
-  const purposes: InputSourcePurpose[] = ['sop-input'];
+  const purposes: InputSourcePurpose[] = ['task-input', 'sop-input'];
 
   if (key.includes('brand')) {
     pushUnique(purposes, 'brand-kb');

@@ -29,7 +29,7 @@ interface ArticleModuleProps {
   onExportPlatformDraft: () => void;
   onCopyPlatformDraft: (draftId: string) => void;
   onRevealExportPath: (path: string) => void;
-  onOpenWorkflowRun: (workflowRunId: string) => void;
+  onOpenRunTrace: (runTraceId: string) => void;
   onOpenPromptDraft: (promptDraftId: string) => void;
   onOpenSourceLog: (sourceLogId: string) => void;
 }
@@ -110,7 +110,7 @@ export function ArticleModule({
   onExportPlatformDraft,
   onCopyPlatformDraft,
   onRevealExportPath,
-  onOpenWorkflowRun,
+  onOpenRunTrace,
   onOpenPromptDraft,
   onOpenSourceLog,
 }: ArticleModuleProps) {
@@ -261,7 +261,7 @@ export function ArticleModule({
                   <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onRevealExportPath(draft.packageDir)}>打开草稿包</button>
                   <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onCopyPlatformDraft(draft.id)}>{copiedPlatformDraftId === draft.id ? '已复制' : '复制发布文案'}</button>
                   {draft.promptDraftId ? <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenPromptDraft(draft.promptDraftId as string)}>提示词</button> : null}
-                  {draft.workflowRunId ? <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenWorkflowRun(draft.workflowRunId as string)}>回到 SOP</button> : null}
+                  {draft.workflowRunId ? <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenRunTrace(draft.workflowRunId as string)}>回到历史</button> : null}
                   {draft.sourceLogId ? <button className="ghost small" disabled={busy || !workspaceReady} onClick={() => onOpenSourceLog(draft.sourceLogId as string)}>来源记录</button> : null}
                 </div>
               </div>

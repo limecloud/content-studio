@@ -306,12 +306,8 @@ export async function verifyContentTeamSharingOnline(options = {}) {
     actorBKnowledgeMaps,
     actorABuildRuns,
     actorBBuildRuns,
-    actorACommandCenters,
-    actorBCommandCenters,
     actorAReviews,
     actorBReviews,
-    actorAQueue,
-    actorBQueue,
     actorAActions,
     actorBActions,
   ] = await Promise.all([
@@ -321,12 +317,8 @@ export async function verifyContentTeamSharingOnline(options = {}) {
     listContent(fetchImpl, workspaceOptions, 'content-knowledge-maps', actorBToken),
     listContent(fetchImpl, workspaceOptions, 'content-build-runs', actorAToken),
     listContent(fetchImpl, workspaceOptions, 'content-build-runs', actorBToken),
-    listContent(fetchImpl, workspaceOptions, 'content-command-centers', actorAToken),
-    listContent(fetchImpl, workspaceOptions, 'content-command-centers', actorBToken),
     listContent(fetchImpl, workspaceOptions, 'content-review-tasks', actorAToken),
     listContent(fetchImpl, workspaceOptions, 'content-review-tasks', actorBToken),
-    listContent(fetchImpl, workspaceOptions, 'content-execution-queue', actorAToken),
-    listContent(fetchImpl, workspaceOptions, 'content-execution-queue', actorBToken),
     listContent(fetchImpl, workspaceOptions, 'content-action-records', actorAToken),
     listContent(fetchImpl, workspaceOptions, 'content-action-records', actorBToken),
   ]);
@@ -373,21 +365,9 @@ export async function verifyContentTeamSharingOnline(options = {}) {
   );
   addCheck(
     checks,
-    'command-center-list-reachable',
-    Array.isArray(actorACommandCenters.items) && Array.isArray(actorBCommandCenters.items),
-    `品牌作战系统列表可读取：A=${actorACommandCenters.items?.length ?? 0} B=${actorBCommandCenters.items?.length ?? 0}`,
-  );
-  addCheck(
-    checks,
     'review-task-list-reachable',
     Array.isArray(actorAReviews.items) && Array.isArray(actorBReviews.items),
     `审核任务列表可读取：A=${actorAReviews.items?.length ?? 0} B=${actorBReviews.items?.length ?? 0}`,
-  );
-  addCheck(
-    checks,
-    'execution-queue-list-reachable',
-    Array.isArray(actorAQueue.items) && Array.isArray(actorBQueue.items),
-    `执行队列可读取：A=${actorAQueue.items?.length ?? 0} B=${actorBQueue.items?.length ?? 0}`,
   );
   addCheck(
     checks,
@@ -400,14 +380,10 @@ export async function verifyContentTeamSharingOnline(options = {}) {
   const knowledgeMapSummaryB = summarizeItems(actorBKnowledgeMaps);
   const buildRunSummaryA = summarizeItems(actorABuildRuns);
   const buildRunSummaryB = summarizeItems(actorBBuildRuns);
-  const commandCenterSummaryA = summarizeItems(actorACommandCenters);
-  const commandCenterSummaryB = summarizeItems(actorBCommandCenters);
   const reviewSummaryA = summarizeItems(actorAReviews);
   const reviewSummaryB = summarizeItems(actorBReviews);
   const releaseSummaryA = summarizeItems(actorAReleases);
   const releaseSummaryB = summarizeItems(actorBReleases);
-  const queueSummaryA = summarizeItems(actorAQueue);
-  const queueSummaryB = summarizeItems(actorBQueue);
   const actionSummaryA = summarizeItems(actorAActions);
   const actionSummaryB = summarizeItems(actorBActions);
   const actionArtifactsA = summarizeActionArtifacts(actorAActions);
@@ -428,13 +404,6 @@ export async function verifyContentTeamSharingOnline(options = {}) {
   );
   addCheck(
     checks,
-    'command-center-list-complete',
-    commandCenterSummaryA.listComplete && commandCenterSummaryB.listComplete,
-    `品牌作战系统已完整拉取并具备 ID 清单：A=${commandCenterSummaryA.fetchedCount}/${commandCenterSummaryA.count} B=${commandCenterSummaryB.fetchedCount}/${commandCenterSummaryB.count}`,
-    { actorA: commandCenterSummaryA, actorB: commandCenterSummaryB },
-  );
-  addCheck(
-    checks,
     'knowledge-map-list-present',
     knowledgeMapSummaryA.count > 0 && knowledgeMapSummaryB.count > 0,
     `团队知识地图快照非空：A=${knowledgeMapSummaryA.count} B=${knowledgeMapSummaryB.count}`,
@@ -449,24 +418,10 @@ export async function verifyContentTeamSharingOnline(options = {}) {
   );
   addCheck(
     checks,
-    'command-center-list-present',
-    commandCenterSummaryA.count > 0 && commandCenterSummaryB.count > 0,
-    `团队品牌作战系统快照非空：A=${commandCenterSummaryA.count} B=${commandCenterSummaryB.count}`,
-    { actorA: commandCenterSummaryA, actorB: commandCenterSummaryB },
-  );
-  addCheck(
-    checks,
     'review-task-list-present',
     reviewSummaryA.count > 0 && reviewSummaryB.count > 0,
     `团队审核任务非空：A=${reviewSummaryA.count} B=${reviewSummaryB.count}`,
     { actorA: reviewSummaryA, actorB: reviewSummaryB },
-  );
-  addCheck(
-    checks,
-    'execution-queue-list-present',
-    queueSummaryA.count > 0 && queueSummaryB.count > 0,
-    `团队执行队列非空：A=${queueSummaryA.count} B=${queueSummaryB.count}`,
-    { actorA: queueSummaryA, actorB: queueSummaryB },
   );
   addCheck(
     checks,
@@ -495,13 +450,6 @@ export async function verifyContentTeamSharingOnline(options = {}) {
     releaseSummaryA.listComplete && releaseSummaryB.listComplete,
     `团队知识包版本已完整拉取并具备 ID 清单：A=${releaseSummaryA.fetchedCount}/${releaseSummaryA.count} B=${releaseSummaryB.fetchedCount}/${releaseSummaryB.count}`,
     { actorA: releaseSummaryA, actorB: releaseSummaryB },
-  );
-  addCheck(
-    checks,
-    'execution-queue-list-complete',
-    queueSummaryA.listComplete && queueSummaryB.listComplete,
-    `执行队列已完整拉取并具备 ID 清单：A=${queueSummaryA.fetchedCount}/${queueSummaryA.count} B=${queueSummaryB.fetchedCount}/${queueSummaryB.count}`,
-    { actorA: queueSummaryA, actorB: queueSummaryB },
   );
   addCheck(
     checks,
@@ -555,13 +503,6 @@ export async function verifyContentTeamSharingOnline(options = {}) {
   );
   addCheck(
     checks,
-    'command-center-list-match',
-    sameSummary(commandCenterSummaryA, commandCenterSummaryB),
-    `两个账号看到的品牌作战系统清单一致：A=${commandCenterSummaryA.count} B=${commandCenterSummaryB.count}`,
-    { actorA: commandCenterSummaryA, actorB: commandCenterSummaryB },
-  );
-  addCheck(
-    checks,
     'review-task-list-match',
     sameSummary(reviewSummaryA, reviewSummaryB),
     `两个账号看到的审核任务清单一致：A=${reviewSummaryA.count} B=${reviewSummaryB.count}`,
@@ -573,13 +514,6 @@ export async function verifyContentTeamSharingOnline(options = {}) {
     sameSummary(releaseSummaryA, releaseSummaryB),
     `两个账号看到的团队知识包版本清单一致：A=${releaseSummaryA.count} B=${releaseSummaryB.count}`,
     { actorA: releaseSummaryA, actorB: releaseSummaryB },
-  );
-  addCheck(
-    checks,
-    'execution-queue-list-match',
-    sameSummary(queueSummaryA, queueSummaryB),
-    `两个账号看到的执行队列清单一致：A=${queueSummaryA.count} B=${queueSummaryB.count}`,
-    { actorA: queueSummaryA, actorB: queueSummaryB },
   );
   addCheck(
     checks,
@@ -598,24 +532,18 @@ export async function verifyContentTeamSharingOnline(options = {}) {
         reviewTaskCount: reviewSummaryA.count,
         knowledgeMapCount: knowledgeMapSummaryA.count,
         buildRunCount: buildRunSummaryA.count,
-        commandCenterCount: commandCenterSummaryA.count,
-        executionQueueCount: queueSummaryA.count,
         actionRecordCount: actionSummaryA.count,
         releaseCount: releaseSummaryA.count,
         knowledgeMapIds: knowledgeMapSummaryA.ids,
         buildRunIds: buildRunSummaryA.ids,
-        commandCenterIds: commandCenterSummaryA.ids,
         reviewTaskIds: reviewSummaryA.ids,
-        executionQueueIds: queueSummaryA.ids,
         actionRecordIds: actionSummaryA.ids,
         knowledgeMapListComplete: knowledgeMapSummaryA.listComplete,
         buildRunListComplete: buildRunSummaryA.listComplete,
-        commandCenterListComplete: commandCenterSummaryA.listComplete,
         actionArtifactRecordCount: actionArtifactsA.recordCount,
         actionArtifactRecordIds: actionArtifactsA.recordIds,
         actionArtifactRefsByRecordId: actionArtifactsA.refsByRecordId,
         reviewTaskListComplete: reviewSummaryA.listComplete,
-        executionQueueListComplete: queueSummaryA.listComplete,
         actionRecordListComplete: actionSummaryA.listComplete,
         releaseIds: releaseSummaryA.ids,
         releaseListComplete: releaseSummaryA.listComplete,
@@ -624,24 +552,18 @@ export async function verifyContentTeamSharingOnline(options = {}) {
         reviewTaskCount: reviewSummaryB.count,
         knowledgeMapCount: knowledgeMapSummaryB.count,
         buildRunCount: buildRunSummaryB.count,
-        commandCenterCount: commandCenterSummaryB.count,
-        executionQueueCount: queueSummaryB.count,
         actionRecordCount: actionSummaryB.count,
         releaseCount: releaseSummaryB.count,
         knowledgeMapIds: knowledgeMapSummaryB.ids,
         buildRunIds: buildRunSummaryB.ids,
-        commandCenterIds: commandCenterSummaryB.ids,
         reviewTaskIds: reviewSummaryB.ids,
-        executionQueueIds: queueSummaryB.ids,
         actionRecordIds: actionSummaryB.ids,
         knowledgeMapListComplete: knowledgeMapSummaryB.listComplete,
         buildRunListComplete: buildRunSummaryB.listComplete,
-        commandCenterListComplete: commandCenterSummaryB.listComplete,
         actionArtifactRecordCount: actionArtifactsB.recordCount,
         actionArtifactRecordIds: actionArtifactsB.recordIds,
         actionArtifactRefsByRecordId: actionArtifactsB.refsByRecordId,
         reviewTaskListComplete: reviewSummaryB.listComplete,
-        executionQueueListComplete: queueSummaryB.listComplete,
         actionRecordListComplete: actionSummaryB.listComplete,
         releaseIds: releaseSummaryB.ids,
         releaseListComplete: releaseSummaryB.listComplete,

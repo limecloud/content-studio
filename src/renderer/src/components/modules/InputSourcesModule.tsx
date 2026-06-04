@@ -6,9 +6,11 @@ import type {
   InputSourceRecord,
   InputSourceSensitivity,
   InputSourceStatus,
+  IntakeSourceProjection,
   PromptDraftPurpose,
 } from '../../../../shared/types';
 import { isPromptDistilledSource } from '../../../../shared/inputSourcePolicy';
+import { buildIntakeMaturitySummary } from '../../../../shared/intakeMaturity';
 import {
   buildProductBriefPromptPlan,
   structureProductBriefSources,
@@ -59,7 +61,7 @@ const PURPOSE_OPTIONS: Array<{ value: InputSourcePurpose; label: string }> = [
   { value: 'reference', label: '参考素材' },
   { value: 'product-brief', label: '产品资料' },
   { value: 'user-feedback', label: '评论 / 客服问题' },
-  { value: 'sop-input', label: '任务输入' },
+  { value: 'task-input', label: '任务输入' },
   { value: 'successful-asset', label: '成功素材' },
 ];
 
@@ -101,6 +103,45 @@ const AGENT_MESSAGE_KIND_LABELS: Record<AgentPromptSession['messages'][number]['
   draft: '输出',
   adjustment: '追问',
   note: '记录',
+};
+
+const INTAKE_LEVEL_LABELS: Record<IntakeSourceProjection['level'], string> = {
+  L0: '手动补齐',
+  L1: '文件映射',
+  L2: '自动接入',
+};
+
+const RESPONSIBILITY_LABELS: Record<IntakeSourceProjection['responsibility'], string> = {
+  'self-serve': '自助',
+  implementation: '实施顾问',
+  'system-auto': '系统自动',
+};
+
+const FIELD_MAPPING_STATUS_LABELS: Record<IntakeSourceProjection['fieldMappings'][number]['status'], string> = {
+  mapped: '已映射',
+  'ai-inferred': 'AI 抽取',
+  'ocr-pending': '待校验',
+  missing: '缺失',
+};
+
+const INTAKE_OBJECT_LABELS: Record<string, string> = {
+  RawProductCandidate: '商品候选',
+  NormalizedSku: 'SKU 变量',
+  SkuCluster: '商品分组',
+  ClipAsset: '素材片段',
+  Evidence: '证据材料',
+  AssetUsageLedger: '素材使用记录',
+  SearchSignal: '搜索信号',
+  IntentCluster: '意图分组',
+  PainPoint: '痛点',
+  DeliveryMetric: '投放表现',
+  BudgetPlan: '预算计划',
+  KeywordFeedback: '关键词反馈',
+  ForbiddenExpression: '禁用表达',
+  ReviewGate: '审核门禁',
+  RulePatch: '规则修订',
+  HumanApproval: '人工确认',
+  RecoveryTask: '恢复任务',
 };
 
 function statusClass(status: InputSourceStatus): string {
@@ -145,6 +186,128 @@ function kindLabel(value: InputSourceRecord['kind']): string {
 
 function sensitivityLabel(value: InputSourceSensitivity | undefined): string {
   return SENSITIVITY_OPTIONS.find((option) => option.value === (value ?? 'internal'))?.label ?? '团队内部';
+}
+
+function intakeHealthClass(health: IntakeSourceProjection['health']): string {
+  if (health === 'ok') return 'ready';
+  if (health === 'bad') return 'blocked';
+  if (health === 'warn') return 'idle';
+  return '';
+}
+
+function intakeObjectLabel(value: string): string {
+  return INTAKE_OBJECT_LABELS[value] ?? value;
+}
+
+function IntakeMaturityPanel({
+  sources,
+  workspaceReady,
+  onSelectModule,
+}: {
+  sources: InputSourceRecord[];
+  workspaceReady: boolean;
+  onSelectModule: (module: ModuleKey) => void;
+}) {
+  const summary = useMemo(() => buildIntakeMaturitySummary(sources), [sources]);
+  const [selectedSourceId, setSelectedSourceId] = useState(summary.projections[0]?.id ?? '');
+  const activeSource = summary.projections.find((source) => source.id === selectedSourceId) ?? summary.projections[0];
+
+  return (
+    <section className="panel intake-maturity-panel">
+      <div className="panel-title">
+        <div>
+          <p className="eyebrow">数据接入成熟度</p>
+          <h3>输入接入与恢复工作台</h3>
+        </div>
+        <div className="workflow-summary-stack">
+          <span className="status-pill ready">{summary.averageCoverage}% 平均覆盖</span>
+          <span className="status-pill">{summary.selfServeSourceCount} 类可自助</span>
+          <span className="status-pill">{summary.l2SourceCount} 类自动接入</span>
+          <span className={`status-pill ${summary.bottleneckCount ? 'blocked' : 'ready'}`}>{summary.bottleneckCount} 个瓶颈</span>
+        </div>
+      </div>
+
+      <div className="intake-source-grid">
+        {summary.projections.map((source) => (
+          <button
+            key={source.id}
+            type="button"
+            className={`intake-source-card ${activeSource?.id === source.id ? 'active' : ''} ${intakeHealthClass(source.health)}`}
+            onClick={() => setSelectedSourceId(source.id)}
+          >
+            <span className="intake-source-card-head">
+              <strong>{source.name}</strong>
+              <em>{INTAKE_LEVEL_LABELS[source.level]}</em>
+            </span>
+            <span className="intake-progress" aria-label={`${source.name} 覆盖率 ${source.coverage}%`}>
+              <i style={{ width: `${source.coverage}%` }} />
+            </span>
+            <span className="intake-source-card-meta">
+              <b>{source.coverage}%</b>
+              <small>{source.freshness} · {source.confidence}置信</small>
+            </span>
+            <span className="workflow-run-steps">
+              <span>{RESPONSIBILITY_LABELS[source.responsibility]}</span>
+              <span>{source.adapterName}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {activeSource ? (
+        <div className="intake-source-detail">
+          <section>
+            <div className="panel-subtitle">
+              <strong>{activeSource.name} 接入明细</strong>
+              <span>{activeSource.outputObjects.map(intakeObjectLabel).join(' / ')}</span>
+            </div>
+            <p>{activeSource.impact.note}</p>
+            {activeSource.upgrade ? (
+              <div className="inline-warning">
+                下一步：{activeSource.upgrade.action}。门槛：{activeSource.upgrade.blocker}。
+              </div>
+            ) : (
+              <div className="inline-success">已完成自动接入，后续关注同步质量和异常提醒。</div>
+            )}
+            <div className="workflow-actions left">
+              <button type="button" className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('knowledge-inputs')}>
+                补齐手动输入
+              </button>
+              <button type="button" className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('knowledge-map')}>
+                回到内容知识地图
+              </button>
+            </div>
+          </section>
+          <section>
+            <div className="panel-subtitle">
+              <strong>字段映射</strong>
+              <span>{activeSource.adapterName} {activeSource.adapterVersion} · 复用 {activeSource.adapterReuseCount} 次</span>
+            </div>
+            <div className="intake-field-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>来源字段</th>
+                    <th>接入对象</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeSource.fieldMappings.map((mapping) => (
+                    <tr key={`${activeSource.id}:${mapping.sourceField}:${mapping.ontologyField}`}>
+                      <td>{mapping.sourceField}</td>
+                      <td>{intakeObjectLabel(mapping.ontologyField)}</td>
+                      <td>{FIELD_MAPPING_STATUS_LABELS[mapping.status]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 function ProductBriefList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
@@ -391,11 +554,11 @@ export function InputSourcesModule({
   onSelectModule,
 }: InputSourcesModuleProps) {
   const feature = V2_FEATURES['knowledge-inputs'];
-  const [purpose, setPurpose] = useState<InputSourcePurpose>('sop-input');
+  const [purpose, setPurpose] = useState<InputSourcePurpose>('task-input');
   const [sensitivity, setSensitivity] = useState<InputSourceSensitivity>('internal');
   const [title, setTitle] = useState('手动输入源');
   const [text, setText] = useState('');
-  const [tags, setTags] = useState('用户意图, SOP');
+  const [tags, setTags] = useState('用户意图, Prompt');
   const [agentMessage, setAgentMessage] = useState('请基于当前输入源，判断哪些资料适合进品牌知识库、IP 知识库、产品变量表、评论痛点矩阵或 Prompt 工作台，并列出缺口。');
   const productBrief = useMemo(() => structureProductBriefSources(inputSources), [inputSources]);
   const feedbackInsight = useMemo(() => clusterUserFeedbackSources(inputSources), [inputSources]);
@@ -470,7 +633,7 @@ export function InputSourcesModule({
     if (!trimmed) return;
     onStartAgentSession({
       title: '输入源分流',
-      purpose: 'sop',
+      purpose: 'content-task',
       userIntent: [
         '输入源分流',
         `当前已登记输入源：${stats.total} 个；可读文本 ${stats.converted} 个；待解析 ${stats.blocked} 个。`,
@@ -536,6 +699,12 @@ export function InputSourcesModule({
   const inputAgentArtifact = (
     <>
       <div className="input-agent-artifact-grid">
+        <IntakeMaturityPanel
+          sources={inputSources}
+          workspaceReady={workspaceReady}
+          onSelectModule={onSelectModule}
+        />
+
         <ProductBriefStructurePanel
           brief={productBrief}
           workspaceReady={workspaceReady}
@@ -584,7 +753,7 @@ export function InputSourcesModule({
             </article>
           ))}
           {inputSources.length === 0 ? (
-            <div className="empty-state">还没有输入源。先登记 DOCX、参考图、参考视频、SKU 或用户意图，再分流到知识库、SOP 和 Prompt 工作台。</div>
+            <div className="empty-state">还没有输入源。先登记 DOCX、参考图、参考视频、SKU 或用户意图，再分流到知识库、内容制造和 Prompt 工作台。</div>
           ) : null}
         </div>
       </section>
@@ -666,7 +835,7 @@ export function InputSourcesModule({
         empty={(
           <>
             <strong>等待登记输入源</strong>
-            <span>粘贴文本或导入文件后，系统会把资料转成可追溯输入，再分流到知识库、Prompt、图片和 SOP。</span>
+            <span>粘贴文本或导入文件后，系统会把资料转成可追溯输入，再分流到知识库、Prompt、图片和内容制造。</span>
           </>
         )}
         onSelectSession={onSelectAgentSession}

@@ -467,8 +467,13 @@
 
 .ai-control-row select {
   height: 34px;
+  min-width: 0;
   padding: 0 10px;
   box-shadow: none;
+}
+
+.ai-model-row select {
+  width: 100%;
 }
 
 .ai-chip-group,

@@ -110,7 +110,7 @@ export function MaterialBreakdownModule({
   const [platform, setPlatform] = useState(PLATFORM_OPTIONS[0]);
   const [targetFormat, setTargetFormat] = useState<GlobalGenerationParams['aspectRatio']>('4:5');
   const [productBrief, setProductBrief] = useState('');
-  const [userIntent, setUserIntent] = useState('参考 SOP 示例图生成同类小红书种草图 Prompt：学习构图、光线、文字排版和留白，替换为本方产品，不直接生成图片。');
+  const [userIntent, setUserIntent] = useState('参考示例图生成同类小红书种草图 Prompt：学习构图、光线、文字排版和留白，替换为本方产品，不直接生成图片。');
   const [promptText, setPromptText] = useState('');
   const [copied, setCopied] = useState(false);
 
@@ -119,7 +119,7 @@ export function MaterialBreakdownModule({
     [inputSources],
   );
   const productSources = useMemo(
-    () => inputSources.filter((s) => s.purpose === 'product-brief' || s.purpose === 'sop-input' || s.purpose === 'brand-kb'),
+    () => inputSources.filter((s) => s.purpose === 'product-brief' || s.purpose === 'task-input' || s.purpose === 'sop-input' || s.purpose === 'brand-kb'),
     [inputSources],
   );
   const selectedReferenceSources = useMemo(() => selectedSources(referenceSources, referenceIds), [referenceIds, referenceSources]);
@@ -226,7 +226,7 @@ export function MaterialBreakdownModule({
     <section className="ai-breakdown-shell">
       <aside className="ai-breakdown-sidebar">
         <header className="ai-breakdown-header">
-          <p className="eyebrow">图片 SOP / 提示词生成</p>
+          <p className="eyebrow">图片提示词 / 素材拆解</p>
           <h2>拆解素材</h2>
           <span>用参考素材学习画面结构，用本方产品替换主体，只生成可复制 Prompt。</span>
         </header>
@@ -337,7 +337,7 @@ export function MaterialBreakdownModule({
         {!analysis && (
           <div className="ai-breakdown-empty-state">
             <span className="ai-breakdown-empty-icon">✦</span>
-            <h3>按 SOP 上传参考素材和产品资料</h3>
+            <h3>按任务上传参考素材和产品资料</h3>
             <p>系统只生成提示词，不在本页创建图片生成任务。</p>
           </div>
         )}

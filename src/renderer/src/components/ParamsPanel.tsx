@@ -13,6 +13,9 @@ import type { SetGlobalParams } from '../app/types';
 interface ParamsPanelProps {
   params: GlobalGenerationParams;
   textProtocol: TextGenerationProtocol;
+  textModels: string[];
+  imageModels: string[];
+  videoModels: string[];
   citations: KnowledgeCitation[];
   logs: GenerationLogEntry[];
   skillSelection: SkillSelectionView | null;
@@ -27,6 +30,9 @@ type ParamsPanelTab = 'params' | 'logs';
 export function ParamsPanel({
   params,
   textProtocol,
+  textModels,
+  imageModels,
+  videoModels,
   citations,
   logs,
   skillSelection,
@@ -37,6 +43,39 @@ export function ParamsPanel({
 }: ParamsPanelProps) {
   const [activeTab, setActiveTab] = useState<ParamsPanelTab>('params');
   const recentLogs = useMemo(() => logs.slice(0, 8), [logs]);
+  const textModelOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [params.textModel, ...textModels]
+            .map((model) => model.trim())
+            .filter(Boolean),
+        ),
+      ),
+    [params.textModel, textModels],
+  );
+  const imageModelOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [params.imageModel, ...imageModels]
+            .map((model) => model.trim())
+            .filter(Boolean),
+        ),
+      ),
+    [imageModels, params.imageModel],
+  );
+  const videoModelOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [params.videoModel, ...videoModels]
+            .map((model) => model.trim())
+            .filter(Boolean),
+        ),
+      ),
+    [params.videoModel, videoModels],
+  );
   const textModelProtocolMismatch = textProtocol === 'claude-sdk' && !isClaudeModelName(params.textModel);
   const collapseButton = (
     <button
@@ -94,7 +133,21 @@ export function ParamsPanel({
             </label>
             <label>
               <span>文字模型</span>
-              <input readOnly value={params.textModel} />
+              <select
+                value={params.textModel}
+                onChange={(event) =>
+                  setParams((current) => ({
+                    ...current,
+                    textModel: event.target.value,
+                  }))
+                }
+              >
+                {textModelOptions.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
             </label>
             {textModelProtocolMismatch ? (
               <div className="inline-warning subtle">
@@ -103,11 +156,39 @@ export function ParamsPanel({
             ) : null}
             <label>
               <span>图片模型</span>
-              <input readOnly value={params.imageModel} />
+              <select
+                value={params.imageModel}
+                onChange={(event) =>
+                  setParams((current) => ({
+                    ...current,
+                    imageModel: event.target.value,
+                  }))
+                }
+              >
+                {imageModelOptions.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               <span>视频模型</span>
-              <input readOnly value={params.videoModel} />
+              <select
+                value={params.videoModel}
+                onChange={(event) =>
+                  setParams((current) => ({
+                    ...current,
+                    videoModel: event.target.value,
+                  }))
+                }
+              >
+                {videoModelOptions.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
             </label>
             <div className="param-block">
               <span>生成数量</span>

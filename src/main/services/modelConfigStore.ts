@@ -1,6 +1,7 @@
 import { app, safeStorage } from 'electron';
 import { join } from 'node:path';
 import { isImageGenerationProtocol, isTextGenerationProtocol, type ModelCatalogView, type ModelConfigView, type ModelSecretStatus, type SaveModelConfigInput } from '../../shared/types';
+import { resolveAuthorizationHeader } from '../providers/multimodalProviderUtils';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 
 interface StoredModelConfig {
@@ -13,6 +14,7 @@ interface StoredModelConfig {
   textApiKeyEncrypted?: string;
   textApiKeyPlain?: string;
   textModel?: string;
+  textModels?: string[];
   imageProvider?: ModelConfigView['imageProvider'];
   imageProtocol?: ModelConfigView['imageProtocol'];
   imageApiEndpoint?: string;
@@ -25,6 +27,7 @@ interface StoredModelConfig {
   videoApiKeyEncrypted?: string;
   videoApiKeyPlain?: string;
   videoModel?: string;
+  videoModels?: string[];
   updatedAt?: string;
 }
 
@@ -33,17 +36,36 @@ const DEFAULT_CONFIG = {
   textProtocol: 'claude-sdk' as const,
   textApiEndpoint: 'https://api.anthropic.com',
   textModel: 'claude-sonnet-4-5',
+  textModels: ['claude-sonnet-4-5'],
   imageProvider: 'disabled' as const,
   imageProtocol: 'openai-responses' as const,
   imageApiEndpoint: 'https://api.openai.com/v1',
   imageOuterModel: 'gpt-5.5',
   imageModels: ['gpt-image-2'],
-  videoProvider: 'disabled' as const,
+  videoProvider: 'video-understanding-openai-compatible' as const,
   videoApiEndpoint: '',
-  videoModel: 'veo-3.1',
+  videoModel: 'gemini-2.5-flash',
+  videoModels: ['gemini-2.5-flash'],
 };
 
 type SecretPrefix = 'apiKey' | 'textApiKey' | 'imageApiKey' | 'videoApiKey';
+type ModelCatalogKind = 'text' | 'image' | 'video';
+type ModelCatalogProtocol = ModelConfigView['textProtocol'] | ModelConfigView['imageProtocol'] | 'openai-compatible';
+
+interface ModelCatalogBuckets {
+  textModels: string[];
+  imageModels: string[];
+  videoModels: string[];
+}
+
+interface RemoteModelSource {
+  kind: ModelCatalogKind;
+  endpoint: string;
+  apiKey: string;
+  protocol: ModelCatalogProtocol;
+}
+
+const MODEL_CATALOG_TIMEOUT_MS = 8_000;
 
 function decryptStoredSecret(encrypted: string): string | undefined {
   if (!safeStorage.isEncryptionAvailable()) return undefined;
@@ -103,6 +125,180 @@ function compactModels(models: string[] | undefined, fallback: string[]): string
   return normalized.length ? Array.from(new Set(normalized)) : fallback;
 }
 
+function uniqueModels(models: Array<string | undefined>): string[] {
+  return Array.from(new Set(models.map((model) => model?.trim()).filter((model): model is string => Boolean(model))));
+}
+
+function hasCatalogModels(catalog: ModelCatalogBuckets): boolean {
+  return catalog.textModels.length > 0 || catalog.imageModels.length > 0 || catalog.videoModels.length > 0;
+}
+
+function catalogFromStoredConfig(config: StoredModelConfig): ModelCatalogBuckets {
+  return {
+    textModels: uniqueModels([config.textModel, ...(config.textModels ?? [])]),
+    imageModels: uniqueModels([...(config.imageModels ?? [])]),
+    videoModels: uniqueModels([config.videoModel, ...(config.videoModels ?? [])]),
+  };
+}
+
+function mergeCatalogs(...catalogs: ModelCatalogBuckets[]): ModelCatalogBuckets {
+  return {
+    textModels: uniqueModels(catalogs.flatMap((catalog) => catalog.textModels)),
+    imageModels: uniqueModels(catalogs.flatMap((catalog) => catalog.imageModels)),
+    videoModels: uniqueModels(catalogs.flatMap((catalog) => catalog.videoModels)),
+  };
+}
+
+function baseUrlWithoutKnownSuffix(endpoint: string): string {
+  let base = endpoint.trim().replace(/\/+$/, '');
+  base = base.replace(/\/chat\/completions$/i, '');
+  base = base.replace(/\/responses$/i, '');
+  base = base.replace(/\/messages$/i, '');
+  base = base.replace(/\/models\/[^/]+:generateContent$/i, '');
+  return base.replace(/\/+$/, '');
+}
+
+function resolveOpenAICompatibleModelsEndpoint(endpoint: string): string {
+  const base = baseUrlWithoutKnownSuffix(endpoint);
+  if (!base) return '';
+  if (/\/models$/i.test(base)) return base;
+  if (/\/v\d(?:beta)?$/i.test(base)) return `${base}/models`;
+  return `${base}/v1/models`;
+}
+
+function resolveAnthropicModelsEndpoints(endpoint: string): string[] {
+  const base = baseUrlWithoutKnownSuffix(endpoint);
+  if (!base) return [];
+  if (/\/models$/i.test(base)) return [base];
+  if (/\/v\d(?:beta)?$/i.test(base)) return [`${base}/models`];
+  return [`${base}/v1/models`, `${base}/models`];
+}
+
+function resolveGeminiModelsEndpoints(endpoint: string, apiKey: string): string[] {
+  const base = baseUrlWithoutKnownSuffix(endpoint);
+  if (!base) return [];
+  const root = /\/v\d(?:beta)?$/i.test(base) ? base : `${base}/v1beta`;
+  const modelsEndpoint = `${root}/models`;
+  if (/generativelanguage\.googleapis\.com$/i.test(hostnameFromUrl(modelsEndpoint))) {
+    return [`${modelsEndpoint}?key=${encodeURIComponent(apiKey)}`];
+  }
+  return [modelsEndpoint, resolveOpenAICompatibleModelsEndpoint(endpoint)].filter(Boolean);
+}
+
+function hostnameFromUrl(value: string): string {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return '';
+  }
+}
+
+function resolveCatalogEndpoints(source: RemoteModelSource): string[] {
+  if (source.protocol === 'anthropic-messages' || source.protocol === 'claude-sdk') {
+    return resolveAnthropicModelsEndpoints(source.endpoint);
+  }
+  if (source.protocol === 'gemini-generate-content') {
+    return resolveGeminiModelsEndpoints(source.endpoint, source.apiKey);
+  }
+  const endpoint = resolveOpenAICompatibleModelsEndpoint(source.endpoint);
+  return endpoint ? [endpoint] : [];
+}
+
+function catalogRequestHeaders(source: RemoteModelSource, endpoint: string): Record<string, string> {
+  const headers: Record<string, string> = { accept: 'application/json' };
+  const hostname = hostnameFromUrl(endpoint).toLowerCase();
+  if (source.protocol === 'anthropic-messages' || source.protocol === 'claude-sdk') {
+    headers['x-api-key'] = source.apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+    return headers;
+  }
+  if (source.protocol === 'gemini-generate-content' && hostname.endsWith('generativelanguage.googleapis.com')) {
+    headers['x-goog-api-key'] = source.apiKey;
+    return headers;
+  }
+  headers.authorization = resolveAuthorizationHeader(source.apiKey, endpoint);
+  return headers;
+}
+
+function normalizeRemoteModelId(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.replace(/^models\//i, '');
+}
+
+function extractModelId(value: unknown): string | undefined {
+  if (typeof value === 'string') return normalizeRemoteModelId(value);
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const candidate = record.id ?? record.name ?? record.model;
+  return typeof candidate === 'string' ? normalizeRemoteModelId(candidate) : undefined;
+}
+
+function extractRemoteModelIds(payload: unknown): string[] {
+  if (Array.isArray(payload)) return uniqueModels(payload.map(extractModelId));
+  if (!payload || typeof payload !== 'object') return [];
+  const record = payload as Record<string, unknown>;
+  const container = Array.isArray(record.data)
+    ? record.data
+    : Array.isArray(record.models)
+      ? record.models
+      : Array.isArray(record.items)
+        ? record.items
+        : [];
+  return uniqueModels(container.map(extractModelId));
+}
+
+function classifyRemoteModel(model: string, fallbackKind: ModelCatalogKind): ModelCatalogKind {
+  const normalized = model.toLowerCase();
+  if (/(^|[-_.:/])(video|veo|kling|runway|seedance|sora|pika|luma|wan|hailuo|minimax|gen[-_]?4?|image-to-video)([-_.:/]|$)/.test(normalized)) {
+    return 'video';
+  }
+  if (/(^|[-_.:/])(image|img|imagen|dall-e|sdxl|stable-diffusion|flux|midjourney|recraft|ideogram)([-_.:/]|$)/.test(normalized)) {
+    return 'image';
+  }
+  if (/(^|[-_.:/])(claude|gpt|o1|o3|o4|gemini|deepseek|qwen|kimi|doubao|llama|mistral|grok|ernie|hunyuan|moonshot|yi)([-_.:/]|$)/.test(normalized)) {
+    return 'text';
+  }
+  return fallbackKind;
+}
+
+async function readJsonResponse(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return {};
+  }
+}
+
+async function fetchRemoteModelIds(source: RemoteModelSource): Promise<string[]> {
+  const endpoints = resolveCatalogEndpoints(source);
+  for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), MODEL_CATALOG_TIMEOUT_MS);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: catalogRequestHeaders(source, endpoint),
+        signal: controller.signal,
+      });
+      const payload = await readJsonResponse(response);
+      if (!response.ok) {
+        if (response.status === 404 || response.status === 405) continue;
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const models = extractRemoteModelIds(payload);
+      if (models.length > 0) return models;
+    } catch {
+      // 模型目录只是候选来源；失败时回落到已保存配置，避免影响主工作台启动。
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return [];
+}
+
 export class ModelConfigStore {
   private readonly filePath = join(app.getPath('userData'), 'model-config.json');
 
@@ -119,7 +315,7 @@ export class ModelConfigStore {
     const hasVideoApiKey = videoApiKeyStatus === 'available';
     const imageProvider = config.imageProvider ?? (hasImageApiKey ? 'openai-responses' : DEFAULT_CONFIG.imageProvider);
     const videoApiEndpoint = config.videoApiEndpoint ?? DEFAULT_CONFIG.videoApiEndpoint;
-    const videoProvider = config.videoProvider ?? (hasVideoApiKey && videoApiEndpoint ? 'generic-http' : DEFAULT_CONFIG.videoProvider);
+    const videoProvider = config.videoProvider ?? (hasVideoApiKey && videoApiEndpoint ? 'video-understanding-openai-compatible' : 'disabled');
     return {
       apiEndpoint: textApiEndpoint,
       hasApiKey: hasTextApiKey,
@@ -130,6 +326,7 @@ export class ModelConfigStore {
       hasTextApiKey,
       textApiKeyStatus,
       textModel: config.textModel ?? DEFAULT_CONFIG.textModel,
+      textModels: compactModels(config.textModels, DEFAULT_CONFIG.textModels),
       imageProvider,
       imageProtocol,
       imageApiEndpoint: config.imageApiEndpoint ?? DEFAULT_CONFIG.imageApiEndpoint,
@@ -142,6 +339,7 @@ export class ModelConfigStore {
       hasVideoApiKey,
       videoApiKeyStatus,
       videoModel: config.videoModel ?? DEFAULT_CONFIG.videoModel,
+      videoModels: compactModels(config.videoModels, DEFAULT_CONFIG.videoModels),
       updatedAt: config.updatedAt,
     };
   }
@@ -157,6 +355,7 @@ export class ModelConfigStore {
       config.apiEndpoint = config.textApiEndpoint;
     }
     if (input.textModel !== undefined) config.textModel = input.textModel.trim() || DEFAULT_CONFIG.textModel;
+    if (input.textModels !== undefined) config.textModels = compactModels(input.textModels, DEFAULT_CONFIG.textModels);
     if (input.textProtocol !== undefined) config.textProtocol = input.textProtocol;
 
     if (input.imageProvider !== undefined) config.imageProvider = input.imageProvider;
@@ -168,8 +367,9 @@ export class ModelConfigStore {
     if (input.videoProvider !== undefined) config.videoProvider = input.videoProvider;
     if (input.videoApiEndpoint !== undefined) config.videoApiEndpoint = input.videoApiEndpoint.trim();
     if (input.videoModel !== undefined) config.videoModel = input.videoModel.trim() || DEFAULT_CONFIG.videoModel;
+    if (input.videoModels !== undefined) config.videoModels = compactModels(input.videoModels, DEFAULT_CONFIG.videoModels);
     if (input.videoProvider === undefined && config.videoApiEndpoint && (config.videoApiKeyEncrypted || config.videoApiKeyPlain)) {
-      config.videoProvider = 'generic-http';
+      config.videoProvider = 'video-understanding-openai-compatible';
     }
 
     if (input.clearApiKey || input.clearTextApiKey) {
@@ -192,7 +392,7 @@ export class ModelConfigStore {
     if (input.videoApiKey !== undefined) {
       const key = input.videoApiKey.trim();
       writeSecret(config, 'videoApiKey', key);
-      if (key && config.videoApiEndpoint) config.videoProvider = 'generic-http';
+      if (key && config.videoApiEndpoint) config.videoProvider = 'video-understanding-openai-compatible';
     }
 
     config.updatedAt = new Date().toISOString();
@@ -218,13 +418,55 @@ export class ModelConfigStore {
   }
 
   async readCatalog(): Promise<ModelCatalogView> {
+    const config = await this.readRaw();
     const view = await this.readView();
+    const remoteCatalog = await this.readRemoteCatalog(view);
+    const hasRemoteCatalog = hasCatalogModels(remoteCatalog);
+    const configuredCatalog = catalogFromStoredConfig(config);
+    const hasConfiguredCatalog = hasCatalogModels(configuredCatalog);
+    const catalog = mergeCatalogs(remoteCatalog, configuredCatalog);
     return {
-      textModels: Array.from(new Set([view.textModel, 'claude-sonnet-4-5', 'claude-opus-4-1', 'claude-haiku-4-5', 'gpt-5.5', 'gemini-3-pro-preview'].filter(Boolean))),
-      imageModels: Array.from(new Set([...view.imageModels, 'gpt-image-2', 'gemini-3-pro-image-preview'].filter(Boolean))),
-      videoModels: Array.from(new Set([view.videoModel, 'veo-3.1', 'kling-2.1', 'runway-gen-4'].filter(Boolean))),
-      source: view.hasTextApiKey || view.hasImageApiKey || view.hasVideoApiKey ? 'configured' : 'offline-seed',
+      textModels: catalog.textModels,
+      imageModels: catalog.imageModels,
+      videoModels: catalog.videoModels,
+      source: hasRemoteCatalog
+        ? 'provider'
+        : hasConfiguredCatalog || view.hasTextApiKey || view.hasImageApiKey || view.hasVideoApiKey
+          ? 'configured'
+          : 'offline-seed',
       updatedAt: new Date().toISOString(),
+    };
+  }
+
+  private async readRemoteCatalog(view: ModelConfigView): Promise<ModelCatalogBuckets> {
+    const textApiKey = await this.getTextApiKey();
+    const imageApiKey = await this.getImageApiKey();
+    const videoApiKey = await this.getVideoApiKey();
+    const sources: RemoteModelSource[] = [
+      textApiKey && view.textApiEndpoint
+        ? { kind: 'text', endpoint: view.textApiEndpoint, apiKey: textApiKey, protocol: view.textProtocol }
+        : undefined,
+      imageApiKey && view.imageApiEndpoint
+        ? { kind: 'image', endpoint: view.imageApiEndpoint, apiKey: imageApiKey, protocol: view.imageProtocol }
+        : undefined,
+      videoApiKey && view.videoApiEndpoint
+        ? { kind: 'video', endpoint: view.videoApiEndpoint, apiKey: videoApiKey, protocol: 'openai-compatible' }
+        : undefined,
+    ].filter((source): source is RemoteModelSource => Boolean(source));
+    const buckets: ModelCatalogBuckets = { textModels: [], imageModels: [], videoModels: [] };
+    const results = await Promise.all(sources.map(async (source) => ({ source, models: await fetchRemoteModelIds(source) })));
+    for (const result of results) {
+      for (const model of result.models) {
+        const kind = classifyRemoteModel(model, result.source.kind);
+        if (kind === 'text') buckets.textModels.push(model);
+        if (kind === 'image') buckets.imageModels.push(model);
+        if (kind === 'video') buckets.videoModels.push(model);
+      }
+    }
+    return {
+      textModels: uniqueModels(buckets.textModels),
+      imageModels: uniqueModels(buckets.imageModels),
+      videoModels: uniqueModels(buckets.videoModels),
     };
   }
 

@@ -1552,10 +1552,10 @@
               <span class="nav-icon">P</span><span>Prompt 工作台</span><span class="badge">增强</span>
             </button>
             <button class="nav-item">
-              <span class="nav-icon">S</span><span>SOP 工作流</span><span class="badge">表单</span>
+              <span class="nav-icon">追</span><span>运行追溯</span><span class="badge">run-trace</span>
             </button>
             <button class="nav-item">
-              <span class="nav-icon">史</span><span>运行历史</span><span class="badge">追溯</span>
+              <span class="nav-icon">交</span><span>生产交接</span><span class="badge">审核后</span>
             </button>
           </div>
 
@@ -1566,12 +1566,6 @@
             </button>
             <button class="nav-item">
               <span class="nav-icon">模</span><span>Provider 设置</span><span class="badge">真实服务</span>
-            </button>
-            <button class="nav-item">
-              <span class="nav-icon">流</span><span>工作流定义</span><span class="badge">版本</span>
-            </button>
-            <button class="nav-item">
-              <span class="nav-icon">画</span><span>Canvas 编排</span><span class="badge">高级</span>
             </button>
           </div>
         </nav>
@@ -1593,7 +1587,7 @@
 
         <section class="source-brief" aria-label="v2 统一输入源">
           <h3>统一输入源</h3>
-          <p>v2 不强制从知识库开始。DOCX、参考图、参考视频、产品资料、SKU 表和历史成功素材都可以进入同一条 Agent / SOP 链路。</p>
+          <p>v2 不强制从知识库开始。DOCX、参考图、参考视频、产品资料、SKU 表和历史成功素材都可以进入同一条 Agent / Prompt / 运行追溯链路。</p>
           <div class="source-chip-grid">
             <span class="source-chip active">品牌 DOCX</span>
             <span class="source-chip active">IP 知识库</span>
@@ -1766,10 +1760,10 @@
 
               <article class="prd-card wide">
                 <header>
-                  <h3>SOP 表单执行、审核入库与混剪包</h3>
-                  <span class="prd-tag">US-07 / US-08 / US-09</span>
+                  <h3>运行追溯、审核入库与混剪包</h3>
+                  <span class="prd-tag">US-07 / US-08</span>
                 </header>
-                <p>普通用户不进 canvas。SOP 用阶段导轨执行，运行记录保存输入源、对话、Prompt 版本、模型、产物和错误；审核通过后进入素材库并可导出混剪清单。</p>
+                <p>普通用户不进旧 SOP 表单或 canvas。运行追溯保存输入源、对话、Prompt 版本、模型、产物和错误；审核通过后进入素材库并可导出混剪清单。</p>
                 <div class="sop-step-grid">
                   <div class="sop-step"><strong>输入源</strong>知识库 / 图 / 视频</div>
                   <div class="sop-step"><strong>Prompt</strong>多轮调整版本</div>
@@ -1779,7 +1773,7 @@
                   <div class="sop-step"><strong>导出</strong>素材包 + 混剪清单</div>
                 </div>
                 <div class="review-row">
-                  <strong>小红书种草图 SOP</strong>
+                  <strong>小红书种草图运行追溯</strong>
                   <span>待审核 4 张</span>
                   <span>来源可追溯</span>
                   <span>可导出混剪包</span>
@@ -1869,7 +1863,7 @@
             </div>
             <div class="ref-card">
               <strong>管理能力</strong>
-              <p>Provider 只显示真实可调用状态；skills 管理沉淀 Prompt / SOP；Canvas 只编辑工作流定义，不作为普通用户主路径。</p>
+              <p>Provider 只显示真实可调用状态；skills 管理沉淀 Prompt / 成功素材；运行追溯只展示事实链，不恢复工作流定义维护。</p>
             </div>
           </section>
 
@@ -2284,63 +2278,63 @@
         prd: "US-02 / US-03 / UC-02 / UC-13",
         status: "草稿",
         primary: "生成 Prompt",
-        secondary: "物化为 SOP",
-        kpis: [["4", "输入源"], ["3", "多轮追问"], ["5", "Prompt 版本"], ["1", "SOP 草案"]],
+        secondary: "沉淀为 Skill",
+        kpis: [["4", "输入源"], ["3", "多轮追问"], ["5", "Prompt 版本"], ["1", "Skill 草案"]],
         flow: ["选择输入源", "输入意图", "Agent 追问", "确认 Prompt", "版本对比", "物化"],
         panels: [
           ["适用场景", "当玩法还没固化时先在 Prompt 工作台跑通，而不是先做复杂工作流。", ["读文档", "看图反推", "视频拆解"]],
-          ["物化入口", "确认过的 Prompt 草稿可沉淀为 Prompt Pack、SOP 或 Skill。", ["Prompt Pack", "SOP", "Skill"]]
+          ["物化入口", "确认过的 Prompt 草稿可沉淀为 Prompt Pack、Skill 或内容制造批次模板。", ["Prompt Pack", "Skill", "批次模板"]]
         ],
         preview: "Prompt v5：根据唯他瑞知识库和早餐场景库，生成 10 组 UGC 手机实拍提示词；保留合规边界；输出图片 Prompt 和图生视频 Prompt。",
-        table: [["Prompt v3", "已淘汰", "太广告感", "保留历史"], ["Prompt v5", "待确认", "更自然", "可物化"], ["SOP 草案", "未上线", "需人工确认", "待保存"]]
+        table: [["Prompt v3", "已淘汰", "太广告感", "保留历史"], ["Prompt v5", "待确认", "更自然", "可物化"], ["Skill 草案", "未上线", "需人工确认", "待保存"]]
       },
-      "SOP 工作流": {
-        eyebrow: "资产 / 表单执行",
-        title: "SOP 工作流",
-        desc: "普通用户默认走表单化 SOP 执行页，不进入 canvas。每个 SOP 定义输入源、字段、步骤、审核规则和导出规则。",
-        prd: "US-09 / UC-13",
-        status: "可执行",
-        primary: "运行 SOP",
-        secondary: "生成 SOP 草案",
-        kpis: [["3", "P0 SOP"], ["6", "步骤"], ["2", "人工节点"], ["版本化", "定义"]],
-        flow: ["输入源", "字段表单", "步骤执行", "人工审核", "入库", "导出"],
-        panels: [
-          ["SOP 示例", "小红书种草图、公众号 IP 内容、详情页素材、视频素材包。", ["小红书", "公众号", "详情页"]],
-          ["运行记录", "保存输入源、对话、Prompt 版本、模型、产物、错误和来源引用。", ["运行编号", "Prompt 版本", "产物"]]
-        ],
-        preview: "小红书种草图 SOP：产品图 + 参考图 + 产品资料 -> 反推风格 -> 结构化卖点 -> Prompt -> 4 张图 -> 质检 -> 人审 -> 入库。",
-        table: [["小红书种草图", "P0", "可运行", "表单"], ["公众号 IP 内容", "P0", "可运行", "Agent 读文档"], ["视频素材包", "P1", "草案", "待确认"]]
-      },
-      "运行历史": {
-        eyebrow: "资产 / 审计",
-        title: "运行历史",
-        desc: "用于复盘、重试和审计。查看每次运行的输入、输出、步骤耗时、模型、失败原因和产物列表。",
-        prd: "US-07 / US-09 / 工作流运行记录",
+      "运行追溯": {
+        eyebrow: "资产 / run-trace",
+        title: "运行追溯",
+        desc: "查看输入源、Prompt、模型、审核和交付物的事实链。旧 workflowRunId 只作为历史兼容字段读取。",
+        prd: "US-07 / UC-11 / run-trace",
         status: "可追溯",
-        primary: "查看运行详情",
-        secondary: "复用输入",
-        kpis: [["128", "运行记录"], ["9", "待配置"], ["42", "成功产物"], ["可复用", "输入参数"]],
-        flow: ["运行列表", "步骤详情", "输入输出", "日志", "重试", "复用"],
+        primary: "查看追溯详情",
+        secondary: "复制来源摘要",
+        kpis: [["128", "追溯记录"], ["9", "待配置"], ["42", "成功产物"], ["compat", "旧 runId"]],
+        flow: ["输入源", "Prompt 版本", "生成记录", "审核结论", "交付物", "复盘"],
         panels: [
-          ["详情结构", "左侧步骤列表，中间步骤输入输出，右侧产物和来源引用。", ["步骤", "日志", "产物"]],
-          ["失败处理", "失败不跳过、不伪造；保留生成服务、错误和恢复路径。", ["待配置", "重试", "配置生成服务"]]
+          ["事实链", "保存输入源、对话、Prompt 版本、模型、产物、错误和来源引用。", ["来源", "Prompt", "产物"]],
+          ["兼容边界", "旧 workflowRunId 只用于历史追溯，新产物归一到 run-trace。", ["run-trace", "workflowRunId", "只读"]]
         ],
-        preview: "运行记录：图片生成服务未配置，图片生成步骤待配置；已保存 Prompt 和输入源，可在配置后重试。",
-        table: [["运行 001", "待配置", "图片生成服务未配置", "可重试"], ["运行 002", "完成", "4 张图片", "可复用"], ["运行 003", "待审核", "视频 Prompt", "查看详情"]]
+        preview: "小红书种草图追溯：产品图 + 参考图 + 产品资料 -> 反推风格 -> 结构化卖点 -> Prompt -> 4 张图 -> 质检 -> 人审 -> 入库。",
+        table: [["小红书种草图", "run-trace", "已入库", "可追溯"], ["公众号 IP 内容", "run-trace", "待审核", "Agent 读文档"], ["视频素材包", "run-trace", "待交接", "混剪清单"]]
+      },
+      "生产交接": {
+        eyebrow: "资产 / 审核后",
+        title: "生产交接",
+        desc: "把审核通过的图片、视频 Prompt、绿幕图、平台草稿和混剪清单交给下游执行者。",
+        prd: "US-07 / US-08 / UC-12",
+        status: "待交接",
+        primary: "导出交接包",
+        secondary: "查看审核证据",
+        kpis: [["18", "通过素材"], ["4", "绿幕图"], ["2", "平台草稿"], ["1", "混剪包"]],
+        flow: ["审核通过", "选择素材", "生成清单", "写交接说明", "导出包", "登记证据"],
+        panels: [
+          ["交接内容", "下游只拿到已审核素材、混剪清单、平台草稿和人工发布边界。", ["素材", "清单", "发布边界"]],
+          ["证据", "保留审核结论、来源追溯和导入证据，不把外部平台任务伪装成客户端状态。", ["审核", "追溯", "证据"]]
+        ],
+        preview: "交接包：4 张图片、3 张绿幕图、1 份视频 Prompt、manifest.csv、import-guide.md 和审核证据。",
+        table: [["图片素材", "已通过", "4 张", "可导出"], ["绿幕图", "已通过", "3 张", "可导出"], ["视频 Prompt", "已复制", "1 份", "待导入证据"]]
       },
       "skills 管理": {
         eyebrow: "管理 / skills",
         title: "skills 管理",
         desc: "管理参与内容生成链路的内置、项目和用户级 skills，把跑通的方法论沉淀为可复用能力。",
-        prd: "US-03 / UC-13 / SkillDefinition",
+        prd: "US-03 / UC-14 / SkillDefinition",
         status: "可管理",
         primary: "创建 Skill 草稿",
         secondary: "健康检查",
-        kpis: [["12", "已启用"], ["3", "项目 skill"], ["2", "无效"], ["可沉淀", "Prompt / SOP"]],
+        kpis: [["12", "已启用"], ["3", "项目 skill"], ["2", "无效"], ["可沉淀", "Prompt / 素材"]],
         flow: ["扫描 skills", "启用", "运行检查", "从 Prompt 生成草稿", "人工确认", "版本化"],
         panels: [
           ["来源", "内置 skill、项目 skill、用户 skill 分来源管理，避免混乱覆盖。", ["内置", "项目", "用户"]],
-          ["沉淀路径", "Prompt / SOP / 成功素材可以变成 Skill 草稿，但必须人工确认。", ["Prompt", "SOP", "成功素材"]]
+          ["沉淀路径", "Prompt / 成功素材可以变成 Skill 草稿，但必须人工确认。", ["Prompt", "成功素材", "人工确认"]]
         ],
         preview: "Skill 草稿：小红书 UGC 图片 Prompt 生成。输入：产品知识库、场景卡、参考图。输出：10 组图片 Prompt。",
         table: [["ugc-image-prompt", "启用", "项目", "健康"], ["ip-article-agent", "启用", "项目", "健康"], ["old-video-template", "无效", "用户", "需修复"]]
@@ -2361,40 +2355,6 @@
         ],
         preview: "健康检查：文字模型可用；图片模型未配置 Key；视频模型为可选外部 Prompt 模式。",
         table: [["文字模型", "可用", "Claude SDK / Gemini", "可用"], ["图片模型", "未配置", "真实生成服务", "待配置"], ["视频模型", "可选", "Prompt 外部复制", "可用"]]
-      },
-      "工作流定义": {
-        eyebrow: "管理 / WorkflowDefinition",
-        title: "工作流定义",
-        desc: "维护 SOP 的输入源、字段、步骤、依赖、输出、审核规则和导出格式。定义可版本化、可 diff、可执行。",
-        prd: "US-09 / UC-13",
-        status: "版本草案",
-        primary: "保存定义版本",
-        secondary: "发布为可运行",
-        kpis: [["3", "定义"], ["2", "草案"], ["1", "待发布"], ["可 diff", "版本"]],
-        flow: ["编辑字段", "编辑步骤", "配置依赖", "配置审核", "保存版本", "发布"],
-        panels: [
-          ["定义结构", "工作流事实源是可执行定义，不是画布坐标。", ["inputSchema", "steps", "outputs"]],
-          ["上线规则", "草案不能直接上线，必须人工确认步骤、provider、审核和导出规则。", ["草案", "审核", "发布"]]
-        ],
-        preview: "WorkflowDefinition：xiaohongshu-seeding-image@v0.2\nsteps: reference_reverse -> product_structuring -> prompt_generate -> image_generate -> review -> asset_store",
-        table: [["小红书种草图", "v0.2", "草案", "待发布"], ["公众号 IP 内容", "v0.1", "可运行", "已发布"], ["视频素材包", "v0.1", "草案", "需审核"]]
-      },
-      "Canvas 编排": {
-        eyebrow: "管理 / 高级视图",
-        title: "Canvas 编排",
-        desc: "Canvas 只作为高级用户查看和编辑复杂依赖的视图，读写同一份工作流定义，不成为普通用户主入口或运行事实源。",
-        prd: "US-12 / Canvas 边界",
-        status: "高级视图",
-        primary: "打开 Canvas",
-        secondary: "同步定义",
-        kpis: [["1", "定义源"], ["6", "节点"], ["0", "运行状态"], ["高级", "入口"]],
-        flow: ["读取定义", "显示节点", "调整依赖", "保存定义", "表单运行"],
-        panels: [
-          ["边界", "普通用户不用 canvas 也能完成 SOP；Canvas 不能取代表单执行页。", ["非主入口", "非事实源", "高级编辑"]],
-          ["节点类型", "节点对应工作流步骤：输入源、Agent 读取、参考图反推、视频拆解、生成、审核和导出。", ["输入源", "Agent", "审核"]]
-        ],
-        preview: "Canvas 视图：品牌知识库 -> 场景库 -> Prompt 组 -> 图片生成 -> 审核 -> 素材库。保存后同步 WorkflowDefinition。",
-        table: [["节点图", "可查看", "高级用户", "非主入口"], ["定义同步", "可保存", "WorkflowDefinition", "事实源"], ["运行", "表单执行", "普通用户", "推荐"]]
       }
     };
 
@@ -2443,7 +2403,7 @@
               <div class="proto-actions">
                 <button class="proto-action primary" data-action="${escapeHtml(view.primary)}">${escapeHtml(view.primary)}</button>
                 <button class="proto-action" data-action="${escapeHtml(view.secondary)}">${escapeHtml(view.secondary)}</button>
-                <button class="proto-action warn" data-action="记录为运行历史">记录为运行历史</button>
+                <button class="proto-action warn" data-action="记录为运行追溯">记录为运行追溯</button>
               </div>
             </section>
 
@@ -2481,7 +2441,7 @@
                   <button class="proto-tab">待审核</button>
                   <button class="proto-tab">已完成</button>
                 </div>
-                <p>所有状态都要进入运行历史；待配置必须显示恢复路径，不能伪造生成成功。</p>
+                <p>所有状态都要进入运行追溯；待配置必须显示恢复路径，不能伪造生成成功。</p>
               </article>
             </section>
 
@@ -2539,7 +2499,7 @@
     document.addEventListener("click", (event) => {
       const action = event.target.closest(".proto-action");
       if (action) {
-        showToast(`原型操作：${action.dataset.action || action.textContent.trim()}。真实实现需写入运行历史和状态。`);
+        showToast(`原型操作：${action.dataset.action || action.textContent.trim()}。真实实现需写入运行追溯和状态。`);
       }
 
       const tab = event.target.closest(".proto-tab");

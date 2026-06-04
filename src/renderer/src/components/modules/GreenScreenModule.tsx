@@ -30,7 +30,8 @@ const PROMPT_PURPOSE_LABELS: Record<PromptDraft['purpose'], string> = {
   video: '视频提示词',
   article: '文案提示词',
   'green-screen': '绿幕文案图',
-  sop: 'SOP 草案',
+  'content-task': '内容任务',
+  sop: '流程草案',
   skill: 'Skill 草案',
 };
 

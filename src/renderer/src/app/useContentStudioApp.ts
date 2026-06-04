@@ -9,13 +9,13 @@ import type {
   BrandKnowledgeBaseRecord,
   AssetReviewRecord,
   AutoUpdateState,
-  BrandCommandCenterRecord,
-  BrandCommandConfirmStage,
   BuguAuthState,
   BuguEmailCodeSendInput,
   BuguEmailCodeVerifyInput,
   BuguPasswordLoginInput,
   ContentDraftChange,
+  ContentBatchRecord,
+  ContentBatchStageId,
   ContentKnowledgeMapBuildRunRecord,
   ContentKnowledgeMapRecord,
   ContentKnowledgePackFilePreview,
@@ -67,23 +67,25 @@ import type {
   RecordMixPackageImportEvidenceInput,
   RespondAgentPromptActionInput,
   ReferenceReverseResult,
-  RecordWorkflowManualEventInput,
   ReviewAssetInput,
   SceneCard,
   SkillRef,
   SkillSelectionView,
   SubmitGenerationTaskInput,
+  UpdateGenerationLogReviewInput,
   VideoCostEstimate,
   VideoBreakdownResult,
   VideoBreakdownRequest,
   VideoGenerationRequest,
+  VideoScriptEvaluationRequest,
   VideoScriptGenerationResult,
   VideoScriptGenerationRequest,
-  WorkflowDefinition,
+  VideoScriptShotRewriteRequest,
+  VideoScriptShotRewriteResult,
   WorkflowRunRecord,
 } from "../../../shared/types";
-import { selectWorkflowInputSourceIdsForDefinition } from "../../../shared/inputSourcePolicy";
 import { buildContentSyncConflictMergeDraft } from "../../../shared/contentSyncConflictMerge";
+import { stripInternalTraceLinesFromPrompt } from "../../../shared/promptTraceText";
 import { isAgentInputSourceRecoverySession } from "../components/agent/agentRuntimeProjection";
 import { DEFAULT_PARAMS, VIDEO_DIMENSIONS } from "./constants";
 import {
@@ -101,6 +103,14 @@ import {
   statusLabel,
 } from "./formatters";
 import { buildScenePromptGroupContent } from "./scenePromptComposer";
+import { isFinishedVideoSource } from "./videoPromptFlow";
+import {
+  buildCharacterPromptItems,
+  buildScenePromptItems,
+  buildVideoProductionDeliveryItems,
+  buildVideoProductionReviewItems,
+} from "./videoProductionPrompts";
+import { buildProductionSegments } from "./videoProductionSegments";
 import type {
   ColorTheme,
   ModelDraft,
@@ -122,6 +132,40 @@ const INITIAL_UPDATE_STATE: AutoUpdateState = {
   currentVersion: "0.0.0",
   hasUpdate: false,
 };
+
+function imageModelFromConfig(
+  currentModel: string,
+  imageModels: string[],
+): string {
+  const normalized = imageModels.map((model) => model.trim()).filter(Boolean);
+  if (currentModel && normalized.includes(currentModel)) return currentModel;
+  return normalized[0] ?? currentModel;
+}
+
+function modelFromOptions(
+  currentModel: string,
+  models: string[],
+): string {
+  const normalized = uniqueModelNames(models);
+  if (currentModel && normalized.includes(currentModel)) return currentModel;
+  return normalized[0] ?? currentModel;
+}
+
+function uniqueModelNames(models: string[]): string[] {
+  return Array.from(
+    new Set(models.map((model) => model.trim()).filter(Boolean)),
+  );
+}
+
+function paramsForImageGeneration(
+  current: GlobalGenerationParams,
+  imageModel?: string,
+): GlobalGenerationParams {
+  const nextImageModel = imageModel?.trim() || current.imageModel;
+  return nextImageModel === current.imageModel
+    ? current
+    : { ...current, imageModel: nextImageModel };
+}
 
 interface ActionContext {
   isCancelled: () => boolean;
@@ -184,6 +228,7 @@ type ShowcaseImageHandoffInput = {
   referenceImageLabel?: string;
   featureId?: string;
   featureTitle?: string;
+  imageModel?: string;
 };
 
 type ReferenceReverseGenerateInput = {
@@ -332,6 +377,16 @@ function videoSubtitleModeLabel(value: string): string {
   return "内嵌字幕";
 }
 
+function formatBreakdownRate(value?: number): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "未返回";
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatBreakdownScore(value?: number): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "未返回";
+  return value.toFixed(1);
+}
+
 function brandKnowledgeBaseCitations(record?: BrandKnowledgeBaseRecord): KnowledgeCitation[] {
   if (!record) return [];
   const knowledgeBaseId = `brand-kb:${record.id}`;
@@ -471,10 +526,12 @@ export function useContentStudioApp() {
     imageProtocol: "openai-responses",
     imageOuterModel: "",
     textModel: "",
+    textModels: "",
     imageModels: "",
     videoApiEndpoint: "",
     videoApiKey: "",
     videoModel: "",
+    videoModels: "",
   });
   const [showModelDialog, setShowModelDialog] = useState(false);
   const [skills, setSkills] = useState<LoadedSkill[]>([]);
@@ -489,7 +546,7 @@ export function useContentStudioApp() {
   const [contentKnowledgeReleases, setContentKnowledgeReleases] = useState<ContentKnowledgeRelease[]>([]);
   const [contentSyncConflicts, setContentSyncConflicts] = useState<ContentSyncConflict[]>([]);
   const [contentWorkspaceSyncResult, setContentWorkspaceSyncResult] = useState<ContentWorkspaceSyncResult | null>(null);
-  const [brandCommandCenters, setBrandCommandCenters] = useState<BrandCommandCenterRecord[]>([]);
+  const [contentBatches, setContentBatches] = useState<ContentBatchRecord[]>([]);
   const [contentKnowledgePackExport, setContentKnowledgePackExport] = useState<ContentKnowledgePackExportResult | null>(null);
   const [contentKnowledgePackFilePreview, setContentKnowledgePackFilePreview] = useState<ContentKnowledgePackFilePreview | null>(null);
   const [contentProductionHandoff, setContentProductionHandoff] = useState<ContentProductionHandoffResult | null>(null);
@@ -512,7 +569,6 @@ export function useContentStudioApp() {
   const [activeBrandKnowledgeBaseId, setActiveBrandKnowledgeBaseId] = useState("");
   const [activeIpKnowledgeBaseId, setActiveIpKnowledgeBaseId] = useState("");
   const [activeContentKnowledgeMapId, setActiveContentKnowledgeMapId] = useState("");
-  const [activeBrandCommandCenterId, setActiveBrandCommandCenterId] = useState("");
   const [activeContentReviewTaskId, setActiveContentReviewTaskId] = useState("");
   const [preferredKnowledgeSource, setPreferredKnowledgeSource] =
     useState<PreferredKnowledgeSource>(null);
@@ -541,9 +597,7 @@ export function useContentStudioApp() {
   const [assetReviews, setAssetReviews] = useState<AssetReviewRecord[]>([]);
   const [mixPackages, setMixPackages] = useState<MixPackageRecord[]>([]);
   const [platformDrafts, setPlatformDrafts] = useState<PlatformDraftRecord[]>([]);
-  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunRecord[]>([]);
-  const [activeWorkflowDefinitionId, setActiveWorkflowDefinitionId] = useState("");
   const [activeWorkflowRunId, setActiveWorkflowRunId] = useState("");
   const [referenceReverseResult, setReferenceReverseResult] =
     useState<ReferenceReverseResult | null>(null);
@@ -662,18 +716,11 @@ export function useContentStudioApp() {
     () => sceneCards.filter((card) => selectedSceneIds.includes(card.id)),
     [sceneCards, selectedSceneIds],
   );
-  const activeWorkflowDefinition = useMemo(
-    () =>
-      workflowDefinitions.find((definition) => definition.id === activeWorkflowDefinitionId) ??
-      workflowDefinitions[0],
-    [activeWorkflowDefinitionId, workflowDefinitions],
-  );
   const activeWorkflowRun = useMemo(
     () =>
       workflowRuns.find((run) => run.id === activeWorkflowRunId) ??
-      workflowRuns.find((run) => run.workflowDefinitionId === activeWorkflowDefinition?.id) ??
       workflowRuns[0],
-    [activeWorkflowDefinition?.id, activeWorkflowRunId, workflowRuns],
+    [activeWorkflowRunId, workflowRuns],
   );
   const activePromptDraft = useMemo(
     () =>
@@ -706,12 +753,7 @@ export function useContentStudioApp() {
       contentKnowledgeMaps[0],
     [activeContentKnowledgeMapId, contentKnowledgeMaps],
   );
-  const activeBrandCommandCenter = useMemo(
-    () =>
-      brandCommandCenters.find((record) => record.id === activeBrandCommandCenterId) ??
-      brandCommandCenters[0],
-    [activeBrandCommandCenterId, brandCommandCenters],
-  );
+  const activeContentBatch = useMemo(() => contentBatches[0], [contentBatches]);
   const activeContentReviewTask = useMemo(
     () =>
       contentReviewTasks.find((task) => task.id === activeContentReviewTaskId) ??
@@ -763,7 +805,7 @@ export function useContentStudioApp() {
         .filter(
           (source) =>
             source.status === "converted" &&
-            ["brand-kb", "ip-kb", "product-brief", "user-feedback", "sop-input"].includes(source.purpose),
+            ["brand-kb", "ip-kb", "product-brief", "user-feedback", "task-input", "sop-input"].includes(source.purpose),
         )
         .slice(0, 6)
         .map(citationFromInputSource),
@@ -775,7 +817,7 @@ export function useContentStudioApp() {
         .filter(
           (source) =>
             source.status === "converted" &&
-            ["brand-kb", "product-brief", "user-feedback", "sop-input"].includes(source.purpose),
+            ["brand-kb", "product-brief", "user-feedback", "task-input", "sop-input"].includes(source.purpose),
         )
         .slice(0, 8)
         .map(citationFromInputSource),
@@ -787,7 +829,7 @@ export function useContentStudioApp() {
         .filter(
           (source) =>
             source.status === "converted" &&
-            ["ip-kb", "sop-input"].includes(source.purpose),
+            ["ip-kb", "task-input", "sop-input"].includes(source.purpose),
         )
         .slice(0, 8)
         .map(citationFromInputSource),
@@ -833,6 +875,33 @@ export function useContentStudioApp() {
     activeScenes[0]?.videoMaterialSuggestion ||
     activePromptPack?.videoPromptFragments.join("\n") ||
     "根据知识库和场景卡生成短视频镜头提示词。";
+  const textModelOptions = useMemo(
+    () =>
+      uniqueModelNames([
+        params.textModel,
+        ...(modelConfig?.textModels ?? []),
+        ...(modelCatalog?.textModels ?? []),
+      ]),
+    [modelCatalog?.textModels, modelConfig?.textModels, params.textModel],
+  );
+  const imageModelOptions = useMemo(
+    () =>
+      uniqueModelNames([
+        params.imageModel,
+        ...(modelConfig?.imageModels ?? []),
+        ...(modelCatalog?.imageModels ?? []),
+      ]),
+    [modelCatalog?.imageModels, modelConfig?.imageModels, params.imageModel],
+  );
+  const videoModelOptions = useMemo(
+    () =>
+      uniqueModelNames([
+        params.videoModel,
+        ...(modelConfig?.videoModels ?? []),
+        ...(modelCatalog?.videoModels ?? []),
+      ]),
+    [modelCatalog?.videoModels, modelConfig?.videoModels, params.videoModel],
+  );
 
   async function refresh(nextWorkspace?: string): Promise<void> {
     const [nextSettings, nextModelConfig, nextModelCatalog] = await Promise.all([
@@ -866,7 +935,7 @@ export function useContentStudioApp() {
     setContentKnowledgeReleases([]);
     setContentSyncConflicts([]);
     setContentWorkspaceSyncResult(null);
-    setBrandCommandCenters([]);
+    setContentBatches([]);
     setContentKnowledgePackExport(null);
     setContentProductionHandoff(null);
     setContentMaterialCoverage(null);
@@ -874,9 +943,15 @@ export function useContentStudioApp() {
     setSearchResults(nextSearchResults);
     setParams((current) => ({
       ...current,
-      textModel: nextModelConfig.textModel,
-      imageModel: nextModelConfig.imageModels[0] ?? current.imageModel,
-      videoModel: nextModelConfig.videoModel,
+      textModel: modelFromOptions(current.textModel, [
+        nextModelConfig.textModel,
+        ...nextModelConfig.textModels,
+      ]),
+      imageModel: imageModelFromConfig(current.imageModel, nextModelConfig.imageModels),
+      videoModel: modelFromOptions(current.videoModel, [
+        nextModelConfig.videoModel,
+        ...nextModelConfig.videoModels,
+      ]),
     }));
 
     if (!workspace) {
@@ -896,7 +971,7 @@ export function useContentStudioApp() {
       setContentKnowledgeReleases([]);
       setContentSyncConflicts([]);
       setContentWorkspaceSyncResult(null);
-      setBrandCommandCenters([]);
+      setContentBatches([]);
       setContentKnowledgePackExport(null);
       setContentProductionHandoff(null);
       setContentMaterialCoverage(null);
@@ -910,12 +985,9 @@ export function useContentStudioApp() {
       setActiveBrandKnowledgeBaseId("");
       setActiveIpKnowledgeBaseId("");
       setActiveContentKnowledgeMapId("");
-      setActiveBrandCommandCenterId("");
       setActiveContentReviewTaskId("");
       setPreferredKnowledgeSource(null);
-      setWorkflowDefinitions([]);
       setWorkflowRuns([]);
-      setActiveWorkflowDefinitionId("");
       setActiveWorkflowRunId("");
       return;
     }
@@ -936,14 +1008,12 @@ export function useContentStudioApp() {
       nextContentDraftChanges,
       nextContentKnowledgeReleases,
       nextContentSyncConflicts,
-      nextBrandCommandCenters,
+      nextContentBatches,
       nextContentReviewTasks,
       nextOverlayCards,
       nextAssetReviews,
       nextMixPackages,
       nextPlatformDrafts,
-      nextWorkflowDefinitions,
-      nextWorkflowRuns,
     ] =
       await Promise.all([
         window.contentStudio.getSkillSelection(workspace),
@@ -961,14 +1031,12 @@ export function useContentStudioApp() {
         window.contentStudio.listContentDraftChanges(workspace),
         window.contentStudio.listContentKnowledgeReleases(workspace),
         window.contentStudio.listContentSyncConflicts(workspace),
-        window.contentStudio.listBrandCommandCenters(workspace),
+        window.contentStudio.listContentBatches(workspace),
         window.contentStudio.listContentReviewTasks(workspace),
         window.contentStudio.listOverlayCards(workspace),
         window.contentStudio.listAssetReviews(workspace),
         window.contentStudio.listMixPackages(workspace),
         window.contentStudio.listPlatformDrafts(workspace),
-        window.contentStudio.listWorkflowDefinitions(workspace),
-        window.contentStudio.listWorkflowRuns(workspace),
       ]);
     setSkillSelection(nextSelection);
     setPromptPacks(nextPromptPacks);
@@ -985,7 +1053,7 @@ export function useContentStudioApp() {
     setContentDraftChanges(nextContentDraftChanges);
     setContentKnowledgeReleases(nextContentKnowledgeReleases);
     setContentSyncConflicts(nextContentSyncConflicts);
-    setBrandCommandCenters(nextBrandCommandCenters);
+    setContentBatches(nextContentBatches);
     setContentReviewTasks(nextContentReviewTasks);
     setOverlayCards(nextOverlayCards);
     setAssetReviews(nextAssetReviews);
@@ -996,12 +1064,7 @@ export function useContentStudioApp() {
     setActiveBrandKnowledgeBaseId((current) => current || nextBrandKnowledgeBases[0]?.id || "");
     setActiveIpKnowledgeBaseId((current) => current || nextIpKnowledgeBases[0]?.id || "");
     setActiveContentKnowledgeMapId((current) => current || nextContentKnowledgeMaps[0]?.id || "");
-    setActiveBrandCommandCenterId((current) => current || nextBrandCommandCenters[0]?.id || "");
     setActiveContentReviewTaskId((current) => current || nextContentReviewTasks[0]?.id || "");
-    setWorkflowDefinitions(nextWorkflowDefinitions);
-    setWorkflowRuns(nextWorkflowRuns);
-    setActiveWorkflowDefinitionId((current) => current || nextWorkflowDefinitions[0]?.id || "");
-    setActiveWorkflowRunId((current) => current || nextWorkflowRuns[0]?.id || "");
     setActivePromptPackId((current) => current || nextPromptPacks[0]?.id || "");
     setSelectedSceneIds((current) => {
       const availableSceneIds = new Set(nextSceneCards.map((scene) => scene.id));
@@ -1042,30 +1105,6 @@ export function useContentStudioApp() {
           assetRefs: outputRefs.length ? outputRefs : event.log.artifactRefs ?? [],
           billing: event.log.kind === "video" ? videoCostEstimateFromOutput(output) : undefined,
         });
-      }
-      if (
-        event.log.kind === "image" &&
-        event.log.status === "succeeded" &&
-        event.log.workflowRunId &&
-        outputRefs.length > 0 &&
-        !recordedImageTaskLogIdsRef.current.has(event.log.id)
-      ) {
-        const run = workflowRunsRef.current.find((item) => item.id === event.log.workflowRunId);
-        if (run && isImageSopWorkflow(run)) {
-          recordedImageTaskLogIdsRef.current.add(event.log.id);
-          void recordWorkflowManualEvent({
-            workflowRunId: run.id,
-            event: "image-candidates-generated",
-            generationLogId: event.log.id,
-            assetRefs: outputRefs,
-            summary: `已从图片工作台提交后台生成并产出 ${outputRefs.length} 个候选图。`,
-          })
-            .catch((error) => {
-              recordedImageTaskLogIdsRef.current.delete(event.log.id);
-              setError(error instanceof Error ? error.message : String(error));
-            })
-            .then(() => refresh(event.task.workspacePath));
-        }
       }
     });
     return () => unsubscribe();
@@ -1130,10 +1169,12 @@ export function useContentStudioApp() {
       imageProtocol: modelConfig.imageProtocol,
       imageOuterModel: modelConfig.imageOuterModel,
       textModel: modelConfig.textModel,
+      textModels: modelConfig.textModels.join(", "),
       imageModels: modelConfig.imageModels.join(", "),
       videoApiEndpoint: modelConfig.videoApiEndpoint,
       videoApiKey: "",
       videoModel: modelConfig.videoModel,
+      videoModels: modelConfig.videoModels.join(", "),
     });
   }, [
     modelConfig?.textApiEndpoint,
@@ -1142,9 +1183,11 @@ export function useContentStudioApp() {
     modelConfig?.imageProtocol,
     modelConfig?.imageOuterModel,
     modelConfig?.textModel,
+    modelConfig?.textModels,
     modelConfig?.imageModels,
     modelConfig?.videoApiEndpoint,
     modelConfig?.videoModel,
+    modelConfig?.videoModels,
   ]);
 
   useEffect(() => {
@@ -1290,10 +1333,12 @@ export function useContentStudioApp() {
       imageProtocol: modelConfig?.imageProtocol ?? "openai-responses",
       imageOuterModel: modelConfig?.imageOuterModel ?? "gpt-5.5",
       textModel: modelConfig?.textModel ?? params.textModel,
+      textModels: modelConfig?.textModels.join(", ") ?? params.textModel,
       imageModels: modelConfig?.imageModels.join(", ") ?? params.imageModel,
       videoApiEndpoint: modelConfig?.videoApiEndpoint ?? "",
       videoApiKey: "",
       videoModel: modelConfig?.videoModel ?? params.videoModel,
+      videoModels: modelConfig?.videoModels.join(", ") ?? params.videoModel,
     });
     setShowModelDialog(true);
   }
@@ -1315,6 +1360,10 @@ export function useContentStudioApp() {
       clearTextApiKey:
         !modelDraft.apiKey && modelConfig?.textApiKeyStatus === "requires-reauthorization",
       textModel: modelDraft.textModel,
+      textModels: modelDraft.textModels
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
       textProtocol: modelDraft.textProtocol,
       imageProvider:
         modelDraft.imageApiKey || modelConfig?.hasImageApiKey
@@ -1333,22 +1382,26 @@ export function useContentStudioApp() {
       videoProvider:
         modelDraft.videoApiEndpoint.trim() &&
         (modelDraft.videoApiKey.trim() || modelConfig?.hasVideoApiKey)
-          ? "generic-http"
+          ? "video-understanding-openai-compatible"
           : "disabled",
       videoApiEndpoint: modelDraft.videoApiEndpoint,
       videoApiKey: modelDraft.videoApiKey || undefined,
       clearVideoApiKey:
         !modelDraft.videoApiKey && modelConfig?.videoApiKeyStatus === "requires-reauthorization",
       videoModel: modelDraft.videoModel,
+      videoModels: modelDraft.videoModels
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
     });
     const catalog = await window.contentStudio.getModelCatalog();
     setModelConfig(next);
     setModelCatalog(catalog);
     setParams((current) => ({
       ...current,
-      textModel: next.textModel,
-      imageModel: next.imageModels[0] ?? current.imageModel,
-      videoModel: next.videoModel,
+      textModel: next.textModel || next.textModels[0] || current.textModel,
+      imageModel: next.imageModels[0] || current.imageModel,
+      videoModel: next.videoModel || next.videoModels[0] || current.videoModel,
     }));
     setShowModelDialog(false);
   }
@@ -1359,10 +1412,12 @@ export function useContentStudioApp() {
     setModelDraft((current) => ({
       ...current,
       textModel: current.textModel || catalog.textModels[0] || params.textModel,
-      imageModels: catalog.imageModels.join(", "),
+      textModels: current.textModels || catalog.textModels.join(", "),
+      imageModels: current.imageModels || catalog.imageModels.join(", "),
       imageOuterModel: current.imageOuterModel || "gpt-5.5",
       videoModel:
         current.videoModel || catalog.videoModels[0] || params.videoModel,
+      videoModels: current.videoModels || catalog.videoModels.join(", "),
     }));
   }
 
@@ -1584,13 +1639,6 @@ export function useContentStudioApp() {
       },
     );
     if (imported) {
-      await recordWorkflowManualEvent({
-        workflowRunId: workflowRun?.id,
-        event: "finished-video-imported",
-        inputSourceId: imported.id,
-        promptDraftId: draft?.id,
-        summary: `已导入成品视频：${imported.title}`,
-      });
       await refresh(workspace);
     }
   }
@@ -1644,12 +1692,12 @@ export function useContentStudioApp() {
       const temporarySource = await window.contentStudio.registerInputSource({
         workspacePath: workspace,
         kind: "manual-note",
-        purpose: "sop-input",
+        purpose: "task-input",
         title: input.temporarySourceTitle?.trim() || "视频 Prompt 临时资料",
         sensitivity: "internal",
         text: temporarySourceText,
         summary: temporarySourceText.slice(0, 160),
-        tags: ["video-prompt", "临时资料", "workflow-run"],
+        tags: ["video-prompt", "临时资料", "运行追溯"],
       });
       inputSourceIds = Array.from(new Set([...inputSourceIds, temporarySource.id]));
       setInputSources((current) => [temporarySource, ...current.filter((item) => item.id !== temporarySource.id)]);
@@ -1787,96 +1835,420 @@ export function useContentStudioApp() {
     await refresh(workspace);
   }
 
-  async function buildBrandCommandCenter(): Promise<void> {
+  async function buildContentBatch(): Promise<void> {
     const workspace = requireWorkspace();
     const sourceMap = activeContentKnowledgeMap ?? contentKnowledgeMaps[0];
-    const record = await window.contentStudio.buildBrandCommandCenter({
+    const record = await window.contentStudio.buildContentBatch({
       workspacePath: workspace,
       contentKnowledgeMapId: sourceMap?.id,
-      title: sourceMap ? `${sourceMap.title.replace(/内容知识地图$/g, '').trim()} 品牌战情室` : '品牌战情室',
+      title: sourceMap?.title
+        ? sourceMap.title.replace(/内容知识地图$/g, '制造批次')
+        : '电商短视频制造批次',
     });
-    setBrandCommandCenters((current) => [record, ...current.filter((item) => item.id !== record.id)]);
-    setActiveBrandCommandCenterId(record.id);
+    setContentBatches((current) => [record, ...current.filter((item) => item.id !== record.id)]);
     await refresh(workspace);
   }
 
-  async function recordBrandCommandAction(queueItemId: string): Promise<void> {
+  async function advanceContentBatchStage(): Promise<void> {
     const workspace = requireWorkspace();
-    const commandCenter = activeBrandCommandCenter ?? brandCommandCenters[0];
-    if (!commandCenter) throw new Error('请先生成品牌战情室。');
-    const record = await window.contentStudio.recordBrandCommandAction({
+    const batch = activeContentBatch ?? contentBatches[0];
+    if (!batch) throw new Error('请先生成内容制造批次。');
+    const record = await window.contentStudio.advanceContentBatchStage({
       workspacePath: workspace,
-      commandCenterId: commandCenter.id,
-      queueItemId,
-      actorLabel: authState?.user?.displayName || authState?.user?.username || '本机工作台',
-      actorRole: contentTeamRoleFromAuthRoles(authState?.user?.roles),
+      batchId: batch.id,
     });
-    setBrandCommandCenters((current) => [record, ...current.filter((item) => item.id !== record.id)]);
-    setActiveBrandCommandCenterId(record.id);
+    setContentBatches((current) => [record, ...current.filter((item) => item.id !== record.id)]);
     await refresh(workspace);
   }
 
-  async function recordBrandCommandReview(summary: string): Promise<void> {
+  function contentBatchManufacturingHandoffContent(batch: ContentBatchRecord): string {
+    const map = activeContentKnowledgeMap ?? contentKnowledgeMaps.find((item) => item.id === batch.sourceKnowledgeMapId) ?? contentKnowledgeMaps[0];
+    const sellingRows = map ? [...map.sellingPoints, ...map.painPoints, ...map.scenarios].slice(0, 8) : [];
+    const relatedReviewTasks = contentReviewTasks.filter((task) =>
+      task.status === 'open' ||
+      task.status === 'needs-evidence' ||
+      task.status === 'needs-material'
+    ).slice(0, 6);
+    const relatedWorkflowRuns = workflowRuns.filter((run) =>
+      run.status === 'running' ||
+      run.status === 'succeeded' ||
+      /prompt|scene|sop|handoff|matrix|提示词|场景|交接|矩阵/i.test(`${run.workflowKey} ${run.title} ${run.summary}`),
+    ).slice(0, 6);
+    const relatedPromptDrafts = promptDrafts.filter((draft) =>
+      draft.coverageRowIds?.some((rowId) => sellingRows.some((row) => row.id === rowId)) ||
+      draft.sceneCardIds?.length ||
+      draft.purpose === 'video' ||
+      draft.purpose === 'image' ||
+      draft.purpose === 'green-screen'
+    ).slice(0, 6);
+    const selectedScenes = sceneCards.filter((scene) =>
+      selectedSceneIds.includes(scene.id) ||
+      sellingRows.some((row) => row.sourceRefs.includes(`scene-card:${scene.id}`) || row.materialRefs?.includes(`scene-card:${scene.id}`)),
+    ).slice(0, 5);
+    const sourceLines = inputSources.slice(0, 10).map((source, index) => [
+      `${index + 1}. ${source.title}`,
+      `   - 用途：${source.purpose}`,
+      `   - 状态：${source.status}`,
+      source.summary ? `   - 摘要：${source.summary}` : '',
+      source.blockedReason ? `   - 缺口：${source.blockedReason}` : '',
+    ].filter(Boolean).join('\n'));
+    const sellingLines = sellingRows.map((row, index) => [
+      `${index + 1}. ${row.title}`,
+      `   - 摘要：${row.summary}`,
+      `   - 状态：${row.status}；素材：${row.materialStatus ?? 'missing'}；置信度：${row.confidence}`,
+      row.tags.length ? `   - 标签：${row.tags.join(' / ')}` : '',
+    ].filter(Boolean).join('\n'));
+    const matrixLines = [
+      ...relatedPromptDrafts.map((draft) => [
+        draft.title,
+        `   - 类型：Prompt 草稿；用途：${draft.purpose}；状态：${draft.status}`,
+        draft.coverageRowIds?.length ? `   - 覆盖行：${draft.coverageRowIds.length} 个` : '',
+      ].filter(Boolean).join('\n')),
+      ...relatedWorkflowRuns.map((run) => [
+        run.title,
+        `   - 类型：历史运行记录；状态：${run.status}`,
+        run.summary ? `   - 摘要：${run.summary}` : '',
+      ].filter(Boolean).join('\n')),
+      ...relatedReviewTasks.map((task) => [
+        task.title,
+        `   - 类型：审核 / 补资源任务；状态：${task.status}`,
+        task.summary ? `   - 摘要：${task.summary}` : '',
+      ].filter(Boolean).join('\n')),
+    ].slice(0, 10).map((line, index) => `${index + 1}. ${line}`);
+    const runReviewLines = [
+      ...logs.filter((log) => log.status === 'succeeded' || log.status === 'failed' || log.status === 'blocked').slice(0, 4).map((log) => [
+        log.title,
+        `   - 类型：生成记录；状态：${log.status}`,
+        log.summary ? `   - 摘要：${log.summary}` : '',
+      ].filter(Boolean).join('\n')),
+      ...assetReviews.filter((review) => review.status === 'approved' || review.status === 'rejected').slice(0, 4).map((review) => [
+        review.title,
+        `   - 类型：素材审核；状态：${review.status}`,
+        review.note ? `   - 结论：${review.note}` : '',
+      ].filter(Boolean).join('\n')),
+      ...contentBatchPerformanceSources().slice(0, 4).map((source) => [
+        source.title,
+        `   - 类型：投放 / 用户反馈；状态：${source.status}`,
+        source.summary ? `   - 摘要：${source.summary}` : '',
+      ].filter(Boolean).join('\n')),
+    ].slice(0, 8).map((line, index) => `${index + 1}. ${line}`);
+    const sceneLines = selectedScenes.map((scene, index) => [
+      `${index + 1}. ${scene.title}`,
+      `   - 人群：${scene.audience}`,
+      `   - 痛点：${scene.painPoint}`,
+      `   - 场景：${scene.usageScene}`,
+      `   - 画面：${scene.visualComposition}`,
+      `   - 卖点：${scene.sellingPoint}`,
+      `   - 口播：${scene.voiceoverDirection}`,
+      `   - 视频素材建议：${scene.videoMaterialSuggestion}`,
+    ].filter(Boolean).join('\n'));
+    const constraints = [
+      ...(map?.constraints ?? []),
+      '不在软件内伪造第三方视频生成成功。',
+      '成品视频必须由用户手动导入，并关联本 Prompt 草稿。',
+      '评论、搜索词和投放表现只能解释意图，不能升级为产品事实。',
+    ];
+    return [
+      `# ${batch.title} / 视频制造单`,
+      '',
+      '## 批次目标',
+      batch.objective,
+      '',
+      '## 使用边界',
+      '- 本草稿是制造阶段交付物，可复制到第三方视频平台或继续拆成图片 / 绿幕 / 混剪任务。',
+      '- 当前客户端只生成可审核的视频 Prompt 交接，不创建外部视频任务，不轮询第三方状态。',
+      '- 第三方生成后的成品视频需要在“成品视频导入”中手动登记，之后进入审核和素材库。',
+      '',
+      '## 推荐视频结构',
+      `- 批次制造按 60-75 秒规划，拆成 4-5 个约 15 秒片段；如只做单条短素材，按当前 ${videoDurationSeconds || 18} 秒设置裁剪。`,
+      '- 0-3 秒：先给真实使用场景或用户痛点，不夸张承诺。',
+      '- 中段：按卖点、证据、场景和素材可得性组织镜头。',
+      '- 收尾：只使用已确认的活动、价格、库存和适用边界。',
+      '',
+      sourceLines.length ? '## 批次输入源' : '',
+      ...sourceLines,
+      '',
+      sellingLines.length ? '## 卖点 / 痛点 / 场景事实' : '',
+      ...sellingLines,
+      '',
+      matrixLines.length ? '## 矩阵交接依据' : '',
+      ...matrixLines,
+      '',
+      runReviewLines.length ? '## 运行和复盘依据' : '',
+      ...runReviewLines,
+      '',
+      sceneLines.length ? '## 可用场景卡' : '',
+      ...sceneLines,
+      '',
+      '## 规则和禁用边界',
+      ...Array.from(new Set(constraints)).slice(0, 16).map((item) => `- ${item}`),
+      '',
+      '## 可复制视频 Prompt',
+      [
+        `围绕「${batch.objective}」生成一条电商短视频。`,
+        '画面必须体现真实产品、真实使用场景和可追溯卖点。',
+        selectedScenes[0]?.visualComposition ? `首镜画面：${selectedScenes[0].visualComposition}` : '首镜画面：从用户正在遇到的问题切入，产品主体清晰可见。',
+        selectedScenes[0]?.voiceoverDirection ? `口播方向：${selectedScenes[0].voiceoverDirection}` : '口播方向：自然、克制、像真实导购说明，不使用夸张功效承诺。',
+        sellingRows[0]?.summary ? `核心卖点：${sellingRows[0].summary}` : '核心卖点：只使用上方事实源中已登记的信息。',
+        '输出分镜、口播、字幕、素材需求和需要人工确认的缺口；不要声称已经生成成片。',
+      ].join('\n'),
+    ].filter((line) => line.trim().length > 0).join('\n');
+  }
+
+  async function createContentBatchManufacturingPrompt(): Promise<void> {
     const workspace = requireWorkspace();
-    const commandCenter = activeBrandCommandCenter ?? brandCommandCenters[0];
-    if (!commandCenter) throw new Error('请先生成品牌战情室。');
-    const record = await window.contentStudio.recordBrandCommandReview({
+    const batch = activeContentBatch ?? contentBatches[0];
+    if (!batch) throw new Error('请先生成内容制造批次。');
+    const map = activeContentKnowledgeMap ?? contentKnowledgeMaps.find((item) => item.id === batch.sourceKnowledgeMapId) ?? contentKnowledgeMaps[0];
+    const sourceIds = inputSources.map((source) => source.id);
+    const rowIds = map ? [...map.sellingPoints, ...map.painPoints, ...map.scenarios].slice(0, 12).map((row) => row.id) : [];
+    const sceneIds = Array.from(new Set([
+      ...selectedSceneIds,
+      ...sceneCards
+        .filter((scene) => rowIds.some((rowId) => scene.coverageRowIds?.includes(rowId)))
+        .map((scene) => scene.id),
+    ])).slice(0, 8);
+    const content = contentBatchManufacturingHandoffContent(batch);
+    const source = await window.contentStudio.registerInputSource({
       workspacePath: workspace,
-      commandCenterId: commandCenter.id,
-      summary,
-      actorLabel: authState?.user?.displayName || authState?.user?.username || '本机工作台',
-      actorRole: contentTeamRoleFromAuthRoles(authState?.user?.roles),
+      kind: 'manual-note',
+      purpose: 'task-input',
+      sensitivity: 'internal',
+      title: `${batch.title} 制造阶段交接`,
+      text: content,
+      summary: `由内容制造批次生成的视频制造单，来源于 ${sourceIds.length} 个输入源、${rowIds.length} 个知识地图行和 ${promptDrafts.length + workflowRuns.length + contentReviewTasks.length} 个矩阵交接依据。`,
+      tags: ['content-batch', 'video-manufacturing-job', batch.id],
+      relatedSceneCardIds: sceneIds,
     });
-    setBrandCommandCenters((current) => [record, ...current.filter((item) => item.id !== record.id)]);
-    setActiveBrandCommandCenterId(record.id);
+    const draft = await window.contentStudio.createPromptDraftFromContent({
+      workspacePath: workspace,
+      contentKnowledgeMapId: map?.id,
+      contentKnowledgeMapTitle: map?.title,
+      coverageRowIds: rowIds,
+      sourceRefs: [
+        `content-batch:${batch.id}`,
+        ...(map ? [`content-knowledge-map:${map.id}`] : []),
+      ],
+      title: `${batch.title} 视频制造单`,
+      purpose: 'video',
+      userIntent: `执行批次「${batch.title}」制造阶段，生成可复制到第三方视频平台的视频 Prompt 交接草稿。`,
+      inputSourceIds: [source.id, ...sourceIds],
+      sceneCardIds: sceneIds,
+      content,
+      note: '由内容制造批次制造阶段主动作生成。',
+      model: 'local-content-batch-manufacturing-handoff',
+      status: 'confirmed',
+    });
+    setInputSources((current) => [source, ...current.filter((item) => item.id !== source.id)]);
+    setPromptDrafts((current) => [draft, ...current.filter((item) => item.id !== draft.id)]);
+    setSelectedSceneIds(sceneIds);
+    setActivePromptDraftId(draft.id);
+    setVideoCustomRequirement(promptDraftActiveContent(draft));
+    setVideoShotCount(5);
+    setVideoDurationSeconds((current) => Math.max(current, 60));
+    setActiveModule('video-prompt');
     await refresh(workspace);
   }
 
-  async function confirmBrandCommandStage(stage: BrandCommandConfirmStage): Promise<void> {
-    const workspace = requireWorkspace();
-    const commandCenter = activeBrandCommandCenter ?? brandCommandCenters[0];
-    if (!commandCenter) throw new Error('请先生成品牌战情室。');
-    const record = await window.contentStudio.confirmBrandCommandStage({
-      workspacePath: workspace,
-      commandCenterId: commandCenter.id,
-      stage,
-      actorLabel: authState?.user?.displayName || authState?.user?.username || '本机工作台',
-      actorRole: contentTeamRoleFromAuthRoles(authState?.user?.roles),
+  function contentBatchManufacturingDrafts(batch: ContentBatchRecord, drafts: PromptDraft[] = promptDrafts): PromptDraft[] {
+    return drafts.filter((draft) => {
+      if (draft.purpose !== 'video') return false;
+      if (draft.sourceRefs?.includes(`content-batch:${batch.id}`)) return true;
+      return draft.model === 'local-content-batch-manufacturing-handoff' && draft.title.includes(batch.title);
     });
-    setBrandCommandCenters((current) => [record, ...current.filter((item) => item.id !== record.id)]);
-    setActiveBrandCommandCenterId(record.id);
-    await refresh(workspace);
   }
 
-  async function exportBrandCommandActionRecords(): Promise<void> {
-    const workspace = requireWorkspace();
-    const commandCenter = activeBrandCommandCenter ?? brandCommandCenters[0];
-    if (!commandCenter) throw new Error('请先生成品牌战情室。');
-    const result = await window.contentStudio.exportBrandCommandActionRecords({
-      workspacePath: workspace,
-      commandCenterId: commandCenter.id,
-      actorLabel: authState?.user?.displayName || authState?.user?.username || '本机工作台',
-      actorRole: contentTeamRoleFromAuthRoles(authState?.user?.roles),
+  function preferredContentBatchManufacturingModule(batch: ContentBatchRecord): ModuleKey | undefined {
+    const plan = batch.intakeSummary.manufacturing;
+    if (!plan) return undefined;
+    const primary = plan.capabilities.find((capability) => capability.id === plan.primaryCapabilityId);
+    const fallback = plan.capabilities.find((capability) => capability.status === 'ready') ??
+      plan.capabilities.find((capability) => capability.status === 'done');
+    const target = primary?.status === 'ready' || primary?.status === 'done' ? primary.targetModule : fallback?.targetModule;
+    return target as ModuleKey | undefined;
+  }
+
+  function pendingImportedContentBatchAssets(
+    sources: InputSourceRecord[] = inputSources,
+    reviews: AssetReviewRecord[] = assetReviews,
+  ): InputSourceRecord[] {
+    const reviewedKeys = new Set(reviews.map((review) => review.assetKey));
+    return sources.filter((source) => {
+      if (!isFinishedVideoSource(source)) return false;
+      const path = source.sourcePath || source.artifactRefs.find((ref) => /\.(mp4|mov|webm|m4v)(?:[?#].*)?$/i.test(ref));
+      if (!path) return false;
+      const assetKey = `imported:${source.id}:0:${path}`;
+      return !reviewedKeys.has(assetKey);
     });
-    if (result.status !== 'exported' || !result.commandCenter) {
-      throw new Error(result.issues.join('；') || '行动记录导出失败。');
+  }
+
+  function hasActionableContentBatchAssetReviews(reviews: AssetReviewRecord[] = assetReviews): boolean {
+    return reviews.some((review) =>
+      (review.status === 'pending' || review.status === 'rejected') &&
+      (review.tags.includes('content-batch') || review.tags.includes('批次审核')),
+    );
+  }
+
+  function contentBatchPerformanceSources(sources: InputSourceRecord[] = inputSources): InputSourceRecord[] {
+    return sources.filter((source) =>
+      source.purpose === 'user-feedback' ||
+      source.tags.some((tag) => /投放|roi|ad|metric|表现|转化|点击|ctr|cpa/i.test(tag)) ||
+      /投放|roi|广告|转化|点击|表现|ctr|cpa/i.test(`${source.title} ${source.summary ?? ''}`),
+    );
+  }
+
+  function successfulAssetPromptDrafts(drafts: PromptDraft[] = promptDrafts): PromptDraft[] {
+    return drafts.filter((draft) => draft.model === 'local-successful-asset-distiller');
+  }
+
+  function approvedAssetsMissingContentCoverage(
+    map: ContentKnowledgeMapRecord | undefined = activeContentKnowledgeMap ?? contentKnowledgeMaps[0],
+    reviews: AssetReviewRecord[] = assetReviews,
+  ): AssetReviewRecord[] {
+    if (!map) return [];
+    const materialRefs = new Set(
+      [...map.sellingPoints, ...map.painPoints, ...map.scenarios].flatMap((row) => row.materialRefs ?? []),
+    );
+    return reviews.filter((review) => review.status === 'approved' && !materialRefs.has(review.id));
+  }
+
+  function reworkRequestFromAssetReview(review: AssetReviewRecord): ReworkAssetRequest | undefined {
+    if (review.kind === 'overlay') return undefined;
+    return {
+      kind: review.kind,
+      assetKey: review.assetKey,
+      path: review.path,
+      title: review.title,
+      sourceType: review.sourceType,
+      sourceId: review.sourceId,
+      workflowRunId: review.workflowRunId,
+      sceneCardIds: inputSources.find((source) => source.id === review.sourceId)?.relatedSceneCardIds,
+    };
+  }
+
+  async function queueImportedContentBatchAssetReviews(): Promise<void> {
+    const workspace = requireWorkspace();
+    const [latestSources, latestReviews] = await Promise.all([
+      window.contentStudio.listInputSources(workspace),
+      window.contentStudio.listAssetReviews(workspace),
+    ]);
+    setInputSources(latestSources);
+    setAssetReviews(latestReviews);
+    const pendingSources = pendingImportedContentBatchAssets(latestSources, latestReviews);
+    if (hasActionableContentBatchAssetReviews(latestReviews)) {
+      setActiveModule('assets');
+      return;
     }
-    setBrandCommandCenters((current) => [result.commandCenter as BrandCommandCenterRecord, ...current.filter((item) => item.id !== result.commandCenter?.id)]);
-    setActiveBrandCommandCenterId(result.commandCenter.id);
+    if (pendingSources.length === 0) {
+      const videoDraft = promptDrafts.find((draft) => draft.purpose === 'video' && draft.title.includes('视频制造单')) ??
+        promptDrafts.find((draft) => draft.purpose === 'video');
+      if (videoDraft) setActivePromptDraftId(videoDraft.id);
+      setActiveModule('video-import');
+      return;
+    }
+    const queuedReviews = await Promise.all(pendingSources.slice(0, 8).map((source) => {
+      const path = source.sourcePath || source.artifactRefs.find((ref) => /\.(mp4|mov|webm|m4v)(?:[?#].*)?$/i.test(ref)) || '';
+      const assetKey = `imported:${source.id}:0:${path}`;
+      return window.contentStudio.reviewAsset({
+        workspacePath: workspace,
+        workflowRunId: source.workflowRunId,
+        assetKey,
+        kind: 'video',
+        sourceType: 'input-source',
+        sourceId: source.id,
+        path,
+        title: source.title || fileNameFromPath(path),
+        status: 'pending',
+        note: '由批次审核阶段排队，等待人工判断通过并入库、驳回或回炉。',
+        tags: Array.from(new Set(['content-batch', '批次审核', '第三方成品视频', ...source.tags])),
+      });
+    }));
+    setAssetReviews((current) => [
+      ...queuedReviews,
+      ...current.filter((item) => !queuedReviews.some((review) => review.assetKey === item.assetKey)),
+    ]);
+    setActiveModule('assets');
     await refresh(workspace);
   }
 
-  async function refreshBrandCommandActions(): Promise<void> {
-    const workspace = requireWorkspace();
-    const commandCenter = activeBrandCommandCenter ?? brandCommandCenters[0];
-    if (!commandCenter) throw new Error('请先生成品牌战情室。');
-    const record = await window.contentStudio.refreshBrandCommandActions({
-      workspacePath: workspace,
-      commandCenterId: commandCenter.id,
-    });
-    setBrandCommandCenters((current) => [record, ...current.filter((item) => item.id !== record.id)]);
-    setActiveBrandCommandCenterId(record.id);
-    await refresh(workspace);
+  async function runContentBatchStagePrimaryAction(stageId: ContentBatchStageId): Promise<void> {
+    requireWorkspace();
+    if (stageId === 'selection') {
+      setActiveModule('knowledge-inputs');
+      return;
+    }
+    if (stageId === 'intent') {
+      setActiveModule('knowledge-inputs');
+      return;
+    }
+    if (stageId === 'modeling') {
+      await buildContentKnowledgeMap();
+      return;
+    }
+    if (stageId === 'selling') {
+      if (!activeContentKnowledgeMap && !contentKnowledgeMaps[0]) {
+        await buildContentKnowledgeMap();
+        return;
+      }
+      setActiveModule('knowledge-map');
+      return;
+    }
+    if (stageId === 'matrix') {
+      setActiveModule('assets-prompt-workbench');
+      return;
+    }
+    if (stageId === 'manufacturing') {
+      const batch = activeContentBatch ?? contentBatches[0];
+      if (!batch) throw new Error('请先生成内容制造批次。');
+      const existingDraft = contentBatchManufacturingDrafts(batch)[0];
+      if (!existingDraft) {
+        await createContentBatchManufacturingPrompt();
+        return;
+      }
+      setActivePromptDraftId(existingDraft.id);
+      setActiveModule(preferredContentBatchManufacturingModule(batch) ?? 'video-prompt');
+      return;
+    }
+    if (stageId === 'review') {
+      if (hasActionableContentBatchAssetReviews() || pendingImportedContentBatchAssets().length || promptDrafts.some((draft) => draft.purpose === 'video')) {
+        await queueImportedContentBatchAssetReviews();
+        return;
+      }
+      await generateContentReviewTasks();
+      setActiveModule('knowledge-review');
+      return;
+    }
+    if (stageId === 'optimization') {
+      if (contentBatchPerformanceSources().length === 0) {
+        setActiveModule('knowledge-inputs');
+        return;
+      }
+      setActiveModule('assets-history');
+      return;
+    }
+    if (stageId === 'feedback') {
+      const sourceMap = activeContentKnowledgeMap ?? contentKnowledgeMaps[0];
+      const missingCoverage = approvedAssetsMissingContentCoverage(sourceMap);
+      const approvedAsset = assetReviews.find((review) => review.status === 'approved');
+      const promptDistillableAsset = assetReviews.find((review) =>
+        review.status === 'approved' && review.kind !== 'overlay',
+      );
+      if (missingCoverage.length > 0 && sourceMap) {
+        await writeBackContentMaterialCoverage();
+        setActiveModule('knowledge-map');
+        return;
+      }
+      if (promptDistillableAsset && successfulAssetPromptDrafts().length === 0) {
+        const reworkRequest = reworkRequestFromAssetReview(promptDistillableAsset);
+        if (reworkRequest) {
+          await distillAssetPrompt(reworkRequest);
+          return;
+        }
+      }
+      setActiveModule(approvedAsset ? 'assets-prompt-workbench' : 'assets-history');
+      return;
+    }
+    setActiveModule('assets-history');
   }
 
   async function exportContentKnowledgePack(): Promise<void> {
@@ -2232,26 +2604,15 @@ export function useContentStudioApp() {
       setSceneCards((current) => [result.sceneCard!, ...current.filter((item) => item.id !== result.sceneCard!.id)]);
       setSelectedSceneIds((current) => current.includes(result.sceneCard!.id) ? current : [result.sceneCard!.id, ...current].slice(0, 6));
     }
-    if (result.workflowRun) {
-      setWorkflowRuns((current) => [result.workflowRun!, ...current.filter((item) => item.id !== result.workflowRun!.id)]);
-      setActiveWorkflowDefinitionId(result.workflowRun.workflowDefinitionId);
-      setActiveWorkflowRunId(result.workflowRun.id);
-    }
     const nextModule = result.promptDraft
       ? promptWorkbenchModuleForPurpose(result.promptDraft.purpose)
-      : result.workflowRun
-        ? 'assets-sop'
-        : result.sceneCard
-          ? 'knowledge-scenes'
-          : 'assets-prompt-workbench';
+      : result.sceneCard
+        ? 'knowledge-scenes'
+        : 'assets-prompt-workbench';
     await refresh(workspace);
     if (result.promptDraft) setActivePromptDraftId(result.promptDraft.id);
     if (result.sceneCard) {
       setSelectedSceneIds((current) => current.includes(result.sceneCard!.id) ? current : [result.sceneCard!.id, ...current].slice(0, 6));
-    }
-    if (result.workflowRun) {
-      setActiveWorkflowDefinitionId(result.workflowRun.workflowDefinitionId);
-      setActiveWorkflowRunId(result.workflowRun.id);
     }
     setActiveModule(nextModule);
   }
@@ -2346,15 +2707,6 @@ export function useContentStudioApp() {
     setInputSources((current) => [source, ...current.filter((item) => item.id !== source.id)]);
     setPromptDrafts((current) => [draft, ...current.filter((item) => item.id !== draft.id)]);
     setActivePromptDraftId(draft.id);
-    if (relatedRun && isIpLongformWorkflow(relatedRun)) {
-      await recordWorkflowManualEvent({
-        workflowRunId: relatedRun.id,
-        event: "ip-scenario-extended",
-        inputSourceId: source.id,
-        promptDraftId: draft.id,
-        summary: `已从 IP 知识库延伸「${normalizedScene}」场景 Prompt。`,
-      });
-    }
     setActiveModule(promptWorkbenchModuleForPurpose(draft.purpose));
     await refresh(workspace);
   }
@@ -2536,7 +2888,7 @@ export function useContentStudioApp() {
         citations: citationsForRequest,
         selectedSkillSlugs:
           skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
-        params,
+        params: paramsForImageGeneration(params, input.imageModel),
       },
     });
     context?.throwIfCancelled();
@@ -2642,12 +2994,6 @@ export function useContentStudioApp() {
       current.map((item) => (item.id === draft.id ? draft : item)),
     );
     setActivePromptDraftId(draft.id);
-    await recordWorkflowManualEvent({
-      workflowRunId: workflowRunForPromptDraft(draft.id)?.id,
-      event: "video-prompt-copied",
-      promptDraftId: draft.id,
-      summary: `已复制视频 Prompt 到 ${input.target?.trim() || "第三方平台"}。`,
-    });
     await refresh(workspace);
     return draft;
   }
@@ -2664,13 +3010,6 @@ export function useContentStudioApp() {
       cards: input.cards,
     });
     setOverlayCards((current) => [...cards, ...current]);
-    await recordWorkflowManualEvent({
-      workflowRunId: input.workflowRunId ?? workflowRunForPromptDraft(input.promptDraftId)?.id,
-      event: "overlay-cards-generated",
-      promptDraftId: input.promptDraftId,
-      overlayCardIds: cards.map((card) => card.id),
-      summary: `已生成 ${cards.length} 张绿幕文案图。`,
-    });
     setActiveModule("image-green-screen");
     await refresh(workspace);
   }
@@ -2692,16 +3031,6 @@ export function useContentStudioApp() {
       notes: input.notes,
     });
     setMixPackages((current) => [mixPackage, ...current]);
-    await recordWorkflowManualEvent({
-      workflowRunId: workflowRun?.id,
-      event: "mix-package-exported",
-      mixPackageId: mixPackage.id,
-      manifestPath: mixPackage.manifestPath,
-      manifestCsvPath: mixPackage.manifestCsvPath,
-      importGuidePath: mixPackage.importGuidePath,
-      packageDir: mixPackage.packageDir,
-      summary: `已导出混剪包：${mixPackage.title}`,
-    });
     setActiveModule("video-mix-export");
     await refresh(workspace);
   }
@@ -2715,14 +3044,6 @@ export function useContentStudioApp() {
       ...input,
     });
     setMixPackages((current) => current.map((item) => (item.id === mixPackage.id ? mixPackage : item)));
-    await recordWorkflowManualEvent({
-      workflowRunId: mixPackage.workflowRunId,
-      event: "mix-package-import-verified",
-      mixPackageId: mixPackage.id,
-      externalImportEvidencePath: mixPackage.externalImportEvidencePath,
-      packageDir: mixPackage.packageDir,
-      summary: `已登记 ${mixPackage.externalImportEvidence?.toolName ?? "第三方混剪工具"} 导入证据。`,
-    });
     setActiveModule("video-mix-export");
     await refresh(workspace);
   }
@@ -2739,46 +3060,7 @@ export function useContentStudioApp() {
       review,
       ...current.filter((item) => item.assetKey !== review.assetKey),
     ]);
-    if (review.status === "approved" && workflowRun?.id) {
-      await recordWorkflowManualEvent({
-        workflowRunId: workflowRun.id,
-        event: "asset-reviewed",
-        assetReviewId: review.id,
-        assetKey: review.assetKey,
-        summary: `已通过素材审核：${review.title}`,
-      });
-    } else if (review.status === "rejected" && workflowRun?.id) {
-      await recordWorkflowManualEvent({
-        workflowRunId: workflowRun.id,
-        event: "asset-review-rejected",
-        assetReviewId: review.id,
-        assetKey: review.assetKey,
-        summary: `已驳回素材并等待回炉：${review.title}`,
-      });
-    }
     await refresh(workspace);
-  }
-
-  async function approveWorkflowRunReview(runId: string): Promise<void> {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    await recordWorkflowManualEvent({
-      workflowRunId: run.id,
-      event: "workflow-review-approved",
-      summary: `已确认「${run.title}」人工审核通过。`,
-    });
-    await refresh(requireWorkspace());
-  }
-
-  async function archiveWorkflowRunAssets(runId: string): Promise<void> {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    await recordWorkflowManualEvent({
-      workflowRunId: run.id,
-      event: "workflow-asset-archived",
-      summary: `已归档「${run.title}」产物和来源引用。`,
-    });
-    await refresh(requireWorkspace());
   }
 
   function reviewForRework(input: ReworkAssetRequest): AssetReviewRecord | undefined {
@@ -2851,7 +3133,7 @@ export function useContentStudioApp() {
     if (!draftId) return undefined;
     const draft = promptDrafts.find((item) => item.id === draftId);
     if (!draft) return undefined;
-    const previousContent = promptDraftActiveContent(draft) || input.promptText?.trim();
+    const previousContent = stripInternalTraceLinesFromPrompt(promptDraftActiveContent(draft) || input.promptText?.trim() || "");
     if (!previousContent) return undefined;
     const reason = source.reviewNote || "人工选择回炉重做。";
     const assetTitle = source.title ?? (source.path ? fileNameFromPath(source.path) : "原素材");
@@ -2957,8 +3239,11 @@ export function useContentStudioApp() {
   }): string {
     const assetTitle = input.source.title ?? (input.source.path ? fileNameFromPath(input.source.path) : "未命名素材");
     const previousPrompt =
-      input.promptText?.trim() ||
-      promptDraftActiveContent(input.relatedDraft) ||
+      stripInternalTraceLinesFromPrompt(
+        input.promptText?.trim() ||
+        promptDraftActiveContent(input.relatedDraft) ||
+        "",
+      ) ||
       (input.sourceLog ? extractPromptFromLog(input.sourceLog) : "") ||
       input.sourceInput?.summary ||
       "";
@@ -2966,14 +3251,14 @@ export function useContentStudioApp() {
       "任务：成功素材反向沉淀 Prompt",
       "",
       "目标：",
-      "把已经通过人工审核的素材沉淀成可复用 Prompt 草稿，后续可继续物化为 SOP 或 Skill。",
+      "把已经通过人工审核的素材沉淀成可复用 Prompt 草稿，后续可继续物化为 Skill。",
       "",
       "素材来源：",
       `- 素材：${assetTitle}`,
       input.source.path ? `- 文件：${fileNameFromPath(input.source.path)}` : "",
       `- 类型：${assetKindLabel(input.source.kind)}`,
       `- 来源：${assetSourceLineageLabel(input)}`,
-      input.source.workflowRunId ? "- 关联 SOP：已关联运行记录" : "- 关联 SOP：未关联",
+      input.source.workflowRunId ? "- 关联历史：已关联运行记录" : "- 关联历史：未关联",
       input.relatedDraft ? `- 原提示词草稿：${input.relatedDraft.title}` : "- 原提示词草稿：未关联",
       input.sceneCardIds.length ? `- 关联场景卡：${input.sceneCardIds.length} 张` : "- 关联场景卡：未关联",
       "",
@@ -2984,7 +3269,7 @@ export function useContentStudioApp() {
       "可复用标签：",
       "- 成功素材",
       `- ${input.source.kind === "video" ? "视频素材" : "图片素材"}`,
-      input.source.workflowRunId ? "- SOP 可追溯" : "",
+      input.source.workflowRunId ? "- 历史可追溯" : "",
       input.sceneCardIds.length ? "- 场景库关联" : "",
       "",
       "复用 Prompt 草稿：",
@@ -3045,7 +3330,7 @@ export function useContentStudioApp() {
         "successful-asset",
         "prompt-distilled",
         input.kind,
-        ...(source.workflowRunId ? ["workflow-run"] : []),
+        ...(source.workflowRunId ? ["run-trace"] : []),
       ])),
     });
     const draft = await window.contentStudio.createPromptDraftFromContent({
@@ -3064,19 +3349,6 @@ export function useContentStudioApp() {
     setInputSources((current) => [registeredSource, ...current.filter((item) => item.id !== registeredSource.id)]);
     setPromptDrafts((current) => [draft, ...current.filter((item) => item.id !== draft.id)]);
     setActivePromptDraftId(draft.id);
-    if (source.workflowRunId) {
-      const run = workflowRuns.find((item) => item.id === source.workflowRunId);
-      if (run && (isImageSopWorkflow(run) || isVideoMaterialWorkflow(run))) {
-        await recordWorkflowManualEvent({
-          workflowRunId: run.id,
-          event: "asset-prompt-distilled",
-          inputSourceId: registeredSource.id,
-          promptDraftId: draft.id,
-          assetKey: source.assetKey,
-          summary: `已从通过素材沉淀 Prompt 草稿：${draft.title}`,
-        });
-      }
-    }
     setActiveModule(promptWorkbenchModuleForPurpose(draft.purpose));
     await refresh(workspace);
   }
@@ -3177,64 +3449,6 @@ export function useContentStudioApp() {
     await refresh(workspace);
   }
 
-  async function createWorkflowDraft(): Promise<void> {
-    const workspace = requireWorkspace();
-    const draft = await window.contentStudio.createWorkflowDraft({
-      workspacePath: workspace,
-      templateKey: activeWorkflowDefinition?.key,
-    });
-    setWorkflowDefinitions((current) => [draft, ...current]);
-    setActiveWorkflowDefinitionId(draft.id);
-    setActiveModule("workflow-definition");
-    await refresh(workspace);
-  }
-
-  async function materializePromptDraftToWorkflow(input: {
-    draftId: string;
-    content: string;
-  }): Promise<void> {
-    const workspace = requireWorkspace();
-    const promptDraft =
-      promptDrafts.find((item) => item.id === input.draftId) ??
-      activePromptDraft;
-    if (!promptDraft) throw new Error("请先选择一个 Prompt 草稿。");
-    const templateKey =
-      promptDraft.purpose === "sop"
-        ? undefined
-        : promptDraft.purpose === "video" || promptDraft.purpose === "green-screen"
-        ? "video-material-package"
-        : promptDraft.purpose === "article"
-          ? "ip-longform"
-          : "xiaohongshu-seeding-image";
-    const workflow = await window.contentStudio.createWorkflowDraft({
-      workspacePath: workspace,
-      templateKey,
-      title: `${promptDraft.title} SOP 草案`,
-      description: [
-        `由提示词草稿「${promptDraft.title}」物化。`,
-        "后续需要确认输入字段、执行步骤、审核规则和导出规则。",
-        "",
-        input.content.slice(0, 1200),
-      ].join("\n"),
-    });
-    const updatedDraft = await window.contentStudio.updatePromptDraft({
-      workspacePath: workspace,
-      draftId: promptDraft.id,
-      content: input.content,
-      note: `已物化为 SOP 草案：${workflow.title}`,
-      status: "materialized",
-      materializedTarget: "workflow",
-    });
-    setWorkflowDefinitions((current) => [workflow, ...current]);
-    setActiveWorkflowDefinitionId(workflow.id);
-    setPromptDrafts((current) =>
-      current.map((item) => (item.id === updatedDraft.id ? updatedDraft : item)),
-    );
-    setActivePromptDraftId(updatedDraft.id);
-    setActiveModule("workflow-definition");
-    await refresh(workspace);
-  }
-
   async function materializePromptDraftToSkill(input: {
     draftId: string;
     content: string;
@@ -3268,36 +3482,6 @@ export function useContentStudioApp() {
     );
     setActivePromptDraftId(updatedDraft.id);
     setActiveModule("skills");
-    await refresh(workspace);
-  }
-
-  async function publishWorkflowDefinition(definitionId?: string): Promise<void> {
-    const workspace = requireWorkspace();
-    const definition =
-      workflowDefinitions.find((item) => item.id === definitionId) ??
-      activeWorkflowDefinition;
-    if (!definition) throw new Error("请先选择一个工作流定义。");
-    const updated = await window.contentStudio.updateWorkflowDefinition({
-      ...definition,
-      status: "published",
-    });
-    setWorkflowDefinitions((current) =>
-      current.map((item) => (item.id === updated.id ? updated : item)),
-    );
-    setActiveWorkflowDefinitionId(updated.id);
-    await refresh(workspace);
-  }
-
-  async function updateWorkflowDefinition(definition: WorkflowDefinition): Promise<void> {
-    const workspace = requireWorkspace();
-    const updated = await window.contentStudio.updateWorkflowDefinition({
-      ...definition,
-      workspacePath: workspace,
-    });
-    setWorkflowDefinitions((current) =>
-      current.map((item) => (item.id === updated.id ? updated : item)),
-    );
-    setActiveWorkflowDefinitionId(updated.id);
     await refresh(workspace);
   }
 
@@ -3398,17 +3582,8 @@ export function useContentStudioApp() {
     return workflowKeyMatches(run.workflowKey, "video-material-package");
   }
 
-  function isImageSopWorkflow(run: WorkflowRunRecord): boolean {
-    return workflowKeyMatches(run.workflowKey, "xiaohongshu-seeding-image");
-  }
-
-  function isIpLongformWorkflow(run: WorkflowRunRecord): boolean {
-    return workflowKeyMatches(run.workflowKey, "ip-longform");
-  }
-
   function selectWorkflowRunContext(run: WorkflowRunRecord): string | undefined {
     setActiveWorkflowRunId(run.id);
-    setActiveWorkflowDefinitionId(run.workflowDefinitionId);
     const brandKnowledgeBaseId = workflowStepOutputValue(run, ["brandKnowledgeBaseId"])
       ?? firstWorkflowArtifactRefId(run, "brand-knowledge-base");
     const ipKnowledgeBaseId = workflowStepOutputValue(run, ["ipKnowledgeBaseId"])
@@ -3432,122 +3607,11 @@ export function useContentStudioApp() {
 
   function workflowRunById(runId: string): WorkflowRunRecord {
     const run = workflowRuns.find((item) => item.id === runId);
-    if (!run) throw new Error("SOP 运行记录不存在，请刷新后重试。");
+    if (!run) throw new Error("历史运行记录不存在，请刷新后重试。");
     return run;
   }
 
-  function openWorkflowRunPrompt(runId: string): void {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    setActiveModule("video-prompt");
-  }
-
-  function openWorkflowRunBrandKnowledge(runId: string): void {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    setActiveModule("knowledge-brand");
-  }
-
-  function openWorkflowRunIpKnowledge(runId: string): void {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    setActiveModule("knowledge-ip");
-  }
-
-  function openWorkflowRunSceneLibrary(runId: string): void {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    setActiveModule("image-scene-prompts");
-  }
-
-  function openWorkflowRunPromptDraft(runId: string): void {
-    const run = workflowRunById(runId);
-    const promptDraftId = selectWorkflowRunContext(run);
-    const draft = promptDrafts.find((item) => item.id === promptDraftId);
-    setActiveModule(draft ? promptWorkbenchModuleForPurpose(draft.purpose) : "assets-prompt-workbench");
-  }
-
-  function openWorkflowRunAssetReview(runId: string): void {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    setActiveModule("image-compliance");
-  }
-
-  function openWorkflowRunMaterialBreakdown(runId: string): void {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    setActiveModule("material-breakdown");
-  }
-
-  function openWorkflowRunImageWorkbench(runId: string): void {
-    const run = workflowRunById(runId);
-    const promptDraftId = selectWorkflowRunContext(run);
-    const content = promptDraftContent(promptDraftId);
-    setImageWorkflowRunId(run.id);
-    setImagePromptDraft(content || run.inputs.intent || "");
-    setImagePromptMode("free");
-    setActiveModule("image");
-  }
-
-  function openWorkflowRunArticleWorkbench(runId: string): void {
-    const run = workflowRunById(runId);
-    const promptDraftId = selectWorkflowRunContext(run);
-    const content = promptDraftContent(promptDraftId);
-    const ipKnowledgeBaseId = workflowStepOutputValue(run, ["ipKnowledgeBaseId"]);
-    const ipRecord = ipKnowledgeBaseId
-      ? ipKnowledgeBases.find((record) => record.id === ipKnowledgeBaseId)
-      : activeIpKnowledgeBase;
-    const draftTitle = promptDraftId
-      ? promptDrafts.find((draft) => draft.id === promptDraftId)?.title
-      : undefined;
-    setArticleType("wechat-longform");
-    setArticlePlatform("公众号");
-    setArticleTopic(run.inputs.intent || draftTitle || "IP 内容长文");
-    setArticleAudience(ipRecord?.extensionScenes.join(" / ") || "关注该 IP 方法论和实践场景的读者");
-    setArticleTone(ipRecord?.layers.language || "专业、自然、克制");
-    setArticleRequirement([
-      "来自 IP 长文 SOP，请基于已选 IP 知识库、对话记录和文章 Prompt 生成正文。",
-      run.inputs.source ? `输入源：${run.inputs.source}` : "",
-      run.inputs.reviewOwner ? `审核人：${run.inputs.reviewOwner}` : "",
-      content ? "" : "当前运行记录未找到提示词草稿正文，请先回 Prompt 工作台确认草稿。",
-      content,
-    ].filter(Boolean).join("\n\n"));
-    setArticleWorkflowRunId(run.id);
-    setActiveModule("article");
-  }
-
-  async function importWorkflowRunFinishedVideo(runId: string): Promise<void> {
-    const run = workflowRunById(runId);
-    const promptDraftId = selectWorkflowRunContext(run);
-    await importFinishedVideo(promptDraftId, run.id);
-  }
-
-  function openWorkflowRunOverlay(runId: string): void {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    setActiveModule("image-green-screen");
-  }
-
-  function openWorkflowRunMixExport(runId: string): void {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    setActiveModule("video-mix-export");
-  }
-
-  async function openWorkflowRunPlatformDraft(runId: string): Promise<void> {
-    const run = workflowRunById(runId);
-    selectWorkflowRunContext(run);
-    const platformDraftPath = run.artifactRefs.find((ref) =>
-      ref.replace(/\\/g, "/").includes("/platform-drafts/") &&
-      !ref.replace(/\\/g, "/").endsWith("/draft.md"),
-    ) ?? run.artifactRefs.find((ref) =>
-      ref.replace(/\\/g, "/").includes("/platform-drafts/"),
-    );
-    if (!platformDraftPath) throw new Error("这条 SOP 运行记录没有平台草稿包路径。");
-    await revealPath(platformDraftPath);
-  }
-
-  function openTraceWorkflowRun(runId: string): void {
+  function openRunTrace(runId: string): void {
     const run = workflowRunById(runId);
     selectWorkflowRunContext(run);
     setActiveModule("assets-history");
@@ -3630,7 +3694,7 @@ export function useContentStudioApp() {
       input.path,
     ].filter(Boolean);
     return workflowRuns
-      .filter((run) => isVideoMaterialWorkflow(run) || isImageSopWorkflow(run))
+      .filter((run) => isVideoMaterialWorkflow(run))
       .find((run) => workflowRunReferences(run, refs));
   }
 
@@ -3667,37 +3731,6 @@ export function useContentStudioApp() {
     return workflowRuns.find((run) => workflowRunReferences(run, refs));
   }
 
-  async function recordWorkflowManualEvent(
-    input: Omit<RecordWorkflowManualEventInput, "workspacePath" | "workflowRunId"> & {
-      workflowRunId?: string;
-    },
-  ): Promise<WorkflowRunRecord | null> {
-    const workspace = requireWorkspace();
-    const workflowRunId = input.workflowRunId;
-    if (!workflowRunId) return null;
-    const run = await window.contentStudio.recordWorkflowManualEvent({
-      ...input,
-      workspacePath: workspace,
-      workflowRunId,
-    });
-    setWorkflowRuns((current) =>
-      [run, ...current.filter((item) => item.id !== run.id)]
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    );
-    setActiveWorkflowRunId(run.id);
-    return run;
-  }
-
-  function inputSourceIdsForWorkflow(definition: WorkflowDefinition): string[] {
-    return selectWorkflowInputSourceIdsForDefinition(definition, inputSources);
-  }
-
-  function citationsForWorkflowDefinition(definition: WorkflowDefinition): KnowledgeCitation[] {
-    if (definition.key.includes("brand")) return brandCitationsForRequest;
-    if (definition.key.includes("ip") || definition.key.includes("longform")) return ipCitationsForRequest;
-    return citationsForRequest;
-  }
-
   function teamKnowledgeReleaseReference(release?: ContentKnowledgeRelease): ContentKnowledgeReleaseReference | undefined {
     if (!release) return undefined;
     return {
@@ -3730,36 +3763,6 @@ export function useContentStudioApp() {
     return published[0];
   }
 
-  async function startWorkflowRun(
-    definitionId?: string,
-    inputs?: Record<string, string>,
-    inputSourceIds?: string[],
-    teamKnowledgeRelease?: ContentKnowledgeReleaseReference | null,
-  ): Promise<void> {
-    const workspace = requireWorkspace();
-    const definition =
-      workflowDefinitions.find((item) => item.id === definitionId) ??
-      activeWorkflowDefinition;
-    if (!definition) throw new Error("请先选择一个可运行的 SOP。");
-    const run = await window.contentStudio.startWorkflowRun({
-      workspacePath: workspace,
-      workflowDefinitionId: definition.id,
-      inputs,
-      inputSourceIds: inputSourceIds ?? inputSourceIdsForWorkflow(definition),
-      citations: citationsForWorkflowDefinition(definition),
-      teamKnowledgeRelease: teamKnowledgeRelease === undefined
-        ? teamKnowledgeReleaseReference(defaultTeamKnowledgeRelease())
-        : teamKnowledgeRelease ?? undefined,
-    });
-    setWorkflowRuns((current) => [run, ...current]);
-    setActiveWorkflowDefinitionId(definition.id);
-    setActiveWorkflowRunId(run.id);
-    const promptDraftId = promptDraftIdFromWorkflowRun(run);
-    if (promptDraftId) setActivePromptDraftId(promptDraftId);
-    setActiveModule("assets-history");
-    await refresh(workspace);
-  }
-
   async function generateArticle(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
     const result = await window.contentStudio.generateArticle({
@@ -3784,18 +3787,6 @@ export function useContentStudioApp() {
     setArticleResult(result);
     setArticleExportPath(null);
     setActiveModule("article");
-    if (articleWorkflowRunId) {
-      const run = workflowRunById(articleWorkflowRunId);
-      if (isIpLongformWorkflow(run)) {
-        await recordWorkflowManualEvent({
-          workflowRunId: run.id,
-          event: "article-draft-generated",
-          promptDraftId: promptDraftIdFromWorkflowRun(run),
-          generationLogId: result.logId,
-          summary: "已从 IP 长文 SOP 生成文章草稿，等待人工确认或导出 Markdown。",
-        });
-      }
-    }
     await refresh(workspace);
   }
 
@@ -3809,19 +3800,6 @@ export function useContentStudioApp() {
       markdown: articleResult.markdown,
     });
     setArticleExportPath(exported);
-    if (exported && articleWorkflowRunId) {
-      const run = workflowRunById(articleWorkflowRunId);
-      if (isIpLongformWorkflow(run)) {
-        await recordWorkflowManualEvent({
-          workflowRunId: run.id,
-          event: "article-markdown-exported",
-          promptDraftId: promptDraftIdFromWorkflowRun(run),
-          generationLogId: articleResult.logId,
-          exportPath: exported ?? undefined,
-          summary: "已确认文章草稿并导出 Markdown，公众号 IP 内容 SOP 进入完成态。",
-        });
-      }
-    }
     await refresh(workspace);
   }
 
@@ -3847,21 +3825,6 @@ export function useContentStudioApp() {
       tone: articleTone,
     });
     setArticleExportPath(exported.packageDir);
-    if (articleWorkflowRunId) {
-      const run = workflowRunById(articleWorkflowRunId);
-      if (isIpLongformWorkflow(run)) {
-        await recordWorkflowManualEvent({
-          workflowRunId: run.id,
-          event: "article-platform-draft-exported",
-          promptDraftId: articlePromptDraftId,
-          generationLogId: articleResult.logId,
-          exportPath: exported.markdownPath,
-          manifestPath: exported.manifestPath,
-          packageDir: exported.packageDir,
-          summary: "已确认文章草稿并导出平台草稿包，公众号 IP 内容 SOP 进入完成态。",
-        });
-      }
-    }
     await refresh(workspace);
   }
 
@@ -3886,6 +3849,17 @@ export function useContentStudioApp() {
       () => setCopiedLogId((current) => (current === log.id ? null : current)),
       1400,
     );
+  }
+
+  async function updateGenerationLogReview(
+    input: Omit<UpdateGenerationLogReviewInput, "workspacePath">,
+  ): Promise<void> {
+    const workspace = requireWorkspace();
+    await window.contentStudio.updateGenerationLogReview({
+      workspacePath: workspace,
+      ...input,
+    });
+    await refresh(workspace);
   }
 
   async function revealLogPath(log: GenerationLogEntry): Promise<void> {
@@ -4060,7 +4034,7 @@ export function useContentStudioApp() {
       citations: citationsForRequest,
       selectedSkillSlugs:
         skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
-      params,
+      params: paramsForImageGeneration(params),
     };
     const submission = await submitMediaGeneration({
       kind: "image",
@@ -4180,16 +4154,83 @@ export function useContentStudioApp() {
       `- 卖点：${scene.sellingPoint}`,
       `- 视频素材建议：${scene.videoMaterialSuggestion}`,
     ].join("\n"));
-    const breakdownLines = videoBreakdown?.segments.map((segment) =>
-      `- ${segment.timeRange}：${segment.hook}；可复用点：${segment.reusablePoint}`,
+    const breakdownScoreLines = videoBreakdown ? [
+      `- 拆解标题：${videoBreakdown.contentTitle || "未返回"}`,
+      `- 参考指数：${formatBreakdownScore(videoBreakdown.referenceScore)}`,
+      `- 分析可信度：${formatBreakdownRate(videoBreakdown.confidenceRate)}`,
+      `- 策略丰富度：${formatBreakdownRate(videoBreakdown.richnessRate)}`,
+      videoBreakdown.hook?.hookType?.value ? `- Hook 类型：${videoBreakdown.hook.hookType.value}（${formatBreakdownRate(videoBreakdown.hook.hookType.confidence)}）` : "",
+      videoBreakdown.narrative?.framework?.value ? `- 叙事框架：${videoBreakdown.narrative.framework.value}（${formatBreakdownRate(videoBreakdown.narrative.framework.confidence)}）` : "",
+    ].filter(Boolean) : [];
+    const hookLines = videoBreakdown?.hook?.elements.map((element) =>
+      `- ${element.timestampRange || "未标注时间"}：${element.name}，${element.description}`,
     ) ?? [];
+    const narrativeLines = videoBreakdown?.narrative?.stages.map((stage) =>
+      `- ${stage.timeRange || "未标注时间"}：${stage.name}，${stage.description}${stage.emotionShift ? `；情绪变化：${stage.emotionShift}` : ""}`,
+    ) ?? [];
+    const pacingLines = videoBreakdown?.pacing?.rhythm.slice(0, 12).map((item) =>
+      `- ${item.timeRange || "未标注时间"}：${item.shotType} / 强度 ${item.intensity}；${item.description}${item.voiceover ? `；口播：${item.voiceover}` : ""}`,
+    ) ?? [];
+    const transcriptLines = videoBreakdown?.transcriptSegments?.slice(0, 12).map((segment) =>
+      `- ${formatBreakdownScore(segment.startSec)}s-${formatBreakdownScore(segment.endSec)}s：${segment.text}`,
+    ) ?? [];
+    const breakdownLines = videoBreakdown?.segments.map((segment) =>
+      `- ${segment.timeRange}：${segment.hook}；画面：${segment.visual}；口播：${segment.voiceover || "无"}；可复用点：${segment.reusablePoint}`,
+    ) ?? [];
+    const breakdownRiskLines = videoBreakdown?.risks.map((risk) => `- ${risk.level}：${risk.message}`) ?? [];
     const storyboardLines = videoScript?.storyboard.map((shot) => [
       `### 镜头 ${shot.shot}（${shot.duration}）`,
+      shot.timeRange ? `时间：${shot.timeRange}` : "",
+      shot.shotType ? `镜头类型：${shot.shotType}` : "",
+      shot.character ? `角色：${shot.character}` : "",
+      shot.scene ? `场景：${shot.scene}` : "",
+      shot.cameraMovement ? `运镜：${shot.cameraMovement}` : "",
       `画面：${shot.visual}`,
       `口播：${shot.voiceover}`,
       `字幕：${shot.subtitle || "无"}`,
       `节奏：${shot.rhythm}`,
-    ].join("\n")) ?? [];
+      shot.videoPrompt ? `视频 Prompt：${shot.videoPrompt}` : "",
+      shot.imagePrompt ? `图片 Prompt：${shot.imagePrompt}` : "",
+      shot.transitionHint ? `转场：${shot.transitionHint}` : "",
+      shot.voiceStyle ? `语音风格：${shot.voiceStyle}` : "",
+    ].filter(Boolean).join("\n")) ?? [];
+    const productionSegmentLines = buildProductionSegments(videoScript?.storyboard ?? [], videoScript?.resourceFramework).map((segment, index) => [
+      `### 段落 ${index + 1}：镜头 ${segment.shotNumbers}（${segment.externalDurationSeconds}s）`,
+      `- 估算内容时长：${segment.totalDurationSeconds.toFixed(1)}s`,
+      `- 角色：${segment.character}`,
+      `- 场景：${segment.scene}`,
+      "",
+      segment.prompt,
+    ].join("\n"));
+    const characterPromptLines = buildCharacterPromptItems(videoScript?.resourceFramework).map((item, index) => [
+      `### 角色 ${index + 1}：${item.title}`,
+      `- ${item.meta}`,
+      "",
+      item.prompt,
+    ].join("\n"));
+    const scenePromptLines = buildScenePromptItems(videoScript?.resourceFramework).map((item, index) => [
+      `### 场景 ${index + 1}：${item.title}`,
+      `- ${item.meta}`,
+      "",
+      item.prompt,
+    ].join("\n"));
+    const productionReviewLines = buildVideoProductionReviewItems(videoScript).map((item) =>
+      `- ${item.title}（${item.status}）：${item.detail}`,
+    );
+    const productionDeliveryLines = buildVideoProductionDeliveryItems({
+      characterPromptCount: characterPromptLines.length,
+      scenePromptCount: scenePromptLines.length,
+      segmentCount: productionSegmentLines.length,
+      hasScript: Boolean(videoScript),
+    }).map((item) => `- ${item.title}（${item.status}）：${item.detail}`);
+    const scriptResourceLines = videoScript?.resourceFramework ? [
+      ...videoScript.resourceFramework.characters.map((character) =>
+        `- 角色：${character.name}，${character.shotCount} 镜${character.voiceTraits ? `，${character.voiceTraits}` : ""}`,
+      ),
+      ...videoScript.resourceFramework.scenes.map((scene) =>
+        `- 场景：${scene.name}，${scene.shotCount} 镜${scene.environment ? `，${scene.environment}` : ""}${scene.lighting ? `，${scene.lighting}` : ""}${scene.sceneImagePrompt ? `\n  场景图 Prompt：${scene.sceneImagePrompt}` : ""}`,
+      ),
+    ] : [];
 
     return [
       "# 视频 Prompt 交接",
@@ -4213,8 +4254,20 @@ export function useContentStudioApp() {
       suggestedVideoPrompt.trim(),
       materialLines.length ? ["", "## 本次素材", ...materialLines].join("\n") : "",
       sceneLines.length ? ["", "## 关联场景", ...sceneLines].join("\n\n") : "",
+      breakdownScoreLines.length ? ["", "## 参考视频拆解评分", ...breakdownScoreLines].join("\n") : "",
+      hookLines.length ? ["", "## Hook 构成", ...hookLines].join("\n") : "",
+      narrativeLines.length ? ["", "## 叙事结构", ...narrativeLines].join("\n") : "",
+      pacingLines.length ? ["", "## 节奏与镜头", ...pacingLines].join("\n") : "",
+      transcriptLines.length ? ["", "## 原视频口播摘录", ...transcriptLines].join("\n") : "",
       breakdownLines.length ? ["", "## 参考视频拆解", ...breakdownLines].join("\n") : "",
+      breakdownRiskLines.length ? ["", "## 拆解风险与边界", ...breakdownRiskLines].join("\n") : "",
       videoScript?.script ? ["", "## 新视频脚本", videoScript.script].join("\n") : "",
+      scriptResourceLines?.length ? ["", "## 新脚本资源框架", ...scriptResourceLines].join("\n") : "",
+      characterPromptLines.length ? ["", "## 角色参考图 Prompt", "- 复制到外部生图平台生成角色三视图。", ...characterPromptLines].join("\n\n") : "",
+      scenePromptLines.length ? ["", "## 场景背景图 Prompt", "- 复制到外部生图平台生成无人物背景图。", ...scenePromptLines].join("\n\n") : "",
+      productionSegmentLines.length ? ["", "## 外部生成段落", "- 每段按 5/10 秒复制到第三方视频平台；生成后手动导入成品视频。", ...productionSegmentLines].join("\n\n") : "",
+      productionReviewLines.length ? ["", "## 审核预览", "- 只记录脚本发布检查和人工复核项，不伪造成品预览。", ...productionReviewLines].join("\n") : "",
+      productionDeliveryLines.length ? ["", "## 合成导出交付", "- 外部生成和剪辑完成后，手动导入成品视频并关联本交接 Prompt。", ...productionDeliveryLines].join("\n") : "",
       storyboardLines.length ? ["", "## 分镜脚本", ...storyboardLines].join("\n\n") : "",
     ].filter((line) => line.trim().length > 0).join("\n");
   }
@@ -4225,7 +4278,7 @@ export function useContentStudioApp() {
     const source = await window.contentStudio.registerInputSource({
       workspacePath: workspace,
       kind: "manual-note",
-      purpose: "sop-input",
+      purpose: "task-input",
       sensitivity: "internal",
       title: "视频 Prompt 交接资料",
       text: content,
@@ -4276,7 +4329,63 @@ export function useContentStudioApp() {
     });
     context?.throwIfCancelled();
     setVideoBreakdown(result);
+    const breakdownShotCount = result.pacing?.rhythm.length || result.segments.length;
+    if (breakdownShotCount > 0) setVideoShotCount(Math.min(80, Math.max(1, breakdownShotCount)));
+    if (result.durationSec && result.durationSec > 0) setVideoDurationSeconds(Math.min(300, Math.max(5, Math.round(result.durationSec))));
     await refresh(workspace);
+  }
+
+  function useVideoBreakdownLog(log: GenerationLogEntry): void {
+    if (log.kind !== "video-breakdown" || log.status !== "succeeded") {
+      throw new Error("只能使用已成功的视频拆解记录作为脚本模板。");
+    }
+    if (!log.output || typeof log.output !== "object") {
+      throw new Error("这条视频拆解记录缺少可复用的结构化输出。");
+    }
+    const output = log.output as Omit<VideoBreakdownResult, "logId">;
+    const result: VideoBreakdownResult = { logId: log.id, ...output };
+    setVideoBreakdown(result);
+    const breakdownShotCount = result.pacing?.rhythm.length || result.segments.length;
+    if (breakdownShotCount > 0) setVideoShotCount(Math.min(80, Math.max(1, breakdownShotCount)));
+    if (result.durationSec && result.durationSec > 0) {
+      setVideoDurationSeconds(Math.min(300, Math.max(5, Math.round(result.durationSec))));
+    }
+    const refs = [
+      ...(log.artifactRefs ?? []),
+      typeof (log.input as Record<string, unknown> | undefined)?.source === "string"
+        ? (log.input as Record<string, unknown>).source as string
+        : "",
+    ].filter((ref): ref is string => Boolean(ref && !/^https?:\/\//i.test(ref)));
+    if (refs.length) {
+      setVideoAssetRefs((current) => Array.from(new Set([...refs, ...current])));
+    }
+    setActiveModule("video-script");
+  }
+
+  function useVideoScriptLog(log: GenerationLogEntry): void {
+    if (log.kind !== "video-script" || log.status !== "succeeded") {
+      throw new Error("只能使用已成功的视频脚本记录进行 Prompt 交接。");
+    }
+    if (!log.output || typeof log.output !== "object") {
+      throw new Error("这条视频脚本记录缺少结构化输出。");
+    }
+    const output = log.output as Omit<VideoScriptGenerationResult, "logId">;
+    const result: VideoScriptGenerationResult = {
+      logId: log.id,
+      title: output.title,
+      script: output.script,
+      storyboard: output.storyboard ?? [],
+      videoPrompt: output.videoPrompt ?? "",
+      resourceFramework: output.resourceFramework,
+      evaluation: output.evaluation,
+      publishCheck: output.publishCheck ?? [],
+    };
+    setVideoScript(result);
+    const productName = (log.input as Record<string, unknown> | undefined)?.productName;
+    if (typeof productName === "string" && productName.trim()) setVideoProductName(productName);
+    const nextShotCount = result.storyboard.length;
+    if (nextShotCount > 0) setVideoShotCount(Math.min(80, Math.max(1, nextShotCount)));
+    setActiveModule("video");
   }
 
   async function generateVideoScript(context?: ActionContext): Promise<void> {
@@ -4307,6 +4416,110 @@ export function useContentStudioApp() {
     context?.throwIfCancelled();
     setVideoScript(result);
     await refresh(workspace);
+  }
+
+  function videoScriptActionContext(
+    script: VideoScriptGenerationResult,
+    sourceLog?: GenerationLogEntry,
+  ): Omit<VideoScriptEvaluationRequest, "workspacePath" | "script" | "citations" | "params"> {
+    const sourceInput = sourceLog?.input && typeof sourceLog.input === "object"
+      ? sourceLog.input as Record<string, unknown>
+      : {};
+    const productName = typeof sourceInput.productName === "string" && sourceInput.productName.trim()
+      ? sourceInput.productName.trim()
+      : videoProductName.trim();
+    const sceneBackground = typeof sourceInput.sceneBackground === "string" && sourceInput.sceneBackground.trim()
+      ? sourceInput.sceneBackground.trim()
+      : videoSceneBackground;
+    const customRequirement = typeof sourceInput.customRequirement === "string" && sourceInput.customRequirement.trim()
+      ? sourceInput.customRequirement.trim()
+      : videoCustomRequirement.trim();
+    const voiceStyle = typeof sourceInput.voiceStyle === "string" && sourceInput.voiceStyle.trim()
+      ? sourceInput.voiceStyle.trim()
+      : videoVoiceStyle.trim();
+    const sourceBreakdownLogId = typeof sourceInput.breakdownLogId === "string" ? sourceInput.breakdownLogId : videoBreakdown?.logId;
+    const sourceBreakdownLog = sourceBreakdownLogId
+      ? logs.find((log) => log.id === sourceBreakdownLogId && log.kind === "video-breakdown")
+      : undefined;
+    const sourceBreakdownOutput = sourceBreakdownLog?.output && typeof sourceBreakdownLog.output === "object"
+      ? sourceBreakdownLog.output as Partial<VideoBreakdownResult>
+      : undefined;
+    const templateInfo = {
+      hookType: videoBreakdown?.hook?.hookType?.value ?? sourceBreakdownOutput?.hook?.hookType?.value,
+      framework: videoBreakdown?.narrative?.framework?.value ?? sourceBreakdownOutput?.narrative?.framework?.value,
+      sourceTitle: videoBreakdown?.contentTitle ?? sourceBreakdownOutput?.contentTitle ?? sourceBreakdownLog?.title,
+    };
+    return {
+      sourceScriptLogId: sourceLog?.id || (script.logId ? script.logId : undefined),
+      productName,
+      productDesc: [
+        `商品名称：${productName || "未填写"}`,
+        `场景背景：${sceneBackground || "未填写"}`,
+        voiceStyle ? `语音风格：${voiceStyle}` : "",
+        customRequirement ? `补充要求：${customRequirement}` : "",
+        script.publishCheck.length ? `已知发布检查：${script.publishCheck.map((item) => `${item.level}:${item.message}`).join("；")}` : "",
+      ].filter(Boolean).join("\n"),
+      templateInfo,
+    };
+  }
+
+  async function evaluateVideoScript(
+    script: VideoScriptGenerationResult,
+    sourceLog?: GenerationLogEntry,
+    context?: ActionContext,
+  ): Promise<void> {
+    const workspace = requireWorkspace();
+    const actionContext = videoScriptActionContext(script, sourceLog);
+    const evaluation = await window.contentStudio.evaluateVideoScript({
+      workspacePath: workspace,
+      ...actionContext,
+      script,
+      citations: citationsForRequest,
+      params: { textModel: params.textModel },
+    });
+    context?.throwIfCancelled();
+    setVideoScript((current) => {
+      if (current && current.logId === script.logId) return { ...current, evaluation };
+      return { ...script, evaluation };
+    });
+    await refresh(workspace);
+  }
+
+  async function rewriteVideoScriptShot(
+    script: VideoScriptGenerationResult,
+    rowIndex: number,
+    sourceLog?: GenerationLogEntry,
+    context?: ActionContext,
+  ): Promise<VideoScriptShotRewriteResult> {
+    const workspace = requireWorkspace();
+    const actionContext = videoScriptActionContext(script, sourceLog);
+    const rewrite = await window.contentStudio.rewriteVideoScriptShot({
+      workspacePath: workspace,
+      ...actionContext,
+      rowIndex,
+      script,
+      citations: citationsForRequest,
+      params: { textModel: params.textModel },
+    });
+    context?.throwIfCancelled();
+    const nextScript: VideoScriptGenerationResult = {
+      ...script,
+      evaluation: undefined,
+      storyboard: script.storyboard.map((shot, index) => (index === rowIndex ? rewrite.shot : shot)),
+      script: script.storyboard.map((shot, index) => {
+        const nextShot = index === rowIndex ? rewrite.shot : shot;
+        return `镜头 ${nextShot.shot}（${nextShot.timeRange || nextShot.duration}）\n画面：${nextShot.visual}\n口播：${nextShot.voiceover}\n字幕：${nextShot.subtitle || "无字幕"}\n节奏：${nextShot.rhythm}`;
+      }).join("\n\n"),
+      videoPrompt: script.storyboard.map((shot, index) => (index === rowIndex ? rewrite.shot : shot).videoPrompt).filter(Boolean).join("\n") || script.videoPrompt,
+      publishCheck: [
+        ...rewrite.publishCheck,
+        ...script.publishCheck,
+      ].slice(0, 8),
+    };
+    setVideoScript(nextScript);
+    setActiveModule("video-script");
+    await refresh(workspace);
+    return rewrite;
   }
 
   async function installSkill(slug: string): Promise<void> {
@@ -4448,6 +4661,9 @@ export function useContentStudioApp() {
     setUpdateState,
     modelConfig,
     modelCatalog,
+    textModelOptions,
+    imageModelOptions,
+    videoModelOptions,
     modelDraft,
     setModelDraft,
     authState,
@@ -4465,7 +4681,8 @@ export function useContentStudioApp() {
     contentKnowledgeReleases,
     contentSyncConflicts,
     contentWorkspaceSyncResult,
-    brandCommandCenters,
+    contentBatches,
+    activeContentBatch,
     contentKnowledgePackExport,
     contentKnowledgePackFilePreview,
     contentProductionHandoff,
@@ -4503,9 +4720,6 @@ export function useContentStudioApp() {
     activeContentKnowledgeMap,
     activeContentKnowledgeMapId,
     setActiveContentKnowledgeMapId,
-    activeBrandCommandCenter,
-    activeBrandCommandCenterId,
-    setActiveBrandCommandCenterId,
     activeContentReviewTask,
     activeContentReviewTaskId,
     setActiveContentReviewTaskId,
@@ -4524,13 +4738,9 @@ export function useContentStudioApp() {
     setSceneCardDraft,
     logs,
     generationTasks,
-    workflowDefinitions,
     workflowRuns,
     referenceReverseResult,
     referenceReverseError,
-    activeWorkflowDefinition,
-    activeWorkflowDefinitionId,
-    setActiveWorkflowDefinitionId,
     activeWorkflowRun,
     activeWorkflowRunId,
     setActiveWorkflowRunId,
@@ -4658,12 +4868,9 @@ export function useContentStudioApp() {
     attachAgentPromptSessionInputSources,
     generateBrandKnowledgeBase,
     buildContentKnowledgeMap,
-    buildBrandCommandCenter,
-    recordBrandCommandAction,
-    recordBrandCommandReview,
-    confirmBrandCommandStage,
-    exportBrandCommandActionRecords,
-    refreshBrandCommandActions,
+    buildContentBatch,
+    advanceContentBatchStage,
+    runContentBatchStagePrimaryAction,
     exportContentKnowledgePack,
     readContentKnowledgePackFile,
     writeBackContentMaterialCoverage,
@@ -4691,8 +4898,6 @@ export function useContentStudioApp() {
     exportMixPackage,
     recordMixPackageImportEvidence,
     reviewAsset,
-    approveWorkflowRunReview,
-    archiveWorkflowRunAssets,
     reworkAsset,
     distillAssetPrompt,
     useScenePromptInImage,
@@ -4712,26 +4917,8 @@ export function useContentStudioApp() {
     savePromptPackDraft,
     saveSceneCardDraft,
     updateSceneCard,
-    createWorkflowDraft,
-    materializePromptDraftToWorkflow,
     materializePromptDraftToSkill,
-    publishWorkflowDefinition,
-    updateWorkflowDefinition,
-    startWorkflowRun,
-    openWorkflowRunBrandKnowledge,
-    openWorkflowRunIpKnowledge,
-    openWorkflowRunSceneLibrary,
-    openWorkflowRunPromptDraft,
-    openWorkflowRunAssetReview,
-    openWorkflowRunMaterialBreakdown,
-    openWorkflowRunImageWorkbench,
-    openWorkflowRunArticleWorkbench,
-    openWorkflowRunPrompt,
-    importWorkflowRunFinishedVideo,
-    openWorkflowRunOverlay,
-    openWorkflowRunMixExport,
-    openWorkflowRunPlatformDraft,
-    openTraceWorkflowRun,
+    openRunTrace,
     openTraceGenerationLog,
     openTracePromptDraft,
     openTraceSceneCards,
@@ -4740,6 +4927,7 @@ export function useContentStudioApp() {
     exportArticlePlatformDraft,
     copyPlatformDraftText,
     copyLogPrompt,
+    updateGenerationLogReview,
     revealLogPath,
     reuseImageLogInput,
     routeAiImageCommand,
@@ -4751,7 +4939,11 @@ export function useContentStudioApp() {
     generateVideo,
     openVideoPromptHandoff,
     analyzeReferenceVideo,
+    useVideoBreakdownLog,
+    useVideoScriptLog,
     generateVideoScript,
+    evaluateVideoScript,
+    rewriteVideoScriptShot,
     installSkill,
     createSkill,
     uploadSkillPackage,

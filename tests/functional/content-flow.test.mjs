@@ -14,9 +14,9 @@ import { AgentPromptSessionStore } from '../../src/main/services/agentPromptSess
 import { AssetReviewStore } from '../../src/main/services/assetReviewStore.ts';
 import { AutoUpdateService } from '../../src/main/services/autoUpdateService.ts';
 import { BrandKnowledgeBaseStore } from '../../src/main/services/brandKnowledgeBaseStore.ts';
-import { BrandCommandCenterApplicationService } from '../../src/main/services/brandCommandCenterApplicationService.ts';
-import { BrandCommandCenterStore } from '../../src/main/services/brandCommandCenterStore.ts';
 import { PromptAgentService } from '../../src/main/services/claudePromptAgentService.ts';
+import { ContentBatchApplicationService } from '../../src/main/services/contentBatchApplicationService.ts';
+import { ContentBatchStore } from '../../src/main/services/contentBatchStore.ts';
 import { GenerationLogStore } from '../../src/main/services/generationLogStore.ts';
 import { ImageSkillGenerationService } from '../../src/main/services/imageSkillGenerationService.ts';
 import { InputSourceStore } from '../../src/main/services/inputSourceStore.ts';
@@ -31,8 +31,6 @@ import { ReferenceReverseService } from '../../src/main/services/referenceRevers
 import { SceneLibraryStore } from '../../src/main/services/sceneLibraryStore.ts';
 import { TextGenerationService, TextProviderBlockedError } from '../../src/main/services/textGenerationService.ts';
 import { VideoWorkflowService } from '../../src/main/services/videoWorkflowService.ts';
-import { WorkflowEngine } from '../../src/main/services/workflowEngine.ts';
-import { WorkflowStore } from '../../src/main/services/workflowStore.ts';
 import { AgentKnowledgeContentExportService } from '../../src/main/services/agentKnowledgeContentExportService.ts';
 import { BuguContentWorkspaceSyncAdapter } from '../../src/main/services/buguContentWorkspaceSyncAdapter.ts';
 import { buildClaudeSubprocessEnv, resolveAsarUnpackedPath } from '../../src/main/services/claudeSdkRuntime.ts';
@@ -55,7 +53,16 @@ import { buildPromptGroundingSummary } from '../../src/main/services/promptGroun
 import { getOemRuntimeConfig } from '../../src/main/services/oemRuntimeConfig.ts';
 import { MediaProvider } from '../../src/main/providers/mediaProvider.ts';
 import { formatImageTemplateInputs, formatImageTemplatePromptContext } from '../../src/shared/imageTemplates.ts';
-import { isReusablePromptInputSource, isReusableWorkflowInputSource } from '../../src/shared/inputSourcePolicy.ts';
+import { isReusablePromptInputSource } from '../../src/shared/inputSourcePolicy.ts';
+import { buildIntakeMaturitySummary } from '../../src/shared/intakeMaturity.ts';
+import { buildManufacturingPlanProjection } from '../../src/shared/manufacturingPlan.ts';
+import {
+  buildOntologyV2BatchContractReport,
+  projectContentBatchToOntologyV2,
+  runOntologyV2HarnessCases,
+} from '../../src/shared/ontologyV2.ts';
+import { buildProductPlanProjection } from '../../src/shared/productPlanning.ts';
+import { stripInternalTraceLinesFromPrompt } from '../../src/shared/promptTraceText.ts';
 import { buildProductBriefPromptPlan, structureProductBriefSources } from '../../src/shared/productBrief.ts';
 import { clusterUserFeedbackSources } from '../../src/shared/userFeedbackInsights.ts';
 import { buildScenePromptGroupContent } from '../../src/shared/scenePromptComposer.ts';
@@ -233,35 +240,6 @@ test('Bugu 团队同步适配器不发送本机路径并能解析服务端 revis
         requests.push({ url: String(url), headers: init.headers, body });
         assert.equal(String(init.headers.get('Authorization')), 'Bearer dev-secret');
         assert.doesNotMatch(JSON.stringify(body || {}), /\/Users\/|\/tmp\/content-studio-functional/);
-        if (String(url).includes('/content-action-records?')) {
-          const requestUrl = new URL(String(url));
-          assert.equal(requestUrl.searchParams.get('workspaceId'), 'workspace-server-1');
-          assert.equal(requestUrl.searchParams.get('commandCenterId'), 'command-center-server-1');
-          assert.equal(requestUrl.searchParams.get('limit'), '80');
-          return new Response(JSON.stringify({
-            code: 0,
-            message: 'ok',
-            data: {
-              workspace: { id: 'workspace-server-1', currentRevision: '14' },
-              items: [{
-                id: 'action-server-1',
-                commandCenterId: 'command-center-server-1',
-                queueItemId: 'queue-server-1',
-                campaignCellId: 'cell-server-1',
-                actionType: 'generate-prompt-draft',
-                title: '团队已交接 Prompt 草稿',
-                outcome: 'handoff',
-                actorLabel: '团队成员',
-                inputSummary: '团队资源包',
-                outputSummary: '已交接到 Prompt 工作台。',
-                writeBackSummary: '等待素材导入后回写。',
-                serverRevision: '14',
-                baseRevision: '13',
-                createdAt: '2026-05-28T00:04:00.000Z',
-              }],
-            },
-          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-        }
         if (String(url).includes('/content-knowledge-maps?')) {
           const requestUrl = new URL(String(url));
           assert.equal(requestUrl.searchParams.get('workspaceId'), 'workspace-server-1');
@@ -375,100 +353,6 @@ test('Bugu 团队同步适配器不发送本机路径并能解析服务端 revis
             },
           }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
-        if (String(url).includes('/content-command-centers?')) {
-          const requestUrl = new URL(String(url));
-          assert.equal(requestUrl.searchParams.get('workspaceId'), 'workspace-server-1');
-          assert.equal(requestUrl.searchParams.get('limit'), '100');
-          return new Response(JSON.stringify({
-            code: 0,
-            message: 'ok',
-            data: {
-              revision: '23',
-              items: [{
-                id: 'command-center-server-1',
-                workspaceId: 'workspace-server-1',
-                title: '团队品牌内容作战系统',
-                status: 'active',
-                sourceKnowledgeMapId: 'map-server-1',
-                sourceKnowledgeMapTitle: '团队通勤防晒内容地图',
-                signals: [{
-                  id: 'signal-server-1',
-                  type: 'feedback-pain',
-                  title: '团队信号',
-                  summary: '团队评论反馈。',
-                  sourceLabel: '团队评论',
-                  businessValue: 90,
-                  evidenceReadiness: 80,
-                  urgency: 70,
-                  riskLevel: 10,
-                  productionCost: 20,
-                  recommendedObjectiveType: 'conversion',
-                  riskBoundary: '不能绝对化表达。',
-                  relatedMapRowIds: ['selling-server-1'],
-                }],
-                objectives: [],
-                resourceBundles: [{
-                  id: 'bundle-server-1',
-                  title: '团队资源包',
-                  objectiveId: 'objective-server-1',
-                  sourceKnowledgeMapId: 'map-server-1',
-                  coverageRowIds: ['selling-server-1'],
-                  sellingPointRefs: ['团队清爽补涂'],
-                  evidenceRefs: ['evidence-server-1'],
-                  sceneRefs: ['午后通勤'],
-                  promptDraftIds: ['prompt-server-1'],
-                  materialRefs: [],
-                  sopRefs: [],
-                  constraints: ['不能绝对化表达。'],
-                  gaps: [],
-                  handoffRefs: ['prompt-draft:prompt-server-1'],
-                  readyPercent: 91,
-                }],
-                campaignCells: [],
-                queueSummary: {
-                  items: [{
-                    id: 'queue-server-1',
-                    campaignCellId: 'cell-server-1',
-                    actionType: 'generate-prompt-draft',
-                    title: '团队队列动作',
-                    summary: '生成团队 Prompt。',
-                    status: 'handed-off',
-                    outputTarget: 'prompt-draft',
-                    resourceBundleId: 'bundle-server-1',
-                    createdAt: '2026-05-28T00:05:00.000Z',
-                    updatedAt: '2026-05-28T00:05:01.000Z',
-                  }],
-                },
-                actionSummary: {
-                  records: [{
-                    id: 'action-server-2',
-                    queueItemId: 'queue-server-1',
-                    campaignCellId: 'cell-server-1',
-                    actionType: 'generate-prompt-draft',
-                    title: '团队已生成 Prompt',
-                    outcome: 'handoff',
-                    actorLabel: '团队成员',
-                    actorRole: 'operator',
-                    inputSummary: '团队资源包。',
-                    outputSummary: '已交接 Prompt 工作台。',
-                    promptDraftId: 'prompt-server-1',
-                    artifactRefs: ['prompt-draft:prompt-server-1'],
-                    createdAt: '2026-05-28T00:05:01.000Z',
-                  }],
-                },
-                constraints: ['不能绝对化表达。'],
-                gaps: [],
-                serverRevision: '23',
-                baseRevision: '22',
-                createdAt: '2026-05-28T00:05:00.000Z',
-                updatedAt: '2026-05-28T00:05:01.000Z',
-              }],
-              total: 1,
-              limit: 100,
-              offset: 0,
-            },
-          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-        }
         if (String(url).endsWith('/content-draft-changes')) {
           return new Response(JSON.stringify({
             code: 0,
@@ -503,24 +387,6 @@ test('Bugu 团队同步适配器不发送本机路径并能解析服务端 revis
             data: {
               workspace: { id: 'workspace-server-1', currentRevision: '16' },
               buildRun: { id: 'build-run-1', serverRevision: '16', baseRevision: '15' },
-            },
-          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-        }
-        if (String(url).endsWith('/content-command-centers')) {
-          assert.equal(body.id, 'command-center-1');
-          assert.equal(body.sourceKnowledgeMapId, 'map-1');
-          assert.equal(body.signalCount, 1);
-          assert.equal(body.queueItemCount, 1);
-          assert.equal(body.actionRecordCount, 1);
-          assert.equal(body.snapshot.signals[0].title, '通勤用户担心闷肤');
-          assert.equal(body.snapshot.queueSummary.statusCounts.ready, 1);
-          assert.equal(body.snapshot.actionSummary.records[0].artifactRefs[0], '[本机工作区]/exports/action-records.json');
-          return new Response(JSON.stringify({
-            code: 0,
-            message: 'ok',
-            data: {
-              workspace: { id: 'workspace-server-1', currentRevision: '17' },
-              commandCenter: { id: 'command-center-1', serverRevision: '17', baseRevision: '16' },
             },
           }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
@@ -697,18 +563,6 @@ test('Bugu 团队同步适配器不发送本机路径并能解析服务端 revis
   const conflictRequest = requests.find((request) => request.body?.conflictId === 'conflict-server-1');
   assert.equal(conflictRequest?.body.mergeDraft.rows[0].objectTitle, '轻量便携');
 
-  const actionFetch = await adapter.listActionRecords({
-    workspacePath: '/Users/coso/private-project',
-    workspaceId: 'workspace-server-1',
-    commandCenterId: 'command-center-server-1',
-  });
-  assert.equal(actionFetch.teamSync.status, 'synced');
-  assert.equal(actionFetch.records.length, 1);
-  assert.equal(actionFetch.records[0].id, 'action-server-1');
-  assert.equal(actionFetch.records[0].actionType, 'generate-prompt-draft');
-  assert.equal(actionFetch.records[0].syncStatus, 'synced');
-  assert.equal(actionFetch.records[0].teamSync?.revision, '14');
-
   const teamMaps = await adapter.listKnowledgeMaps({
     workspacePath: '/Users/coso/private-project',
     workspaceId: 'workspace-server-1',
@@ -729,17 +583,6 @@ test('Bugu 团队同步适配器不发送本机路径并能解析服务端 revis
   assert.equal(teamBuildRuns[0].id, 'build-run-server-1');
   assert.equal(teamBuildRuns[0].teamSync?.revision, '22');
   assert.equal(teamBuildRuns[0].steps[0].key, 'team-quality-check');
-
-  const teamCommandCenters = await adapter.listCommandCenters({
-    workspacePath: '/Users/coso/private-project',
-    workspaceId: 'workspace-server-1',
-  });
-  assert.equal(teamCommandCenters.length, 1);
-  assert.equal(teamCommandCenters[0].id, 'command-center-server-1');
-  assert.equal(teamCommandCenters[0].teamSync.revision, '23');
-  assert.equal(teamCommandCenters[0].signals[0].title, '团队信号');
-  assert.equal(teamCommandCenters[0].queueItems[0].status, 'handed-off');
-  assert.equal(teamCommandCenters[0].actionRecords[0].promptDraftId, 'prompt-server-1');
 
   const mapSync = await adapter.upsertKnowledgeMapSnapshot({
     record: {
@@ -836,105 +679,8 @@ test('Bugu 团队同步适配器不发送本机路径并能解析服务端 revis
   assert.equal(runSync.status, 'synced');
   assert.equal(runSync.revision, '16');
 
-  const commandCenterSync = await adapter.upsertCommandCenterSnapshot({
-    record: {
-      id: 'command-center-1',
-      workspacePath: '/Users/coso/private-project',
-      title: '通勤防晒品牌作战系统',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-1',
-      sourceKnowledgeMapTitle: '通勤防晒内容知识地图',
-      signals: [{
-        id: 'signal-1',
-        type: 'feedback-pain',
-        title: '通勤用户担心闷肤',
-        summary: '评论区追问午后补涂是否闷肤。',
-        sourceLabel: '用户评论',
-        businessValue: 88,
-        evidenceReadiness: 80,
-        urgency: 72,
-        riskLevel: 20,
-        productionCost: 30,
-        recommendedObjectiveType: 'conversion',
-        riskBoundary: '不能绝对化表达。',
-        relatedMapRowIds: ['selling-1'],
-      }],
-      objectives: [{
-        id: 'objective-1',
-        type: 'conversion',
-        title: '解释清爽补涂',
-        summary: '用证据说明清爽体验。',
-        priority: 'P1',
-        channels: ['抖音'],
-        successCriteria: ['评论区能理解清爽体验。'],
-        signalIds: ['signal-1'],
-      }],
-      resourceBundles: [{
-        id: 'bundle-1',
-        title: '清爽补涂资源包',
-        objectiveId: 'objective-1',
-        sourceKnowledgeMapId: 'map-1',
-        coverageRowIds: ['selling-1'],
-        sellingPointRefs: ['清爽补涂'],
-        evidenceRefs: ['evidence-1'],
-        sceneRefs: ['午后补涂'],
-        promptDraftIds: ['prompt-1'],
-        materialRefs: ['/Users/coso/private-project/assets/private.mov'],
-        sopRefs: [],
-        constraints: ['不能绝对化表达。'],
-        gaps: [],
-        readyPercent: 80,
-      }],
-      campaignCells: [{
-        id: 'cell-1',
-        title: '通勤转化作战单元',
-        objectiveId: 'objective-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['抖音'],
-        timeWindow: '本周',
-        resourceBundleId: 'bundle-1',
-        decisionChecks: [],
-        queueItemIds: ['queue-1'],
-      }],
-      queueItems: [{
-        id: 'queue-1',
-        campaignCellId: 'cell-1',
-        actionType: 'generate-prompt-draft',
-        title: '生成清爽补涂 Prompt',
-        summary: '生成 15 秒口播 Prompt。',
-        status: 'ready',
-        outputTarget: 'prompt-draft',
-        resourceBundleId: 'bundle-1',
-        createdAt: '2026-05-28T00:00:00.000Z',
-        updatedAt: '2026-05-28T00:00:00.000Z',
-      }],
-      actionRecords: [{
-        id: 'action-1',
-        queueItemId: 'queue-1',
-        campaignCellId: 'cell-1',
-        actionType: 'generate-prompt-draft',
-        title: '生成清爽补涂 Prompt',
-        outcome: 'handoff',
-        actorLabel: '功能测试',
-        inputSummary: '清爽补涂资源包。',
-        outputSummary: '已交接 Prompt 工作台。',
-        artifactRefs: ['/Users/coso/private-project/exports/action-records.json'],
-        createdAt: '2026-05-28T00:00:01.000Z',
-      }],
-      constraints: ['不能绝对化表达。'],
-      gaps: [],
-      teamSync: runSync,
-      createdAt: '2026-05-28T00:00:00.000Z',
-      updatedAt: '2026-05-28T00:00:01.000Z',
-    },
-  });
-  assert.equal(commandCenterSync.status, 'synced');
-  assert.equal(commandCenterSync.revision, '17');
   assert.ok(requests.some((request) => String(request.url).endsWith('/content-knowledge-maps')));
   assert.ok(requests.some((request) => String(request.url).endsWith('/content-build-runs')));
-  assert.ok(requests.some((request) => String(request.url).endsWith('/content-command-centers')));
   });
 });
 
@@ -1209,9 +955,7 @@ test('团队共享在线验收要求两个账号看到同一工作区、团队�
   const requests = [];
   const knowledgeMapItems = [{ id: 'map-online-1', title: '线上团队内容地图' }];
   const buildRunItems = [{ id: 'build-run-online-1', contentKnowledgeMapId: 'map-online-1', title: '线上团队生成流程' }];
-  const commandCenterItems = [{ id: 'command-center-online-1', sourceKnowledgeMapId: 'map-online-1', title: '线上品牌作战系统' }];
   const reviewItems = Array.from({ length: 105 }, (_, index) => ({ id: `review-online-${index + 1}`, title: `确认卖点证据 ${index + 1}` }));
-  const queueItems = Array.from({ length: 105 }, (_, index) => ({ id: `queue-online-${index + 1}`, title: `生成通勤场景 Prompt ${index + 1}` }));
   const actionItems = Array.from({ length: 105 }, (_, index) => ({
     id: `action-online-${index + 1}`,
     title: `确认目标优先级 ${index + 1}`,
@@ -1285,16 +1029,8 @@ test('团队共享在线验收要求两个账号看到同一工作区、团队�
       response.end(JSON.stringify({ code: 0, data: paginate(buildRunItems, url) }));
       return;
     }
-    if (url.pathname === '/api/v1/oem/content-command-centers') {
-      response.end(JSON.stringify({ code: 0, data: paginate(commandCenterItems, url) }));
-      return;
-    }
     if (url.pathname === '/api/v1/oem/content-review-tasks') {
       response.end(JSON.stringify({ code: 0, data: paginate(reviewItems, url) }));
-      return;
-    }
-    if (url.pathname === '/api/v1/oem/content-execution-queue') {
-      response.end(JSON.stringify({ code: 0, data: paginate(queueItems, url) }));
       return;
     }
     if (url.pathname === '/api/v1/oem/content-action-records') {
@@ -1325,19 +1061,14 @@ test('团队共享在线验收要求两个账号看到同一工作区、团队�
     assert.deepEqual(result.summaries.actorB.knowledgeMapIds, ['map-online-1']);
     assert.equal(result.summaries.actorA.buildRunCount, 1);
     assert.deepEqual(result.summaries.actorB.buildRunIds, ['build-run-online-1']);
-    assert.equal(result.summaries.actorA.commandCenterCount, 1);
-    assert.deepEqual(result.summaries.actorB.commandCenterIds, ['command-center-online-1']);
     assert.equal(result.summaries.actorA.releaseCount, 1);
     assert.deepEqual(result.summaries.actorB.releaseIds, ['release-team-online']);
     assert.equal(result.summaries.actorA.knowledgeMapListComplete, true);
     assert.equal(result.summaries.actorB.buildRunListComplete, true);
-    assert.equal(result.summaries.actorA.commandCenterListComplete, true);
     assert.equal(result.summaries.actorA.releaseListComplete, true);
     assert.equal(result.summaries.actorA.reviewTaskCount, 105);
-    assert.equal(result.summaries.actorB.executionQueueCount, 105);
     assert.equal(result.summaries.actorA.actionRecordCount, 105);
     assert.equal(result.summaries.actorA.reviewTaskListComplete, true);
-    assert.equal(result.summaries.actorB.executionQueueListComplete, true);
     assert.equal(result.summaries.actorB.actionRecordListComplete, true);
     assert.equal(result.summaries.actorB.actionRecordIds.length, 105);
     assert.ok(result.summaries.actorB.actionRecordIds.includes('action-online-105'));
@@ -1351,18 +1082,14 @@ test('团队共享在线验收要求两个账号看到同一工作区、团队�
     assert.equal(result.checks.find((check) => check.id === 'release-public-url-present')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'knowledge-map-list-complete')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'build-run-list-complete')?.status, 'passed');
-    assert.equal(result.checks.find((check) => check.id === 'command-center-list-complete')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'knowledge-map-list-present')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'build-run-list-present')?.status, 'passed');
-    assert.equal(result.checks.find((check) => check.id === 'command-center-list-present')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'review-task-list-present')?.status, 'passed');
-    assert.equal(result.checks.find((check) => check.id === 'execution-queue-list-present')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'action-record-list-present')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'release-list-present')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'release-list-complete')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'knowledge-map-list-match')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'build-run-list-match')?.status, 'passed');
-    assert.equal(result.checks.find((check) => check.id === 'command-center-list-match')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'release-list-match')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'action-record-list-complete')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'action-record-list-match')?.status, 'passed');
@@ -1372,7 +1099,6 @@ test('团队共享在线验收要求两个账号看到同一工作区、团队�
     assert.equal(result.checks.find((check) => check.id === 'material-gap-artifact-present')?.status, 'passed');
     assert.ok(requests.some((item) => item.pathname === '/api/v1/oem/content-knowledge-maps'));
     assert.ok(requests.some((item) => item.pathname === '/api/v1/oem/content-build-runs'));
-    assert.ok(requests.some((item) => item.pathname === '/api/v1/oem/content-command-centers'));
     assert.ok(requests.some((item) => item.pathname === '/api/v1/oem/content-action-records' && item.offset === '100'));
     assert.ok(requests.some((item) => item.authorization === 'Bearer token-a'));
     assert.ok(requests.some((item) => item.authorization === 'Bearer token-b'));
@@ -1439,9 +1165,7 @@ test('团队共享在线验收会拒绝空的团队主事实源清单', async ()
     if (
       url.pathname === '/api/v1/oem/content-knowledge-maps' ||
       url.pathname === '/api/v1/oem/content-build-runs' ||
-      url.pathname === '/api/v1/oem/content-command-centers' ||
-      url.pathname === '/api/v1/oem/content-review-tasks' ||
-      url.pathname === '/api/v1/oem/content-execution-queue'
+      url.pathname === '/api/v1/oem/content-review-tasks'
     ) {
       return jsonResponse({ code: 0, data: { items: [], total: 0 } });
     }
@@ -1460,15 +1184,12 @@ test('团队共享在线验收会拒绝空的团队主事实源清单', async ()
   assert.equal(result.ok, false);
   assert.equal(result.summaries.actorA.knowledgeMapCount, 0);
   assert.equal(result.summaries.actorA.buildRunCount, 0);
-  assert.equal(result.summaries.actorA.commandCenterCount, 0);
   assert.equal(result.checks.find((check) => check.id === 'knowledge-map-list-present')?.status, 'failed');
   assert.equal(result.checks.find((check) => check.id === 'build-run-list-present')?.status, 'failed');
-  assert.equal(result.checks.find((check) => check.id === 'command-center-list-present')?.status, 'failed');
   assert.equal(result.checks.find((check) => check.id === 'review-task-list-present')?.status, 'failed');
-  assert.equal(result.checks.find((check) => check.id === 'execution-queue-list-present')?.status, 'failed');
 });
 
-test('团队共享在线验收会拒绝空的团队审核任务和执行队列', async () => {
+test('团队共享在线验收会拒绝空的团队审核任务和行动记录', async () => {
   const jsonResponse = (data, status = 200) => new Response(JSON.stringify(data), {
     status,
     headers: { 'content-type': 'application/json' },
@@ -1484,10 +1205,10 @@ test('团队共享在线验收会拒绝空的团队审核任务和执行队列',
         code: 0,
         data: {
           items: [{
-            id: 'workspace-empty-review-queue',
-            name: '空审核队列工作区',
-            currentRevision: 'rev-empty-review-queue',
-            defaultKnowledgeReleaseId: 'release-empty-review-queue',
+            id: 'workspace-empty-review-action',
+            name: '空审核行动工作区',
+            currentRevision: 'rev-empty-review-action',
+            defaultKnowledgeReleaseId: 'release-empty-review-action',
           }],
           total: 1,
         },
@@ -1498,12 +1219,12 @@ test('团队共享在线验收会拒绝空的团队审核任务和执行队列',
         code: 0,
         data: {
           items: [{
-            id: 'release-empty-review-queue',
-            title: '空审核队列知识包',
-            version: 'v1-empty-review-queue',
+            id: 'release-empty-review-action',
+            title: '空审核行动知识包',
+            version: 'v1-empty-review-action',
             status: 'published',
             approvalStatus: 'approved',
-            packagePublicUrl: 'https://r2.bugu.run/packages/release-empty-review-queue.zip',
+            packagePublicUrl: 'https://r2.bugu.run/packages/release-empty-review-action.zip',
             packageUploadStatus: 'stored',
           }],
           total: 1,
@@ -1511,20 +1232,17 @@ test('团队共享在线验收会拒绝空的团队审核任务和执行队列',
       });
     }
     if (url.pathname === '/api/v1/oem/content-knowledge-maps') {
-      return jsonResponse({ code: 0, data: { items: [{ id: 'map-empty-review-queue' }], total: 1 } });
+      return jsonResponse({ code: 0, data: { items: [{ id: 'map-empty-review-action' }], total: 1 } });
     }
     if (url.pathname === '/api/v1/oem/content-build-runs') {
-      return jsonResponse({ code: 0, data: { items: [{ id: 'build-run-empty-review-queue' }], total: 1 } });
-    }
-    if (url.pathname === '/api/v1/oem/content-command-centers') {
-      return jsonResponse({ code: 0, data: { items: [{ id: 'command-center-empty-review-queue' }], total: 1 } });
+      return jsonResponse({ code: 0, data: { items: [{ id: 'build-run-empty-review-action' }], total: 1 } });
     }
     if (url.pathname === '/api/v1/oem/content-action-records') {
       return jsonResponse({
         code: 0,
         data: {
           items: [{
-            id: 'action-empty-review-queue',
+            id: 'action-empty-review-action',
             title: '生成补素材清单',
             artifactRefs: ['material-gap-list.json'],
           }],
@@ -1533,8 +1251,7 @@ test('团队共享在线验收会拒绝空的团队审核任务和执行队列',
       });
     }
     if (
-      url.pathname === '/api/v1/oem/content-review-tasks' ||
-      url.pathname === '/api/v1/oem/content-execution-queue'
+      url.pathname === '/api/v1/oem/content-review-tasks'
     ) {
       return jsonResponse({ code: 0, data: { items: [], total: 0 } });
     }
@@ -1544,7 +1261,7 @@ test('团队共享在线验收会拒绝空的团队审核任务和执行队列',
   const result = await verifyContentTeamSharingOnline({
     apiBaseUrl: 'https://api.bugu.run',
     tenant: 'tenant-prod',
-    workspaceId: 'workspace-empty-review-queue',
+    workspaceId: 'workspace-empty-review-action',
     actorAToken: 'token-a',
     actorBToken: 'token-b',
     fetchImpl,
@@ -1553,9 +1270,7 @@ test('团队共享在线验收会拒绝空的团队审核任务和执行队列',
   assert.equal(result.ok, false);
   assert.equal(result.checks.find((check) => check.id === 'knowledge-map-list-present')?.status, 'passed');
   assert.equal(result.checks.find((check) => check.id === 'build-run-list-present')?.status, 'passed');
-  assert.equal(result.checks.find((check) => check.id === 'command-center-list-present')?.status, 'passed');
   assert.equal(result.checks.find((check) => check.id === 'review-task-list-present')?.status, 'failed');
-  assert.equal(result.checks.find((check) => check.id === 'execution-queue-list-present')?.status, 'failed');
   assert.equal(result.checks.find((check) => check.id === 'action-record-list-present')?.status, 'passed');
 });
 
@@ -1631,34 +1346,12 @@ test('Ontology v1 在线验收可以汇总知识包和团队共享报告', async
       }));
       return;
     }
-    if (url.pathname === '/api/v1/oem/content-command-centers') {
-      response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({
-        code: 0,
-        data: {
-          items: [{ id: 'command-center-v1-online', sourceKnowledgeMapId: 'map-v1-online' }],
-          total: 1,
-        },
-      }));
-      return;
-    }
     if (url.pathname === '/api/v1/oem/content-review-tasks') {
       response.setHeader('content-type', 'application/json');
       response.end(JSON.stringify({
         code: 0,
         data: {
           items: [{ id: 'review-task-v1-online', title: '确认 v1 卖点证据' }],
-          total: 1,
-        },
-      }));
-      return;
-    }
-    if (url.pathname === '/api/v1/oem/content-execution-queue') {
-      response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({
-        code: 0,
-        data: {
-          items: [{ id: 'queue-v1-online', title: '生成 v1 通勤场景 Prompt' }],
           total: 1,
         },
       }));
@@ -1714,9 +1407,7 @@ test('Ontology v1 在线验收可以汇总知识包和团队共享报告', async
     assert.equal(result.sections.release.ok, true);
     assert.equal(result.sections.team.ok, true);
     assert.equal(result.sections.team.summaries.actorA.reviewTaskCount, 1);
-    assert.equal(result.sections.team.summaries.actorA.executionQueueCount, 1);
     assert.equal(result.sections.team.checks.find((check) => check.id === 'review-task-list-present')?.status, 'passed');
-    assert.equal(result.sections.team.checks.find((check) => check.id === 'execution-queue-list-present')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'release-online-report')?.status, 'passed');
     assert.equal(result.checks.find((check) => check.id === 'team-sharing-online-report')?.status, 'passed');
   } finally {
@@ -1765,16 +1456,12 @@ test('Ontology v1 生产验收报告归档会拒绝本地 mock 报告', async ()
           actorA: {
             knowledgeMapCount: 1,
             buildRunCount: 1,
-            commandCenterCount: 1,
             reviewTaskCount: 1,
-            executionQueueCount: 1,
             actionRecordCount: 1,
             releaseCount: 1,
             knowledgeMapIds: ['map-v1-online'],
             buildRunIds: ['build-run-v1-online'],
-            commandCenterIds: ['command-center-v1-online'],
             reviewTaskIds: ['review-task-1'],
-            executionQueueIds: ['queue-item-1'],
             actionRecordIds: ['action-record-1'],
             actionArtifactRecordCount: 1,
             actionArtifactRecordIds: ['action-record-1'],
@@ -1784,25 +1471,19 @@ test('Ontology v1 生产验收报告归档会拒绝本地 mock 报告', async ()
             releaseIds: ['release-v1-online'],
             knowledgeMapListComplete: true,
             buildRunListComplete: true,
-            commandCenterListComplete: true,
             reviewTaskListComplete: true,
-            executionQueueListComplete: true,
             actionRecordListComplete: true,
             releaseListComplete: true,
           },
           actorB: {
             knowledgeMapCount: 1,
             buildRunCount: 1,
-            commandCenterCount: 1,
             reviewTaskCount: 1,
-            executionQueueCount: 1,
             actionRecordCount: 1,
             releaseCount: 1,
             knowledgeMapIds: ['map-v1-online'],
             buildRunIds: ['build-run-v1-online'],
-            commandCenterIds: ['command-center-v1-online'],
             reviewTaskIds: ['review-task-1'],
-            executionQueueIds: ['queue-item-1'],
             actionRecordIds: ['action-record-1'],
             actionArtifactRecordCount: 1,
             actionArtifactRecordIds: ['action-record-1'],
@@ -1812,9 +1493,7 @@ test('Ontology v1 生产验收报告归档会拒绝本地 mock 报告', async ()
             releaseIds: ['release-v1-online'],
             knowledgeMapListComplete: true,
             buildRunListComplete: true,
-            commandCenterListComplete: true,
             reviewTaskListComplete: true,
-            executionQueueListComplete: true,
             actionRecordListComplete: true,
             releaseListComplete: true,
           },
@@ -1925,14 +1604,14 @@ test('Ontology v1 生产验收报告归档会拒绝本地 mock 报告', async ()
   assert.equal(privateApiBase.ok, false);
   assert.ok(privateApiBase.issues.some((issue) => issue.id === 'target-api-base-url'));
 
-  const mismatchedTeamReport = structuredClone(productionReport);
-  mismatchedTeamReport.sections.team.summaries.actorB.executionQueueIds = ['queue-item-other'];
-  const mismatchedTeam = validateContentOntologyV1Report(mismatchedTeamReport, {
+  const mismatchedActionReport = structuredClone(productionReport);
+  mismatchedActionReport.sections.team.summaries.actorB.actionRecordIds = ['action-record-other'];
+  const mismatchedAction = validateContentOntologyV1Report(mismatchedActionReport, {
     production: true,
     requireApiBaseUrl: 'https://api.bugu.run',
   });
-  assert.equal(mismatchedTeam.ok, false);
-  assert.ok(mismatchedTeam.issues.some((issue) => issue.id === 'team-queue-ids-match'));
+  assert.equal(mismatchedAction.ok, false);
+  assert.ok(mismatchedAction.issues.some((issue) => issue.id === 'team-action-ids-match'));
 
   const missingKnowledgeMapReport = structuredClone(productionReport);
   missingKnowledgeMapReport.sections.team.summaries.actorA.knowledgeMapCount = 0;
@@ -1958,17 +1637,17 @@ test('Ontology v1 生产验收报告归档会拒绝本地 mock 报告', async ()
   assert.equal(missingReview.ok, false);
   assert.ok(missingReview.issues.some((issue) => issue.id === 'team-review-present'));
 
-  const missingQueueReport = structuredClone(productionReport);
-  missingQueueReport.sections.team.summaries.actorA.executionQueueCount = 0;
-  missingQueueReport.sections.team.summaries.actorB.executionQueueCount = 0;
-  missingQueueReport.sections.team.summaries.actorA.executionQueueIds = [];
-  missingQueueReport.sections.team.summaries.actorB.executionQueueIds = [];
-  const missingQueue = validateContentOntologyV1Report(missingQueueReport, {
+  const missingActionReport = structuredClone(productionReport);
+  missingActionReport.sections.team.summaries.actorA.actionRecordCount = 0;
+  missingActionReport.sections.team.summaries.actorB.actionRecordCount = 0;
+  missingActionReport.sections.team.summaries.actorA.actionRecordIds = [];
+  missingActionReport.sections.team.summaries.actorB.actionRecordIds = [];
+  const missingAction = validateContentOntologyV1Report(missingActionReport, {
     production: true,
     requireApiBaseUrl: 'https://api.bugu.run',
   });
-  assert.equal(missingQueue.ok, false);
-  assert.ok(missingQueue.issues.some((issue) => issue.id === 'team-queue-present'));
+  assert.equal(missingAction.ok, false);
+  assert.ok(missingAction.issues.some((issue) => issue.id === 'team-action-present'));
 
   const missingReleaseReport = structuredClone(productionReport);
   missingReleaseReport.sections.team.summaries.actorA.releaseCount = 0;
@@ -1982,35 +1661,8 @@ test('Ontology v1 生产验收报告归档会拒绝本地 mock 报告', async ()
   assert.equal(missingRelease.ok, false);
   assert.ok(missingRelease.issues.some((issue) => issue.id === 'team-release-present'));
 
-  const mismatchedBuildRunReport = structuredClone(productionReport);
-  mismatchedBuildRunReport.sections.team.summaries.actorB.buildRunIds = ['build-run-other'];
-  const mismatchedBuildRun = validateContentOntologyV1Report(mismatchedBuildRunReport, {
-    production: true,
-    requireApiBaseUrl: 'https://api.bugu.run',
-  });
-  assert.equal(mismatchedBuildRun.ok, false);
-  assert.ok(mismatchedBuildRun.issues.some((issue) => issue.id === 'team-build-run-ids-match'));
-
-  const mismatchedCommandCenterReport = structuredClone(productionReport);
-  mismatchedCommandCenterReport.sections.team.summaries.actorB.commandCenterIds = ['command-center-other'];
-  const mismatchedCommandCenter = validateContentOntologyV1Report(mismatchedCommandCenterReport, {
-    production: true,
-    requireApiBaseUrl: 'https://api.bugu.run',
-  });
-  assert.equal(mismatchedCommandCenter.ok, false);
-  assert.ok(mismatchedCommandCenter.issues.some((issue) => issue.id === 'team-command-center-ids-match'));
-
-  const mismatchedActionReport = structuredClone(productionReport);
-  mismatchedActionReport.sections.team.summaries.actorB.actionRecordIds = ['action-record-other'];
-  const mismatchedAction = validateContentOntologyV1Report(mismatchedActionReport, {
-    production: true,
-    requireApiBaseUrl: 'https://api.bugu.run',
-  });
-  assert.equal(mismatchedAction.ok, false);
-  assert.ok(mismatchedAction.issues.some((issue) => issue.id === 'team-action-ids-match'));
-
   const mismatchedReleaseReport = structuredClone(productionReport);
-  mismatchedReleaseReport.sections.team.summaries.actorB.releaseIds = ['release-other'];
+  mismatchedReleaseReport.sections.team.summaries.actorB.releaseIds = ['release-v1-other'];
   const mismatchedRelease = validateContentOntologyV1Report(mismatchedReleaseReport, {
     production: true,
     requireApiBaseUrl: 'https://api.bugu.run',
@@ -2027,59 +1679,16 @@ test('Ontology v1 生产验收报告归档会拒绝本地 mock 报告', async ()
   assert.equal(incompleteRelease.ok, false);
   assert.ok(incompleteRelease.issues.some((issue) => issue.id === 'team-release-list-complete'));
 
-  const incompleteActionIdsReport = structuredClone(productionReport);
-  incompleteActionIdsReport.sections.team.summaries.actorA.actionRecordCount = 2;
-  incompleteActionIdsReport.sections.team.summaries.actorB.actionRecordCount = 2;
-  incompleteActionIdsReport.sections.team.summaries.actorA.actionRecordIds = ['action-record-1'];
-  incompleteActionIdsReport.sections.team.summaries.actorB.actionRecordIds = ['action-record-1'];
-  const incompleteActionIds = validateContentOntologyV1Report(incompleteActionIdsReport, {
+  const mismatchedBuildRunReport = structuredClone(productionReport);
+  mismatchedBuildRunReport.sections.team.summaries.actorB.buildRunIds = ['build-run-other'];
+  const mismatchedBuildRun = validateContentOntologyV1Report(mismatchedBuildRunReport, {
     production: true,
     requireApiBaseUrl: 'https://api.bugu.run',
   });
-  assert.equal(incompleteActionIds.ok, false);
-  assert.ok(incompleteActionIds.issues.some((issue) => issue.id === 'team-action-ids-complete'));
+  assert.equal(mismatchedBuildRun.ok, false);
+  assert.ok(mismatchedBuildRun.issues.some((issue) => issue.id === 'team-build-run-ids-match'));
 
-  const missingActionArtifactsWithoutActionIdsReport = structuredClone(productionReport);
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorA.actionRecordCount = 0;
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorB.actionRecordCount = 0;
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorA.actionRecordIds = [];
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorB.actionRecordIds = [];
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorA.actionArtifactRecordCount = 0;
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorB.actionArtifactRecordCount = 0;
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorA.actionArtifactRecordIds = [];
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorB.actionArtifactRecordIds = [];
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorA.actionArtifactRefsByRecordId = {};
-  missingActionArtifactsWithoutActionIdsReport.sections.team.summaries.actorB.actionArtifactRefsByRecordId = {};
-  const missingActionArtifactsWithoutActionIds = validateContentOntologyV1Report(missingActionArtifactsWithoutActionIdsReport, {
-    production: true,
-    requireApiBaseUrl: 'https://api.bugu.run',
-  });
-  assert.equal(missingActionArtifactsWithoutActionIds.ok, false);
-  assert.ok(missingActionArtifactsWithoutActionIds.issues.some((issue) => issue.id === 'team-action-present'));
-  assert.ok(missingActionArtifactsWithoutActionIds.issues.some((issue) => issue.id === 'team-action-artifacts-present'));
 
-  const missingArtifactRefsReport = structuredClone(productionReport);
-  missingArtifactRefsReport.sections.team.summaries.actorA.actionArtifactRecordCount = 0;
-  missingArtifactRefsReport.sections.team.summaries.actorB.actionArtifactRecordCount = 0;
-  missingArtifactRefsReport.sections.team.summaries.actorA.actionArtifactRecordIds = [];
-  missingArtifactRefsReport.sections.team.summaries.actorB.actionArtifactRecordIds = [];
-  missingArtifactRefsReport.sections.team.summaries.actorA.actionArtifactRefsByRecordId = {};
-  missingArtifactRefsReport.sections.team.summaries.actorB.actionArtifactRefsByRecordId = {};
-  const missingArtifactRefs = validateContentOntologyV1Report(missingArtifactRefsReport, {
-    production: true,
-    requireApiBaseUrl: 'https://api.bugu.run',
-  });
-  assert.equal(missingArtifactRefs.ok, false);
-  assert.ok(missingArtifactRefs.issues.some((issue) => issue.id === 'team-action-artifacts-present'));
-
-  const mismatchedArtifactRefsReport = structuredClone(productionReport);
-  mismatchedArtifactRefsReport.sections.team.summaries.actorB.actionArtifactRefsByRecordId['action-record-1'] = ['other-material-gap-list.json'];
-  const mismatchedArtifactRefs = validateContentOntologyV1Report(mismatchedArtifactRefsReport, {
-    production: true,
-    requireApiBaseUrl: 'https://api.bugu.run',
-  });
-  assert.equal(mismatchedArtifactRefs.ok, false);
-  assert.ok(mismatchedArtifactRefs.issues.some((issue) => issue.id === 'team-action-artifact-refs-match'));
 
   const unsafeArtifactRefsReport = structuredClone(productionReport);
   unsafeArtifactRefsReport.sections.team.summaries.actorA.actionArtifactRefsByRecordId['action-record-1'] = ['/Users/coso/private/material-gap-list.json'];
@@ -2112,7 +1721,13 @@ test('Ontology v1 readiness gate 区分本地就绪和生产报告缺失', async
   assert.ok(localReadiness.checks.some((check) => check.id === 'verify-local-includes-readiness' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'prototype-copy' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'completion-audit' && check.status === 'passed'));
-  assert.ok(localReadiness.checks.some((check) => check.id === 'v1-user-facing-copy-gate' && check.status === 'passed' && check.files === 5 && check.rules >= 10));
+  assert.ok(localReadiness.checks.some((check) => (
+    check.id === 'v1-user-facing-copy-gate'
+    && check.status === 'passed'
+    && check.files === 3
+    && check.rules >= 6
+    && check.message.includes('知识地图、审核台和 Prompt 工作台')
+  )));
   assert.ok(localReadiness.checks.some((check) => check.id === 'team-knowledge-refresh-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'build-run-detail-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'matrix-row-primary-action-gate' && check.status === 'passed'));
@@ -2121,7 +1736,9 @@ test('Ontology v1 readiness gate 区分本地就绪和生产报告缺失', async
   assert.ok(localReadiness.checks.some((check) => check.id === 'team-sync-conflict-resolution-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'team-offline-change-import-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'production-handoff-gate' && check.status === 'passed'));
+  assert.ok(localReadiness.checks.some((check) => check.id === 'retired-brand-command-runtime-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'team-release-list-gate' && check.status === 'passed'));
+  assert.ok(localReadiness.checks.some((check) => check.id === 'team-workflow-presence-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'agent-knowledge-pack-file-preview-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'bugu-server-policy-gate' && ['passed', 'warning'].includes(check.status)));
   assert.ok(localReadiness.checks.some((check) => check.id === 'bugu-knowledge-map-fact-source' && ['passed', 'warning'].includes(check.status)));
@@ -3464,11 +3081,10 @@ test('内容团队共享服务能提交变更包并发布团队知识包版本',
   });
 });
 
-test('v1 本地事实源并发写入不会丢失审核和行动记录', async () => {
+test('v1 本地事实源并发写入不会丢失审核和生产交接记录', async () => {
   await withWorkspace(async (workspacePath) => {
     const mapStore = new ContentKnowledgeMapStore();
     const reviewStore = new ContentReviewTaskStore();
-    const commandStore = new BrandCommandCenterStore();
     const handoffStore = new ContentProductionHandoffStore();
     const now = '2026-05-30T00:00:00.000Z';
 
@@ -3546,45 +3162,6 @@ test('v1 本地事实源并发写入不会丢失审核和行动记录', async ()
     assert.equal(tasks.length, 12);
     assert.equal(new Set(tasks.map((item) => item.id)).size, 12);
 
-    const commandRecord = (index) => ({
-      id: `command-concurrent-${index}`,
-      workspacePath,
-      title: `并发品牌战情室 ${index}`,
-      status: 'active',
-      syncStatus: 'local-only',
-      sourceKnowledgeMapId: `map-concurrent-${index}`,
-      sourceKnowledgeMapTitle: `并发内容地图 ${index}`,
-      signals: [],
-      objectives: [],
-      resourceBundles: [],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: [{
-        id: `action-concurrent-${index}`,
-        actionType: 'content-production-blocked',
-        title: `并发行动记录 ${index}`,
-        outcome: 'blocked',
-        actorLabel: '功能测试',
-        inputSummary: '并发写入验证。',
-        outputSummary: '已记录并发行动。',
-        createdAt: `${now}.${index}`,
-      }],
-      constraints: [],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'local-only',
-        message: '本机草稿。',
-      },
-      createdAt: `${now}.${index}`,
-      updatedAt: `${now}.${index}`,
-    });
-
-    await Promise.all(Array.from({ length: 12 }, (_, index) => commandStore.save(commandRecord(index))));
-    const commandCenters = await commandStore.list(workspacePath);
-    assert.equal(commandCenters.length, 12);
-    assert.equal(new Set(commandCenters.flatMap((item) => item.actionRecords.map((record) => record.id))).size, 12);
-
     const handoffRecord = (index) => ({
       id: `handoff-concurrent-${index}`,
       workspacePath,
@@ -3625,28 +3202,15 @@ test('v1 本地事实源并发写入不会丢失审核和行动记录', async ()
     assert.equal(handoffs.length, 12);
     assert.equal(new Set(handoffs.map((item) => item.id)).size, 12);
     assert.equal(new Set(handoffs.flatMap((item) => item.actionRecords.map((record) => record.id))).size, 12);
-
-    const workflowStore = new WorkflowStore();
-    await Promise.all(Array.from({ length: 6 }, (_, index) => workflowStore.createDraft({
-      workspacePath,
-      templateKey: 'brand-scene-prompts',
-      title: `并发 SOP 草案 ${index}`,
-      description: '并发写入验证。',
-    })));
-    const workflowDefinitions = await workflowStore.listDefinitions(workspacePath);
-    const draftTitles = new Set(workflowDefinitions.filter((item) => item.status === 'draft').map((item) => item.title));
-    assert.equal(draftTitles.size, 6);
-    assert.ok(Array.from({ length: 6 }, (_, index) => `并发 SOP 草案 ${index}`).every((title) => draftTitles.has(title)));
   });
 });
 
-test('v1 本地事实源超过展示阈值仍保留审计历史', async () => {
+test('v1 本地事实源超过展示阈值仍保留生产审计历史', async () => {
   await withWorkspace(async (workspacePath) => {
     const mapStore = new ContentKnowledgeMapStore();
     const buildRunStore = new ContentKnowledgeMapBuildRunStore();
     const draftStore = new ContentDraftChangeStore();
     const reviewStore = new ContentReviewTaskStore();
-    const commandStore = new BrandCommandCenterStore();
     const handoffStore = new ContentProductionHandoffStore();
     const baseMs = Date.parse('2026-05-30T00:10:00.000Z');
     const at = (index) => new Date(baseMs + index * 1000).toISOString();
@@ -3755,36 +3319,6 @@ test('v1 本地事实源超过展示阈值仍保留审计历史', async () => {
       updatedAt: at(index),
     });
 
-    const commandRecord = (index) => ({
-      id: `command-history-${index}`,
-      workspacePath,
-      title: `历史品牌战情室 ${index}`,
-      status: 'active',
-      syncStatus: 'local-only',
-      sourceKnowledgeMapId: `map-history-${index}`,
-      sourceKnowledgeMapTitle: `历史内容地图 ${index}`,
-      signals: [],
-      objectives: [],
-      resourceBundles: [],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: [{
-        id: `action-history-${index}`,
-        actionType: 'content-production-blocked',
-        title: `历史行动记录 ${index}`,
-        outcome: 'blocked',
-        actorLabel: '功能测试',
-        inputSummary: '超过展示阈值仍需保留。',
-        outputSummary: '已记录。',
-        createdAt: at(index),
-      }],
-      constraints: [],
-      gaps: [],
-      teamSync: { backend: 'bugu', status: 'local-only', message: '本机草稿。' },
-      createdAt: at(index),
-      updatedAt: at(index),
-    });
-
     const handoffRecord = (index) => ({
       id: `handoff-history-${index}`,
       workspacePath,
@@ -3823,27 +3357,23 @@ test('v1 本地事实源超过展示阈值仍保留审计历史', async () => {
     });
 
     await Promise.all(Array.from({ length: 61 }, (_, index) => mapStore.save(mapRecord(index))));
-    await Promise.all(Array.from({ length: 61 }, (_, index) => commandStore.save(commandRecord(index))));
     await Promise.all(Array.from({ length: 201 }, (_, index) => buildRunStore.save(buildRunRecord(index))));
     await Promise.all(Array.from({ length: 241 }, (_, index) => draftStore.save(draftChange(index))));
     await Promise.all(Array.from({ length: 241 }, (_, index) => reviewStore.saveMany(workspacePath, [reviewTask(index)])));
     await Promise.all(Array.from({ length: 241 }, (_, index) => handoffStore.append(handoffRecord(index))));
 
     const maps = await mapStore.list(workspacePath);
-    const commands = await commandStore.list(workspacePath);
     const buildRuns = await buildRunStore.list(workspacePath);
     const drafts = await draftStore.list(workspacePath);
     const reviews = await reviewStore.list(workspacePath);
     const handoffs = await handoffStore.list(workspacePath);
 
     assert.equal(maps.length, 61);
-    assert.equal(commands.length, 61);
     assert.equal(buildRuns.length, 201);
     assert.equal(drafts.length, 241);
     assert.equal(reviews.length, 241);
     assert.equal(handoffs.length, 241);
     assert.ok(maps.some((item) => item.id === 'map-history-0'));
-    assert.ok(commands.some((item) => item.id === 'command-history-0'));
     assert.ok(buildRuns.some((item) => item.id === 'build-run-history-0'));
     assert.ok(drafts.some((item) => item.id === 'draft-history-0'));
     assert.ok(reviews.some((item) => item.id === 'review-history-0'));
@@ -3851,10 +3381,9 @@ test('v1 本地事实源超过展示阈值仍保留审计历史', async () => {
   });
 });
 
-test('v1 本地事实源禁止覆盖已有审核决策、行动记录和已发布知识包版本', async () => {
+test('v1 本地事实源禁止覆盖已有审核决策和已发布知识包版本', async () => {
   await withWorkspace(async (workspacePath) => {
     const reviewStore = new ContentReviewTaskStore();
-    const commandStore = new BrandCommandCenterStore();
     const releaseStore = new ContentKnowledgeReleaseStore();
     const now = '2026-05-30T00:05:00.000Z';
     const reviewTask = {
@@ -3898,51 +3427,6 @@ test('v1 本地事实源禁止覆盖已有审核决策、行动记录和已发�
     const [savedTask] = await reviewStore.list(workspacePath);
     assert.equal(savedTask.decisions.length, 1);
     assert.equal(savedTask.decisions[0].id, 'decision-append-only-1');
-
-    const commandCenter = {
-      id: 'command-append-only-1',
-      workspacePath,
-      title: '追加不变量战情室',
-      status: 'active',
-      syncStatus: 'local-only',
-      signals: [],
-      objectives: [],
-      resourceBundles: [],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: [{
-        id: 'action-append-only-1',
-        actionType: 'generate-prompt-draft',
-        title: '已生成 Prompt 草稿',
-        outcome: 'handoff',
-        actorLabel: '内容运营',
-        inputSummary: '已审核组合。',
-        outputSummary: 'Prompt 草稿已创建。',
-        createdAt: now,
-      }],
-      constraints: [],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'local-only',
-        message: '本机草稿。',
-      },
-      createdAt: now,
-      updatedAt: now,
-    };
-    await commandStore.save(commandCenter);
-
-    await assert.rejects(
-      commandStore.update({
-        ...commandCenter,
-        gaps: ['尝试覆盖已有行动记录。'],
-        actionRecords: [],
-      }),
-      /行动记录只能追加/,
-    );
-    const [savedCommandCenter] = await commandStore.list(workspacePath);
-    assert.equal(savedCommandCenter.actionRecords.length, 1);
-    assert.equal(savedCommandCenter.actionRecords[0].id, 'action-append-only-1');
 
     const release = {
       id: 'release-immutable-1',
@@ -4509,766 +3993,6 @@ test('内容知识地图团队事实源刷新不会回退本机更高同步 revi
   });
 });
 
-test('品牌战情室列表会从 Bugu current 事实源刷新完整作战系统快照', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const mapStore = new ContentKnowledgeMapStore();
-    const commandStore = new BrandCommandCenterStore();
-    const now = '2026-05-31T00:10:00.000Z';
-    await mapStore.save({
-      id: 'map-command-anchor',
-      workspacePath,
-      title: '团队作战锚点地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步。',
-        workspaceId: 'workspace-command-current-1',
-        revision: 'command-rev-1',
-      },
-      sourceInputSourceIds: [],
-      brandKnowledgeBaseIds: [],
-      ipKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [],
-      painPoints: [],
-      scenarios: [],
-      evidence: [],
-      constraints: [],
-      gaps: [],
-      coverage: {
-        inputSourceCount: 0,
-        brandKnowledgeBaseCount: 0,
-        ipKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 0,
-        gapCount: 0,
-        readyPercent: 0,
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      { draftStatus: async () => ({ backend: 'bugu', status: 'synced', message: '已同步。' }) },
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        upsertCommandCenterSnapshot: async () => ({ backend: 'bugu', status: 'synced', message: '已同步。' }),
-        listCommandCenters: async ({ workspaceId }) => {
-          assert.equal(workspaceId, 'workspace-command-current-1');
-          return [{
-            id: 'command-team-current-1',
-            workspacePath,
-            title: '团队远端品牌作战系统',
-            status: 'active',
-            syncStatus: 'synced',
-            sourceKnowledgeMapId: 'map-command-anchor',
-            sourceKnowledgeMapTitle: '团队作战锚点地图',
-            signals: [{
-              id: 'signal-team-current-1',
-              type: 'feedback-pain',
-              title: '团队用户反馈',
-              summary: '团队成员补充的用户反馈。',
-              sourceLabel: '团队评论',
-              businessValue: 92,
-              evidenceReadiness: 88,
-              urgency: 80,
-              riskLevel: 10,
-              productionCost: 30,
-              recommendedObjectiveType: 'conversion',
-              riskBoundary: '不能绝对化表达。',
-              relatedMapRowIds: ['selling-team-1'],
-            }],
-            objectives: [],
-            resourceBundles: [{
-              id: 'bundle-team-current-1',
-              title: '团队远端资源包',
-              objectiveId: 'objective-team-current-1',
-              sourceKnowledgeMapId: 'map-command-anchor',
-              coverageRowIds: ['selling-team-1'],
-              sellingPointRefs: ['团队卖点'],
-              evidenceRefs: ['evidence-team-1'],
-              sceneRefs: ['团队场景'],
-              promptDraftIds: ['prompt-team-1'],
-              materialRefs: [],
-              sopRefs: [],
-              constraints: ['不能绝对化表达。'],
-              gaps: [],
-              handoffRefs: ['prompt-draft:prompt-team-1'],
-              readyPercent: 92,
-            }],
-            campaignCells: [],
-            queueItems: [{
-              id: 'queue-team-current-1',
-              campaignCellId: 'cell-team-current-1',
-              actionType: 'generate-prompt-draft',
-              title: '团队队列动作',
-              summary: '生成团队 Prompt。',
-              status: 'handed-off',
-              outputTarget: 'prompt-draft',
-              resourceBundleId: 'bundle-team-current-1',
-              syncStatus: 'synced',
-              teamSync: {
-                backend: 'bugu',
-                status: 'synced',
-                message: '已同步。',
-                workspaceId,
-                revision: 'command-rev-2',
-              },
-              createdAt: now,
-              updatedAt: now,
-            }],
-            actionRecords: [{
-              id: 'action-team-current-1',
-              queueItemId: 'queue-team-current-1',
-              campaignCellId: 'cell-team-current-1',
-              actionType: 'generate-prompt-draft',
-              title: '团队已生成 Prompt',
-              outcome: 'handoff',
-              actorLabel: '团队成员',
-              inputSummary: '团队资源包。',
-              outputSummary: '已交接 Prompt 工作台。',
-              promptDraftId: 'prompt-team-1',
-              artifactRefs: ['prompt-draft:prompt-team-1'],
-              syncStatus: 'synced',
-              teamSync: {
-                backend: 'bugu',
-                status: 'synced',
-                message: '已同步。',
-                workspaceId,
-                revision: 'command-rev-2',
-              },
-              createdAt: now,
-            }],
-            constraints: ['不能绝对化表达。'],
-            gaps: [],
-            teamSync: {
-              backend: 'bugu',
-              status: 'synced',
-              message: '已从团队事实源拉取。',
-              workspaceId,
-              revision: 'command-rev-2',
-            },
-            createdAt: now,
-            updatedAt: now,
-          }];
-        },
-      },
-    );
-
-    const records = await service.list(workspacePath);
-    assert.equal(records.some((item) => item.id === 'command-team-current-1'), true);
-    const saved = (await commandStore.list(workspacePath)).find((item) => item.id === 'command-team-current-1');
-    assert.equal(saved?.signals[0].title, '团队用户反馈');
-    assert.equal(saved?.queueItems[0].status, 'handed-off');
-    assert.equal(saved?.actionRecords[0].promptDraftId, 'prompt-team-1');
-  });
-});
-
-test('品牌战情室团队事实源刷新不会覆盖本机待同步队列动作', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const mapStore = new ContentKnowledgeMapStore();
-    const commandStore = new BrandCommandCenterStore();
-    const now = '2026-05-31T00:20:00.000Z';
-    await mapStore.save({
-      id: 'map-command-local-queue',
-      workspacePath,
-      title: '本机作战锚点地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步。',
-        workspaceId: 'workspace-command-current-2',
-        revision: 'command-local-rev-1',
-      },
-      sourceInputSourceIds: [],
-      brandKnowledgeBaseIds: [],
-      ipKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [],
-      painPoints: [],
-      scenarios: [],
-      evidence: [],
-      constraints: [],
-      gaps: [],
-      coverage: {
-        inputSourceCount: 0,
-        brandKnowledgeBaseCount: 0,
-        ipKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 0,
-        gapCount: 0,
-        readyPercent: 0,
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-    await commandStore.save({
-      id: 'command-local-queue-current',
-      workspacePath,
-      title: '本机品牌作战系统',
-      status: 'active',
-      syncStatus: 'pending-sync',
-      sourceKnowledgeMapId: 'map-command-local-queue',
-      sourceKnowledgeMapTitle: '本机作战锚点地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-local-queue-current',
-        title: '本机待同步资源包',
-        objectiveId: 'objective-local-queue-current',
-        sourceKnowledgeMapId: 'map-command-local-queue',
-        coverageRowIds: ['selling-local-queue'],
-        approvedCoverageRowIds: ['selling-local-queue'],
-        sellingPointRefs: ['本机卖点'],
-        evidenceRefs: ['evidence-local-queue'],
-        sceneRefs: ['本机场景'],
-        promptDraftIds: [],
-        materialRefs: ['asset-local-queue'],
-        sopRefs: ['workflow-local-queue'],
-        constraints: ['本机边界。'],
-        gaps: [],
-        handoffRefs: [],
-        readyPercent: 100,
-      }],
-      campaignCells: [{
-        id: 'cell-local-queue-current',
-        title: '本机待同步作战单元',
-        objectiveId: 'objective-local-queue-current',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['抖音'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-local-queue-current',
-        decisionChecks: [],
-        queueItemIds: ['queue-local-scene-card'],
-      }],
-      queueItems: [{
-        id: 'queue-local-scene-card',
-        campaignCellId: 'cell-local-queue-current',
-        actionType: 'create-scene-card',
-        title: '创建本机场景卡',
-        summary: '本机新增但还没有同步的队列动作。',
-        status: 'ready',
-        outputTarget: 'scene-card',
-        resourceBundleId: 'bundle-local-queue-current',
-        syncStatus: 'pending-sync',
-        teamSync: {
-          backend: 'bugu',
-          status: 'pending-sync',
-          message: '本机队列待同步。',
-          workspaceId: 'workspace-command-current-2',
-          revision: 'command-local-rev-2',
-        },
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [{
-        id: 'action-local-queue-current',
-        queueItemId: 'queue-local-scene-card',
-        campaignCellId: 'cell-local-queue-current',
-        actionType: 'create-scene-card',
-        title: '本机准备创建场景卡',
-        outcome: 'recorded',
-        actorLabel: '本机运营',
-        inputSummary: '本机待同步队列。',
-        outputSummary: '等待团队同步。',
-        syncStatus: 'pending-sync',
-        teamSync: {
-          backend: 'bugu',
-          status: 'pending-sync',
-          message: '本机行动待同步。',
-          workspaceId: 'workspace-command-current-2',
-          revision: 'command-local-rev-2',
-        },
-        createdAt: now,
-      }],
-      constraints: [],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'pending-sync',
-        message: '本机作战系统待同步。',
-        workspaceId: 'workspace-command-current-2',
-        revision: 'command-local-rev-2',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      { draftStatus: async () => ({ backend: 'bugu', status: 'synced', message: '已同步。' }) },
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        upsertCommandCenterSnapshot: async () => ({ backend: 'bugu', status: 'synced', message: '已同步。' }),
-        listCommandCenters: async ({ workspaceId }) => {
-          assert.equal(workspaceId, 'workspace-command-current-2');
-          return [{
-            id: 'command-local-queue-current',
-            workspacePath,
-            title: '团队当前品牌作战系统',
-            status: 'active',
-            syncStatus: 'synced',
-            sourceKnowledgeMapId: 'map-command-local-queue',
-            sourceKnowledgeMapTitle: '本机作战锚点地图',
-            signals: [{
-              id: 'signal-team-local-queue',
-              type: 'feedback-pain',
-              title: '团队当前信号',
-              summary: '团队当前事实源信号。',
-              sourceLabel: '团队评论',
-              businessValue: 90,
-              evidenceReadiness: 88,
-              urgency: 80,
-              riskLevel: 10,
-              productionCost: 30,
-              recommendedObjectiveType: 'conversion',
-              riskBoundary: '不能绝对化表达。',
-              relatedMapRowIds: ['selling-team-current'],
-            }],
-            objectives: [],
-            resourceBundles: [{
-              id: 'bundle-local-queue-current',
-              title: '团队当前资源包',
-              objectiveId: 'objective-local-queue-current',
-              sourceKnowledgeMapId: 'map-command-local-queue',
-              coverageRowIds: ['selling-team-current'],
-              sellingPointRefs: ['团队卖点'],
-              evidenceRefs: ['evidence-team-current'],
-              sceneRefs: ['团队场景'],
-              promptDraftIds: ['prompt-team-current'],
-              materialRefs: [],
-              sopRefs: [],
-              constraints: ['团队边界。'],
-              gaps: [],
-              handoffRefs: ['prompt-draft:prompt-team-current'],
-              readyPercent: 92,
-            }],
-            campaignCells: [{
-              id: 'cell-local-queue-current',
-              title: '团队当前作战单元',
-              objectiveId: 'objective-local-queue-current',
-              ownerRole: '内容负责人',
-              agentRole: '内容工程 Agent',
-              channels: ['小红书'],
-              timeWindow: '本周',
-              resourceBundleId: 'bundle-local-queue-current',
-              decisionChecks: [],
-              queueItemIds: ['queue-team-current'],
-            }],
-            queueItems: [{
-              id: 'queue-team-current',
-              campaignCellId: 'cell-local-queue-current',
-              actionType: 'generate-prompt-draft',
-              title: '团队当前 Prompt 动作',
-              summary: '团队当前队列动作。',
-              status: 'handed-off',
-              outputTarget: 'prompt-draft',
-              resourceBundleId: 'bundle-local-queue-current',
-              syncStatus: 'synced',
-              teamSync: {
-                backend: 'bugu',
-                status: 'synced',
-                message: '已同步。',
-                workspaceId,
-                revision: 'command-team-rev-1',
-              },
-              createdAt: now,
-              updatedAt: now,
-            }],
-            actionRecords: [{
-              id: 'action-team-current',
-              queueItemId: 'queue-team-current',
-              campaignCellId: 'cell-local-queue-current',
-              actionType: 'generate-prompt-draft',
-              title: '团队已生成 Prompt',
-              outcome: 'handoff',
-              actorLabel: '团队成员',
-              inputSummary: '团队当前队列。',
-              outputSummary: '已交接 Prompt。',
-              promptDraftId: 'prompt-team-current',
-              syncStatus: 'synced',
-              teamSync: {
-                backend: 'bugu',
-                status: 'synced',
-                message: '已同步。',
-                workspaceId,
-                revision: 'command-team-rev-1',
-              },
-              createdAt: now,
-            }],
-            constraints: ['团队边界。'],
-            gaps: [],
-            teamSync: {
-              backend: 'bugu',
-              status: 'synced',
-              message: '已从团队事实源拉取。',
-              workspaceId,
-              revision: 'command-team-rev-1',
-            },
-            createdAt: '2026-05-31T00:19:00.000Z',
-            updatedAt: '2026-05-31T00:19:00.000Z',
-          }];
-        },
-      },
-    );
-
-    const [record] = await service.list(workspacePath);
-    assert.equal(record.title, '团队当前品牌作战系统');
-    assert.equal(record.signals[0].title, '团队当前信号');
-    assert.equal(record.teamSync.status, 'pending-sync');
-    assert.equal(record.teamSync.revision, 'command-local-rev-2');
-    assert.equal(record.queueItems.some((item) => item.id === 'queue-team-current'), true);
-    assert.equal(record.queueItems.some((item) => item.id === 'queue-local-scene-card'), true);
-    assert.equal(record.queueItems.find((item) => item.id === 'queue-local-scene-card')?.actionType, 'create-scene-card');
-    assert.equal(record.resourceBundles[0].coverageRowIds?.includes('selling-local-queue'), true);
-    assert.equal(record.resourceBundles[0].sopRefs?.includes('workflow-local-queue'), true);
-    assert.equal(record.campaignCells[0].queueItemIds.includes('queue-local-scene-card'), true);
-    assert.equal(record.actionRecords.some((item) => item.id === 'action-team-current'), true);
-    assert.equal(record.actionRecords.some((item) => item.id === 'action-local-queue-current'), true);
-  });
-});
-
-test('品牌战情室团队事实源刷新不会覆盖本机已同步的更新快照', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const mapStore = new ContentKnowledgeMapStore();
-    const commandStore = new BrandCommandCenterStore();
-    const workspaceId = 'workspace-command-current-3';
-    await mapStore.save({
-      id: 'map-command-local-review',
-      workspacePath,
-      title: '复盘作战锚点地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步。',
-        workspaceId,
-        revision: 'command-review-map-rev-1',
-      },
-      sourceInputSourceIds: [],
-      brandKnowledgeBaseIds: [],
-      ipKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [],
-      painPoints: [],
-      scenarios: [],
-      evidence: [],
-      constraints: [],
-      gaps: [],
-      coverage: {
-        inputSourceCount: 0,
-        brandKnowledgeBaseCount: 0,
-        ipKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 0,
-        gapCount: 0,
-        readyPercent: 0,
-      },
-      createdAt: '2026-05-31T00:28:00.000Z',
-      updatedAt: '2026-05-31T00:28:00.000Z',
-    });
-    await commandStore.save({
-      id: 'command-local-review-current',
-      workspacePath,
-      title: '本机复盘后的品牌作战系统',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-command-local-review',
-      sourceKnowledgeMapTitle: '复盘作战锚点地图',
-      signals: [{
-        id: 'signal-local-review-current',
-        type: 'manual',
-        title: '复盘信号：午后补涂素材',
-        summary: '抖音 Prompt 已交接，下一轮优先补拍午后补涂 9:16 素材。',
-        sourceLabel: '行动记录复盘',
-        businessValue: 82,
-        evidenceReadiness: 60,
-        urgency: 82,
-        riskLevel: 58,
-        productionCost: 62,
-        recommendedObjectiveType: 'material-gap',
-        riskBoundary: '复盘结论只能作为下一轮行动信号，不能自动改写产品事实。',
-        relatedMapRowIds: ['selling-local-review'],
-      }],
-      objectives: [{
-        id: 'objective-local-review-current',
-        type: 'material-gap',
-        title: '补素材：午后补涂素材',
-        summary: '下一轮优先补拍午后补涂 9:16 素材。',
-        priority: 'P0',
-        channels: ['抖音'],
-        successCriteria: ['补齐竖版素材后再回到执行队列。'],
-        signalIds: ['signal-local-review-current'],
-      }],
-      resourceBundles: [{
-        id: 'bundle-local-review-current',
-        title: '复盘补素材资源包',
-        objectiveId: 'objective-local-review-current',
-        sourceKnowledgeMapId: 'map-command-local-review',
-        coverageRowIds: ['selling-local-review'],
-        approvedCoverageRowIds: ['selling-local-review'],
-        sellingPointRefs: ['轻量通勤卖点'],
-        evidenceRefs: ['evidence-local-review'],
-        sceneRefs: ['午后补涂场景'],
-        promptDraftIds: [],
-        materialRefs: [],
-        sopRefs: [],
-        constraints: ['复盘结论不得改写产品事实。'],
-        gaps: ['午后补涂 9:16 素材'],
-        handoffRefs: [],
-        readyPercent: 64,
-      }],
-      campaignCells: [{
-        id: 'cell-local-review-current',
-        title: '补素材作战单元',
-        objectiveId: 'objective-local-review-current',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['抖音'],
-        timeWindow: '下一轮',
-        resourceBundleId: 'bundle-local-review-current',
-        decisionChecks: [],
-        queueItemIds: ['queue-local-review-current'],
-      }],
-      queueItems: [{
-        id: 'queue-local-review-current',
-        campaignCellId: 'cell-local-review-current',
-        actionType: 'create-material-gap-list',
-        title: '复盘创建补素材清单',
-        summary: '午后补涂 9:16 素材。',
-        status: 'needs-resource',
-        blockedReason: '复盘发现素材缺口。',
-        recoveryAction: '生成补素材清单，补齐后再回到执行队列。',
-        outputTarget: 'material-gap',
-        resourceBundleId: 'bundle-local-review-current',
-        syncStatus: 'synced',
-        teamSync: {
-          backend: 'bugu',
-          status: 'synced',
-          message: '复盘补资源队列已同步。',
-          workspaceId,
-          revision: 'command-review-queue-rev-2',
-        },
-        createdAt: '2026-05-31T00:30:00.000Z',
-        updatedAt: '2026-05-31T00:30:00.000Z',
-      }],
-      actionRecords: [{
-        id: 'action-local-review-current',
-        actionType: 'review-action-records',
-        title: '行动复盘',
-        outcome: 'recorded',
-        actorLabel: '内容负责人',
-        inputSummary: '复盘行动记录。',
-        outputSummary: '抖音 Prompt 已交接，下一轮优先补拍午后补涂 9:16 素材。',
-        writeBackSummary: '复盘已生成 1 个下一轮信号、1 个复盘目标和 1 个执行队列动作：复盘创建补素材清单。',
-        syncStatus: 'synced',
-        teamSync: {
-          backend: 'bugu',
-          status: 'synced',
-          message: '复盘记录已同步。',
-          workspaceId,
-          revision: 'command-review-action-rev-2',
-        },
-        createdAt: '2026-05-31T00:30:00.000Z',
-      }],
-      constraints: [],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '品牌内容作战系统已同步到 Bugu 团队事实源。',
-        workspaceId,
-        revision: 'command-review-current-rev-2',
-        baseRevision: 'command-review-action-rev-2',
-      },
-      createdAt: '2026-05-31T00:28:00.000Z',
-      updatedAt: '2026-05-31T00:30:00.000Z',
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      { draftStatus: async () => ({ backend: 'bugu', status: 'synced', message: '已同步。' }) },
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        upsertCommandCenterSnapshot: async () => ({ backend: 'bugu', status: 'synced', message: '已同步。' }),
-        listCommandCenters: async ({ workspaceId: requestedWorkspaceId }) => {
-          assert.equal(requestedWorkspaceId, workspaceId);
-          return [{
-            id: 'command-local-review-current',
-            workspacePath,
-            title: '团队旧品牌作战系统',
-            status: 'active',
-            syncStatus: 'synced',
-            sourceKnowledgeMapId: 'map-command-local-review',
-            sourceKnowledgeMapTitle: '复盘作战锚点地图',
-            signals: [],
-            objectives: [],
-            resourceBundles: [],
-            campaignCells: [],
-            queueItems: [],
-            actionRecords: [{
-              id: 'action-team-review-current',
-              actionType: 'generate-prompt-draft',
-              title: '团队旧 Prompt 交接',
-              outcome: 'handoff',
-              actorLabel: '团队成员',
-              inputSummary: '旧团队快照。',
-              outputSummary: '已生成 Prompt。',
-              promptDraftId: 'prompt-team-review-current',
-              syncStatus: 'synced',
-              teamSync: {
-                backend: 'bugu',
-                status: 'synced',
-                message: '已同步。',
-                workspaceId,
-                revision: 'command-review-current-rev-1',
-              },
-              createdAt: '2026-05-31T00:29:00.000Z',
-            }],
-            constraints: [],
-            gaps: [],
-            teamSync: {
-              backend: 'bugu',
-              status: 'synced',
-              message: '已从团队旧快照拉取。',
-              workspaceId,
-              revision: 'command-review-current-rev-1',
-            },
-            createdAt: '2026-05-31T00:28:00.000Z',
-            updatedAt: '2026-05-31T00:29:00.000Z',
-          }];
-        },
-      },
-    );
-
-    const [record] = await service.list(workspacePath);
-    assert.equal(record.title, '本机复盘后的品牌作战系统');
-    assert.equal(record.teamSync.revision, 'command-review-current-rev-2');
-    assert.equal(record.signals.some((signal) => signal.sourceLabel === '行动记录复盘'), true);
-    assert.equal(record.objectives.some((objective) => objective.type === 'material-gap'), true);
-    assert.equal(record.resourceBundles.some((bundle) => bundle.gaps?.includes('午后补涂 9:16 素材')), true);
-    assert.equal(record.campaignCells.some((cell) => cell.queueItemIds.includes('queue-local-review-current')), true);
-    assert.equal(record.queueItems.some((item) => item.actionType === 'create-material-gap-list' && item.status === 'needs-resource'), true);
-    assert.equal(record.actionRecords.some((item) => item.id === 'action-local-review-current'), true);
-    assert.equal(record.actionRecords.some((item) => item.id === 'action-team-review-current'), true);
-  });
-});
-
-test('v1 品牌战情室行动记录超过展示阈值也保留审计历史', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const now = '2026-05-30T00:10:00.000Z';
-    const existingActions = Array.from({ length: 130 }, (_, index) => ({
-      id: `action-history-${index}`,
-      actionType: 'generate-prompt-draft',
-      title: `历史行动 ${index}`,
-      outcome: 'handoff',
-      actorLabel: '内容运营',
-      inputSummary: '历史审计记录。',
-      outputSummary: '已完成交接。',
-      createdAt: `2026-05-30T00:${String(index).padStart(2, '0')}:00.000Z`,
-    }));
-    await commandStore.save({
-      id: 'command-history-1',
-      workspacePath,
-      title: '行动记录历史战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      signals: [],
-      objectives: [],
-      resourceBundles: [],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: existingActions,
-      constraints: [],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步。',
-        workspaceId: 'workspace-history-1',
-        revision: 'history-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      new ContentKnowledgeMapStore(),
-      { draftStatus: async () => ({ backend: 'bugu', status: 'synced', message: '已同步。' }) },
-      {
-        appendActionRecord: async () => ({ backend: 'bugu', status: 'synced', message: '已同步。' }),
-        listActionRecords: async () => ({
-          records: [{
-            id: 'team-action-history-new',
-            actionType: 'create-scene-card',
-            title: '团队新行动',
-            outcome: 'handoff',
-            actorLabel: '团队成员',
-            inputSummary: '团队工作区记录。',
-            outputSummary: '已同步到本机。',
-            createdAt: '2026-05-30T02:30:00.000Z',
-          }],
-          teamSync: {
-            backend: 'bugu',
-            status: 'synced',
-            message: '已刷新团队行动记录。',
-            workspaceId: 'workspace-history-1',
-            revision: 'history-rev-2',
-          },
-        }),
-      },
-    );
-
-    const refreshed = await service.refreshActions({
-      workspacePath,
-      commandCenterId: 'command-history-1',
-    });
-    assert.equal(refreshed.actionRecords.length, 131);
-    assert.equal(refreshed.actionRecords.some((record) => record.id === 'action-history-0'), true);
-    assert.equal(refreshed.actionRecords.some((record) => record.id === 'action-history-129'), true);
-    assert.equal(refreshed.actionRecords[0].id, 'team-action-history-new');
-  });
-});
-
 test('Agent Knowledge 导出会校验 v0.7.2 数据包并在失败时阻止发布', async () => {
   await withWorkspace(async (workspacePath) => {
     const mapStore = new ContentKnowledgeMapStore();
@@ -5778,18 +4502,6 @@ test('两台工作区能通过团队知识包版本进入同一下游口径', as
       });
       assert.equal(handoffResult.promptDraft?.teamKnowledgeRelease?.id, released.release.serverReleaseId);
       assert.match(handoffResult.grounding?.content ?? '', /团队知识包：防晒内容团队包/);
-
-      const workflows = new WorkflowStore();
-      const definition = (await workflows.listDefinitions(workspaceB)).find((item) => item.status === 'published');
-      assert.ok(definition);
-      const run = await workflows.startRun({
-        workspacePath: workspaceB,
-        workflowDefinitionId: definition.id,
-        inputs: { intent: '用户 B 基于团队知识包继续生产内容。' },
-        teamKnowledgeRelease: handoffResult.promptDraft?.teamKnowledgeRelease,
-      });
-      assert.equal(run.teamKnowledgeRelease?.id, released.release.serverReleaseId);
-      assert.ok(run.artifactRefs.includes(`team-knowledge-release:${released.release.serverReleaseId}`));
     });
   });
 });
@@ -5800,7 +4512,6 @@ test('生产交接会把团队知识包版本绑定到 Prompt 草稿', async () 
     const mapStore = new ContentKnowledgeMapStore();
     const releaseStore = new ContentKnowledgeReleaseStore();
     const reviewStore = new ContentReviewTaskStore();
-    const commandStore = new BrandCommandCenterStore();
     const text = new FakeTextGenerationService();
     const inputSources = new InputSourceStore();
     const promptDrafts = new PromptDraftStore(inputSources, text);
@@ -5830,7 +4541,6 @@ test('生产交接会把团队知识包版本绑定到 Prompt 草稿', async () 
           };
         },
       },
-      commandStore,
     );
 
     await mapStore.save({
@@ -5926,93 +4636,6 @@ test('生产交接会把团队知识包版本绑定到 Prompt 草稿', async () 
       createdAt: now,
       updatedAt: now,
     }]);
-    await commandStore.save({
-      id: 'command-handoff-1',
-      workspacePath,
-      title: '团队知识包交接战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-handoff-release-1',
-      sourceKnowledgeMapTitle: '团队知识包交接地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: [],
-      constraints: [],
-      gaps: [],
-      teamSync: { backend: 'bugu', status: 'synced', message: '已同步。', revision: 'command-rev-1' },
-      createdAt: now,
-      updatedAt: now,
-    });
-    const seededBlockedCommandCenter = (await commandStore.list(workspacePath))[0];
-    assert.ok(seededBlockedCommandCenter);
-    await commandStore.update({
-      ...seededBlockedCommandCenter,
-      resourceBundles: [{
-        id: 'bundle-handoff-blocked-1',
-        title: '拦截资源包',
-        objectiveId: 'objective-handoff-blocked-1',
-        sourceKnowledgeMapId: 'map-handoff-blocked-1',
-        sellingPointRefs: ['绝对安全'],
-        evidenceRefs: ['evidence-blocked-1'],
-        sceneRefs: [],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: [],
-        sopRefs: [],
-        constraints: [],
-        gaps: [],
-        readyPercent: 80,
-      }],
-      campaignCells: [{
-        id: 'cell-handoff-blocked-1',
-        title: '拦截作战单元',
-        objectiveId: 'objective-handoff-blocked-1',
-        ownerRole: '内容运营',
-        agentRole: '内容工程 Agent',
-        channels: ['抖音'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-handoff-blocked-1',
-        decisionChecks: [],
-        queueItemIds: [],
-      }],
-    });
-    const seededCommandCenter = (await commandStore.list(workspacePath))[0];
-    assert.ok(seededCommandCenter);
-    await commandStore.update({
-      ...seededCommandCenter,
-      resourceBundles: [{
-        id: 'bundle-handoff-1',
-        title: '交接资源包',
-        objectiveId: 'objective-handoff-1',
-        sourceKnowledgeMapId: 'map-handoff-release-1',
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: ['evidence-handoff-1'],
-        sceneRefs: [],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: [],
-        sopRefs: [],
-        constraints: [],
-        gaps: [],
-        readyPercent: 80,
-      }],
-      campaignCells: [{
-        id: 'cell-handoff-1',
-        title: '交接作战单元',
-        objectiveId: 'objective-handoff-1',
-        ownerRole: '内容运营',
-        agentRole: '内容工程 Agent',
-        channels: ['小红书'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-handoff-1',
-        decisionChecks: [],
-        queueItemIds: [],
-      }],
-    });
-
     const result = await service.create({
       workspacePath,
       reviewTaskId: 'review-handoff-1',
@@ -6040,15 +4663,6 @@ test('生产交接会把团队知识包版本绑定到 Prompt 草稿', async () 
     assert.equal(result.record?.teamSync?.revision, 'handoff-action-rev-1');
     assert.equal(result.record?.actionRecords[0].syncStatus, 'synced');
     assert.equal(actionSyncCalls.length, 1);
-    const [commandCenter] = await commandStore.list(workspacePath);
-    assert.equal(commandCenter.actionRecords.length, 1);
-    assert.equal(commandCenter.actionRecords[0].actionType, 'generate-prompt-draft');
-    assert.equal(commandCenter.actionRecords[0].outcome, 'handoff');
-    assert.equal(commandCenter.actionRecords[0].syncStatus, 'synced');
-    assert.equal(commandCenter.teamSync?.revision, 'handoff-action-rev-1');
-    assert.equal(commandCenter.resourceBundles[0].handoffStatus, 'handed-off');
-    assert.deepEqual(commandCenter.resourceBundles[0].promptDraftIds, [result.promptDraft?.id]);
-    assert.match(commandCenter.resourceBundles[0].lastHandoffSummary ?? '', /Prompt 草稿/);
   });
 });
 
@@ -6184,380 +4798,6 @@ test('生产交接不会把其他内容知识地图的团队知识包误绑定�
   });
 });
 
-test('生产交接能把审核通过组合创建为 SOP 运行记录', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const now = '2026-05-29T00:00:00.000Z';
-    const mapStore = new ContentKnowledgeMapStore();
-    const releaseStore = new ContentKnowledgeReleaseStore();
-    const reviewStore = new ContentReviewTaskStore();
-    const commandStore = new BrandCommandCenterStore();
-    const workflows = new WorkflowStore();
-    const text = new FakeTextGenerationService();
-    const syncCalls = [];
-    const service = new ContentProductionHandoffService(
-      reviewStore,
-      mapStore,
-      releaseStore,
-      new PromptDraftStore(new InputSourceStore(), text),
-      new SceneLibraryStore(new GenerationLogStore(), new PromptPackService(new GenerationLogStore(), text), text),
-      new ContentProductionHandoffStore(),
-      {
-        syncProductionHandoffActions: async (input) => {
-          syncCalls.push(input);
-          assert.equal(input.sourceKnowledgeMapId, 'map-handoff-sop-1');
-          assert.equal(input.actions.length, 1);
-          assert.equal(input.actions[0].actionType, 'launch-sop-run');
-          assert.ok(input.actions[0].workflowRunId);
-          assert.doesNotMatch(JSON.stringify(input.actions), new RegExp(workspacePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: 'SOP 交接行动记录已同步。',
-            workspaceId: 'workspace-handoff-sop-1',
-            revision: 'handoff-sop-rev-2',
-          };
-        },
-      },
-      commandStore,
-      workflows,
-    );
-
-    await mapStore.save({
-      id: 'map-handoff-sop-1',
-      workspacePath,
-      title: 'SOP 交接内容地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        workspaceId: 'workspace-handoff-sop-1',
-        revision: 'sop-map-rev-1',
-        releaseId: 'release-handoff-sop-1',
-      },
-      sourceInputSourceIds: ['source-handoff-sop-1'],
-      brandKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [{
-        id: 'selling-handoff-sop-1',
-        title: '通勤补涂轻薄感',
-        summary: '把通勤补涂痛点转为 SOP 生产输入。',
-        tags: ['卖点', 'SOP'],
-        sourceRefs: ['input-source:source-handoff-sop-1'],
-        evidenceRefs: ['evidence-handoff-sop-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-handoff-sop-1'],
-        confidence: 92,
-        status: 'ready',
-      }],
-      painPoints: [],
-      scenarios: [],
-      evidence: [{
-        id: 'evidence-handoff-sop-1',
-        sourceType: 'manual',
-        sourceTitle: '用户调研',
-        claim: '通勤用户关注补涂后的轻薄肤感。',
-        excerpt: '用户反馈显示，补涂不闷肤是核心购买理由。',
-        status: 'ready',
-      }],
-      constraints: ['不得写成绝对防晒效果。'],
-      gaps: [],
-      coverage: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await releaseStore.save({
-      id: 'local-release-handoff-sop-1',
-      workspacePath,
-      workspaceId: 'workspace-handoff-sop-1',
-      contentKnowledgeMapId: 'map-handoff-sop-1',
-      contentKnowledgeMapTitle: 'SOP 交接内容地图',
-      title: 'SOP 内容团队包',
-      version: 'v1.0',
-      status: 'published',
-      packageObjectKey: 'content-workspaces/workspace-handoff-sop-1/agentknowledge/release-handoff-sop-1.zip',
-      packagePublicUrl: 'https://downloads.bugu.run/content-workspaces/workspace-handoff-sop-1/agentknowledge/release-handoff-sop-1.zip',
-      packageUploadStatus: 'stored',
-      files: ['KNOWLEDGE.md', 'ontology/ontology.json'],
-      issues: [],
-      baseRevision: 'sop-map-rev-1',
-      serverReleaseId: 'release-handoff-sop-1',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await reviewStore.saveMany(workspacePath, [{
-      id: 'review-handoff-sop-1',
-      workspacePath,
-      sourceKnowledgeMapId: 'map-handoff-sop-1',
-      sourceKnowledgeMapTitle: 'SOP 交接内容地图',
-      targetType: 'selling-point',
-      targetId: 'selling-handoff-sop-1',
-      title: '通勤补涂轻薄感',
-      summary: '已确认可作为 SOP 输入。',
-      evidenceRefs: ['evidence-handoff-sop-1'],
-      sourceRefs: ['input-source:source-handoff-sop-1'],
-      risk: 'low',
-      status: 'approved',
-      suggestedAction: 'approve',
-      issueLabels: [],
-      decisions: [],
-      createdAt: now,
-      updatedAt: now,
-    }]);
-    await commandStore.save({
-      id: 'command-handoff-sop-1',
-      workspacePath,
-      title: 'SOP 交接战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-handoff-sop-1',
-      sourceKnowledgeMapTitle: 'SOP 交接内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-handoff-sop-1',
-        title: 'SOP 交接资源包',
-        objectiveId: 'objective-handoff-sop-1',
-        sourceKnowledgeMapId: 'map-handoff-sop-1',
-        sellingPointRefs: ['通勤补涂轻薄感'],
-        evidenceRefs: ['evidence-handoff-sop-1'],
-        sceneRefs: ['通勤补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: ['asset-handoff-sop-1'],
-        sopRefs: [],
-        constraints: ['不得写成绝对防晒效果。'],
-        gaps: [],
-        readyPercent: 100,
-      }],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: [],
-      constraints: [],
-      gaps: [],
-      teamSync: { backend: 'bugu', status: 'synced', message: '已同步。', revision: 'command-sop-rev-1' },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const result = await service.create({
-      workspacePath,
-      reviewTaskId: 'review-handoff-sop-1',
-      target: 'sop-run',
-      workflowDefinitionId: 'workflow-brand-scene-prompts',
-      actorLabel: '功能测试',
-    });
-
-    assert.equal(result.status, 'created');
-    assert.ok(result.workflowRun);
-    assert.equal(result.workflowRun.teamKnowledgeRelease?.id, 'release-handoff-sop-1');
-    assert.equal(result.workflowRun.workflowDefinitionId, 'workflow-brand-scene-prompts');
-    assert.deepEqual(result.workflowRun.inputSourceIds, ['source-handoff-sop-1']);
-    assert.match(result.workflowRun.inputs.intent, /通勤补涂轻薄感/);
-    assert.ok(result.workflowRun.artifactRefs.includes('team-knowledge-release:release-handoff-sop-1'));
-    assert.equal(result.record?.workflowRunId, result.workflowRun.id);
-    assert.equal(result.record?.actionRecords[0].actionType, 'launch-sop-run');
-    assert.equal(result.record?.actionRecords[0].workflowRunId, result.workflowRun.id);
-    assert.match(result.record?.actionRecords[0].outputSummary ?? '', /SOP 运行/);
-    assert.equal(syncCalls.length, 1);
-    const [commandCenter] = await commandStore.list(workspacePath);
-    assert.equal(commandCenter.actionRecords[0].actionType, 'launch-sop-run');
-    assert.equal(commandCenter.actionRecords[0].workflowRunId, result.workflowRun.id);
-    assert.ok(commandCenter.resourceBundles[0].handoffRefs?.includes(`workflow-run:${result.workflowRun.id}`));
-  });
-});
-
-test('生产交接启动 SOP 会经过真实 WorkflowEngine 并生成步骤产物', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const now = '2026-05-30T00:00:00.000Z';
-    const mapStore = new ContentKnowledgeMapStore();
-    const releaseStore = new ContentKnowledgeReleaseStore();
-    const reviewStore = new ContentReviewTaskStore();
-    const inputSources = new InputSourceStore();
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const promptPacks = new PromptPackService(logs, text);
-    const sceneCards = new SceneLibraryStore(logs, promptPacks, text);
-    const brandKnowledgeBases = new BrandKnowledgeBaseStore(text);
-    const workflows = new WorkflowStore();
-    const workflowEngine = new WorkflowEngine(
-      workflows,
-      inputSources,
-      promptDrafts,
-      new AgentPromptSessionStore(inputSources, promptDrafts, text, new FakePromptAgentService()),
-      new MediaProvider({ readView: async () => ({ imageProvider: 'disabled', videoProvider: 'disabled' }) }, logs),
-      undefined,
-      brandKnowledgeBases,
-      promptPacks,
-      sceneCards,
-    );
-    const source = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'brand-kb',
-      title: '通勤防晒产品资料',
-      text: '产品事实：便携条包，通勤补涂不黏腻。合规边界：不得承诺治疗、绝对防护或无依据背书。',
-      summary: '通勤防晒产品资料',
-      tags: ['功能测试', 'SOP 交接'],
-    });
-    const service = new ContentProductionHandoffService(
-      reviewStore,
-      mapStore,
-      releaseStore,
-      promptDrafts,
-      sceneCards,
-      new ContentProductionHandoffStore(),
-      {
-        syncProductionHandoffActions: async (input) => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: `已同步 ${input.actions.length} 条 SOP 交接行动记录。`,
-          workspaceId: 'workspace-engine-handoff-1',
-          revision: 'engine-handoff-rev-1',
-        }),
-      },
-      undefined,
-      workflowEngine,
-    );
-
-    await mapStore.save({
-      id: 'map-engine-handoff-1',
-      workspacePath,
-      title: '执行型 SOP 交接地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        workspaceId: 'workspace-engine-handoff-1',
-        revision: 'engine-map-rev-1',
-        releaseId: 'release-engine-handoff-1',
-      },
-      sourceInputSourceIds: [source.id],
-      brandKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [{
-        id: 'selling-engine-handoff-1',
-        title: '通勤补涂不黏腻',
-        summary: '把通勤补涂不黏腻卖点转为 SOP 生产输入。',
-        tags: ['卖点', 'SOP'],
-        sourceRefs: [`input-source:${source.id}`],
-        evidenceRefs: ['evidence-engine-handoff-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-engine-handoff-1'],
-        confidence: 93,
-        status: 'ready',
-      }],
-      painPoints: [],
-      scenarios: [],
-      evidence: [{
-        id: 'evidence-engine-handoff-1',
-        sourceType: 'product-brief',
-        sourceTitle: '通勤防晒产品资料',
-        claim: '便携条包适合通勤补涂，不黏腻。',
-        excerpt: '产品事实：便携条包，通勤补涂不黏腻。',
-        status: 'ready',
-      }],
-      constraints: ['不得承诺治疗、绝对防护或无依据背书。'],
-      gaps: [],
-      coverage: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await releaseStore.save({
-      id: 'local-release-engine-handoff-1',
-      workspacePath,
-      workspaceId: 'workspace-engine-handoff-1',
-      contentKnowledgeMapId: 'map-engine-handoff-1',
-      contentKnowledgeMapTitle: '执行型 SOP 交接地图',
-      title: '执行型 SOP 团队包',
-      version: 'v1.0',
-      status: 'published',
-      packageObjectKey: 'content-workspaces/workspace-engine-handoff-1/agentknowledge/release-engine-handoff-1.zip',
-      packagePublicUrl: 'https://downloads.bugu.run/content-workspaces/workspace-engine-handoff-1/agentknowledge/release-engine-handoff-1.zip',
-      packageUploadStatus: 'stored',
-      files: ['KNOWLEDGE.md', 'ontology/ontology.json'],
-      issues: [],
-      baseRevision: 'engine-map-rev-1',
-      serverReleaseId: 'release-engine-handoff-1',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await reviewStore.saveMany(workspacePath, [{
-      id: 'review-engine-handoff-1',
-      workspacePath,
-      sourceKnowledgeMapId: 'map-engine-handoff-1',
-      sourceKnowledgeMapTitle: '执行型 SOP 交接地图',
-      targetType: 'selling-point',
-      targetId: 'selling-engine-handoff-1',
-      title: '通勤补涂不黏腻',
-      summary: '已确认可作为执行型 SOP 输入。',
-      evidenceRefs: ['evidence-engine-handoff-1'],
-      sourceRefs: [`input-source:${source.id}`],
-      risk: 'low',
-      status: 'approved',
-      suggestedAction: 'approve',
-      issueLabels: [],
-      decisions: [],
-      createdAt: now,
-      updatedAt: now,
-    }]);
-
-    const result = await service.create({
-      workspacePath,
-      reviewTaskId: 'review-engine-handoff-1',
-      target: 'sop-run',
-      workflowDefinitionId: 'workflow-brand-scene-prompts',
-      actorLabel: '功能测试',
-    });
-
-    assert.equal(result.status, 'created');
-    assert.equal(result.workflowRun?.workflowDefinitionId, 'workflow-brand-scene-prompts');
-    assert.equal(result.workflowRun?.teamKnowledgeRelease?.id, 'release-engine-handoff-1');
-    assert.equal(result.workflowRun?.status, 'queued');
-    assert.match(result.workflowRun?.summary ?? '', /人工审核/);
-    assert.equal(result.workflowRun?.steps.find((step) => step.stepId === 'brand_extract')?.status, 'succeeded');
-    assert.equal(result.workflowRun?.steps.find((step) => step.stepId === 'prompt_pack')?.status, 'succeeded');
-    assert.equal(result.workflowRun?.steps.find((step) => step.stepId === 'scene_library')?.status, 'succeeded');
-    assert.equal(result.workflowRun?.steps.find((step) => step.stepId === 'prompt_group')?.status, 'succeeded');
-    assert.equal(result.workflowRun?.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-    assert.ok(result.workflowRun?.artifactRefs.some((ref) => ref.startsWith('brand-knowledge-base:')));
-    assert.ok(result.workflowRun?.artifactRefs.some((ref) => ref.startsWith('prompt-pack:')));
-    assert.ok(result.workflowRun?.artifactRefs.some((ref) => ref.startsWith('scene-card:')));
-    assert.ok(result.workflowRun?.artifactRefs.some((ref) => ref.startsWith('prompt-draft:')));
-    const [storedRun] = await workflows.listRuns(workspacePath);
-    assert.equal(storedRun.id, result.workflowRun?.id);
-    assert.equal(storedRun.status, 'queued');
-    const storedDrafts = await promptDrafts.list(workspacePath);
-    assert.ok(storedDrafts.some((draft) => draft.workflowRunId === result.workflowRun?.id));
-    const storedSceneCards = await sceneCards.list(workspacePath);
-    assert.ok(storedSceneCards.some((card) => card.workflowRunId === result.workflowRun?.id));
-  });
-});
-
 test('生产交接被发布检查拦截时也会写入行动记录', async () => {
   await withWorkspace(async (workspacePath) => {
     const now = '2026-05-29T00:00:00.000Z';
@@ -6565,7 +4805,6 @@ test('生产交接被发布检查拦截时也会写入行动记录', async () =>
     const releaseStore = new ContentKnowledgeReleaseStore();
     const reviewStore = new ContentReviewTaskStore();
     const handoffStore = new ContentProductionHandoffStore();
-    const commandStore = new BrandCommandCenterStore();
     const text = new FakeTextGenerationService();
     const blockedSyncCalls = [];
     const service = new ContentProductionHandoffService(
@@ -6588,7 +4827,6 @@ test('生产交接被发布检查拦截时也会写入行动记录', async () =>
           };
         },
       },
-      commandStore,
     );
 
     await mapStore.save({
@@ -6656,27 +4894,6 @@ test('生产交接被发布检查拦截时也会写入行动记录', async () =>
       createdAt: now,
       updatedAt: now,
     }]);
-    await commandStore.save({
-      id: 'command-handoff-blocked-1',
-      workspacePath,
-      title: '拦截交接战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-handoff-blocked-1',
-      sourceKnowledgeMapTitle: '拦截交接地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: [],
-      constraints: [],
-      gaps: [],
-      teamSync: { backend: 'bugu', status: 'synced', message: '已同步。' },
-      createdAt: now,
-      updatedAt: now,
-    });
-
     const result = await service.create({
       workspacePath,
       reviewTaskId: 'review-handoff-blocked-1',
@@ -6699,113 +4916,6 @@ test('生产交接被发布检查拦截时也会写入行动记录', async () =>
     const persisted = await handoffStore.list(workspacePath);
     assert.equal(persisted[0].actionRecords[0].actionType, 'blocked');
     assert.equal(persisted[0].teamSync?.message, '测试团队工作区记录了 blocked 交接动作。');
-    const [commandCenter] = await commandStore.list(workspacePath);
-    assert.equal(commandCenter.actionRecords[0].actionType, 'content-production-blocked');
-    assert.equal(commandCenter.actionRecords[0].outcome, 'blocked');
-    assert.match(commandCenter.actionRecords[0].blockedReason ?? '', /禁用或绝对化表达/);
-    assert.equal(commandCenter.resourceBundles[0].handoffStatus, 'blocked');
-    assert.match(commandCenter.resourceBundles[0].lastBlockedReason ?? '', /禁用或绝对化表达/);
-  });
-});
-
-test('SOP 运行记录会保留团队知识包版本', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
-    const definitions = await workflows.listDefinitions(workspacePath);
-    const definition = definitions.find((item) => item.status === 'published');
-    assert.ok(definition);
-
-    const run = await workflows.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputs: { intent: '基于已审核团队知识包生成内容任务。' },
-      teamKnowledgeRelease: {
-        id: 'release-sop-1',
-        title: '防晒内容团队包',
-        version: 'v1.4',
-        contentKnowledgeMapId: 'map-sop-1',
-        packageObjectKey: 'content-workspaces/workspace-sop/agentknowledge/release-sop-1.zip',
-        packageUploadStatus: 'stored',
-      },
-    });
-
-    assert.equal(run.teamKnowledgeRelease?.id, 'release-sop-1');
-    assert.ok(run.artifactRefs.includes('team-knowledge-release:release-sop-1'));
-  });
-});
-
-test('SOP 执行可以显式选择团队知识包版本', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
-    const inputSources = new InputSourceStore();
-    const text = new FakeTextGenerationService();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text, new FakePromptAgentService());
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, new GenerationLogStore());
-    const engine = new WorkflowEngine(workflows, inputSources, promptDrafts, sessions, media);
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'product-commercial-assets');
-    assert.ok(definition, '应存在产品商业素材 SOP');
-
-    const productBrief = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'product-brief',
-      title: '团队版便携条包产品资料',
-      tags: ['产品资料', 'SOP 团队知识包'],
-      text: '产品名称：团队版便携条包\n卖点：通勤随手取用\n规格：15g * 20 条\n禁用表达：不得承诺治疗。',
-    });
-    const skuTable = await inputSources.register({
-      workspacePath,
-      kind: 'sku-table',
-      purpose: 'product-brief',
-      title: '团队版 SKU 表',
-      tags: ['sku'],
-      text: 'SKU,规格,价格\nteam-20,15g*20条,99',
-    });
-    const teamKnowledgeRelease = {
-      id: 'release-sop-selected-1',
-      title: '团队版便携条包知识包',
-      version: 'v1.6',
-      contentKnowledgeMapId: 'map-sop-selected-1',
-      contentKnowledgeMapTitle: '团队版便携条包内容地图',
-      packageObjectKey: 'content-workspaces/workspace-sop-selected/agentknowledge/release-sop-selected-1.zip',
-      packageUploadStatus: 'stored',
-    };
-
-    const run = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputSourceIds: [productBrief.id, skuTable.id],
-      inputs: {
-        source: '产品资料和 SKU 表',
-        intent: '使用已发布团队口径生成电商素材 Prompt。',
-        reviewOwner: '内容负责人',
-        platform: '天猫 / 淘宝',
-      },
-      teamKnowledgeRelease,
-    });
-
-    assert.equal(run.teamKnowledgeRelease?.id, 'release-sop-selected-1');
-    assert.equal(run.teamKnowledgeRelease?.version, 'v1.6');
-    assert.ok(run.artifactRefs.includes('team-knowledge-release:release-sop-selected-1'));
-    const [storedRun] = await workflows.listRuns(workspacePath);
-    assert.equal(storedRun.teamKnowledgeRelease?.id, 'release-sop-selected-1');
-    assert.ok(storedRun.artifactRefs.includes('team-knowledge-release:release-sop-selected-1'));
   });
 });
 
@@ -7426,3130 +5536,6 @@ test('内容知识地图可为同一组合创建独立补素材任务', async ()
   });
 });
 
-test('品牌作战行动记录能追加到团队工作区', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const releaseStore = new ContentKnowledgeReleaseStore();
-    const now = '2026-05-28T00:00:00.000Z';
-    await mapStore.save({
-      id: 'map-action-1',
-      workspacePath,
-      title: '防晒内容地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        workspaceId: 'workspace-action-test',
-        revision: 'map-action-rev-1',
-        releaseId: 'release-action-1',
-      },
-      sourceInputSourceIds: ['source-action-1'],
-      brandKnowledgeBaseIds: [],
-      ipKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [],
-      painPoints: [],
-      scenarios: [],
-      evidence: [],
-      constraints: ['抖音平台发布规则：功效表达必须引用证据，禁用绝对化表达。'],
-      matrixRows: [{
-        id: 'row-action-1',
-        title: '通勤补涂轻薄感',
-        summary: '基于防晒轻薄卖点和通勤场景生成 Prompt 草稿。',
-        tags: ['防晒', '通勤'],
-        sourceRefs: ['input-source:source-action-1'],
-        evidenceRefs: ['evidence-action-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-action-1'],
-        confidence: 91,
-        status: 'ready',
-      }],
-      validationIssues: [],
-      gaps: [],
-      coverageSummary: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await releaseStore.save({
-      id: 'local-release-action-1',
-      workspacePath,
-      workspaceId: 'workspace-action-test',
-      contentKnowledgeMapId: 'map-action-1',
-      contentKnowledgeMapTitle: '防晒内容地图',
-      title: '防晒团队知识包',
-      version: 'v1.4',
-      status: 'published',
-      packageObjectKey: 'content-workspaces/workspace-action-test/agentknowledge/release-action-1.zip',
-      packagePublicUrl: 'https://downloads.bugu.run/content-workspaces/workspace-action-test/agentknowledge/release-action-1.zip',
-      packageUploadStatus: 'stored',
-      packageArchiveSha256: 'release-action-sha',
-      packageArchiveSize: 1024,
-      files: ['KNOWLEDGE.md'],
-      issues: [],
-      baseRevision: 'map-action-rev-1',
-      serverReleaseId: 'release-action-1',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await commandStore.save({
-      id: 'command-center-action-1',
-      workspacePath,
-      title: '防晒内容品牌战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-action-1',
-      sourceKnowledgeMapTitle: '防晒内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-1',
-        title: '通勤场景资源包',
-        objectiveId: 'objective-1',
-        sourceKnowledgeMapId: 'map-action-1',
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: ['evidence-action-1'],
-      sceneRefs: ['通勤补涂'],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      materialRefs: ['asset-action-1'],
-      sopRefs: [],
-      dimensions: {
-        audiences: ['城市通勤女性'],
-        channels: ['抖音'],
-        contentFormats: ['15 秒口播短视频'],
-        useCases: ['早高峰补涂'],
-      },
-      constraints: ['抖音平台发布规则：功效表达必须引用证据，禁用绝对化表达。'],
-      gaps: [],
-      readyPercent: 100,
-      }],
-      campaignCells: [{
-        id: 'campaign-cell-1',
-        title: '通勤场景转化',
-        objectiveId: 'objective-1',
-        ownerRole: '内容负责人',
-      agentRole: '内容工程 Agent',
-      channels: ['小红书'],
-      dimensions: {
-        audiences: ['城市通勤女性'],
-        channels: ['抖音'],
-        contentFormats: ['15 秒口播短视频'],
-        useCases: ['早高峰补涂'],
-      },
-      timeWindow: '今天',
-        resourceBundleId: 'bundle-1',
-        decisionChecks: [{
-          key: 'evidence',
-          label: '证据',
-          status: 'passed',
-          message: '已关联 1 条证据。',
-        }, {
-          key: 'material',
-          label: '素材',
-          status: 'passed',
-          message: '已关联 1 条素材线索。',
-        }, {
-          key: 'platform-rule',
-          label: '平台规则',
-          status: 'passed',
-          message: '抖音短视频发布前复核功效证据和禁用词。',
-        }],
-        queueItemIds: ['queue-action-1'],
-      }],
-      queueItems: [{
-        id: 'queue-action-1',
-        campaignCellId: 'campaign-cell-1',
-        actionType: 'generate-prompt-draft',
-        title: '生成通勤场景 Prompt 草稿',
-        summary: '基于防晒轻薄卖点和通勤场景生成 Prompt 草稿。',
-        status: 'ready',
-      outputTarget: 'prompt-draft',
-      resourceBundleId: 'bundle-1',
-      dimensions: {
-        audiences: ['城市通勤女性'],
-        channels: ['抖音'],
-        contentFormats: ['15 秒口播短视频'],
-        useCases: ['早高峰补涂'],
-      },
-      createdAt: now,
-      updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['抖音平台发布规则：功效表达必须引用证据，禁用绝对化表达。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'action-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const syncCalls = [];
-    const promptDraftStore = new PromptDraftStore(new InputSourceStore(), new FakeTextGenerationService());
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'action-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ commandCenterId, record }) => {
-          syncCalls.push({ commandCenterId, record });
-          assert.equal(commandCenterId, 'command-center-action-1');
-          assert.equal(record.queueItemId, 'queue-action-1');
-          assert.equal(record.outcome, 'handoff');
-          assert.equal(record.teamKnowledgeRelease?.id, 'release-action-1');
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '行动记录已同步到测试团队工作区。',
-            workspaceId: 'workspace-action-test',
-            revision: 'action-rev-2',
-            baseRevision: 'action-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ commandCenterId, items }) => {
-          assert.equal(commandCenterId, 'command-center-action-1');
-          assert.equal(items.length, 1);
-          assert.equal(items[0].id, 'queue-action-1');
-          assert.equal(items[0].status, 'handed-off');
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '执行队列已同步到测试团队工作区。',
-            workspaceId: 'workspace-action-test',
-            revision: 'queue-rev-2',
-            baseRevision: 'action-rev-2',
-          };
-        },
-      },
-      promptDraftStore,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      releaseStore,
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-center-action-1',
-      queueItemId: 'queue-action-1',
-      actorLabel: '功能测试',
-      note: '已交给 Prompt 工作台确认。',
-    });
-    const updatedQueueItem = updated.queueItems.find((item) => item.id === 'queue-action-1');
-    assert.equal(updatedQueueItem?.status, 'handed-off');
-    assert.equal(updatedQueueItem?.syncStatus, 'synced');
-    assert.equal(updatedQueueItem?.teamSync?.revision, 'queue-rev-2');
-    assert.equal(updated.actionRecords.length, 1);
-    assert.ok(updated.actionRecords[0].promptDraftId);
-    assert.equal(updated.actionRecords[0].teamKnowledgeRelease?.id, 'release-action-1');
-    assert.equal(updated.actionRecords[0].syncStatus, 'synced');
-    assert.equal(updated.actionRecords[0].teamSync?.revision, 'action-rev-2');
-    assert.equal(updated.resourceBundles[0].handoffStatus, 'handed-off');
-    assert.deepEqual(updated.resourceBundles[0].promptDraftIds, [updated.actionRecords[0].promptDraftId]);
-    assert.match(updated.resourceBundles[0].lastHandoffSummary ?? '', /Prompt 草稿/);
-    assert.equal(updated.syncStatus, 'synced');
-    assert.equal(syncCalls.length, 1);
-    const drafts = await promptDraftStore.list(workspacePath);
-    assert.equal(drafts.length, 1);
-    assert.equal(drafts[0].id, updated.actionRecords[0].promptDraftId);
-    assert.equal(drafts[0].contentKnowledgeMapId, 'map-action-1');
-    assert.equal(drafts[0].teamKnowledgeRelease?.id, 'release-action-1');
-    assert.ok(drafts[0].sourceRefs?.includes('content-knowledge-map:map-action-1'));
-    assert.ok(drafts[0].sourceRefs?.includes('asset-review:asset-action-1'));
-    assert.match(drafts[0].versions[0].content, /目标人群：城市通勤女性/);
-    assert.match(drafts[0].versions[0].content, /渠道：抖音/);
-    assert.match(drafts[0].versions[0].content, /内容形式：15 秒口播短视频/);
-    assert.match(drafts[0].versions[0].content, /使用场景：早高峰补涂/);
-  });
-});
-
-test('品牌作战不会把其他内容知识地图的团队知识包误绑定到队列产物', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const releaseStore = new ContentKnowledgeReleaseStore();
-    const promptDraftStore = new PromptDraftStore(new InputSourceStore(), new FakeTextGenerationService());
-    const now = '2026-05-30T00:00:00.000Z';
-    await releaseStore.save({
-      id: 'local-release-brand-command-other-1',
-      workspacePath,
-      workspaceId: 'workspace-brand-command-map-scope',
-      contentKnowledgeMapId: 'map-brand-command-other-1',
-      contentKnowledgeMapTitle: '其他项目内容地图',
-      title: '其他项目团队知识包',
-      version: 'v9.9',
-      status: 'published',
-      packageObjectKey: 'content-workspaces/workspace-brand-command-map-scope/agentknowledge/release-other.zip',
-      packagePublicUrl: 'https://downloads.bugu.run/content-workspaces/workspace-brand-command-map-scope/agentknowledge/release-other.zip',
-      packageUploadStatus: 'stored',
-      packageArchiveSha256: 'other-release-sha',
-      packageArchiveSize: 4096,
-      files: ['KNOWLEDGE.md'],
-      issues: [],
-      baseRevision: 'other-map-rev-1',
-      serverReleaseId: 'release-brand-command-other-1',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await mapStore.save({
-      id: 'map-brand-command-no-release-1',
-      workspacePath,
-      title: '尚未发布团队知识包的品牌地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区，但尚未发布团队知识包。',
-        workspaceId: 'workspace-brand-command-map-scope',
-        revision: 'brand-command-no-release-map-rev-1',
-      },
-      sourceInputSourceIds: ['source-brand-command-no-release-1'],
-      brandKnowledgeBaseIds: [],
-      ipKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [],
-      painPoints: [],
-      scenarios: [],
-      evidence: [],
-      constraints: ['不能把其他项目团队知识包当成本项目默认口径。'],
-      matrixRows: [{
-        id: 'row-brand-command-no-release-1',
-        title: '通勤补涂轻薄感',
-        summary: '当前地图没有自己的团队知识包版本。',
-        tags: ['防错绑'],
-        sourceRefs: ['input-source:source-brand-command-no-release-1'],
-        evidenceRefs: ['evidence-brand-command-no-release-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-brand-command-no-release-1'],
-        confidence: 90,
-        status: 'ready',
-      }],
-      validationIssues: [],
-      gaps: [],
-      coverageSummary: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await commandStore.save({
-      id: 'command-center-brand-command-no-release-1',
-      workspacePath,
-      title: '无本项目团队知识包战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-brand-command-no-release-1',
-      sourceKnowledgeMapTitle: '尚未发布团队知识包的品牌地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-brand-command-no-release-1',
-        title: '通勤补涂资源包',
-        objectiveId: 'objective-brand-command-no-release-1',
-        sourceKnowledgeMapId: 'map-brand-command-no-release-1',
-        coverageRowIds: ['row-brand-command-no-release-1'],
-        sellingPointRefs: ['通勤补涂轻薄感'],
-        evidenceRefs: ['evidence-brand-command-no-release-1'],
-        sceneRefs: ['通勤补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: ['asset-brand-command-no-release-1'],
-        sopRefs: [],
-        dimensions: {
-          audiences: ['通勤人群'],
-          channels: ['抖音'],
-          contentFormats: ['短视频'],
-          useCases: ['通勤补涂'],
-        },
-        constraints: ['抖音平台发布规则：不能使用其他项目团队知识包，发布前复核证据和禁用词。'],
-        gaps: [],
-        readyPercent: 100,
-      }],
-      campaignCells: [{
-        id: 'campaign-cell-brand-command-no-release-1',
-        title: '通勤补涂作战单元',
-        objectiveId: 'objective-brand-command-no-release-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['抖音'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-brand-command-no-release-1',
-        decisionChecks: [{
-          key: 'evidence',
-          label: '证据',
-          status: 'passed',
-          message: '证据已准备。',
-        }, {
-          key: 'platform-rule',
-          label: '平台规则',
-          status: 'passed',
-          message: '抖音短视频发布前复核证据和禁用词。',
-        }],
-        queueItemIds: ['queue-brand-command-no-release-1'],
-      }],
-      queueItems: [{
-        id: 'queue-brand-command-no-release-1',
-        campaignCellId: 'campaign-cell-brand-command-no-release-1',
-        actionType: 'generate-prompt-draft',
-        title: '生成本项目 Prompt 草稿',
-        summary: '当前地图尚未发布团队知识包，只能生成不带团队知识包版本的本机草稿。',
-        status: 'ready',
-        outputTarget: 'prompt-draft',
-        resourceBundleId: 'bundle-brand-command-no-release-1',
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['不能把其他项目团队知识包当成本项目默认口径。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        workspaceId: 'workspace-brand-command-map-scope',
-        revision: 'brand-command-no-release-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      { draftStatus: async () => ({ backend: 'bugu', status: 'synced', message: '已同步。' }) },
-      {
-        appendActionRecord: async ({ record }) => {
-          assert.equal(record.teamKnowledgeRelease, undefined);
-          return { backend: 'bugu', status: 'synced', message: '行动记录已同步。' };
-        },
-      },
-      { syncExecutionQueue: async () => ({ backend: 'bugu', status: 'synced', message: '队列已同步。' }) },
-      promptDraftStore,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      releaseStore,
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-center-brand-command-no-release-1',
-      queueItemId: 'queue-brand-command-no-release-1',
-      actorLabel: '功能测试',
-    });
-    const drafts = await promptDraftStore.list(workspacePath);
-    assert.equal(updated.actionRecords[0].teamKnowledgeRelease, undefined);
-    assert.equal(drafts[0].teamKnowledgeRelease, undefined);
-    assert.doesNotMatch(drafts[0].versions[0].content, /团队知识包：其他项目团队知识包/);
-  });
-});
-
-test('品牌战情室行动记录复盘会写入本机并同步团队记录', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-30T00:00:00.000Z';
-    await commandStore.save({
-      id: 'command-center-review-action-1',
-      workspacePath,
-      title: '行动复盘战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-review-action-1',
-      sourceKnowledgeMapTitle: '行动复盘内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: [{
-        id: 'action-before-review-1',
-        actionType: 'generate-prompt-draft',
-        title: '已交接 Prompt 草稿',
-        outcome: 'handoff',
-        actorLabel: '功能测试',
-        inputSummary: '通勤补涂资源包',
-        outputSummary: '已生成 Prompt 草稿。',
-        createdAt: now,
-      }],
-      constraints: [],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        workspaceId: 'workspace-review-action-1',
-        revision: 'review-action-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const syncCalls = [];
-    const queueSyncCalls = [];
-    const commandCenterSyncCalls = [];
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          workspaceId: 'workspace-review-action-1',
-          revision: 'review-action-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ commandCenterId, record }) => {
-          syncCalls.push({ commandCenterId, record });
-          assert.equal(commandCenterId, 'command-center-review-action-1');
-          assert.equal(record.actionType, 'review-action-records');
-          assert.equal(record.outcome, 'recorded');
-          assert.match(record.outputSummary, /下一轮优先补拍/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '复盘记录已同步。',
-            workspaceId: 'workspace-review-action-1',
-            revision: 'review-action-rev-2',
-            baseRevision: 'review-action-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ commandCenterId, items }) => {
-          queueSyncCalls.push({ commandCenterId, items });
-          assert.equal(commandCenterId, 'command-center-review-action-1');
-          assert.equal(items.length, 1);
-          assert.equal(items[0].actionType, 'create-material-gap-list');
-          assert.equal(items[0].status, 'needs-resource');
-          assert.match(items[0].summary, /午后补涂场景/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '复盘补资源队列已同步。',
-            workspaceId: 'workspace-review-action-1',
-            revision: 'review-action-rev-queue-1',
-            baseRevision: 'review-action-rev-2',
-          };
-        },
-      },
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        upsertCommandCenterSnapshot: async ({ record }) => {
-          commandCenterSyncCalls.push(record);
-          assert.equal(record.id, 'command-center-review-action-1');
-          assert.ok(record.signals.some((signal) => signal.sourceLabel === '行动记录复盘'));
-          assert.ok(record.objectives.some((objective) => objective.type === 'material-gap'));
-          assert.ok(record.queueItems.some((item) => item.actionType === 'create-material-gap-list'));
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '复盘后的品牌战情室快照已同步。',
-            workspaceId: 'workspace-review-action-1',
-            revision: 'review-action-rev-command-1',
-            baseRevision: 'review-action-rev-queue-1',
-          };
-        },
-      },
-    );
-
-    const updated = await service.recordReview({
-      workspacePath,
-      commandCenterId: 'command-center-review-action-1',
-      summary: '抖音 Prompt 已交接，缺 9:16 通勤视频；下一轮优先补拍午后补涂场景。',
-      actorLabel: '内容负责人',
-      actorRole: 'content-engineer',
-    });
-
-    assert.equal(syncCalls.length, 1);
-    assert.equal(queueSyncCalls.length, 1);
-    assert.equal(commandCenterSyncCalls.length, 1);
-    assert.equal(updated.signals.length, 1);
-    assert.equal(updated.signals[0].type, 'manual');
-    assert.match(updated.signals[0].title, /复盘信号/);
-    assert.match(updated.signals[0].riskBoundary, /不能自动改写产品事实/);
-    assert.equal(updated.objectives.length, 1);
-    assert.equal(updated.objectives[0].type, 'material-gap');
-    assert.equal(updated.resourceBundles.length, 1);
-    assert.equal(updated.campaignCells.length, 1);
-    assert.equal(updated.queueItems.length, 1);
-    assert.equal(updated.queueItems[0].actionType, 'create-material-gap-list');
-    assert.equal(updated.queueItems[0].status, 'needs-resource');
-    assert.equal(updated.queueItems[0].syncStatus, 'synced');
-    assert.equal(updated.queueItems[0].teamSync?.revision, 'review-action-rev-queue-1');
-    assert.equal(updated.actionRecords.length, 2);
-    assert.equal(updated.actionRecords[0].actionType, 'review-action-records');
-    assert.equal(updated.actionRecords[0].actorRole, 'content-engineer');
-    assert.equal(updated.actionRecords[0].syncStatus, 'synced');
-    assert.equal(updated.actionRecords[0].teamSync?.revision, 'review-action-rev-2');
-    assert.match(updated.actionRecords[0].writeBackSummary ?? '', /下一轮信号/);
-    assert.match(updated.actionRecords[0].writeBackSummary ?? '', /执行队列动作/);
-    assert.equal(updated.teamSync.revision, 'review-action-rev-command-1');
-    assert.equal(updated.actionRecords[1].id, 'action-before-review-1');
-  });
-});
-
-test('品牌战情室行动记录导出会生成本机交付文件并同步团队记录', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-30T00:00:00.000Z';
-    await commandStore.save({
-      id: 'command-center-export-action-1',
-      workspacePath,
-      title: '行动导出战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-export-action-1',
-      sourceKnowledgeMapTitle: '行动导出内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: [{
-        id: 'action-before-export-1',
-        actionType: 'generate-prompt-draft',
-        title: '已交接 Prompt 草稿',
-        outcome: 'handoff',
-        actorLabel: '功能测试',
-        inputSummary: '通勤补涂资源包',
-        outputSummary: `已生成 Prompt 草稿，草稿源文件在 ${workspacePath}/private-note.md。`,
-        promptDraftId: 'prompt-before-export-1',
-        createdAt: now,
-      }],
-      constraints: [],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        workspaceId: 'workspace-export-action-1',
-        revision: 'export-action-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const syncCalls = [];
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          workspaceId: 'workspace-export-action-1',
-          revision: 'export-action-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ commandCenterId, record }) => {
-          syncCalls.push({ commandCenterId, record });
-          assert.equal(commandCenterId, 'command-center-export-action-1');
-          assert.equal(record.actionType, 'export-action-records');
-          assert.equal(record.outcome, 'recorded');
-          assert.match(record.outputSummary, /action-records\.md/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '行动记录导出已同步。',
-            workspaceId: 'workspace-export-action-1',
-            revision: 'export-action-rev-2',
-            baseRevision: 'export-action-rev-1',
-          };
-        },
-      },
-    );
-
-    const result = await service.exportActionRecords({
-      workspacePath,
-      commandCenterId: 'command-center-export-action-1',
-      actorLabel: '内容负责人',
-      actorRole: 'content-engineer',
-    });
-
-    assert.equal(result.status, 'exported');
-    assert.equal(syncCalls.length, 1);
-    assert.ok(result.packageDir);
-    assert.ok(result.markdownPath);
-    assert.ok(result.jsonPath);
-    assert.ok(result.manifestPath);
-    assert.deepEqual(result.files, ['manifest.json', 'action-records.md', 'action-records.json']);
-    assert.ok(result.markdownPath.startsWith(workspacePath));
-    const markdown = await readFile(result.markdownPath, 'utf-8');
-    const payload = JSON.parse(await readFile(result.jsonPath, 'utf-8'));
-    const manifest = JSON.parse(await readFile(result.manifestPath, 'utf-8'));
-    assert.match(markdown, /已交接 Prompt 草稿/);
-    assert.match(markdown, /不包含账号凭证、API Key、自动发布指令或平台操控指令/);
-    assert.equal(markdown.includes(workspacePath), false);
-    assert.equal(payload.commandCenter.id, 'command-center-export-action-1');
-    assert.equal(payload.actionRecords.length, 1);
-    assert.equal(payload.safety.containsWorkspacePath, false);
-    assert.equal(JSON.stringify(payload).includes(workspacePath), false);
-    assert.deepEqual(manifest.files, result.files);
-    assert.equal(result.commandCenter?.actionRecords[0].actionType, 'export-action-records');
-    assert.equal(result.commandCenter?.actionRecords[0].syncStatus, 'synced');
-    assert.equal(result.commandCenter?.actionRecords[0].teamSync?.revision, 'export-action-rev-2');
-  });
-});
-
-test('品牌战情室主动作确认会写入行动记录并同步团队事实源', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-30T00:00:00.000Z';
-    await commandStore.save({
-      id: 'command-center-confirm-stage-1',
-      workspacePath,
-      title: '主动作确认战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-confirm-stage-1',
-      sourceKnowledgeMapTitle: '主动作确认内容地图',
-      signals: [{
-        id: 'signal-confirm-stage-1',
-        type: 'feedback-pain',
-        title: '通勤用户担心闷肤',
-        summary: '评论区持续追问夏天补涂是否闷肤。',
-        sourceLabel: '评论反馈',
-        businessValue: 86,
-        evidenceReadiness: 72,
-        urgency: 68,
-        riskLevel: 20,
-        productionCost: 36,
-        recommendedObjectiveType: 'conversion',
-        riskBoundary: '不能夸大防晒功效。',
-        relatedMapRowIds: ['selling-confirm-stage-1'],
-      }],
-      objectives: [{
-        id: 'objective-confirm-stage-1',
-        type: 'conversion',
-        title: '解释通勤补涂不闷肤',
-        summary: '面向通勤人群解释轻薄补涂体验。',
-        priority: 'P1',
-        channels: ['抖音'],
-        dimensions: {
-          audiences: ['城市通勤女性'],
-          channels: ['抖音'],
-          contentFormats: ['15 秒口播短视频'],
-          useCases: ['午后补涂'],
-        },
-        successCriteria: ['评论区能理解轻薄体验证据。'],
-        signalIds: ['signal-confirm-stage-1'],
-      }],
-      resourceBundles: [{
-        id: 'bundle-confirm-stage-1',
-        title: '通勤补涂资源包',
-        objectiveId: 'objective-confirm-stage-1',
-        sourceKnowledgeMapId: 'map-confirm-stage-1',
-        coverageRowIds: ['selling-confirm-stage-1'],
-        approvedCoverageRowIds: ['selling-confirm-stage-1'],
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: ['evidence-confirm-stage-1'],
-        sceneRefs: ['午后补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: ['asset-confirm-stage-1'],
-        sopRefs: [],
-        dimensions: {
-          audiences: ['城市通勤女性'],
-          channels: ['抖音'],
-          contentFormats: ['15 秒口播短视频'],
-          useCases: ['午后补涂'],
-        },
-        constraints: ['功效表达必须引用证据。'],
-        gaps: [],
-        readyPercent: 100,
-      }],
-      campaignCells: [{
-        id: 'cell-confirm-stage-1',
-        title: '通勤补涂转化单元',
-        objectiveId: 'objective-confirm-stage-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['抖音'],
-        dimensions: {
-          audiences: ['城市通勤女性'],
-          channels: ['抖音'],
-          contentFormats: ['15 秒口播短视频'],
-          useCases: ['午后补涂'],
-        },
-        timeWindow: '本周',
-        resourceBundleId: 'bundle-confirm-stage-1',
-        decisionChecks: [{
-          key: 'evidence',
-          label: '证据',
-          status: 'passed',
-          message: '已绑定用户反馈证据。',
-        }],
-        queueItemIds: ['queue-confirm-stage-1'],
-      }],
-      queueItems: [{
-        id: 'queue-confirm-stage-1',
-        campaignCellId: 'cell-confirm-stage-1',
-        actionType: 'generate-prompt-draft',
-        title: '生成通勤补涂 Prompt 草稿',
-        summary: '基于轻薄不闷肤证据生成短视频 Prompt 草稿。',
-        status: 'ready',
-        outputTarget: 'prompt-draft',
-        resourceBundleId: 'bundle-confirm-stage-1',
-        dimensions: {
-          audiences: ['城市通勤女性'],
-          channels: ['抖音'],
-          contentFormats: ['15 秒口播短视频'],
-          useCases: ['午后补涂'],
-        },
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['抖音平台发布规则：功效表达必须引用证据，禁用绝对化表达。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        workspaceId: 'workspace-confirm-stage-1',
-        revision: 'confirm-stage-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const actionSyncCalls = [];
-    const queueSyncCalls = [];
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          workspaceId: 'workspace-confirm-stage-1',
-          revision: 'confirm-stage-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ commandCenterId, record }) => {
-          actionSyncCalls.push({ commandCenterId, record });
-          assert.equal(commandCenterId, 'command-center-confirm-stage-1');
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '主动作确认已同步到测试团队工作区。',
-            workspaceId: 'workspace-confirm-stage-1',
-            revision: `confirm-action-rev-${actionSyncCalls.length}`,
-            baseRevision: 'confirm-stage-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ commandCenterId, items, authorLabel }) => {
-          queueSyncCalls.push({ commandCenterId, items, authorLabel });
-          assert.equal(commandCenterId, 'command-center-confirm-stage-1');
-          assert.equal(items.length, 1);
-          assert.equal(items[0].id, 'queue-confirm-stage-1');
-          assert.equal(authorLabel, '内容负责人');
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '执行队列已同步到测试团队工作区。',
-            workspaceId: 'workspace-confirm-stage-1',
-            revision: 'confirm-queue-rev-1',
-            baseRevision: 'confirm-action-rev-2',
-          };
-        },
-      },
-    );
-
-    const objectives = await service.confirmStage({
-      workspacePath,
-      commandCenterId: 'command-center-confirm-stage-1',
-      stage: 'objectives',
-      actorLabel: '内容负责人',
-      actorRole: 'content-engineer',
-    });
-    assert.equal(objectives.actionRecords[0].actionType, 'confirm-objectives');
-    assert.equal(objectives.actionRecords[0].outcome, 'recorded');
-    assert.match(objectives.actionRecords[0].outputSummary, /作战目标/);
-
-    const bundles = await service.confirmStage({
-      workspacePath,
-      commandCenterId: 'command-center-confirm-stage-1',
-      stage: 'bundles',
-      actorLabel: '内容负责人',
-      actorRole: 'content-engineer',
-    });
-    assert.equal(bundles.actionRecords[0].actionType, 'confirm-resource-bundles');
-    assert.equal(bundles.actionRecords[0].syncStatus, 'synced');
-    assert.match(bundles.actionRecords[0].writeBackSummary ?? '', /作战单元/);
-
-    const queue = await service.confirmStage({
-      workspacePath,
-      commandCenterId: 'command-center-confirm-stage-1',
-      stage: 'queue',
-      actorLabel: '内容负责人',
-      actorRole: 'content-engineer',
-    });
-    assert.equal(queue.actionRecords[0].actionType, 'sync-execution-queue');
-    assert.equal(queue.actionRecords[0].syncStatus, 'synced');
-    assert.equal(queue.queueItems[0].syncStatus, 'synced');
-    assert.equal(queue.queueItems[0].teamSync?.revision, 'confirm-queue-rev-1');
-    assert.equal(queue.syncStatus, 'synced');
-    assert.equal(actionSyncCalls.map((call) => call.record.actionType).join(','), 'confirm-objectives,confirm-resource-bundles,sync-execution-queue');
-    assert.equal(queueSyncCalls.length, 1);
-  });
-});
-
-test('品牌作战 create-scene-card 动作会生成真实场景卡并回填资源包', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    await mapStore.save({
-      id: 'map-scene-action-1',
-      workspacePath,
-      title: '通勤防晒内容地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'scene-action-map-rev-1',
-      },
-      sourceInputSourceIds: ['source-scene-action-1'],
-      brandKnowledgeBaseIds: [],
-      ipKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [],
-      painPoints: [],
-      scenarios: [],
-      evidence: [{
-        id: 'evidence-scene-action-1',
-        sourceType: 'input-source',
-        sourceId: 'source-scene-action-1',
-        title: '防晒轻薄实测',
-        excerpt: '通勤补涂后肤感清爽。',
-        trustLevel: 'high',
-        status: 'ready',
-      }],
-      constraints: ['功效表达必须引用证据。'],
-      matrixRows: [{
-        id: 'row-scene-action-1',
-        type: 'selling-point',
-        title: '轻薄不闷肤',
-        summary: '通勤补涂场景下强调轻薄肤感。',
-        audience: '城市通勤人群',
-        painPoint: '怕闷肤',
-        sellingPoint: '轻薄不闷肤',
-        scenario: '通勤补涂',
-        channel: '小红书',
-        evidenceRefs: ['evidence-scene-action-1'],
-        sourceRefs: ['input-source:source-scene-action-1'],
-      materialStatus: 'approved',
-      materialRefs: ['asset-scene-action-1'],
-      dimensions: {
-        audiences: ['办公室通勤人群'],
-        channels: ['抖音'],
-        contentFormats: ['短视频'],
-        useCases: ['午休前补涂'],
-      },
-      status: 'ready',
-        priority: 90,
-        confidence: 85,
-        tags: ['卖点', '通勤'],
-      }],
-      validationIssues: [],
-      gaps: [],
-      coverageSummary: {
-        sellingPointCount: 1,
-        painPointCount: 0,
-        scenarioCount: 1,
-        evidenceReadyCount: 1,
-        evidenceMissingCount: 0,
-        materialCoveredCount: 1,
-        materialMissingCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await commandStore.save({
-      id: 'command-center-scene-action-1',
-      workspacePath,
-      title: '场景卡作战室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-scene-action-1',
-      sourceKnowledgeMapTitle: '通勤防晒内容地图',
-      signals: [{
-        id: 'signal-scene-action-1',
-        type: 'feedback-pain',
-        title: '通勤补涂怕闷肤',
-        summary: '用户担心补涂后闷肤和妆面负担。',
-        sourceLabel: '用户反馈',
-        businessValue: 88,
-        evidenceReadiness: 90,
-        urgency: 80,
-        riskLevel: 20,
-        productionCost: 40,
-        recommendedObjectiveType: 'conversion',
-        riskBoundary: '不能夸大防晒效果。',
-        relatedMapRowIds: ['row-scene-action-1'],
-      }],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-scene-action-1',
-        title: '通勤补涂资源包',
-        objectiveId: 'objective-scene-action-1',
-        sourceKnowledgeMapId: 'map-scene-action-1',
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: ['evidence-scene-action-1'],
-        sceneRefs: ['通勤补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: ['asset-scene-action-1'],
-        sopRefs: [],
-        dimensions: {
-          audiences: ['办公室通勤人群'],
-          channels: ['抖音'],
-          contentFormats: ['短视频'],
-          useCases: ['午休前补涂'],
-        },
-        constraints: ['抖音平台发布规则：功效表达必须引用证据，禁用绝对化表达。'],
-        gaps: [],
-        readyPercent: 100,
-      }],
-      campaignCells: [{
-        id: 'campaign-cell-scene-action-1',
-        title: '通勤补涂作战单元',
-        objectiveId: 'objective-scene-action-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['小红书'],
-        dimensions: {
-          audiences: ['办公室通勤人群'],
-          channels: ['抖音'],
-          contentFormats: ['短视频'],
-          useCases: ['午休前补涂'],
-        },
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-scene-action-1',
-        decisionChecks: [{
-          key: 'evidence',
-          label: '证据',
-          status: 'passed',
-          message: '证据已准备。',
-        }],
-        queueItemIds: ['queue-scene-action-1'],
-      }],
-      queueItems: [{
-        id: 'queue-scene-action-1',
-        campaignCellId: 'campaign-cell-scene-action-1',
-        actionType: 'create-scene-card',
-        title: '创建通勤补涂场景卡',
-        summary: '把资源包转成可进入场景库的卡片。',
-        status: 'ready',
-        outputTarget: 'scene-card',
-        resourceBundleId: 'bundle-scene-action-1',
-        dimensions: {
-          audiences: ['办公室通勤人群'],
-          channels: ['抖音'],
-          contentFormats: ['短视频'],
-          useCases: ['午休前补涂'],
-        },
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['功效表达必须引用证据。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'scene-action-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const sceneCards = new SceneLibraryStore(logs, new PromptPackService(logs, text), text);
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'scene-action-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ record }) => {
-          assert.equal(record.outcome, 'handoff');
-          assert.ok(record.sceneCardId);
-          assert.match(record.outputSummary, /场景卡/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '场景卡行动记录已同步。',
-            workspaceId: 'workspace-scene-action-test',
-            revision: 'scene-action-rev-2',
-            baseRevision: 'scene-action-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.equal(items[0].status, 'handed-off');
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '场景卡执行队列已同步。',
-            workspaceId: 'workspace-scene-action-test',
-            revision: 'scene-action-rev-3',
-            baseRevision: 'scene-action-rev-2',
-          };
-        },
-      },
-      undefined,
-      undefined,
-      undefined,
-      sceneCards,
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-center-scene-action-1',
-      queueItemId: 'queue-scene-action-1',
-      actorLabel: '功能测试',
-    });
-    assert.equal(updated.queueItems[0].status, 'handed-off');
-    assert.equal(updated.actionRecords[0].syncStatus, 'synced');
-    assert.ok(updated.actionRecords[0].sceneCardId);
-    assert.deepEqual(updated.resourceBundles[0].sceneCardIds, [updated.actionRecords[0].sceneCardId]);
-    assert.match(updated.resourceBundles[0].lastHandoffSummary ?? '', /场景卡/);
-
-    const cards = await sceneCards.list(workspacePath);
-    assert.equal(cards.length, 1);
-    assert.equal(cards[0].id, updated.actionRecords[0].sceneCardId);
-    assert.equal(cards[0].contentKnowledgeMapId, 'map-scene-action-1');
-    assert.deepEqual(cards[0].coverageRowIds, ['row-scene-action-1']);
-    assert.equal(cards[0].audience, '办公室通勤人群');
-    assert.equal(cards[0].usageScene, '午休前补涂');
-    assert.match(cards[0].voiceoverDirection, /抖音/);
-    assert.match(cards[0].visualComposition, /短视频/);
-    assert.ok(cards[0].sourceRefs?.includes('content-knowledge-map:map-scene-action-1'));
-    assert.ok(cards[0].sourceRefs?.includes('asset-review:asset-scene-action-1'));
-  });
-});
-
-test('品牌作战 launch-sop-run 动作会创建真实 SOP 运行并回填资源包', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const releaseStore = new ContentKnowledgeReleaseStore();
-    const workflows = new WorkflowStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    await mapStore.save({
-      id: 'map-sop-action-1',
-      workspacePath,
-      title: '种草图内容地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'sop-action-map-rev-1',
-        releaseId: 'release-sop-action-1',
-      },
-      sourceInputSourceIds: ['source-sop-action-1'],
-      brandKnowledgeBaseIds: [],
-      ipKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [],
-      painPoints: [],
-      scenarios: [],
-      evidence: [],
-      constraints: ['不得使用无依据对比。'],
-      matrixRows: [{
-        id: 'row-sop-action-1',
-        title: '通勤补涂轻薄感',
-        summary: '把通勤补涂痛点转成小红书种草图 SOP。',
-        tags: ['卖点', '小红书'],
-        sourceRefs: ['input-source:source-sop-action-1'],
-        evidenceRefs: ['evidence-sop-action-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-sop-action-1'],
-        confidence: 90,
-        status: 'ready',
-      }],
-      validationIssues: [],
-      gaps: [],
-      coverageSummary: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await releaseStore.save({
-      id: 'local-release-sop-action-1',
-      workspacePath,
-      workspaceId: 'workspace-sop-action-test',
-      contentKnowledgeMapId: 'map-sop-action-1',
-      contentKnowledgeMapTitle: '种草图内容地图',
-      title: '种草图团队知识包',
-      version: 'v1.7',
-      status: 'published',
-      packageObjectKey: 'content-workspaces/workspace-sop-action-test/agentknowledge/release-sop-action-1.zip',
-      packagePublicUrl: 'https://downloads.bugu.run/content-workspaces/workspace-sop-action-test/agentknowledge/release-sop-action-1.zip',
-      packageUploadStatus: 'stored',
-      packageArchiveSha256: 'release-sop-action-sha',
-      packageArchiveSize: 2048,
-      files: ['KNOWLEDGE.md'],
-      issues: [],
-      baseRevision: 'sop-action-map-rev-1',
-      serverReleaseId: 'release-sop-action-1',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await commandStore.save({
-      id: 'command-center-sop-action-1',
-      workspacePath,
-      title: 'SOP 作战室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-sop-action-1',
-      sourceKnowledgeMapTitle: '种草图内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-sop-action-1',
-        title: '小红书种草图资源包',
-        objectiveId: 'objective-sop-action-1',
-        sourceKnowledgeMapId: 'map-sop-action-1',
-        sellingPointRefs: ['通勤补涂轻薄感'],
-        evidenceRefs: ['evidence-sop-action-1'],
-        sceneRefs: ['小红书通勤补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: ['asset-sop-action-1'],
-        sopRefs: ['workflow-xiaohongshu-seeding-image'],
-        dimensions: {
-          audiences: ['通勤补涂用户'],
-          channels: ['小红书'],
-          contentFormats: ['图文'],
-          useCases: ['通勤补涂'],
-        },
-        constraints: ['不得使用无依据对比。'],
-        gaps: [],
-        readyPercent: 100,
-      }],
-      campaignCells: [{
-        id: 'campaign-cell-sop-action-1',
-        title: '小红书种草图作战单元',
-        objectiveId: 'objective-sop-action-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['小红书'],
-        dimensions: {
-          audiences: ['通勤补涂用户'],
-          channels: ['小红书'],
-          contentFormats: ['图文'],
-          useCases: ['通勤补涂'],
-        },
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-sop-action-1',
-        decisionChecks: [{
-          key: 'sop',
-          label: 'SOP',
-          status: 'passed',
-          message: '已绑定小红书图片 SOP。',
-        }],
-        queueItemIds: ['queue-sop-action-1'],
-      }],
-      queueItems: [{
-        id: 'queue-sop-action-1',
-        campaignCellId: 'campaign-cell-sop-action-1',
-        actionType: 'launch-sop-run',
-        title: '启动小红书图片 SOP',
-        summary: '把资源包交给小红书种草图 SOP 形成运行记录。',
-        status: 'ready',
-        outputTarget: 'sop-run',
-        resourceBundleId: 'bundle-sop-action-1',
-        dimensions: {
-          audiences: ['通勤补涂用户'],
-          channels: ['小红书'],
-          contentFormats: ['图文'],
-          useCases: ['通勤补涂'],
-        },
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['不得使用无依据对比。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'sop-action-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'sop-action-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ record }) => {
-          assert.equal(record.outcome, 'handoff');
-          assert.ok(record.workflowRunId);
-          assert.equal(record.teamKnowledgeRelease?.id, 'release-sop-action-1');
-          assert.match(record.outputSummary, /SOP 运行/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: 'SOP 行动记录已同步。',
-            workspaceId: 'workspace-sop-action-test',
-            revision: 'sop-action-rev-2',
-            baseRevision: 'sop-action-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.equal(items[0].status, 'handed-off');
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: 'SOP 执行队列已同步。',
-            workspaceId: 'workspace-sop-action-test',
-            revision: 'sop-action-rev-3',
-            baseRevision: 'sop-action-rev-2',
-          };
-        },
-      },
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      workflows,
-      undefined,
-      undefined,
-      releaseStore,
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-center-sop-action-1',
-      queueItemId: 'queue-sop-action-1',
-      actorLabel: '功能测试',
-    });
-    assert.equal(updated.queueItems[0].status, 'handed-off');
-    assert.ok(updated.actionRecords[0].workflowRunId);
-    assert.equal(updated.actionRecords[0].teamKnowledgeRelease?.id, 'release-sop-action-1');
-    assert.ok(updated.resourceBundles[0].handoffRefs?.includes(`workflow-run:${updated.actionRecords[0].workflowRunId}`));
-    assert.match(updated.resourceBundles[0].lastHandoffSummary ?? '', /SOP 运行/);
-
-    const runs = await workflows.listRuns(workspacePath);
-    assert.equal(runs.length, 1);
-    assert.equal(runs[0].id, updated.actionRecords[0].workflowRunId);
-    assert.equal(runs[0].workflowDefinitionId, 'workflow-xiaohongshu-seeding-image');
-    assert.equal(runs[0].inputs.platform, '小红书');
-    assert.match(runs[0].inputs.intent, /目标人群：通勤补涂用户/);
-    assert.match(runs[0].inputs.intent, /内容形式：图文/);
-    assert.match(runs[0].inputs.intent, /使用场景：通勤补涂/);
-    assert.deepEqual(runs[0].inputSourceIds, ['source-sop-action-1']);
-    assert.equal(runs[0].teamKnowledgeRelease?.id, 'release-sop-action-1');
-    assert.equal(runs[0].status, 'queued');
-  });
-});
-
-test('品牌作战 write-back-material-coverage 动作会回写素材覆盖并留下行动记录', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const assetStore = new AssetReviewStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    const asset = await assetStore.review({
-      workspacePath,
-      assetKey: 'asset-material-action-key-1',
-      kind: 'image',
-      sourceType: 'manual',
-      path: '/tmp/asset-material-action.png',
-      title: '通勤补涂轻薄感素材',
-      status: 'approved',
-      tags: ['coverage:row-material-action-1', '高转化'],
-    });
-    const row = {
-      id: 'row-material-action-1',
-      title: '通勤补涂轻薄感',
-      summary: '通勤补涂场景下强调轻薄肤感。',
-      tags: ['卖点', '通勤补涂'],
-      sourceRefs: ['input-source:source-material-action-1'],
-      evidenceRefs: ['evidence-material-action-1'],
-      materialStatus: 'missing',
-      materialRefs: [],
-      confidence: 88,
-      status: 'ready',
-    };
-    await mapStore.save({
-      id: 'map-material-action-1',
-      workspacePath,
-      title: '素材回写内容地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'material-action-map-rev-1',
-      },
-      sourceInputSourceIds: ['source-material-action-1'],
-      brandKnowledgeBaseIds: [],
-      ipKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [row],
-      painPoints: [],
-      scenarios: [],
-      evidence: [],
-      constraints: ['素材表现只能作为排序信号。'],
-      matrixRows: [row],
-      validationIssues: [],
-      gaps: [],
-      coverageSummary: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await commandStore.save({
-      id: 'command-center-material-action-1',
-      workspacePath,
-      title: '素材回写作战室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-material-action-1',
-      sourceKnowledgeMapTitle: '素材回写内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-material-action-1',
-        title: '素材回写资源包',
-        objectiveId: 'objective-material-action-1',
-        sourceKnowledgeMapId: 'map-material-action-1',
-        sellingPointRefs: ['通勤补涂轻薄感'],
-        evidenceRefs: ['evidence-material-action-1'],
-        sceneRefs: ['通勤补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: [asset.id],
-        sopRefs: [],
-        constraints: ['素材表现只能作为排序信号。'],
-        gaps: [],
-        readyPercent: 100,
-      }],
-      campaignCells: [{
-        id: 'campaign-cell-material-action-1',
-        title: '素材回写作战单元',
-        objectiveId: 'objective-material-action-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['小红书'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-material-action-1',
-        decisionChecks: [{
-          key: 'material',
-          label: '素材',
-          status: 'passed',
-          message: '素材已通过审核。',
-        }],
-        queueItemIds: ['queue-material-action-1'],
-      }],
-      queueItems: [{
-        id: 'queue-material-action-1',
-        campaignCellId: 'campaign-cell-material-action-1',
-        actionType: 'write-back-material-coverage',
-        title: '回写素材覆盖',
-        summary: '把已通过素材回写到内容组合。',
-        status: 'ready',
-        outputTarget: 'material-coverage',
-        resourceBundleId: 'bundle-material-action-1',
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['素材表现只能作为排序信号。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'material-action-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const materialFeedback = new ContentMaterialFeedbackService(mapStore, assetStore, {
-      appendMaterialCoverage: async ({ result }) => {
-        assert.equal(result.updatedRowCount, 1);
-        assert.deepEqual(result.updates[0].assetReviewIds, [asset.id]);
-        return {
-          backend: 'bugu',
-          status: 'synced',
-          message: '素材覆盖已同步。',
-          workspaceId: 'workspace-material-action-test',
-          revision: 'material-action-coverage-rev-1',
-          baseRevision: 'material-action-map-rev-1',
-        };
-      },
-    });
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'material-action-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ record }) => {
-          assert.equal(record.outcome, 'written-back');
-          assert.ok(record.materialCoverageChangeId);
-          assert.match(record.outputSummary, /素材覆盖/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '素材回写行动记录已同步。',
-            workspaceId: 'workspace-material-action-test',
-            revision: 'material-action-rev-2',
-            baseRevision: 'material-action-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.equal(items[0].status, 'written-back');
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '素材回写执行队列已同步。',
-            workspaceId: 'workspace-material-action-test',
-            revision: 'material-action-rev-3',
-            baseRevision: 'material-action-rev-2',
-          };
-        },
-      },
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      materialFeedback,
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-center-material-action-1',
-      queueItemId: 'queue-material-action-1',
-      actorLabel: '功能测试',
-    });
-    assert.equal(updated.queueItems[0].status, 'written-back');
-    assert.equal(updated.actionRecords[0].outcome, 'written-back');
-    assert.ok(updated.actionRecords[0].materialCoverageChangeId);
-    assert.ok(updated.resourceBundles[0].handoffRefs?.includes(`material-coverage:${updated.actionRecords[0].materialCoverageChangeId}`));
-
-    const maps = await mapStore.list(workspacePath);
-    const saved = maps.find((item) => item.id === 'map-material-action-1');
-    assert.ok(saved);
-    assert.equal(saved.sellingPoints[0].materialStatus, 'approved');
-    assert.deepEqual(saved.sellingPoints[0].materialRefs, [asset.id]);
-    assert.ok(saved.sellingPoints[0].performanceTags?.includes('高转化'));
-  });
-});
-
-test('品牌作战 ready 动作执行前会二次发布检查并拦截缺素材资源包', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    await commandStore.save({
-      id: 'command-center-policy-1',
-      workspacePath,
-      title: '缺素材发布检查战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-policy-1',
-      sourceKnowledgeMapTitle: '缺素材内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-policy-1',
-        title: '缺素材资源包',
-        objectiveId: 'objective-policy-1',
-        sourceKnowledgeMapId: 'map-policy-1',
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: ['evidence-policy-1'],
-        sceneRefs: ['通勤补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: [],
-        sopRefs: [],
-        constraints: ['功效表达必须引用证据。'],
-        gaps: [],
-        readyPercent: 80,
-      }],
-      campaignCells: [{
-        id: 'campaign-cell-policy-1',
-        title: '缺素材作战单元',
-        objectiveId: 'objective-policy-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['小红书'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-policy-1',
-        decisionChecks: [],
-        queueItemIds: ['queue-policy-1'],
-      }],
-      queueItems: [{
-        id: 'queue-policy-1',
-        campaignCellId: 'campaign-cell-policy-1',
-        actionType: 'generate-prompt-draft',
-        title: '生成缺素材 Prompt 草稿',
-        summary: '这个动作被标记 ready，但执行前应被资源包检查拦截。',
-        status: 'ready',
-        outputTarget: 'prompt-draft',
-        resourceBundleId: 'bundle-policy-1',
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['功效表达必须引用证据。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'policy-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'policy-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ record }) => {
-          assert.equal(record.outcome, 'blocked');
-          assert.match(record.blockedReason ?? '', /缺少可用素材/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '拦截行动记录已同步。',
-            workspaceId: 'workspace-policy-test',
-            revision: 'policy-rev-2',
-            baseRevision: 'policy-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.equal(items[0].status, 'blocked');
-          assert.match(items[0].blockedReason ?? '', /缺少可用素材/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '拦截后的执行队列已同步。',
-            workspaceId: 'workspace-policy-test',
-            revision: 'policy-rev-3',
-            baseRevision: 'policy-rev-2',
-          };
-        },
-      },
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-center-policy-1',
-      queueItemId: 'queue-policy-1',
-      actorLabel: '功能测试',
-    });
-    assert.equal(updated.queueItems[0].status, 'blocked');
-    assert.equal(updated.actionRecords[0].outcome, 'blocked');
-    assert.match(updated.actionRecords[0].outputSummary, /动作未执行/);
-  });
-});
-
-test('品牌作战 ready 动作执行前会拦截无权限团队角色', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    await commandStore.save({
-      id: 'command-center-role-policy-1',
-      workspacePath,
-      title: '角色权限发布检查战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-role-policy-1',
-      sourceKnowledgeMapTitle: '角色权限内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-role-policy-1',
-        title: '完整资源包',
-        objectiveId: 'objective-role-policy-1',
-        sourceKnowledgeMapId: 'map-role-policy-1',
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: ['evidence-role-policy-1'],
-        sceneRefs: ['通勤补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: ['asset-role-policy-1'],
-        sopRefs: [],
-        constraints: ['小红书平台发布规则：必须引用真实体验证据，禁用绝对化表达。'],
-        gaps: [],
-        readyPercent: 100,
-      }],
-      campaignCells: [{
-        id: 'campaign-cell-role-policy-1',
-        title: '角色权限作战单元',
-        objectiveId: 'objective-role-policy-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['小红书'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-role-policy-1',
-        decisionChecks: [],
-        queueItemIds: ['queue-role-policy-1'],
-      }],
-      queueItems: [{
-        id: 'queue-role-policy-1',
-        campaignCellId: 'campaign-cell-role-policy-1',
-        actionType: 'generate-prompt-draft',
-        title: '生成角色权限 Prompt 草稿',
-        summary: '资源包完整，但只读角色不能执行生产动作。',
-        status: 'ready',
-        outputTarget: 'prompt-draft',
-        resourceBundleId: 'bundle-role-policy-1',
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['小红书平台发布规则：发布前复核功效证据和禁用词。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'role-policy-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'role-policy-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ record }) => {
-          assert.equal(record.outcome, 'blocked');
-          assert.equal(record.actorRole, 'viewer');
-          assert.match(record.blockedReason ?? '', /无权执行/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '无权限拦截行动记录已同步。',
-            workspaceId: 'workspace-role-policy-test',
-            revision: 'role-policy-rev-2',
-            baseRevision: 'role-policy-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.equal(items[0].status, 'blocked');
-          assert.match(items[0].blockedReason ?? '', /无权执行/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '无权限拦截后的执行队列已同步。',
-            workspaceId: 'workspace-role-policy-test',
-            revision: 'role-policy-rev-3',
-            baseRevision: 'role-policy-rev-2',
-          };
-        },
-      },
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-center-role-policy-1',
-      queueItemId: 'queue-role-policy-1',
-      actorLabel: '功能测试',
-      actorRole: 'viewer',
-    });
-    assert.equal(updated.queueItems[0].status, 'blocked');
-    assert.match(updated.queueItems[0].blockedReason ?? '', /无权执行/);
-    assert.equal(updated.actionRecords[0].outcome, 'blocked');
-    assert.equal(updated.actionRecords[0].actorRole, 'viewer');
-    assert.match(updated.actionRecords[0].outputSummary, /动作未执行/);
-  });
-});
-
-test('品牌作战 ready 动作执行前会拦截缺平台规则的生产动作', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    await commandStore.save({
-      id: 'command-center-platform-policy-1',
-      workspacePath,
-      title: '平台规则发布检查战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-platform-policy-1',
-      sourceKnowledgeMapTitle: '平台规则内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-platform-policy-1',
-        title: '缺平台规则资源包',
-        objectiveId: 'objective-platform-policy-1',
-        sourceKnowledgeMapId: 'map-platform-policy-1',
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: ['evidence-platform-policy-1'],
-        sceneRefs: ['通勤补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: ['asset-platform-policy-1'],
-        sopRefs: [],
-        constraints: ['功效表达必须引用证据，避免绝对化表述。'],
-        gaps: [],
-        readyPercent: 100,
-      }],
-      campaignCells: [{
-        id: 'campaign-cell-platform-policy-1',
-        title: '平台规则作战单元',
-        objectiveId: 'objective-platform-policy-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['小红书'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-platform-policy-1',
-        decisionChecks: [],
-        queueItemIds: ['queue-platform-policy-1'],
-      }],
-      queueItems: [{
-        id: 'queue-platform-policy-1',
-        campaignCellId: 'campaign-cell-platform-policy-1',
-        actionType: 'generate-prompt-draft',
-        title: '生成缺平台规则 Prompt 草稿',
-        summary: '资源包有证据和素材，但缺平台发布边界。',
-        status: 'ready',
-        outputTarget: 'prompt-draft',
-        resourceBundleId: 'bundle-platform-policy-1',
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['功效表达必须引用证据，避免绝对化表述。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'platform-policy-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'platform-policy-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ record }) => {
-          assert.equal(record.outcome, 'blocked');
-          assert.match(record.blockedReason ?? '', /缺少平台规则或渠道发布边界/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '缺平台规则拦截行动记录已同步。',
-            workspaceId: 'workspace-platform-policy-test',
-            revision: 'platform-policy-rev-2',
-            baseRevision: 'platform-policy-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.equal(items[0].status, 'blocked');
-          assert.match(items[0].blockedReason ?? '', /缺少平台规则或渠道发布边界/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '缺平台规则拦截后的执行队列已同步。',
-            workspaceId: 'workspace-platform-policy-test',
-            revision: 'platform-policy-rev-3',
-            baseRevision: 'platform-policy-rev-2',
-          };
-        },
-      },
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-center-platform-policy-1',
-      queueItemId: 'queue-platform-policy-1',
-      actorLabel: '功能测试',
-      actorRole: 'content-engineer',
-    });
-    assert.equal(updated.queueItems[0].status, 'blocked');
-    assert.match(updated.queueItems[0].blockedReason ?? '', /缺少平台规则或渠道发布边界/);
-    assert.equal(updated.actionRecords[0].outcome, 'blocked');
-    assert.equal(updated.actionRecords[0].actorRole, 'content-engineer');
-    assert.match(updated.actionRecords[0].outputSummary, /动作未执行/);
-  });
-});
-
-test('品牌作战补资源动作会创建审核任务并同步到团队工作区', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const reviewStore = new ContentReviewTaskStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    await mapStore.save({
-      id: 'map-review-task-1',
-      workspacePath,
-      title: '补资源内容地图',
-      status: 'needs-review',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'review-task-rev-1',
-      },
-      sourceInputSourceIds: ['source-review-task-1'],
-      brandKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [{
-        id: 'row-review-task-selling-1',
-        title: '轻薄不闷肤',
-        summary: `面向通勤补涂用户，需要补拍 9:16 使用素材；本机路径 ${workspacePath}/private-video.mp4 不应进入交付文件。`,
-        tags: ['防晒', '通勤'],
-        dimensions: {
-          audiences: ['通勤白领'],
-          channels: ['小红书'],
-          contentFormats: ['短视频'],
-          useCases: ['午后补涂'],
-        },
-        sourceRefs: ['input-source:source-review-task-1'],
-        evidenceRefs: ['evidence-review-task-1'],
-        materialStatus: 'missing',
-        materialRefs: [],
-        confidence: 0.68,
-        status: 'needs-evidence',
-      }],
-      painPoints: [],
-      scenarios: [],
-      evidence: [{
-        id: 'evidence-review-task-1',
-        sourceType: 'user-quote',
-        sourceId: 'quote-review-task-1',
-        sourceTitle: '用户原声',
-        claim: '午后补涂怕厚重',
-        excerpt: '下午补涂之后容易闷，需要更轻薄的素材证明。',
-        status: 'needs-review',
-      }],
-      constraints: ['功效表达必须引用证据。'],
-      gaps: ['缺少 9:16 素材'],
-      coverage: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 1,
-        readyPercent: 40,
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-    await commandStore.save({
-      id: 'command-center-review-task-1',
-      workspacePath,
-      title: '补资源战情室',
-      status: 'needs-review',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-review-task-1',
-      sourceKnowledgeMapTitle: '补资源内容地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-review-task-1',
-        title: '缺证据资源包',
-        objectiveId: 'objective-review-task-1',
-        sourceKnowledgeMapId: 'map-review-task-1',
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: [],
-        sceneRefs: ['通勤补涂'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: [],
-        sopRefs: [],
-        constraints: ['功效表达必须引用证据。'],
-        gaps: ['缺少用户原声证据', '缺少 9:16 素材'],
-        readyPercent: 50,
-      }],
-      campaignCells: [{
-        id: 'campaign-cell-review-task-1',
-        title: '补资源作战单元',
-        objectiveId: 'objective-review-task-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['小红书'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-review-task-1',
-        decisionChecks: [{
-          key: 'evidence',
-          label: '证据',
-          status: 'needs-resource',
-          message: '缺少可引用证据。',
-          recoveryAction: '创建补证据任务',
-        }],
-        queueItemIds: ['queue-review-task-1'],
-      }],
-      queueItems: [{
-        id: 'queue-review-task-1',
-        campaignCellId: 'campaign-cell-review-task-1',
-        actionType: 'create-material-gap-list',
-        title: '创建补资源任务',
-        summary: '为缺证据和缺素材的资源包创建待确认任务。',
-        status: 'needs-resource',
-        blockedReason: '资源包缺证据和素材。',
-        recoveryAction: '补充产品文档、用户原声和素材。',
-        outputTarget: 'material-gap',
-        resourceBundleId: 'bundle-review-task-1',
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['功效表达必须引用证据。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'review-task-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'review-task-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ record }) => {
-          assert.equal(record.outcome, 'needs-resource');
-          assert.ok(record.reviewTaskId);
-          assert.ok(record.artifactRefs?.some((ref) => ref.endsWith('manifest.json')));
-          assert.ok(record.artifactRefs?.some((ref) => ref.endsWith('material-gap-list.md')));
-          assert.ok(record.artifactRefs?.some((ref) => ref.endsWith('material-gap-list.json')));
-          assert.match(record.outputSummary, /补资源任务/);
-          assert.match(record.outputSummary, /补素材清单/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '行动记录已同步。',
-            workspaceId: 'workspace-review-task-test',
-            revision: 'review-task-rev-3',
-            baseRevision: 'review-task-rev-2',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.equal(items[0].status, 'needs-resource');
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '执行队列已同步。',
-            workspaceId: 'workspace-review-task-test',
-            revision: 'review-task-rev-4',
-            baseRevision: 'review-task-rev-3',
-          };
-        },
-      },
-      undefined,
-      reviewStore,
-      {
-        syncReviewTasks: async ({ tasks }) => {
-          assert.equal(tasks.length, 1);
-          assert.equal(tasks[0].targetType, 'gap');
-          assert.equal(tasks[0].targetId, 'brand-command:command-center-review-task-1:queue-review-task-1');
-          assert.equal(tasks[0].status, 'needs-material');
-          assert.ok(tasks[0].issueLabels.includes('补素材'));
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '补资源审核任务已同步。',
-            workspaceId: 'workspace-review-task-test',
-            revision: 'review-task-rev-2',
-            baseRevision: 'review-task-rev-1',
-          };
-        },
-        submitReviewDecision: async () => {
-          throw new Error('补资源动作不应提交审核结论');
-        },
-      },
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-center-review-task-1',
-      queueItemId: 'queue-review-task-1',
-      actorLabel: '功能测试',
-    });
-
-    assert.equal(updated.actionRecords.length, 1);
-    assert.ok(updated.actionRecords[0].reviewTaskId);
-    assert.equal(updated.actionRecords[0].syncStatus, 'synced');
-    assert.equal(updated.actionRecords[0].artifactRefs?.length, 3);
-    const manifestPath = updated.actionRecords[0].artifactRefs?.find((ref) => ref.endsWith('manifest.json'));
-    const markdownPath = updated.actionRecords[0].artifactRefs?.find((ref) => ref.endsWith('material-gap-list.md'));
-    const jsonPath = updated.actionRecords[0].artifactRefs?.find((ref) => ref.endsWith('material-gap-list.json'));
-    assert.ok(manifestPath);
-    assert.ok(markdownPath);
-    assert.ok(jsonPath);
-    assert.equal(existsSync(manifestPath), true);
-    assert.equal(existsSync(markdownPath), true);
-    assert.equal(existsSync(jsonPath), true);
-    const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
-    const materialGapPayload = JSON.parse(await readFile(jsonPath, 'utf-8'));
-    const markdown = await readFile(markdownPath, 'utf-8');
-    assert.equal(manifest.schema, 'buguai.brand-command.material-gap-list.v1');
-    assert.equal(materialGapPayload.schema, 'buguai.brand-command.material-gap-list.v1');
-    assert.equal(materialGapPayload.reviewTask.id, updated.actionRecords[0].reviewTaskId);
-    assert.equal(materialGapPayload.rows[0].id, 'row-review-task-selling-1');
-    assert.equal(materialGapPayload.rows[0].materialStatus, 'missing');
-    assert.match(markdown, /补素材清单/);
-    assert.match(markdown, /轻薄不闷肤/);
-    assert.doesNotMatch(JSON.stringify(materialGapPayload), new RegExp(workspacePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    assert.doesNotMatch(markdown, new RegExp(workspacePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    const reviewTasks = await reviewStore.list(workspacePath);
-    assert.equal(reviewTasks.length, 1);
-    assert.equal(reviewTasks[0].id, updated.actionRecords[0].reviewTaskId);
-    assert.equal(reviewTasks[0].syncStatus, 'synced');
-    assert.equal(reviewTasks[0].teamSync?.revision, 'review-task-rev-2');
-  });
-});
-
-test('品牌战情室生成后能同步执行队列到团队工作区', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-28T00:00:00.000Z';
-    await mapStore.save({
-      id: 'map-command-queue-1',
-      workspacePath,
-      title: '防晒内容作战地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'queue-build-rev-1',
-      },
-      sourceInputSourceIds: ['source-1'],
-      brandKnowledgeBaseIds: ['brand-1'],
-      sceneCardIds: ['scene-1'],
-      promptDraftIds: ['prompt-1'],
-      sellingPoints: [{
-        id: 'selling-command-1',
-        title: '轻薄不闷肤',
-        summary: '适合通勤补涂。',
-        tags: ['卖点', '通勤'],
-        dimensions: {
-          audiences: ['敏感肌通勤人群'],
-          channels: ['抖音'],
-          contentFormats: ['短视频'],
-          useCases: ['早高峰补涂'],
-        },
-        sourceRefs: ['brand-knowledge-base:brand-1'],
-        evidenceRefs: ['evidence-command-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-1'],
-        confidence: 88,
-        status: 'ready',
-      }],
-      painPoints: [{
-        id: 'pain-command-1',
-        title: '怕油腻搓泥',
-        summary: '评论中的核心异议。',
-        tags: ['痛点'],
-        dimensions: {
-          audiences: ['敏感肌通勤人群'],
-          channels: ['抖音'],
-          contentFormats: ['短视频'],
-          useCases: ['早高峰补涂'],
-        },
-        sourceRefs: ['input-source:source-1'],
-        evidenceRefs: ['evidence-command-1'],
-        confidence: 80,
-        status: 'ready',
-      }],
-      scenarios: [{
-        id: 'scenario-command-1',
-        title: '早高峰通勤补涂',
-        summary: '办公室和地铁之间快速补涂。',
-        tags: ['场景'],
-        dimensions: {
-          audiences: ['敏感肌通勤人群'],
-          channels: ['抖音'],
-          contentFormats: ['短视频'],
-          useCases: ['早高峰补涂'],
-        },
-        sourceRefs: ['scene-card:scene-1'],
-        evidenceRefs: ['evidence-command-1'],
-        confidence: 82,
-        status: 'ready',
-      }],
-      evidence: [{
-        id: 'evidence-command-1',
-        sourceType: 'manual',
-        sourceTitle: '用户评论摘要',
-        claim: '用户关注清爽和不搓泥。',
-        excerpt: '评论集中提到清爽、不闷和通勤携带。',
-        status: 'ready',
-      }],
-      constraints: ['功效表达必须引用证据。'],
-      gaps: [],
-      coverage: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 1,
-        sceneCardCount: 1,
-        promptDraftCount: 1,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'queue-build-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '行动记录已同步。',
-          revision: 'unused',
-        }),
-      },
-      {
-        syncExecutionQueue: async ({ commandCenterId, items }) => {
-          assert.ok(commandCenterId);
-          assert.ok(items.length > 0);
-          assert.ok(items.every((item) => item.title && item.status));
-          assert.ok(items.some((item) => item.dimensions?.useCases?.includes('早高峰补涂')));
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '执行队列已同步到测试团队工作区。',
-            workspaceId: 'workspace-command-queue-test',
-            revision: 'queue-build-rev-2',
-            baseRevision: 'queue-build-rev-1',
-          };
-        },
-      },
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        upsertCommandCenterSnapshot: async ({ record }) => {
-          assert.equal(record.sourceKnowledgeMapId, 'map-command-queue-1');
-          assert.ok(record.signals.length > 0);
-          assert.ok(record.objectives.some((objective) => objective.channels.includes('抖音')));
-          assert.ok(record.resourceBundles.some((bundle) => bundle.materialRefs.includes('asset-1')));
-          assert.ok(record.campaignCells.some((cell) => cell.queueItemIds.length > 0));
-          assert.ok(record.queueItems.every((item) => item.syncStatus === 'synced'));
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '品牌内容作战系统已同步到测试团队事实源。',
-            workspaceId: 'workspace-command-queue-test',
-            revision: 'command-center-build-rev-3',
-            baseRevision: 'queue-build-rev-2',
-          };
-        },
-      },
-    );
-
-    const record = await service.build({ workspacePath, contentKnowledgeMapId: 'map-command-queue-1' });
-    assert.equal(record.syncStatus, 'synced');
-    assert.equal(record.teamSync.revision, 'command-center-build-rev-3');
-    assert.ok(record.queueItems.length > 0);
-    assert.ok(record.queueItems.every((item) => item.syncStatus === 'synced'));
-    assert.ok(record.resourceBundles.some((bundle) => bundle.materialRefs.includes('asset-1')));
-    assert.ok(record.objectives.some((objective) => objective.channels.includes('抖音')));
-    assert.ok(record.resourceBundles.some((bundle) => bundle.dimensions?.audiences?.includes('敏感肌通勤人群')));
-    assert.ok(record.resourceBundles.some((bundle) => bundle.dimensions?.contentFormats?.includes('短视频')));
-    assert.ok(record.campaignCells.some((cell) => cell.channels.includes('抖音')));
-    assert.ok(record.queueItems.some((item) => item.dimensions?.useCases?.includes('早高峰补涂')));
-    assert.ok(record.campaignCells.some((cell) =>
-      cell.decisionChecks.some((check) => check.key === 'material' && check.status === 'passed'),
-    ));
-  });
-});
-
-test('品牌战情室执行队列必须等待内容组合审核通过', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const reviewStore = new ContentReviewTaskStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    await mapStore.save({
-      id: 'map-command-review-gate-1',
-      workspacePath,
-      title: '审核门禁内容地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'review-gate-rev-1',
-      },
-      sourceInputSourceIds: ['source-review-gate-1'],
-      brandKnowledgeBaseIds: ['brand-review-gate-1'],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [{
-        id: 'selling-review-gate-1',
-        title: '轻薄不闷肤',
-        summary: '适合通勤补涂。',
-        tags: ['卖点'],
-        sourceRefs: ['brand-knowledge-base:brand-review-gate-1'],
-        evidenceRefs: ['evidence-review-gate-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-review-gate-1'],
-        confidence: 88,
-        status: 'ready',
-      }],
-      painPoints: [{
-        id: 'pain-review-gate-1',
-        title: '怕油腻搓泥',
-        summary: '评论中的核心异议。',
-        tags: ['痛点'],
-        sourceRefs: ['input-source:source-review-gate-1'],
-        evidenceRefs: ['evidence-review-gate-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-review-gate-1'],
-        confidence: 82,
-        status: 'ready',
-      }],
-      scenarios: [{
-        id: 'scenario-review-gate-1',
-        title: '早高峰通勤补涂',
-        summary: '办公室和地铁之间快速补涂。',
-        tags: ['场景'],
-        sourceRefs: ['input-source:source-review-gate-1'],
-        evidenceRefs: ['evidence-review-gate-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-review-gate-1'],
-        confidence: 84,
-        status: 'ready',
-      }],
-      evidence: [{
-        id: 'evidence-review-gate-1',
-        sourceType: 'manual',
-        sourceTitle: '审核门禁证据',
-        claim: '用户关注清爽和不搓泥。',
-        excerpt: '评论集中提到清爽、不闷和通勤携带。',
-        status: 'ready',
-      }],
-      constraints: ['平台规则：小红书发布前必须复核禁用表达。'],
-      gaps: [],
-      coverage: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 1,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'review-gate-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async () => {
-          throw new Error('构建队列不应追加行动记录');
-        },
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.ok(items.length > 0);
-          assert.ok(items.every((item) => item.status === 'needs-review'));
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '执行队列已同步。',
-            workspaceId: 'workspace-review-gate-test',
-            revision: 'review-gate-rev-2',
-            baseRevision: 'review-gate-rev-1',
-          };
-        },
-      },
-      undefined,
-      reviewStore,
-    );
-
-    const record = await service.build({ workspacePath, contentKnowledgeMapId: 'map-command-review-gate-1' });
-    assert.ok(record.queueItems.length > 0);
-    assert.ok(record.queueItems.every((item) => item.status === 'needs-review'));
-    assert.ok(record.campaignCells.every((cell) =>
-      cell.decisionChecks.some((check) => check.key === 'review' && check.status === 'needs-review'),
-    ));
-    assert.ok(record.resourceBundles.every((bundle) => bundle.coverageRowIds?.length));
-    assert.ok(record.resourceBundles.every((bundle) => (bundle.approvedCoverageRowIds ?? []).length === 0));
-    assert.ok(record.resourceBundles.some((bundle) => bundle.gaps.some((gap) => gap.includes('未通过审核'))));
-  });
-});
-
-test('品牌战情室旧队列动作也不能绕过未审核内容组合直接生成 Prompt', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const reviewStore = new ContentReviewTaskStore();
-    const promptDraftStore = new PromptDraftStore(new InputSourceStore(), new FakeTextGenerationService());
-    const now = '2026-05-29T00:00:00.000Z';
-    await mapStore.save({
-      id: 'map-command-review-action-1',
-      workspacePath,
-      title: '旧队列审核门禁地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'review-action-map-rev-1',
-      },
-      sourceInputSourceIds: ['source-review-action-1'],
-      brandKnowledgeBaseIds: ['brand-review-action-1'],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [{
-        id: 'selling-review-action-1',
-        title: '轻薄不闷肤',
-        summary: '适合通勤补涂。',
-        tags: ['卖点'],
-        sourceRefs: ['brand-knowledge-base:brand-review-action-1'],
-        evidenceRefs: ['evidence-review-action-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-review-action-1'],
-        confidence: 90,
-        status: 'ready',
-      }],
-      painPoints: [{
-        id: 'pain-review-action-1',
-        title: '怕油腻搓泥',
-        summary: '评论中的核心异议。',
-        tags: ['痛点'],
-        sourceRefs: ['input-source:source-review-action-1'],
-        evidenceRefs: ['evidence-review-action-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-review-action-1'],
-        confidence: 86,
-        status: 'ready',
-      }],
-      scenarios: [],
-      evidence: [{
-        id: 'evidence-review-action-1',
-        sourceType: 'manual',
-        sourceTitle: '旧队列审核门禁证据',
-        claim: '用户关注清爽和不搓泥。',
-        excerpt: '评论集中提到清爽、不闷和通勤携带。',
-        status: 'ready',
-      }],
-      constraints: ['平台规则：抖音发布前必须复核禁用表达。'],
-      gaps: [],
-      coverage: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 1,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await reviewStore.saveMany(workspacePath, [{
-      id: 'review-approved-action-1',
-      workspacePath,
-      sourceKnowledgeMapId: 'map-command-review-action-1',
-      sourceKnowledgeMapTitle: '旧队列审核门禁地图',
-      targetType: 'selling-point',
-      targetId: 'selling-review-action-1',
-      title: '轻薄不闷肤',
-      summary: '适合通勤补涂。',
-      evidenceRefs: ['evidence-review-action-1'],
-      sourceRefs: ['brand-knowledge-base:brand-review-action-1'],
-      risk: 'low',
-      status: 'approved',
-      suggestedAction: 'approve',
-      issueLabels: ['已通过'],
-      decisions: [],
-      createdAt: now,
-      updatedAt: now,
-    }]);
-    await commandStore.save({
-      id: 'command-review-action-1',
-      workspacePath,
-      title: '旧队列审核门禁战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-command-review-action-1',
-      sourceKnowledgeMapTitle: '旧队列审核门禁地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-review-action-1',
-        title: '旧队列资源包',
-        objectiveId: 'objective-review-action-1',
-        sourceKnowledgeMapId: 'map-command-review-action-1',
-        coverageRowIds: ['selling-review-action-1', 'pain-review-action-1'],
-        approvedCoverageRowIds: ['selling-review-action-1'],
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: ['evidence-review-action-1'],
-        sceneRefs: ['怕油腻搓泥'],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: ['asset-review-action-1'],
-        sopRefs: [],
-        constraints: ['平台规则：抖音发布前必须复核禁用表达。'],
-        gaps: [],
-        readyPercent: 90,
-      }],
-      campaignCells: [{
-        id: 'campaign-review-action-1',
-        title: '旧队列作战单元',
-        objectiveId: 'objective-review-action-1',
-        ownerRole: '内容负责人',
-        agentRole: '内容工程 Agent',
-        channels: ['抖音'],
-        timeWindow: '今天',
-        resourceBundleId: 'bundle-review-action-1',
-        decisionChecks: [{
-          key: 'evidence',
-          label: '证据',
-          status: 'passed',
-          message: '证据已准备。',
-        }],
-        queueItemIds: ['queue-review-action-1'],
-      }],
-      queueItems: [{
-        id: 'queue-review-action-1',
-        campaignCellId: 'campaign-review-action-1',
-        actionType: 'generate-prompt-draft',
-        title: '生成内容 Prompt 草稿',
-        summary: '旧队列中已有的可执行动作。',
-        status: 'ready',
-        outputTarget: 'prompt-draft',
-        resourceBundleId: 'bundle-review-action-1',
-        createdAt: now,
-        updatedAt: now,
-      }],
-      actionRecords: [],
-      constraints: ['平台规则：抖音发布前必须复核禁用表达。'],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'review-action-rev-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'review-action-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async ({ record }) => {
-          assert.equal(record.outcome, 'blocked');
-          assert.match(record.blockedReason ?? '', /未通过审核/);
-          assert.equal(record.promptDraftId, undefined);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '拦截记录已同步。',
-            workspaceId: 'workspace-review-action-test',
-            revision: 'review-action-rev-2',
-            baseRevision: 'review-action-rev-1',
-          };
-        },
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.equal(items[0].status, 'blocked');
-          assert.match(items[0].blockedReason ?? '', /未通过审核/);
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '执行队列拦截已同步。',
-            workspaceId: 'workspace-review-action-test',
-            revision: 'review-action-rev-3',
-            baseRevision: 'review-action-rev-2',
-          };
-        },
-      },
-      promptDraftStore,
-      reviewStore,
-    );
-
-    const updated = await service.recordAction({
-      workspacePath,
-      commandCenterId: 'command-review-action-1',
-      queueItemId: 'queue-review-action-1',
-      actorLabel: '功能测试',
-      actorRole: 'operator',
-    });
-    assert.equal(updated.queueItems[0].status, 'blocked');
-    assert.equal(updated.actionRecords[0].outcome, 'blocked');
-    assert.match(updated.actionRecords[0].blockedReason ?? '', /未通过审核/);
-    assert.equal((await promptDraftStore.list(workspacePath)).length, 0);
-  });
-});
-
-test('品牌战情室信号雷达覆盖竞品、素材表现、投放、热点和品牌风险', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    await mapStore.save({
-      id: 'map-command-radar-1',
-      workspacePath,
-      title: '夏季便携风扇作战地图',
-      status: 'ready',
-      syncStatus: 'synced',
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        revision: 'radar-rev-1',
-      },
-      sourceInputSourceIds: ['source-radar-1'],
-      brandKnowledgeBaseIds: ['brand-radar-1'],
-      sceneCardIds: ['scene-radar-1'],
-      promptDraftIds: ['prompt-radar-1'],
-      sellingPoints: [{
-        id: 'selling-radar-1',
-        title: '竞品差异化机会：不复制大风力话术',
-        summary: '竞品主打大风力，本品牌只能转成轻量通勤和桌面低档场景。',
-        tags: ['竞品观察', '差异化'],
-        dimensions: {
-          audiences: ['通勤用户'],
-          channels: ['小红书'],
-          contentFormats: ['图文'],
-          useCases: ['包内携带'],
-        },
-        sourceRefs: ['input-source:source-radar-1'],
-        evidenceRefs: ['evidence-radar-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-radar-1'],
-        confidence: 78,
-        status: 'needs-review',
-      }, {
-        id: 'selling-radar-risk-1',
-        title: '绝对安全表达需要拦截',
-        summary: '达人想写绝对安全，必须改成有边界的使用建议。',
-        tags: ['品牌风险', '禁用表达'],
-        dimensions: {
-          audiences: ['带娃用户'],
-          channels: ['私域'],
-          contentFormats: ['FAQ'],
-          useCases: ['儿童场景咨询'],
-        },
-        sourceRefs: ['brand-knowledge-base:brand-radar-1'],
-        evidenceRefs: ['evidence-radar-1'],
-        confidence: 70,
-        status: 'needs-review',
-      }],
-      painPoints: [{
-        id: 'pain-radar-1',
-        title: '搜索问题：Mini 和 Pro 怎么选',
-        summary: '搜索和私域都在问 Mini 与 Pro 的选择差异。',
-        tags: ['搜索', '私域问题'],
-        dimensions: {
-          audiences: ['价格敏感用户'],
-          channels: ['私域'],
-          contentFormats: ['FAQ'],
-          useCases: ['购买前咨询'],
-        },
-        sourceRefs: ['input-source:source-radar-1'],
-        evidenceRefs: ['evidence-radar-1'],
-        confidence: 82,
-        status: 'ready',
-      }],
-      scenarios: [{
-        id: 'scenario-radar-performance-1',
-        title: '通勤包内图收藏率高',
-        summary: '通勤包内图收藏率高，适合复用到小红书和抖音短视频。',
-        tags: ['素材表现', '通勤'],
-        performanceTags: ['高收藏', '高复用'],
-        dimensions: {
-          audiences: ['通勤用户'],
-          channels: ['抖音'],
-          contentFormats: ['短视频'],
-          useCases: ['早高峰通勤'],
-        },
-        sourceRefs: ['asset-review:asset-radar-1'],
-        evidenceRefs: ['evidence-radar-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-radar-1'],
-        confidence: 90,
-        status: 'ready',
-      }, {
-        id: 'scenario-radar-ad-1',
-        title: '投放点击高但转化低',
-        summary: '通勤标题点击高但转化低，需要补证据和 CTA。',
-        tags: ['投放表现', '转化'],
-        dimensions: {
-          audiences: ['通勤用户'],
-          channels: ['小红书'],
-          contentFormats: ['图文'],
-          useCases: ['种草转化'],
-        },
-        sourceRefs: ['input-source:source-radar-1'],
-        evidenceRefs: ['evidence-radar-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-radar-1'],
-        confidence: 76,
-        status: 'ready',
-      }, {
-        id: 'scenario-radar-trend-1',
-        title: '高温夏日通勤热点',
-        summary: '高温天气带动夏日通勤和露营季搜索。',
-        tags: ['热点', '高温', '搜索'],
-        dimensions: {
-          audiences: ['夏季通勤人群'],
-          channels: ['抖音'],
-          contentFormats: ['短视频'],
-          useCases: ['高温通勤'],
-        },
-        sourceRefs: ['input-source:source-radar-1'],
-        evidenceRefs: ['evidence-radar-1'],
-        materialStatus: 'approved',
-        materialRefs: ['asset-radar-1'],
-        confidence: 74,
-        status: 'ready',
-      }],
-      evidence: [{
-        id: 'evidence-radar-1',
-        sourceType: 'manual',
-        sourceTitle: '战情输入',
-        claim: '评论、投放和素材表现都指向通勤内容机会。',
-        excerpt: '竞品大风力、通勤包内图高收藏、Mini 和 Pro 选择问题、高温通勤搜索上升。',
-        status: 'ready',
-      }],
-      constraints: ['小红书和抖音发布前必须复核平台规则；禁止绝对安全表达；竞品观察不能复制标题、构图或分镜。'],
-      gaps: ['绝对安全表达属于禁用表达，需要品牌审核。'],
-      coverage: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 1,
-        sceneCardCount: 1,
-        promptDraftCount: 1,
-        evidenceCount: 1,
-        gapCount: 1,
-        readyPercent: 82,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          revision: 'radar-rev-1',
-        }),
-      },
-      {
-        appendActionRecord: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '行动记录已同步。',
-          revision: 'unused',
-        }),
-      },
-      {
-        syncExecutionQueue: async ({ items }) => {
-          assert.ok(items.length >= 5);
-          assert.ok(items.some((item) => item.dimensions?.channels?.includes('抖音')));
-          assert.ok(items.some((item) => item.dimensions?.contentFormats?.includes('短视频')));
-          return {
-            backend: 'bugu',
-            status: 'synced',
-            message: '信号雷达执行队列已同步。',
-            workspaceId: 'workspace-command-radar-test',
-            revision: 'radar-rev-2',
-            baseRevision: 'radar-rev-1',
-          };
-        },
-      },
-    );
-
-    const record = await service.build({ workspacePath, contentKnowledgeMapId: 'map-command-radar-1' });
-    const signalTypes = new Set(record.signals.map((signal) => signal.type));
-    assert.ok(signalTypes.has('feedback-pain'));
-    assert.ok(signalTypes.has('competitor-action'));
-    assert.ok(signalTypes.has('material-performance'));
-    assert.ok(signalTypes.has('ad-performance'));
-    assert.ok(signalTypes.has('trend'));
-    assert.ok(signalTypes.has('brand-risk'));
-    assert.ok(record.signals.some((signal) => signal.riskBoundary.includes('不能复制标题')));
-    assert.ok(record.signals.some((signal) => signal.riskBoundary.includes('不能自动变成产品事实')));
-    assert.ok(record.objectives.some((objective) => objective.type === 'risk-control'));
-    assert.ok(record.objectives.some((objective) => objective.type === 'conversion'));
-    assert.ok(record.objectives.some((objective) => objective.type === 'acquisition'));
-    assert.ok(record.resourceBundles.some((bundle) => bundle.dimensions?.audiences?.includes('通勤用户')));
-    assert.ok(record.campaignCells.some((cell) => cell.channels.includes('抖音')));
-    assert.ok(record.queueItems.every((item) => item.syncStatus === 'synced'));
-  });
-});
-
-test('品牌战情室能从团队工作区刷新行动记录并回填资源包交接状态', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const commandStore = new BrandCommandCenterStore();
-    const mapStore = new ContentKnowledgeMapStore();
-    const now = '2026-05-29T00:00:00.000Z';
-    await commandStore.save({
-      id: 'command-refresh-1',
-      workspacePath,
-      title: '团队刷新战情室',
-      status: 'active',
-      syncStatus: 'synced',
-      sourceKnowledgeMapId: 'map-refresh-1',
-      sourceKnowledgeMapTitle: '团队刷新知识地图',
-      signals: [],
-      objectives: [],
-      resourceBundles: [{
-        id: 'bundle-refresh-1',
-        title: '团队交接资源包',
-        objectiveId: 'objective-refresh-1',
-        sourceKnowledgeMapId: 'map-refresh-1',
-        sellingPointRefs: ['轻薄不闷肤'],
-        evidenceRefs: ['evidence-refresh-1'],
-        sceneRefs: [],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        materialRefs: [],
-        sopRefs: [],
-        constraints: [],
-        gaps: [],
-        handoffStatus: 'none',
-        handoffRefs: [],
-        readyPercent: 80,
-      }],
-      campaignCells: [],
-      queueItems: [],
-      actionRecords: [{
-        id: 'local-action-refresh-1',
-        actionType: 'request-evidence',
-        title: '本机补证据记录',
-        outcome: 'needs-resource',
-        actorLabel: '本机工作台',
-        inputSummary: '缺证据资源包',
-        outputSummary: '已记录补证据。',
-        createdAt: now,
-      }],
-      constraints: [],
-      gaps: [],
-      teamSync: {
-        backend: 'bugu',
-        status: 'synced',
-        message: '已同步到团队工作区。',
-        workspaceId: 'workspace-refresh-1',
-        revision: 'rev-refresh-1',
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const service = new BrandCommandCenterApplicationService(
-      commandStore,
-      mapStore,
-      {
-        draftStatus: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到团队工作区。',
-          workspaceId: 'workspace-refresh-1',
-          revision: 'rev-refresh-1',
-        }),
-      },
-      {
-        appendActionRecord: async () => ({
-          backend: 'bugu',
-          status: 'synced',
-          message: '行动记录已同步。',
-        }),
-        listActionRecords: async ({ commandCenterId, workspaceId, limit }) => {
-          assert.equal(workspaceId, 'workspace-refresh-1');
-          assert.equal(limit, 80);
-          if (commandCenterId === 'content-production:map-refresh-1') {
-            return {
-              teamSync: {
-                backend: 'bugu',
-                status: 'synced',
-                message: '已刷新生产交接记录。',
-                workspaceId,
-                revision: 'rev-refresh-2',
-              },
-              records: [{
-                id: 'team-handoff-refresh-1',
-                queueItemId: 'handoff:map-refresh-1:selling-refresh-1',
-                campaignCellId: 'handoff:map-refresh-1:selling-refresh-1',
-                actionType: 'generate-prompt-draft',
-                title: '团队交接 Prompt 草稿',
-                outcome: 'handoff',
-                actorLabel: '团队成员',
-                inputSummary: '团队知识地图 / 轻薄不闷肤 / 1 条证据',
-                outputSummary: '已生成 Prompt 草稿。',
-                writeBackSummary: '继续在 Prompt 工作台确认。',
-                syncStatus: 'synced',
-                teamSync: {
-                  backend: 'bugu',
-                  status: 'synced',
-                  message: '已刷新生产交接记录。',
-                  workspaceId,
-                  revision: 'rev-refresh-2',
-                },
-                createdAt: '2026-05-29T00:02:00.000Z',
-              }],
-            };
-          }
-          return {
-            teamSync: {
-              backend: 'bugu',
-              status: 'synced',
-              message: '已刷新战情室行动记录。',
-              workspaceId,
-              revision: 'rev-refresh-2',
-            },
-            records: [{
-              id: 'team-action-refresh-1',
-              queueItemId: 'queue-refresh-1',
-              campaignCellId: 'cell-refresh-1',
-              actionType: 'request-review',
-              title: '团队送审记录',
-              outcome: 'needs-review',
-              actorLabel: '团队审核员',
-              inputSummary: '团队资源包',
-              outputSummary: '已转入审核。',
-              syncStatus: 'synced',
-              teamSync: {
-                backend: 'bugu',
-                status: 'synced',
-                message: '已刷新战情室行动记录。',
-                workspaceId,
-                revision: 'rev-refresh-2',
-              },
-              createdAt: '2026-05-29T00:01:00.000Z',
-            }],
-          };
-        },
-      },
-    );
-
-    const refreshed = await service.refreshActions({
-      workspacePath,
-      commandCenterId: 'command-refresh-1',
-    });
-
-    assert.equal(refreshed.syncStatus, 'synced');
-    assert.equal(refreshed.actionRecords.length, 3);
-    assert.equal(refreshed.actionRecords[0].id, 'team-handoff-refresh-1');
-    assert.equal(refreshed.actionRecords.some((record) => record.id === 'local-action-refresh-1'), true);
-    assert.equal(refreshed.resourceBundles[0].handoffStatus, 'handed-off');
-    assert.deepEqual(refreshed.resourceBundles[0].handoffRefs, ['handoff:map-refresh-1:selling-refresh-1']);
-    assert.match(refreshed.resourceBundles[0].lastHandoffSummary ?? '', /Prompt 草稿/);
-  });
-});
-
 test('素材覆盖回写能同步到团队工作区且不发送素材本机路径', async () => {
   await withWorkspace(async (workspacePath) => {
     const mapStore = new ContentKnowledgeMapStore();
@@ -11003,25 +5989,85 @@ class FakeTextGenerationService {
       };
     }
     if (task === 'generate_video_script') {
+      const targetShotCount = Math.max(1, Number(parsedPrompt?.targetShotCount ?? 3));
+      const referenceRhythm = Array.isArray(parsedPrompt?.scriptContext?.referenceRhythm)
+        ? parsedPrompt.scriptContext.referenceRhythm
+        : [];
+      const storyboard = Array.from({ length: targetShotCount }, (_, index) => {
+        const shot = index + 1;
+        const reference = referenceRhythm[index] ?? {};
+        return {
+          shot,
+          duration: reference.timeRange || '5s',
+          timeRange: reference.timeRange || '',
+          shotType: reference.shotType || 'medium',
+          character: '目标达人',
+          characterAction: `镜头 ${shot} 的目标动作`,
+          scene: '目标厨房',
+          cameraMovement: reference.cameraMovement || '固定机位',
+          visual: `镜头 ${shot} 的真实使用画面`,
+          voiceover: `镜头 ${shot} 的自然口播`,
+          subtitle: `字幕 ${shot}`,
+          rhythm: reference.shotType ? `${reference.shotType} / 复用节奏` : shot === 1 ? '快节奏钩子' : '中速解释',
+          imagePrompt: `Photorealistic product video shot ${shot}, real home kitchen, natural light`,
+          videoPrompt: `目标达人展示本方产品的第 ${shot} 个动作，目标厨房真实场景，${reference.shotType || '中景'}固定机位，写实短视频风格。`,
+          transitionHint: 'cut',
+          voiceStyle: '自然中速',
+        };
+      });
       return {
         model: input.model || 'fake-claude-sonnet',
         rawText: '{}',
         value: {
           title: '早餐后场景短视频脚本',
-          script: '镜头 1：痛点。\n镜头 2：使用。\n镜头 3：行动提示。',
-          storyboard: [1, 2, 3].map((shot) => ({
-            shot,
-            duration: '5s',
-            visual: `镜头 ${shot} 的真实使用画面`,
-            voiceover: `镜头 ${shot} 的自然口播`,
-            subtitle: `字幕 ${shot}`,
-            rhythm: shot === 1 ? '快节奏钩子' : '中速解释',
-          })),
+          script: storyboard.map((shot) => `镜头 ${shot.shot}：${shot.visual}`).join('\n'),
+          resourceFramework: {
+            characters: [{ name: '目标达人', shotCount: targetShotCount, voiceTraits: '自然中速', threeViewPrompt: 'photorealistic target presenter, front side back view' }],
+            scenes: [{ name: '目标厨房', shotCount: targetShotCount, environment: '明亮真实厨房', lighting: '自然窗光', sceneImagePrompt: 'Bright realistic kitchen, natural window light, photorealistic' }],
+          },
+          storyboard,
           videoPrompt: '4:5，15 秒，真实产品使用画面。',
           publishCheck: [
             { level: 'info', message: '脚本已绑定知识引用。' },
             { level: 'warning', message: '上线前复核素材授权。' },
           ],
+        },
+      };
+    }
+    if (task === 'evaluate_video_script') {
+      return {
+        model: input.model || 'fake-claude-sonnet',
+        rawText: '{}',
+        value: {
+          hookScore: { score: 7, reasoning: '首镜头用痛点提问进入。' },
+          structureScore: { score: 6.5, reasoning: '脚本按痛点、演示、证明推进。' },
+          sellingPointScore: { score: 7.2, reasoning: '产品卖点出现在演示镜头。' },
+          voiceoverScore: { score: 6.8, reasoning: '口播自然，但结尾可更强。' },
+          pacingScore: { score: 7.1, reasoning: '镜头时长较紧凑。' },
+          suggestions: ['补证据镜头', '强化 CTA', '减少绝对化'],
+        },
+      };
+    }
+    if (task === 'rewrite_video_script_shot') {
+      const currentShot = parsedPrompt?.currentShot ?? {};
+      return {
+        model: input.model || 'fake-claude-sonnet',
+        rawText: '{}',
+        value: {
+          timeRange: currentShot.timeRange || currentShot.duration || '00:00-00:03',
+          duration: currentShot.duration || '3s',
+          visual: '重写后的真实厨房油污对比镜头',
+          voiceover: '喷完以后别急着擦，先看油污自己浮起来。',
+          subtitle: '油污浮起来',
+          rhythm: '更强对比节奏',
+          shotType: currentShot.shotType || 'comparison',
+          character: currentShot.character || '目标达人',
+          scene: currentShot.scene || '目标厨房',
+          cameraMovement: currentShot.cameraMovement || '固定机位',
+          imagePrompt: 'Photorealistic kitchen grease comparison shot, natural light',
+          videoPrompt: '目标达人展示油污浮起的前后对比，真实厨房场景，固定机位，手机短视频质感。',
+          reasoning: '增强前后对比并保留时间线。',
+          publishCheck: [{ level: 'warning', message: '重写镜头需复核功效依据。' }],
         },
       };
     }
@@ -11367,6 +6413,63 @@ test('内容工厂文字主链可以生成提示词包、场景卡、文章和�
     const storedLogs = await logs.list(workspacePath);
     assert.deepEqual(new Set(storedLogs.map((log) => log.kind)), new Set(['prompt-pack', 'scene-card', 'article', 'video-script']));
     assert.equal(storedLogs.every((log) => log.status === 'succeeded'), true);
+  });
+});
+
+test('视频脚本支持 AI 质检和单镜头重写并写入本地日志', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const logs = new GenerationLogStore();
+    const text = new FakeTextGenerationService();
+    const videos = new VideoWorkflowService(logs, text);
+    const script = await videos.generateScript({
+      workspacePath,
+      productName: '植物清洁喷雾',
+      sceneBackground: '居家厨房',
+      subtitleMode: 'burned-subtitle',
+      voiceStyle: '自然可信',
+      ratio: '9:16',
+      shotCount: 3,
+      durationSeconds: 18,
+      citations: [citation],
+      assetRefs: [],
+      selectedSkillSlugs: ['video-script-writer'],
+      params: { textModel: 'fake-claude-sonnet' },
+    });
+
+    const evaluation = await videos.evaluateScript({
+      workspacePath,
+      sourceScriptLogId: script.logId,
+      productName: '植物清洁喷雾',
+      productDesc: '商品名称：植物清洁喷雾\n场景背景：居家厨房',
+      templateInfo: { hookType: '痛点提问', framework: 'PSP' },
+      script,
+      citations: [citation],
+      params: { textModel: 'fake-claude-sonnet' },
+    });
+    assert.equal(evaluation.scores.totalScore, 6.9);
+    assert.equal(evaluation.suggestions.length, 3);
+
+    const rewrite = await videos.rewriteScriptShot({
+      workspacePath,
+      sourceScriptLogId: script.logId,
+      rowIndex: 1,
+      productName: '植物清洁喷雾',
+      productDesc: '商品名称：植物清洁喷雾\n场景背景：居家厨房',
+      templateInfo: { hookType: '痛点提问', framework: 'PSP' },
+      script,
+      citations: [citation],
+      params: { textModel: 'fake-claude-sonnet' },
+    });
+    assert.equal(rewrite.rowIndex, 1);
+    assert.match(rewrite.shot.visual, /重写后的真实厨房/);
+    assert.equal(rewrite.publishCheck[0].level, 'warning');
+
+    const storedLogs = await logs.list(workspacePath);
+    const sourceScriptLog = storedLogs.find((entry) => entry.id === script.logId);
+    assert.equal(sourceScriptLog.output.evaluation.logId, evaluation.logId);
+    assert.equal(storedLogs.some((entry) => entry.kind === 'video-script-evaluation' && entry.status === 'succeeded'), true);
+    assert.equal(storedLogs.some((entry) => entry.kind === 'video-script-shot-rewrite' && entry.status === 'succeeded'), true);
+    assert.deepEqual(text.calls.slice(-2).map((call) => JSON.parse(call.prompt).task), ['evaluate_video_script', 'rewrite_video_script_shot']);
   });
 });
 
@@ -12270,6 +7373,23 @@ test('Prompt 生成服务不会把成功素材沉淀追溯源作为新输入源'
   });
 });
 
+test('成功素材回炉和沉淀 Prompt 会清理旧正文中的内部追溯字段', () => {
+  const cleaned = stripInternalTraceLinesFromPrompt([
+    '早餐桌自然光，产品主体清晰。',
+    'assetKey: generated:old-log:0:/tmp/private-old.png',
+    'sourceId：source-secret-1',
+    'workflowRunId = workflow-run-secret-1',
+    'generation-log:log-secret',
+    'input-source:source-secret-1',
+    'sourceType: generation-log',
+    '保留真实手机实拍和低广告感。',
+  ].join('\n'));
+
+  assert.equal(cleaned.includes('早餐桌自然光'), true);
+  assert.equal(cleaned.includes('保留真实手机实拍'), true);
+  assert.equal(/assetKey|sourceId|workflowRunId|generation-log|input-source|sourceType/i.test(cleaned), false);
+});
+
 test('输入源可以从工作区列表移除且不删除原始文件', async () => {
   await withWorkspace(async (workspacePath) => {
     const sourcePath = join(workspacePath, 'reference.png');
@@ -12297,7 +7417,7 @@ test('输入源共享范围会进入内容地图并阻止仅本机资料发布�
     const restricted = await inputSources.register({
       workspacePath,
       kind: 'manual-note',
-      purpose: 'sop-input',
+      purpose: 'task-input',
       title: '仅本机投放复盘',
       text: '内部投放数据：仅本机使用，禁止共享到团队。',
       tags: ['投放数据', '禁止共享'],
@@ -12405,7 +7525,7 @@ test('输入源共享范围会进入内容地图并阻止仅本机资料发布�
   });
 });
 
-test('输入源复用策略区分 Prompt 追溯和 SOP 自动输入', () => {
+test('输入源复用策略区分 Prompt 追溯和内容制造输入', () => {
   const importedSuccessfulAsset = {
     purpose: 'successful-asset',
     tags: ['第三方生成', '成品视频'],
@@ -12421,9 +7541,6 @@ test('输入源复用策略区分 Prompt 追溯和 SOP 自动输入', () => {
 
   assert.equal(isReusablePromptInputSource(importedSuccessfulAsset), true);
   assert.equal(isReusablePromptInputSource(distilledTraceSource), false);
-  assert.equal(isReusableWorkflowInputSource(importedSuccessfulAsset), false);
-  assert.equal(isReusableWorkflowInputSource(distilledTraceSource), false);
-  assert.equal(isReusableWorkflowInputSource(productBrief), true);
 });
 
 test('产品资料输入源会结构化为变量表且不编造缺失字段', () => {
@@ -13593,7 +8710,7 @@ test('v2 业务验收脚本支持外部真实素材输入并暴露缺口', async
           purpose: 'successful-asset',
           title: '成功素材沉淀 / 已通过早餐桌素材',
           sourcePath: 'approved-breakfast.png',
-          tags: ['successful-asset', 'prompt-distilled', 'image', 'workflow-run'],
+          tags: ['successful-asset', 'prompt-distilled', 'image', 'run-trace'],
           relatedPromptDraftId: 'image-prompt-real',
           relatedSceneCardIds: ['scene-real-001'],
           extractedText: [
@@ -14364,7 +9481,7 @@ test('v2 业务验收脚本可从真实交付包目录自动提取证据', async
               purpose: 'successful-asset',
               title: '成功素材沉淀 / 成品视频',
               sourcePath: join(mixDir, 'videos', '001-video.mp4'),
-              tags: ['successful-asset', 'prompt-distilled', 'video', 'workflow-run'],
+              tags: ['successful-asset', 'prompt-distilled', 'video', 'run-trace'],
               relatedPromptDraftId: 'prompt-draft-real-video',
               relatedSceneCardIds: ['scene-directory-001'],
               extractedText: [
@@ -14583,7 +9700,7 @@ test('v2 业务验收脚本可从工作区数据自动生成验收输入', async
       purpose: 'successful-asset',
       title: '成功素材沉淀 / 成品视频',
       sourcePath: join(mixDir, 'videos', '001-video.mp4'),
-      tags: ['successful-asset', 'prompt-distilled', 'video', 'workflow-run'],
+      tags: ['successful-asset', 'prompt-distilled', 'video', 'run-trace'],
       summary: '已通过素材反向沉淀 Prompt：成品视频',
       extractedText: [
         '素材状态：已通过审核。',
@@ -14806,7 +9923,7 @@ test('v2 业务验收脚本可从工作区数据自动生成验收输入', async
       workflowDefinitionId: 'video-material-package',
       workflowKey: 'video-material-package',
       workflowVersion: '1.0.0',
-      title: '工作区视频素材包 SOP',
+      title: '工作区视频素材包历史运行',
       status: 'succeeded',
       summary: '已从通过素材沉淀 Prompt 草稿。',
       inputs: {},
@@ -14880,509 +9997,6 @@ test('v2 业务验收脚本可从工作区数据自动生成验收输入', async
   });
 });
 
-test('v2 业务验收脚本可读取真实服务写入的工作区 SOP 产物', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const assetReviews = new AssetReviewStore();
-    const promptPacks = new PromptPackService(logs, text);
-    const brandKnowledgeBases = new BrandKnowledgeBaseStore(text);
-    const ipKnowledgeBases = new IpKnowledgeBaseStore(text);
-    const sceneCards = new SceneLibraryStore(logs, promptPacks, text);
-    const overlayCards = new OverlayCardStore();
-    const mixPackages = new MixPackageStore(assetReviews);
-    const platformDrafts = new PlatformDraftStore(logs);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(
-      workflows,
-      inputSources,
-      promptDrafts,
-      sessions,
-      media,
-      assetReviews,
-      brandKnowledgeBases,
-      promptPacks,
-      sceneCards,
-      undefined,
-      ipKnowledgeBases,
-      overlayCards,
-    );
-    const definitions = await workflows.listDefinitions(workspacePath);
-    const brandDefinition = definitions.find((item) => item.key === 'brand-scene-prompts');
-    const ipDefinition = definitions.find((item) => item.key === 'ip-longform');
-    const productDefinition = definitions.find((item) => item.key === 'product-commercial-assets');
-    const feedbackDefinition = definitions.find((item) => item.key === 'feedback-topic-matrix');
-    const greenDefinition = definitions.find((item) => item.key === 'green-screen-card-package');
-    const videoDefinition = definitions.find((item) => item.key === 'video-material-package');
-    assert.ok(brandDefinition, '应存在品牌场景 SOP');
-    assert.ok(ipDefinition, '应存在 IP 内容 SOP');
-    assert.ok(productDefinition, '应存在产品商业素材 SOP');
-    assert.ok(feedbackDefinition, '应存在评论痛点选题 SOP');
-    assert.ok(greenDefinition, '应存在绿幕文案图 SOP');
-    assert.ok(videoDefinition, '应存在视频素材包 SOP');
-
-    const brandRun = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: brandDefinition.id,
-      inputs: {
-        source: [
-          '产品名称：真实工作区便携条包',
-          '产品事实：便携条包，适合早餐后、办公室抽屉和通勤包中随手取用。',
-          '核心卖点：降低准备门槛，适合忙碌办公人群。',
-          '场景：早餐后、办公室抽屉、通勤包侧袋。',
-          '合规边界：不承诺治疗，不写绝对化收益。',
-        ].join('\n'),
-        intent: '生成真实生活场景库和 10 组 UGC 图片 / 视频 Prompt。',
-        reviewOwner: '品牌运营',
-      },
-    });
-    assert.equal(brandRun.status, 'queued');
-
-    const ipRun = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: ipDefinition.id,
-      inputs: {
-        source: [
-          '身份：嘉文老师，长期讲普通人可执行的内容方法。',
-          '价值观：先讲事实和边界，再讲行动建议。',
-          '语言：自然、克制、像一对一解释。',
-          '方法论：用真实案例、反常识切入和发布前检查做内容。',
-          '素材：课程大纲、工作坊记录、咨询问答。',
-          '创作引擎：口播、朋友圈、私域回复和产品化咨询。',
-        ].join('\n'),
-        intent: '构建六层 IP 知识库并生成口播内容 Prompt。',
-        reviewOwner: 'IP 主理人',
-      },
-    });
-    assert.equal(ipRun.status, 'queued');
-
-    const productBrief = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'product-brief',
-      title: '真实工作区产品资料',
-      tags: ['产品资料', 'brief'],
-      text: [
-        '产品名称：真实工作区便携条包',
-        '卖点：早餐后、办公室抽屉和通勤包里都能顺手取用。',
-        '规格：每盒 20 条，每条独立包装。',
-        '适用场景：早餐后、办公室抽屉、通勤包侧袋。',
-        '禁用表达：不承诺治疗，不写绝对化收益。',
-      ].join('\n'),
-    });
-    const skuTable = await inputSources.register({
-      workspacePath,
-      kind: 'sku-table',
-      purpose: 'product-brief',
-      title: '真实工作区 SKU 表',
-      tags: ['SKU', '规格'],
-      text: [
-        'SKU,规格,价格,适用场景',
-        'trial-10,10 条装,49,首次尝试',
-        'family-30,30 条装,129,家庭常备',
-      ].join('\n'),
-    });
-    const productRun = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: productDefinition.id,
-      inputSourceIds: [productBrief.id, skuTable.id],
-      inputs: {
-        source: '真实工作区产品资料和 SKU 表',
-        intent: '生成主图、卖点图和详情页局部图 Prompt。',
-        reviewOwner: '电商运营',
-        platform: '通用电商',
-      },
-    });
-    assert.equal(productRun.status, 'blocked');
-    assert.equal(productRun.steps.find((step) => step.stepId === 'product_brief_structure')?.status, 'succeeded');
-
-    const feedback = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'user-feedback',
-      title: '真实工作区评论和客服问题',
-      tags: ['评论', '差评', '客服问题'],
-      text: [
-        '评论：价格有点贵，想知道到底值不值。',
-        '差评：早上总是忘记吃，坚持不下来。',
-        '客服：孩子和老人能不能吃，有没有禁忌？',
-        '私信：办公室抽屉里放一盒会不会方便一点？',
-      ].join('\n'),
-    });
-    const feedbackRun = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: feedbackDefinition.id,
-      inputSourceIds: [feedback.id],
-      inputs: {
-        source: '真实工作区评论、差评和客服问题',
-        intent: '生成标题方向、内容角度和客服异议话术。',
-        reviewOwner: '运营负责人',
-        platform: '小红书',
-      },
-    });
-    assert.equal(feedbackRun.status, 'queued');
-    assert.equal(feedbackRun.steps.find((step) => step.stepId === 'feedback_cluster')?.status, 'succeeded');
-
-    const greenRun = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: greenDefinition.id,
-      inputs: {
-        source: [
-          '标题卡：早餐后顺手一次',
-          '卖点卡：便携条包，包里抽屉都能放',
-          'CTA：先从每天顺手一次开始',
-        ].join('\n'),
-        intent: '拆成第三方混剪可叠加的绿幕文案图。',
-        reviewOwner: '短视频运营',
-        duration: '4',
-      },
-    });
-    assert.equal(greenRun.status, 'queued');
-    assert.equal(greenRun.steps.find((step) => step.stepId === 'overlay_cards')?.status, 'succeeded');
-    const generatedOverlayCards = await overlayCards.list(workspacePath);
-    assert.equal(generatedOverlayCards.length, 3);
-    for (const card of generatedOverlayCards) {
-      await assetReviews.review({
-        workspacePath,
-        workflowRunId: greenRun.id,
-        assetKey: `overlay:${card.id}`,
-        kind: 'overlay',
-        sourceType: 'overlay-card',
-        sourceId: card.id,
-        path: card.assetPath,
-        title: card.title,
-        status: 'approved',
-        tags: card.tags,
-      });
-    }
-
-    const videoRun = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: videoDefinition.id,
-      inputs: {
-        source: '真实工作区视频素材包：已通过图片、口播脚本和绿幕卡。',
-        intent: '生成 15 秒视频 Prompt，手动复制到第三方平台，并导入成品视频后导出混剪包。',
-        reviewOwner: '短视频运营',
-        duration: '15',
-      },
-    });
-    const videoPromptDraftId = videoRun.steps.find((step) => step.stepId === 'prompt_generate')?.output?.promptDraftId;
-    assert.equal(videoRun.status, 'queued');
-    assert.equal(typeof videoPromptDraftId, 'string');
-    await promptDrafts.recordCopy({
-      workspacePath,
-      draftId: videoPromptDraftId,
-      target: 'RunningHub',
-    });
-    const copiedRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: videoRun.id,
-      event: 'video-prompt-copied',
-      promptDraftId: videoPromptDraftId,
-      summary: '已复制到第三方视频平台。',
-    });
-
-    const finishedVideoPath = join(workspacePath, '真实第三方成品视频.mp4');
-    await writeFile(finishedVideoPath, TEST_VIDEO);
-    const importedVideo = await inputSources.importFile(workspacePath, finishedVideoPath, 'successful-asset', {
-      workflowRunId: copiedRun.id,
-      relatedPromptDraftId: videoPromptDraftId,
-      tags: ['第三方生成', '成品视频'],
-    });
-    const importedRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: copiedRun.id,
-      event: 'finished-video-imported',
-      inputSourceId: importedVideo.id,
-      promptDraftId: videoPromptDraftId,
-    });
-    const importedAssetKey = `imported:${importedVideo.id}:0:${importedVideo.sourcePath}`;
-    const videoReview = await assetReviews.review({
-      workspacePath,
-      workflowRunId: importedRun.id,
-      assetKey: importedAssetKey,
-      kind: 'video',
-      sourceType: 'input-source',
-      sourceId: importedVideo.id,
-      path: importedVideo.sourcePath,
-      title: importedVideo.title,
-      status: 'approved',
-      tags: importedVideo.tags,
-    });
-    const overlayCard = generatedOverlayCards.find((card) => card.type === 'title') ?? generatedOverlayCards[0];
-    const overlayAssetKey = `overlay:${overlayCard.id}`;
-    const overlayRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: importedRun.id,
-      event: 'overlay-cards-generated',
-      promptDraftId: videoPromptDraftId,
-      overlayCardIds: generatedOverlayCards.map((card) => card.id),
-    });
-    const reviewedRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: overlayRun.id,
-      event: 'asset-reviewed',
-      assetReviewId: videoReview.id,
-      assetKey: videoReview.assetKey,
-    });
-
-    const promptDraft = (await promptDrafts.list(workspacePath)).find((draft) => draft.id === videoPromptDraftId);
-    const promptText = promptDraft?.versions.find((version) => version.id === promptDraft.activeVersionId)?.content
-      ?? promptDraft?.versions[0]?.content
-      ?? '';
-    const mixPackage = await mixPackages.exportPackage({
-      workspacePath,
-      workflowRunId: reviewedRun.id,
-      title: '真实工作区混剪包',
-      platform: 'third-party-mix-tool',
-      assets: [
-        {
-          id: importedAssetKey,
-          kind: 'video',
-          title: importedVideo.title,
-          path: importedVideo.sourcePath,
-          sourceType: 'input-source',
-          sourceId: importedVideo.id,
-          promptDraftId: videoPromptDraftId,
-          promptText,
-          tags: importedVideo.tags,
-        },
-        {
-          id: overlayAssetKey,
-          kind: 'overlay',
-          title: overlayCard.title,
-          path: overlayCard.assetPath,
-          sourceType: 'overlay-card',
-          sourceId: overlayCard.id,
-          promptDraftId: videoPromptDraftId,
-          promptText: overlayCard.text,
-          tags: overlayCard.tags,
-        },
-      ],
-    });
-    const completedVideoRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: reviewedRun.id,
-      event: 'mix-package-exported',
-      mixPackageId: mixPackage.id,
-      manifestPath: mixPackage.manifestPath,
-      manifestCsvPath: mixPackage.manifestCsvPath,
-      importGuidePath: mixPackage.importGuidePath,
-      packageDir: mixPackage.packageDir,
-    });
-    assert.equal(completedVideoRun.status, 'succeeded');
-
-    const referenceLog = await logs.append({
-      workspacePath,
-      workflowRunId: completedVideoRun.id,
-      kind: 'reference-reverse',
-      status: 'succeeded',
-      title: '真实工作区对标反推',
-      input: {
-        referenceSources: [
-          { id: 'reference-image-real', title: '真实参考图', kind: 'image', purpose: 'reference', sourcePath: 'reference-image.png' },
-          { id: 'reference-video-real', title: '真实参考视频', kind: 'video', purpose: 'reference', sourcePath: 'reference-video.mp4' },
-        ],
-      },
-      output: {
-        analysis: {
-          composition: '手机竖图，产品在真实桌面中自然出现。',
-          lighting: '自然光。',
-          textArea: '上方留出短标题区。',
-          style: 'UGC 手机实拍感。',
-          reusableElements: ['自然光', '桌面动作'],
-          prompt: '真实手机实拍产品使用场景。',
-          negativePrompt: '不要复制竞品 Logo、包装、文案、人物肖像或可识别品牌元素。',
-          risks: ['需要人工复核素材授权、商标和肖像风险。'],
-          qualityChecklist: ['主体一致', '来源可追溯', '无竞品可识别元素'],
-        },
-      },
-    });
-    const videoBreakdownLog = await logs.append({
-      workspacePath,
-      workflowRunId: completedVideoRun.id,
-      kind: 'video-breakdown',
-      status: 'succeeded',
-      title: '真实工作区参考视频拆解',
-      input: {
-        sourceType: 'file',
-        source: 'reference-video.mp4',
-      },
-      output: {
-        summary: '真实工作区参考视频拆解。',
-        dimensions: ['开头钩子', '字幕口播'],
-        segments: [{
-          timeRange: '0-3s',
-          hook: '先抛真实痛点',
-          visual: '早餐桌自然光',
-          voiceover: '坚持难在每天顺手。',
-          subtitle: '顺手完成',
-          rhythm: '快速钩子',
-          reusablePoint: '痛点后接低门槛动作',
-        }],
-        reusableFormula: ['痛点 -> 低门槛动作 -> 合规边界'],
-        risks: [{ level: 'warning', message: '不照搬原视频画面，复核授权和合规表达。' }],
-      },
-    });
-    const videoScriptLog = await logs.append({
-      workspacePath,
-      workflowRunId: completedVideoRun.id,
-      kind: 'video-script',
-      status: 'succeeded',
-      title: '真实工作区视频脚本',
-      input: {
-        breakdownLogId: videoBreakdownLog.id,
-      },
-      output: {
-        title: '真实工作区视频脚本',
-        script: '镜头 1：真实痛点。\n镜头 2：低门槛动作。',
-        storyboard: [{
-          shot: 1,
-          duration: '0-3s',
-          visual: '自然光早餐桌。',
-          voiceover: '先讲真实痛点。',
-          subtitle: '顺手完成',
-          rhythm: '快速钩子',
-        }],
-        videoPrompt: '15 秒 9:16 手机实拍视频，不复制原视频。',
-        publishCheck: [
-          { level: 'warning', message: '复核素材授权。' },
-          { level: 'risk', message: '避免照搬参考视频。' },
-        ],
-      },
-    });
-    await logs.append({
-      workspacePath,
-      workflowRunId: completedVideoRun.id,
-      kind: 'video',
-      status: 'succeeded',
-      title: '真实工作区视频生成成本',
-      model: 'test-video-model',
-      output: {
-        model: 'test-video-model',
-        durationSeconds: 10,
-        costEstimate: {
-          currency: 'CNY',
-          durationSeconds: 10,
-          source: 'provider-response',
-          unitPrice: 1.5,
-          estimatedCost: 15,
-        },
-      },
-    });
-    await platformDrafts.exportDraft({
-      workspacePath,
-      workflowRunId: completedVideoRun.id,
-      promptDraftId: videoPromptDraftId,
-      sourceLogId: videoScriptLog.id,
-      platform: '公众号',
-      title: '真实工作区平台草稿',
-      topic: '便携条包真实使用场景',
-      audience: '通勤和办公用户',
-      tone: '真实、克制、可复核',
-      markdown: '# 真实工作区平台草稿\n\n这是一份由真实工作区服务导出的正文草稿，保留发布前复核边界。',
-      publishCheck: [
-        { level: 'warning', message: '发布前复核产品事实。' },
-        { level: 'risk', message: '避免医疗化承诺。' },
-      ],
-    });
-
-    const distilledSource = await inputSources.register({
-      workspacePath,
-      workflowRunId: completedVideoRun.id,
-      kind: 'video',
-      purpose: 'successful-asset',
-      title: '成功素材沉淀 / 真实第三方成品视频',
-      sourcePath: importedVideo.sourcePath,
-      tags: ['successful-asset', 'prompt-distilled', 'video', 'workflow-run'],
-      relatedPromptDraftId: videoPromptDraftId,
-      relatedSceneCardIds: ['scene-card-real-video'],
-      text: [
-        '素材状态：已通过审核。',
-        '质量原因：真实早餐桌自然光，动作节奏清楚。',
-        '复用 Prompt 草稿：15 秒手机实拍视频，早餐桌自然光，不复制竞品元素。',
-        '复用要求：只沉淀本方已通过审核的素材经验，不复制竞品 Logo、包装、文案或可识别元素。',
-        '下游生成前需要人工确认产品事实、平台规则和禁用表达。',
-      ].join('\n'),
-    });
-    const distilledDraft = await promptDrafts.createFromContent({
-      workspacePath,
-      workflowRunId: completedVideoRun.id,
-      title: '成功素材 Prompt：真实第三方成品视频',
-      purpose: 'video',
-      userIntent: '复用通过审核素材的成功经验。',
-      inputSourceIds: [distilledSource.id],
-      content: [
-        '素材状态：已通过审核。',
-        '质量原因：真实早餐桌自然光，动作节奏清楚。',
-        '复用 Prompt 草稿：15 秒手机实拍视频，早餐桌自然光，不复制竞品元素。',
-        '复用要求：只沉淀本方已通过审核的素材经验，不复制竞品 Logo、包装、文案或可识别元素。',
-        '下游生成前需要人工确认产品事实、平台规则和禁用表达。',
-      ].join('\n'),
-      note: '由成功素材回炉生成',
-      model: 'local-successful-asset-distiller',
-      status: 'confirmed',
-    });
-    await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: completedVideoRun.id,
-      event: 'asset-prompt-distilled',
-      inputSourceId: distilledSource.id,
-      promptDraftId: distilledDraft.id,
-      assetKey: importedAssetKey,
-    });
-
-    const acceptanceInput = await loadWorkspaceAcceptanceInput(workspacePath);
-    const report = await buildBusinessAcceptanceReport({}, {
-      providerReport: await buildProviderCheckReport({}, { allowNetwork: false, allowMedia: false }),
-      acceptanceInput,
-      mode: 'workspace',
-    });
-
-    assert.equal(report.mode, 'workspace');
-    assert.equal(report.summary.failed, 0, JSON.stringify(
-      Object.values(report.sections)
-        .flatMap((section) => section.checks ?? [])
-        .filter((check) => check.status === 'fail')
-        .map((check) => ({ id: check.id, title: check.title, details: check.details })),
-      null,
-      2,
-    ));
-    assert.equal(report.sections.productBrief.productName, '真实工作区便携条包');
-    assert.ok(report.sections.productBrief.checks.find((check) => check.id === 'product-brief-prompt-trace')?.status === 'pass');
-    assert.ok(report.sections.feedback.checks.find((check) => check.id === 'feedback-objection-responses')?.status === 'pass');
-    assert.deepEqual(report.sections.greenScreen.actualTypes.sort(), ['cta', 'selling-point', 'title']);
-    assert.ok(report.sections.greenScreen.checks.find((check) => check.id === 'green-screen-card-approved')?.status === 'pass');
-    assert.ok(report.sections.delivery.checks.find((check) => check.id === 'mix-package-assets')?.actualPackagedFilePaths.length >= 2);
-    assert.ok(report.sections.delivery.checks.find((check) => check.id === 'platform-draft-content')?.actualContentFields.includes('publishBoundary'));
-    assert.equal(report.sections.successfulAsset.asset.reviewStatus, 'approved');
-    assert.ok(report.sections.successfulAsset.checks.find((check) => check.id === 'successful-asset-workflow-trace')?.status === 'pass');
-    assert.ok(report.sections.reference.sampleSources.includes('真实参考图'));
-    assert.equal(report.sections.mediaCost.actual.estimatedCost, 15);
-    assert.deepEqual(report.sections.trace.uniqueWorkflowRunIds, [completedVideoRun.id]);
-    assert.equal(referenceLog.workflowRunId, completedVideoRun.id);
-  });
-});
-
 test('品牌和 IP 知识库可以从知识引用生成并落盘', async () => {
   await withWorkspace(async (workspacePath) => {
     const text = new FakeTextGenerationService();
@@ -15415,1146 +10029,886 @@ test('品牌和 IP 知识库可以从知识引用生成并落盘', async () => {
   });
 });
 
-test('工作流运行会记录步骤输入、输出和 artifact 引用', async () => {
+test('内容制造批次审核阶段会把候选素材导向审核入库和回炉', async () => {
   await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
-    const definitions = await workflows.listDefinitions(workspacePath);
-    const definition = definitions.find((item) => item.key === 'xiaohongshu-seeding-image');
-    assert.ok(definition, '应存在内置小红书种草图 SOP');
-
-    const run = await workflows.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputs: {
-        source: '产品图 / 参考图 / 产品资料',
-        intent: '生成小红书真实种草图 SOP 运行记录',
-        reviewOwner: '审核人 A',
-        platform: '小红书',
-      },
-    });
-
-    assert.equal(run.status, 'queued');
-    assert.ok(run.artifactRefs.length > 0);
-    assert.match(run.artifactRefs[0], /^workflow-run:/);
-    assert.equal(run.steps[0].status, 'succeeded');
-    assert.match(JSON.stringify(run.steps[0].input), /source/);
-    assert.match(JSON.stringify(run.steps[0].output), /已登记输入/);
-    assert.equal(run.steps.find((step) => step.status === 'blocked'), undefined);
-    assert.equal(run.steps.find((step) => step.stepId === 'reference_reverse')?.status, 'queued');
-    assert.match(run.summary, /等待后续步骤执行/);
-  });
-});
-
-test('SOP 缺少必填输入时不会进入后续执行步骤', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'brand-scene-prompts');
-    assert.ok(definition, '应存在品牌场景提示词 SOP');
-
-    const run = await workflows.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputs: {
-        source: '',
-        intent: '',
-      },
-    });
-
-    assert.equal(run.status, 'blocked');
-    assert.match(run.summary, /缺少必填字段：资料来源、用户意图/);
-    assert.equal(run.steps[0].status, 'blocked');
-    assert.equal(run.steps[0].error, 'WORKFLOW_REQUIRED_INPUT_MISSING');
-    assert.deepEqual(run.steps[0].output.missingRequired, ['资料来源', '用户意图']);
-    assert.equal(run.steps.find((step) => step.stepId === 'brand_extract')?.status, 'queued');
-  });
-});
-
-test('SOP 已选择输入源时补充资料说明可以为空', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
     const inputSources = new InputSourceStore();
+    const knowledgeMaps = new ContentKnowledgeMapStore();
+
+    const reviewTasks = new ContentReviewTaskStore();
+    const assetReviews = new AssetReviewStore();
+    const logs = new GenerationLogStore();
+    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+    const batches = new ContentBatchApplicationService(
+      new ContentBatchStore(),
+      inputSources,
+      knowledgeMaps,
+      reviewTasks,
+      assetReviews,
+      logs,
+      promptDrafts,
+    );
+
     const source = await inputSources.register({
       workspacePath,
       kind: 'manual-note',
-      purpose: 'brand-kb',
-      title: '已登记品牌资料',
-      text: '品牌事实：真实场景、合规边界和产品卖点。',
-      summary: '已登记品牌资料',
+      purpose: 'product-brief',
+      title: '便携条包产品资料',
+      text: '产品：便携条包。场景：早餐后、办公室抽屉、通勤包。',
     });
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'brand-scene-prompts');
-    assert.ok(definition, '应存在品牌场景提示词 SOP');
-
-    const run = await workflows.startRun({
+    const assetPath = join(workspacePath, 'candidate.png');
+    await writeFile(assetPath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
+    const log = await logs.append({
       workspacePath,
-      workflowDefinitionId: definition.id,
-      inputSourceIds: [source.id],
-      inputs: {
-        source: '',
-        intent: '从已选择资料生成真实生活场景 Prompt。',
-      },
+      kind: 'image',
+      status: 'succeeded',
+      title: '早餐桌候选图',
+      summary: '本批制造阶段生成的待审候选图。',
+      model: 'test-image-model',
+      artifactRefs: [assetPath],
+      input: { sourceId: source.id },
+      output: { prompt: '早餐桌自然光，便携条包主体清晰。' },
     });
 
-    assert.equal(run.status, 'queued');
-    assert.deepEqual(run.inputSourceIds, [source.id]);
-    assert.equal(run.steps[0].status, 'succeeded');
-    assert.equal(run.steps[0].output.missingRequired, undefined);
+    const built = await batches.build({
+      workspacePath,
+      title: '便携条包短视频制造批次',
+      objective: '把产品资料和候选素材推进到审核入库。',
+    });
+    const projectedReview = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'review',
+    });
+    const reviewStage = projectedReview.stageRuns.find((stage) => stage.stageId === 'review');
+    assert.ok(reviewStage, '应存在审核阶段');
+    assert.ok(reviewStage.gateResults.some((gate) => gate.title === '制造产物待送审'));
+    assert.equal(
+      [...reviewStage.inputRefs, ...reviewStage.outputRefs, ...reviewStage.agentRunRefs].some((ref) => /\bblocked\b/.test(ref.summary)),
+      false,
+    );
+    assert.ok(reviewStage.recoveryTasks.some((task) =>
+      task.targetModule === 'assets' &&
+      task.title === '打开素材库审核候选素材' &&
+      task.message.includes('通过并入库') &&
+      task.message.includes('回炉重做') &&
+      task.sourceRef?.id === log.id
+    ));
+
+    await assetReviews.review({
+      workspacePath,
+      assetKey: `generated:${log.id}:0:${assetPath}`,
+      kind: 'image',
+      sourceType: 'generation-log',
+      sourceId: log.id,
+      path: assetPath,
+      title: 'candidate.png',
+      status: 'pending',
+      note: '等待审核人员判断是否通过并入库。',
+      tags: ['批次审核'],
+    });
+    const pendingReview = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'review',
+    });
+    const pendingStage = pendingReview.stageRuns.find((stage) => stage.stageId === 'review');
+    assert.ok(pendingStage?.gateResults.some((gate) => gate.title === '候选素材待审核'));
+    assert.ok(pendingStage?.recoveryTasks.some((task) =>
+      task.title === '审核 candidate.png' &&
+      task.targetModule === 'assets' &&
+      task.message.includes('通过并入库')
+    ));
+
+    await assetReviews.review({
+      workspacePath,
+      assetKey: `generated:${log.id}:0:${assetPath}`,
+      kind: 'image',
+      sourceType: 'generation-log',
+      sourceId: log.id,
+      path: assetPath,
+      title: 'candidate.png',
+      status: 'rejected',
+      note: '主体不清晰，需要回炉重做。',
+      tags: ['批次审核', '回炉'],
+    });
+    const rejectedReview = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'review',
+    });
+    const rejectedStage = rejectedReview.stageRuns.find((stage) => stage.stageId === 'review');
+    assert.equal(rejectedStage?.status, 'blocked');
+    assert.ok(rejectedStage?.gateResults.some((gate) => gate.title === '有素材被驳回'));
+    assert.ok(rejectedStage?.recoveryTasks.some((task) =>
+      task.title === '回炉 candidate.png' &&
+      task.targetModule === 'assets' &&
+      task.message.includes('回炉重做')
+    ));
   });
 });
 
-test('SOP 已选择知识引用时补充资料说明可以为空', async () => {
+test('内容制造批次制造阶段会把视频 Prompt 草稿投影为制造产物', async () => {
   await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'brand-scene-prompts');
-    assert.ok(definition, '应存在品牌场景提示词 SOP');
-
-    const citations = [
-      {
-        knowledgeBaseId: 'brand-kb-selected',
-        sectionId: 'facts',
-        title: '产品知识库 / 产品事实',
-        sectionType: 'product',
-        excerpt: '便携条包适合早餐后和办公室抽屉场景。',
-      },
-    ];
-    const run = await workflows.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      citations,
-      inputs: {
-        source: '',
-        intent: '从已选择知识引用生成真实生活场景 Prompt。',
-      },
-    });
-
-    assert.equal(run.status, 'queued');
-    assert.deepEqual(run.citations, citations);
-    assert.equal(run.steps[0].status, 'succeeded');
-    assert.equal(run.steps[0].output.missingRequired, undefined);
-    assert.match(JSON.stringify(run.steps[0].input), /selectedCitations/);
-  });
-});
-
-test('SOP 草案可以编辑、发布并运行', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
-    const draft = await workflows.createDraft({
-      workspacePath,
-      templateKey: 'brand-scene-prompts',
-      title: '功能测试自定义 SOP 草案',
-    });
-    const edited = await workflows.updateDefinition({
-      ...draft,
-      title: '功能测试可运行 SOP',
-      description: '验证草案编辑后可以发布并创建运行记录。',
-      version: 'v0.2',
-      priority: 'P1',
-      tags: ['功能测试', '自定义 SOP'],
-      inputSchema: [
-        { key: 'source', label: '资料来源', type: 'textarea', required: true },
-        { key: 'intent', label: '执行目标', type: 'textarea', required: true },
-      ],
-      steps: [
-        { id: 'input_register', title: '登记输入源', kind: 'input', description: '登记资料和目标。', dependsOn: [], outputKeys: ['InputSource'] },
-        { id: 'human_review', title: '人工审核', kind: 'review', description: '确认输入和执行目标。', dependsOn: ['input_register'], outputKeys: ['ReviewResult'] },
-        { id: 'asset_store', title: '入历史', kind: 'asset-store', description: '归档本次 SOP 运行。', dependsOn: ['human_review'], outputKeys: ['RunArchive'] },
-      ],
-      reviewRules: ['必须确认资料来源清楚。'],
-      outputSpec: ['RunArchive'],
-    });
-    assert.equal(edited.title, '功能测试可运行 SOP');
-    assert.equal(edited.status, 'draft');
-    assert.equal(edited.steps.length, 3);
-
-    const published = await workflows.updateDefinition({ ...edited, status: 'published' });
-    assert.equal(published.status, 'published');
-
-    const run = await workflows.startRun({
-      workspacePath,
-      workflowDefinitionId: published.id,
-      inputs: {
-        source: '一份本地 SOP 输入资料',
-        intent: '验证定义编辑发布后可以运行。',
-      },
-    });
-    assert.equal(run.title, '功能测试可运行 SOP');
-    assert.equal(run.status, 'queued');
-    assert.equal(run.steps.find((step) => step.stepId === 'input_register')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-    assert.match(JSON.stringify(run.steps[0].input), /一份本地 SOP 输入资料/);
-  });
-});
-
-test('无模板 SOP 草案使用通用方法论脚手架，不误套图片 SOP', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
-    const draft = await workflows.createDraft({
-      workspacePath,
-      title: 'Prompt 工作台沉淀 SOP 草案',
-      description: '由 SOP 提示词草稿物化，应该保持通用步骤而不是小红书图片模板。',
-    });
-
-    assert.match(draft.key, /^custom-sop-draft-/);
-    assert.equal(draft.title, 'Prompt 工作台沉淀 SOP 草案');
-    assert.equal(draft.status, 'draft');
-    assert.equal(draft.steps.some((step) => step.id === 'agent_read'), true);
-    assert.equal(draft.steps.some((step) => step.id === 'image_generate'), false);
-    assert.equal(draft.reviewRules.some((rule) => rule.includes('真实 provider')), true);
-    assert.deepEqual(draft.tags, ['自定义', '提示词草稿', 'SOP']);
-  });
-});
-
-test('从内置视频 SOP 复制出的草案发布后仍可推进手工事件', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
-    const draft = await workflows.createDraft({
-      workspacePath,
-      templateKey: 'video-material-package',
-      title: '客户自定义视频素材包 SOP',
-    });
-    const published = await workflows.updateDefinition({
-      ...draft,
-      status: 'published',
-    });
-    assert.match(published.key, /^video-material-package-draft-/);
-
-    const started = await workflows.startRun({
-      workspacePath,
-      workflowDefinitionId: published.id,
-      inputs: {
-        source: '客户自定义素材库和脚本。',
-        intent: '生成 15 秒素材 Prompt，第三方生成后导入并交付混剪包。',
-        duration: '15',
-      },
-    });
-    assert.equal(started.workflowKey, published.key);
-
-    const copied = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: started.id,
-      event: 'video-prompt-copied',
-      promptDraftId: 'prompt-draft-custom-video',
-    });
-    assert.equal(copied.steps.find((step) => step.stepId === 'prompt_copy')?.status, 'succeeded');
-
-    const imported = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: copied.id,
-      event: 'finished-video-imported',
-      inputSourceId: 'input-source-custom-video',
-      promptDraftId: 'prompt-draft-custom-video',
-    });
-    assert.equal(imported.steps.find((step) => step.stepId === 'finished_video_import')?.status, 'succeeded');
-
-    const overlay = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: imported.id,
-      event: 'overlay-cards-generated',
-      promptDraftId: 'prompt-draft-custom-video',
-      overlayCardIds: ['overlay-card-custom-title'],
-    });
-    assert.equal(overlay.steps.find((step) => step.stepId === 'overlay_cards')?.status, 'succeeded');
-
-    const reviewed = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: overlay.id,
-      event: 'asset-reviewed',
-      assetReviewId: 'asset-review-custom-video',
-      assetKey: 'imported:input-source-custom-video:0:/tmp/custom-video.mp4',
-    });
-    assert.equal(reviewed.steps.find((step) => step.stepId === 'human_review')?.status, 'succeeded');
-
-    const completed = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: reviewed.id,
-      event: 'mix-package-exported',
-      mixPackageId: 'mix-package-custom-video',
-      manifestPath: '/tmp/custom-manifest.json',
-      packageDir: '/tmp/custom-mix-package',
-    });
-    assert.equal(completed.status, 'succeeded');
-    assert.equal(completed.steps.every((step) => step.status === 'succeeded'), true);
-    assert.ok(completed.artifactRefs.includes('mix-package:mix-package-custom-video'));
-    assert.ok(completed.artifactRefs.includes('overlay-card:overlay-card-custom-title'));
-  });
-});
-
-test('WorkflowEngine 可以执行 IP SOP 到 PromptDraft 并停在人工审核', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
     const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const ipKnowledgeBases = new IpKnowledgeBaseStore(text);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(
-      workflows,
+    const knowledgeMaps = new ContentKnowledgeMapStore();
+
+    const reviewTasks = new ContentReviewTaskStore();
+    const assetReviews = new AssetReviewStore();
+    const logs = new GenerationLogStore();
+    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+    const batches = new ContentBatchApplicationService(
+      new ContentBatchStore(),
       inputSources,
+      knowledgeMaps,
+      reviewTasks,
+      assetReviews,
+      logs,
       promptDrafts,
-      sessions,
-      media,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      ipKnowledgeBases,
     );
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'ip-longform');
-    assert.ok(definition, '应存在内置 IP 长文 SOP');
-    const citations = [{
-      knowledgeBaseId: 'ip-demo',
-      sectionId: 'profile-1',
-      title: '嘉文老师 IP 知识库 / 人物定位',
-      sectionType: 'profile',
-      excerpt: '身份锚定、价值观立场、语言风格、判断方法、内容素材和创作引擎。',
-    }];
 
-    const run = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      citations,
-      inputs: {
-        source: '嘉文老师 IP 知识库：身份、价值观、语言风格、判断方法和内容素材。',
-        intent: '生成公众号长文 Prompt，主题是个人 IP 内容资产化。',
-        reviewOwner: '内容负责人',
-      },
-    });
-
-    assert.equal(run.status, 'queued');
-    assert.equal(run.steps.find((step) => step.stepId === 'input_register')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'ip_extract')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'agent_read')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'prompt_generate')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('input-source:')));
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('ip-knowledge-base:')));
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('agent-session:')));
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('prompt-draft:')));
-    assert.ok((await inputSources.list(workspacePath)).length >= 1);
-    assert.equal((await ipKnowledgeBases.list(workspacePath)).length, 1);
-    const storedSessions = await sessions.list(workspacePath);
-    assert.ok(storedSessions.length >= 1);
-    assert.equal(storedSessions[0].workflowRunId, run.id);
-    const storedDrafts = await promptDrafts.list(workspacePath);
-    assert.ok(storedDrafts.length >= 1);
-    assert.equal(storedDrafts[0].workflowRunId, run.id);
-    const [storedRun] = await workflows.listRuns(workspacePath);
-    assert.equal(storedRun.id, run.id);
-    assert.equal(storedRun.status, 'queued');
-
-    const promptDraftId = run.steps.find((step) => step.stepId === 'prompt_generate')?.output?.promptDraftId;
-    assert.equal(typeof promptDraftId, 'string');
-    const draftRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: run.id,
-      event: 'article-draft-generated',
-      promptDraftId,
-      generationLogId: 'article-log-functional',
-    });
-    assert.equal(draftRun.status, 'queued');
-    assert.equal(draftRun.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-    assert.match(JSON.stringify(draftRun.steps.find((step) => step.stepId === 'human_review')?.output ?? {}), /article-log-functional/);
-
-    const exportPath = join(workspacePath, 'ip-longform.md');
-    const completedRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: run.id,
-      event: 'article-markdown-exported',
-      promptDraftId,
-      generationLogId: 'article-log-functional',
-      exportPath,
-    });
-    assert.equal(completedRun.status, 'succeeded');
-    assert.equal(completedRun.steps.find((step) => step.stepId === 'human_review')?.status, 'succeeded');
-    assert.equal(completedRun.steps.find((step) => step.stepId === 'asset_store')?.status, 'succeeded');
-    assert.ok(completedRun.artifactRefs.includes(`generation-log:article-log-functional`));
-    assert.ok(completedRun.artifactRefs.includes(exportPath));
-
-    const platformDraftRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: run.id,
-      event: 'article-platform-draft-exported',
-      promptDraftId,
-      generationLogId: 'article-log-functional',
-      exportPath: join(workspacePath, 'platform-draft', 'draft.md'),
-      manifestPath: join(workspacePath, 'platform-draft', 'manifest.json'),
-      packageDir: join(workspacePath, 'platform-draft'),
-    });
-    assert.equal(platformDraftRun.status, 'succeeded');
-    assert.ok(platformDraftRun.artifactRefs.includes(join(workspacePath, 'platform-draft', 'manifest.json')));
-    assert.ok(platformDraftRun.artifactRefs.includes(join(workspacePath, 'platform-draft')));
-  });
-});
-
-test('WorkflowEngine 可以执行品牌知识库到场景库和 Prompt 组 SOP', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const brandKnowledgeBases = new BrandKnowledgeBaseStore(text);
-    const promptPacks = new PromptPackService(logs, text);
-    const sceneCards = new SceneLibraryStore(logs, promptPacks, text);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(
-      workflows,
-      inputSources,
-      promptDrafts,
-      sessions,
-      media,
-      undefined,
-      brandKnowledgeBases,
-      promptPacks,
-      sceneCards,
-    );
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'brand-scene-prompts');
-    assert.ok(definition, '应存在品牌知识库场景提示词 SOP');
-
-    const citations = [
-      {
-        knowledgeBaseId: 'kb-brand',
-        sectionId: 'facts',
-        title: '产品知识库 / 产品事实',
-        sectionType: 'product',
-        excerpt: '便携条包，适合早餐后和办公室抽屉场景，强调降低坚持门槛。',
-      },
-      {
-        knowledgeBaseId: 'kb-brand',
-        sectionId: 'boundary',
-        title: '产品知识库 / 合规边界',
-        sectionType: 'compliance',
-        excerpt: '不得承诺治疗、见效或绝对化收益，只能围绕使用场景和产品事实表达。',
-      },
-      {
-        knowledgeBaseId: 'kb-brand',
-        sectionId: 'scenario',
-        title: '产品知识库 / 场景素材',
-        sectionType: 'scenario-script',
-        excerpt: '早餐桌、办公室抽屉、妈妈给孩子书包侧袋放入条包。',
-      },
-    ];
-
-    const run = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      citations,
-      inputs: {
-        source: '',
-        intent: '生成小红书 UGC 手机实拍图片 Prompt 组。',
-        reviewOwner: '场景负责人',
-      },
-    });
-
-    assert.equal(run.status, 'queued');
-    assert.equal(run.citations.length, citations.length);
-    assert.equal(run.steps.find((step) => step.stepId === 'brand_extract')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'prompt_pack')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'scene_library')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'prompt_group')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-    assert.ok(JSON.stringify(run.steps[0].input).includes('selectedCitations'));
-    assert.match(run.steps[0].summary, /已选择知识引用/);
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('brand-knowledge-base:')));
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('prompt-pack:')));
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('scene-card:')));
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('prompt-draft:')));
-    assert.equal((await brandKnowledgeBases.list(workspacePath)).length, 1);
-    const storedPacks = await promptPacks.list(workspacePath);
-    assert.equal(storedPacks.length, 1);
-    assert.equal(storedPacks[0].workflowRunId, run.id);
-    assert.equal(storedPacks[0].inputSourceIds.length, 0);
-    assert.ok(storedPacks[0].citations.some((item) => item.knowledgeBaseId.startsWith('brand-kb:')));
-    const storedSceneCards = await sceneCards.list(workspacePath);
-    assert.equal(storedSceneCards.length, 3);
-    assert.equal(storedSceneCards.every((card) => card.workflowRunId === run.id), true);
-    assert.equal(storedSceneCards.every((card) => card.inputSourceIds.length === 0), true);
-    assert.equal(storedSceneCards.every((card) => card.citations.length >= 1), true);
-    const storedDrafts = await promptDrafts.list(workspacePath);
-    assert.equal(storedDrafts.length, 1);
-    assert.equal(storedDrafts[0].workflowRunId, run.id);
-    assert.equal(storedDrafts[0].inputSourceIds.length, 0);
-    assert.equal(storedDrafts[0].sceneCardIds.length, 3);
-    assert.match(storedDrafts[0].versions[0].content, /办公室早餐场景/);
-    assert.equal(storedDrafts[0].versions[0].content.match(/### 图片 Prompt/g)?.length, 10);
-    const videoPromptGroup = buildScenePromptGroupContent(
-      'video',
-      '生成可复制到图生视频工具的 15 秒素材 Prompt。',
-      storedSceneCards,
-    );
-    assert.equal(videoPromptGroup.match(/### 视频 Prompt/g)?.length, 10);
-    const storedLogs = await logs.list(workspacePath);
-    assert.equal(storedLogs.filter((log) => log.kind === 'prompt-pack').every((log) => log.workflowRunId === run.id), true);
-    assert.equal(storedLogs.filter((log) => log.kind === 'scene-card').every((log) => log.workflowRunId === run.id), true);
-    const [storedRun] = await workflows.listRuns(workspacePath);
-    assert.equal(storedRun.id, run.id);
-    assert.equal(storedRun.citations.length, citations.length);
-
-    const reviewed = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: run.id,
-      event: 'workflow-review-approved',
-    });
-    assert.equal(reviewed.status, 'queued');
-    assert.equal(reviewed.steps.find((step) => step.stepId === 'human_review')?.status, 'succeeded');
-    assert.equal(reviewed.steps.find((step) => step.stepId === 'asset_store')?.status, 'queued');
-
-    const archived = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: run.id,
-      event: 'workflow-asset-archived',
-    });
-    assert.equal(archived.status, 'succeeded');
-    assert.equal(archived.steps.find((step) => step.stepId === 'asset_store')?.status, 'succeeded');
-    assert.match(archived.summary, /品牌知识库场景提示词 SOP 已完成/);
-  });
-});
-
-test('WorkflowEngine 可以执行产品商业素材 SOP 到三类图片 Prompt', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(workflows, inputSources, promptDrafts, sessions, media);
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'product-commercial-assets');
-    assert.ok(definition, '应存在产品商业素材 SOP');
-
-    const productBrief = await inputSources.register({
+    const source = await inputSources.register({
       workspacePath,
       kind: 'manual-note',
       purpose: 'product-brief',
-      title: '工作区便携条包产品资料',
-      tags: ['产品资料', 'brief'],
-      text: [
-        '产品名称：工作区便携条包',
-        '卖点：早餐后、办公室抽屉和通勤包里都能顺手取用',
-        '规格：15g * 20 条',
-        '适用场景：早餐后、通勤、办公室加班',
-        '禁用表达：不得承诺治疗、见效或替代专业建议',
-      ].join('\n'),
+      title: '便携风扇产品资料',
+      text: '便携风扇，桌面和通勤场景，强调轻量和安全边界。',
     });
-    const skuTable = await inputSources.register({
+    const draft = await promptDrafts.createFromContent({
+      workspacePath,
+      title: '便携风扇短视频制造单',
+      purpose: 'video',
+      userIntent: '把批次制造阶段转成可复制到第三方视频平台的视频 Prompt。',
+      inputSourceIds: [source.id],
+      content: [
+        '# 便携风扇短视频制造单',
+        '只生成可审核的视频 Prompt，不伪造成片成功。',
+        '成片需要由用户手动导入并进入素材审核。',
+      ].join('\n'),
+      note: 'functional test',
+      model: 'local-content-batch-manufacturing-handoff',
+      status: 'confirmed',
+    });
+
+    const built = await batches.build({
+      workspacePath,
+      title: '便携风扇短视频制造批次',
+      objective: '把产品资料推进到视频 Prompt 制造交接。',
+    });
+    const projected = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'manufacturing',
+    });
+    const manufacturingStage = projected.stageRuns.find((stage) => stage.stageId === 'manufacturing');
+    assert.ok(manufacturingStage, '应存在制造阶段');
+    assert.equal(manufacturingStage.status, 'approved');
+    assert.ok(manufacturingStage.outputRefs.some((ref) =>
+      ref.kind === 'prompt-draft' &&
+      ref.id === draft.id &&
+      ref.targetModule === 'video-prompt' &&
+      ref.summary.includes('便携风扇短视频制造单')
+    ));
+    assert.ok(manufacturingStage.gateResults.some((gate) => gate.status === 'passed'));
+    assert.equal(manufacturingStage.recoveryTasks.length, 0);
+  });
+});
+
+test('Ontology v2 制造能力会把数据成熟度投影成档位和可执行工具池', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const inputSources = new InputSourceStore();
+    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+    const assetReviews = new AssetReviewStore();
+    const now = '2026-06-01T00:00:00.000Z';
+
+    const productSource = await inputSources.register({
       workspacePath,
       kind: 'sku-table',
       purpose: 'product-brief',
-      title: '工作区 SKU 表',
-      tags: ['sku'],
-      text: 'SKU,规格,价格\ntrial-10,15g*10条,59\nfamily-40,15g*40条,169',
+      title: '商品库存映射表',
+      text: 'sku,price,stock\nfan-a,99,120',
+      tags: ['CSV', '映射'],
     });
-
-    const run = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputSourceIds: [productBrief.id, skuTable.id],
-      inputs: {
-        source: '产品资料和 SKU 表',
-        intent: '生成主图、卖点图和详情页局部图 Prompt。',
-        reviewOwner: '电商运营',
-        platform: '天猫 / 淘宝',
-      },
-    });
-
-    assert.equal(run.status, 'blocked');
-    assert.equal(run.steps.find((step) => step.stepId === 'input_register')?.status, 'succeeded');
-    const productStep = run.steps.find((step) => step.stepId === 'product_brief_structure');
-    assert.equal(productStep?.status, 'succeeded');
-    assert.deepEqual(productStep?.output.promptTypes, ['main-image', 'selling-point-image', 'detail-page-section']);
-    assert.equal(productStep?.output.skuRows.length, 2);
-    assert.equal(productStep?.output.skuRows[0].SKU, 'trial-10');
-    assert.match(productStep?.output.variableTable, /工作区便携条包/);
-    assert.equal(run.steps.find((step) => step.stepId === 'prompt_generate')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'image_generate')?.status, 'blocked');
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('prompt-draft:')));
-    assert.ok(run.artifactRefs.includes(`input-source:${productBrief.id}`));
-    assert.ok(run.artifactRefs.includes(`input-source:${skuTable.id}`));
-
-    const [draft] = await promptDrafts.list(workspacePath);
-    assert.equal(draft.workflowRunId, run.id);
-    assert.equal(draft.status, 'confirmed');
-    assert.equal(draft.purpose, 'image');
-    assert.ok(draft.inputSourceIds.includes(productBrief.id));
-    assert.ok(draft.inputSourceIds.includes(skuTable.id));
-    assert.match(draft.versions[0].content, /主图 Prompt/);
-    assert.match(draft.versions[0].content, /卖点图 Prompt/);
-    assert.match(draft.versions[0].content, /详情页模块 Prompt/);
-    assert.match(draft.versions[0].content, /trial-10/);
-  });
-});
-
-test('WorkflowEngine 产品商业素材 SOP 缺字段时阻断下游', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(workflows, inputSources, promptDrafts, sessions, media);
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'product-commercial-assets');
-    assert.ok(definition, '应存在产品商业素材 SOP');
-
-    const incompleteBrief = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'product-brief',
-      title: '缺字段产品资料',
-      tags: ['产品资料'],
-      text: '产品名称：缺字段条包\n卖点：放在包里不占地方',
-    });
-
-    const run = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputSourceIds: [incompleteBrief.id],
-      inputs: {
-        source: '缺字段产品资料',
-        intent: '生成详情页素材 Prompt。',
-        reviewOwner: '电商运营',
-        platform: '通用电商',
-      },
-    });
-
-    const productStep = run.steps.find((step) => step.stepId === 'product_brief_structure');
-    assert.equal(run.status, 'blocked');
-    assert.equal(productStep?.status, 'blocked');
-    assert.equal(productStep?.error, 'WORKFLOW_PRODUCT_BRIEF_FIELDS_MISSING');
-    assert.deepEqual(productStep?.output.missingFields, ['规格 / SKU', '适用场景 / 人群', '禁用表达 / 合规边界']);
-    assert.equal(run.steps.find((step) => step.stepId === 'prompt_generate')?.status, 'queued');
-    assert.equal((await promptDrafts.list(workspacePath)).length, 0);
-  });
-});
-
-test('WorkflowEngine 可以执行评论痛点选题 SOP 到文案 Prompt', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(workflows, inputSources, promptDrafts, sessions, media);
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'feedback-topic-matrix');
-    assert.ok(definition, '应存在评论痛点选题 SOP');
-
-    const feedback = await inputSources.register({
+    await inputSources.register({
       workspacePath,
       kind: 'manual-note',
       purpose: 'user-feedback',
-      title: '评论和客服问题',
-      tags: ['评论', '差评', '客服问题'],
+      title: '评论与搜索词',
+      text: '办公室低噪、通勤轻便、担心续航。',
+    });
+
+    const sparsePlan = buildManufacturingPlanProjection({
+      inputSources: await inputSources.list(workspacePath),
+      promptDrafts: [],
+      logs: [],
+      assetReviews: [],
+    });
+    assert.equal(sparsePlan.blockedTiers.includes('premium'), true);
+    assert.equal(sparsePlan.blockedTiers.includes('standard'), true);
+    assert.equal(sparsePlan.capabilities.find((item) => item.id === 'video-prompt')?.status, 'ready');
+    assert.equal(sparsePlan.capabilities.find((item) => item.id === 'image-generation')?.status, 'ready');
+    assert.equal(sparsePlan.capabilities.find((item) => item.id === 'mix-export')?.status, 'needs-input');
+
+    const draft = await promptDrafts.createFromContent({
+      workspacePath,
+      title: '便携风扇视频制造单',
+      purpose: 'video',
+      userIntent: '生成可复制到第三方平台的视频 Prompt。',
+      inputSourceIds: [productSource.id],
+      content: '只生成视频 Prompt，不创建外部视频任务。',
+      note: 'functional test',
+      model: 'local-content-batch-manufacturing-handoff',
+      status: 'confirmed',
+    });
+    const approvedAsset = await assetReviews.review({
+      workspacePath,
+      assetKey: 'approved:image:fan-a',
+      kind: 'image',
+      sourceType: 'manual',
+      path: join(workspacePath, 'approved-fan.png'),
+      title: '低噪桌面图',
+      status: 'approved',
+      note: '已通过素材审核。',
+      tags: ['content-batch'],
+    });
+    const knowledgeMap = {
+      id: 'manufacturing-map-1',
+      workspacePath,
+      title: '便携风扇内容知识地图',
+      status: 'ready',
+      syncStatus: 'local-only',
+      teamSync: {
+        backend: 'bugu',
+        status: 'local-only',
+        message: '本机草稿。',
+      },
+      sourceInputSourceIds: [productSource.id],
+      brandKnowledgeBaseIds: [],
+      ipKnowledgeBaseIds: [],
+      sceneCardIds: [],
+      promptDraftIds: [draft.id],
+      sellingPoints: [{
+        id: 'selling-low-noise',
+        title: '低噪办公室使用',
+        summary: '办公室低噪场景，适合桌面使用。',
+        tags: ['低噪', '办公室'],
+        sourceRefs: [`input-source:${productSource.id}`],
+        evidenceRefs: ['evidence-low-noise'],
+        materialStatus: 'approved',
+        materialRefs: [approvedAsset.id],
+        confidence: 86,
+        status: 'ready',
+      }],
+      painPoints: [],
+      scenarios: [{
+        id: 'scenario-commute',
+        title: '通勤包携带',
+        summary: '轻便携带，适合通勤包。',
+        tags: ['通勤', '轻便'],
+        sourceRefs: [`input-source:${productSource.id}`],
+        evidenceRefs: ['evidence-commute'],
+        materialStatus: 'approved',
+        materialRefs: [approvedAsset.id],
+        confidence: 82,
+        status: 'ready',
+      }],
+      evidence: [
+        {
+          id: 'evidence-low-noise',
+          sourceType: 'input-source',
+          sourceId: productSource.id,
+          excerpt: '办公室低噪',
+          confidence: 88,
+        },
+        {
+          id: 'evidence-commute',
+          sourceType: 'input-source',
+          sourceId: productSource.id,
+          excerpt: '通勤轻便',
+          confidence: 82,
+        },
+      ],
+      constraints: ['不夸张续航。'],
+      gaps: [],
+      coverage: {
+        inputSourceCount: 1,
+        brandKnowledgeBaseCount: 0,
+        ipKnowledgeBaseCount: 0,
+        sceneCardCount: 0,
+        promptDraftCount: 1,
+        evidenceCount: 2,
+        gapCount: 0,
+        readyPercent: 100,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+    const richPlan = buildManufacturingPlanProjection({
+      inputSources: await inputSources.list(workspacePath),
+      knowledgeMap,
+      promptDrafts: await promptDrafts.list(workspacePath),
+      logs: [],
+      assetReviews: await assetReviews.list(workspacePath),
+    });
+    assert.equal(richPlan.materialCoveragePercent, 100);
+    assert.equal(richPlan.evidenceCoveragePercent, 100);
+    assert.equal(richPlan.readyPromptCount, 1);
+    assert.equal(richPlan.approvedAssetCount, 1);
+    assert.equal(richPlan.capabilities.find((item) => item.id === 'video-prompt')?.status, 'done');
+    assert.equal(richPlan.capabilities.find((item) => item.id === 'mix-export')?.status, 'ready');
+    assert.equal(richPlan.capabilities.find((item) => item.id === 'retouch')?.status, 'ready');
+    assert.equal(richPlan.capabilities.find((item) => item.id === 'video-import')?.status, 'ready');
+  });
+});
+
+test('Ontology v2 商品规划会为 SKU 表全量分配制造档位和推广波次', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const inputSources = new InputSourceStore();
+    await inputSources.register({
+      workspacePath,
+      kind: 'sku-table',
+      purpose: 'product-brief',
+      title: '商品库存映射表',
       text: [
-        '评论：价格有点贵，想知道到底值不值。',
-        '差评：早上总是忘记吃，坚持不下来。',
-        '客服：孩子和老人能不能吃，有没有禁忌？',
-        '私信：办公室抽屉里放一盒会不会方便一点？',
+        'sku,title,price,stock',
+        'fan-a,BreezeGo Air 标准版,99,120',
+        'fan-b,BreezeGo Air Mini,59,0',
       ].join('\n'),
+      tags: ['CSV', '映射'],
     });
 
-    const run = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputSourceIds: [feedback.id],
-      inputs: {
-        source: '评论、差评和客服问题',
-        intent: '生成下周小红书选题、标题方向和客服异议话术。',
-        reviewOwner: '运营负责人',
-        platform: '小红书',
+    const plan = buildProductPlanProjection({
+      inputSources: await inputSources.list(workspacePath),
+      manufacturing: {
+        recommendedTier: 'ai-quick',
+        tierLabel: 'AI 快产',
+        tierReason: '素材和证据不足，先按低投入排产。',
+        blockedTiers: ['premium', 'standard', 'template'],
+        capabilities: [],
+        materialCoveragePercent: 0,
+        evidenceCoveragePercent: 0,
+        readyPromptCount: 0,
+        approvedAssetCount: 0,
+        manufacturingArtifactCount: 0,
       },
     });
 
-    assert.equal(run.status, 'queued');
-    assert.equal(run.steps.find((step) => step.stepId === 'input_register')?.status, 'succeeded');
-    const feedbackStep = run.steps.find((step) => step.stepId === 'feedback_cluster');
-    assert.equal(feedbackStep?.status, 'succeeded');
-    assert.equal(feedbackStep?.output.totalLines, 4);
-    assert.ok(feedbackStep?.output.clusters.some((cluster) => cluster.key === 'price-trust'));
-    assert.ok(feedbackStep?.output.clusters.some((cluster) => cluster.key === 'usage-friction'));
-    assert.ok(feedbackStep?.output.clusters.some((cluster) => cluster.key === 'audience-fit'));
-    assert.ok(feedbackStep?.output.titleDirections.length >= 3);
-    assert.ok(feedbackStep?.output.objectionResponses.some((item) => item.boundary.includes('人工复核')));
-    assert.equal(run.steps.find((step) => step.stepId === 'prompt_generate')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-    assert.ok(run.artifactRefs.includes(`input-source:${feedback.id}`));
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('prompt-draft:')));
-
-    const [draft] = await promptDrafts.list(workspacePath);
-    assert.equal(draft.workflowRunId, run.id);
-    assert.equal(draft.status, 'confirmed');
-    assert.equal(draft.purpose, 'article');
-    assert.ok(draft.inputSourceIds.includes(feedback.id));
-    assert.match(draft.versions[0].content, /价格和信任顾虑/);
-    assert.match(draft.versions[0].content, /使用门槛和坚持成本/);
-    assert.match(draft.versions[0].content, /适用人群和禁忌边界/);
-    assert.match(draft.versions[0].content, /客服异议处理/);
-    assert.match(draft.versions[0].content, /价格有点贵/);
+    assert.equal(plan.mode, 'brand-full-coverage');
+    assert.equal(plan.candidateCount, 2);
+    assert.equal(plan.plannedCount, 2);
+    assert.equal(plan.allCovered, true);
+    assert.equal(plan.items.some((item) => item.skuId === 'fan-a'), true);
+    assert.equal(plan.items.some((item) => item.skuId === 'fan-b'), true);
+    assert.equal(plan.items.some((item) => item.inventoryScore === 0), true);
+    assert.equal(plan.items.every((item) => item.manufacturingTier), true);
+    assert.equal(plan.items.every((item) => item.wave === 'W1' || item.wave === 'W2' || item.wave === 'W3'), true);
+    assert.ok(plan.bottleneckCount >= 1);
   });
 });
 
-test('WorkflowEngine 评论痛点选题 SOP 缺少反馈时阻断下游', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(workflows, inputSources, promptDrafts, sessions, media);
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'feedback-topic-matrix');
-    assert.ok(definition, '应存在评论痛点选题 SOP');
-
-    const run = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputs: {
-        source: '',
-        intent: '生成选题方向。',
-        reviewOwner: '运营负责人',
-        platform: '小红书',
-      },
-    });
-
-    assert.equal(run.status, 'blocked');
-    assert.equal(run.steps.find((step) => step.stepId === 'input_register')?.status, 'blocked');
-    assert.equal(run.steps.find((step) => step.stepId === 'feedback_cluster')?.status, 'queued');
-    assert.equal((await promptDrafts.list(workspacePath)).length, 0);
-  });
+test('Ontology v2 本地模型校验器会覆盖正例、边界、负例和人工确认例外', () => {
+  const results = runOntologyV2HarnessCases();
+  assert.equal(results.length, 4);
+  assert.equal(results.every((result) => result.passed), true, JSON.stringify(results, null, 2));
+  assert.ok(results.some((result) => result.kind === 'negative' && result.expectedOk === false && result.actualOk === false));
+  assert.ok(results.some((result) => result.kind === 'exception' && result.actualOk === true));
 });
 
-test('WorkflowEngine 可以执行绿幕文案图 SOP 并自动送审', async () => {
+test('内容制造批次调优阶段会要求投放表现和行动复盘', async () => {
   await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
     const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
+    const knowledgeMaps = new ContentKnowledgeMapStore();
+    const reviewTasks = new ContentReviewTaskStore();
     const assetReviews = new AssetReviewStore();
-    const overlayCards = new OverlayCardStore();
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(
-      workflows,
+    const logs = new GenerationLogStore();
+    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+    const batches = new ContentBatchApplicationService(
+      new ContentBatchStore(),
       inputSources,
-      promptDrafts,
-      sessions,
-      media,
+      knowledgeMaps,
+      reviewTasks,
       assetReviews,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      overlayCards,
-    );
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'green-screen-card-package');
-    assert.ok(definition, '应存在绿幕文案图 SOP');
-
-    const run = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputs: {
-        source: [
-          '标题卡：早餐后顺手一次',
-          '卖点卡：便携条包，包里抽屉都能放',
-          'CTA：先从每天顺手一次开始',
-        ].join('\n'),
-        intent: '拆成第三方混剪可叠加的绿幕文案图。',
-        reviewOwner: '短视频运营',
-        duration: '4',
-      },
-    });
-
-    assert.equal(run.status, 'queued');
-    assert.equal(run.steps.find((step) => step.stepId === 'prompt_generate')?.status, 'succeeded');
-    const overlayStep = run.steps.find((step) => step.stepId === 'overlay_cards');
-    assert.equal(overlayStep?.status, 'succeeded');
-    assert.deepEqual(overlayStep?.output.cardTypes, ['title', 'selling-point', 'cta']);
-    assert.equal(overlayStep?.output.overlayCardIds.length, 3);
-    assert.equal(overlayStep?.output.assetReviewIds.length, 3);
-    assert.equal(run.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-
-    const cards = await overlayCards.list(workspacePath);
-    assert.equal(cards.length, 3);
-    assert.equal(cards.every((card) => card.background === 'green-screen'), true);
-    assert.equal(cards.every((card) => card.aspectRatio === '9:16'), true);
-    assert.equal(cards.every((card) => existsSync(card.assetPath)), true);
-    assert.ok(cards.some((card) => card.type === 'title' && card.text.includes('早餐后')));
-    assert.ok(cards.some((card) => card.type === 'selling-point' && card.text.includes('便携条包')));
-    assert.ok(cards.some((card) => card.type === 'cta' && card.text.includes('顺手一次')));
-    const reviews = await assetReviews.list(workspacePath);
-    assert.equal(reviews.length, 3);
-    assert.equal(reviews.every((review) => review.status === 'pending'), true);
-    assert.equal(reviews.every((review) => review.kind === 'overlay'), true);
-    assert.equal(reviews.every((review) => review.workflowRunId === run.id), true);
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('overlay-card:')));
-    assert.ok(run.artifactRefs.some((ref) => ref.startsWith('asset-review:')));
-  });
-});
-
-test('WorkflowEngine 绿幕文案图 SOP 缺少脚本时阻断下游', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(
-      workflows,
-      inputSources,
+      logs,
       promptDrafts,
-      sessions,
-      media,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      new OverlayCardStore(),
     );
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'green-screen-card-package');
-    assert.ok(definition, '应存在绿幕文案图 SOP');
 
-    const run = await engine.startRun({
+    await inputSources.register({
       workspacePath,
-      workflowDefinitionId: definition.id,
-      inputs: {
-        source: '',
-        intent: '',
-        duration: '4',
-      },
+      kind: 'manual-note',
+      purpose: 'product-brief',
+      title: '便携风扇产品资料',
+      text: '便携风扇，桌面和通勤场景，强调低噪与安全边界。',
     });
 
-    assert.equal(run.status, 'blocked');
-    assert.equal(run.steps.find((step) => step.stepId === 'input_register')?.status, 'blocked');
-    assert.equal(run.steps.find((step) => step.stepId === 'overlay_cards')?.status, 'queued');
-    assert.equal((await new OverlayCardStore().list(workspacePath)).length, 0);
+    const built = await batches.build({
+      workspacePath,
+      title: '便携风扇短视频制造批次',
+      objective: '根据制造、审核和投放表现调优下一轮素材方向。',
+    });
+    const missingProjection = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'optimization',
+    });
+    const missingStage = missingProjection.stageRuns.find((stage) => stage.stageId === 'optimization');
+    assert.ok(missingStage, '应存在调优阶段');
+    assert.equal(missingStage.status, 'needs-human');
+    assert.ok(missingStage.gateResults.some((gate) => gate.title === '缺投放表现'));
+    assert.ok(missingStage.gateResults.some((gate) => gate.title === '缺运行复盘'));
+    assert.ok(missingStage.recoveryTasks.some((task) =>
+      task.title === '登记投放表现' &&
+      task.targetModule === 'knowledge-inputs'
+    ));
+    assert.ok(missingStage.recoveryTasks.some((task) =>
+      task.title === '写入运行复盘' &&
+      task.targetModule === 'assets-history'
+    ));
+
+    const performanceSource = await inputSources.register({
+      workspacePath,
+      kind: 'manual-note',
+      purpose: 'user-feedback',
+      title: '投放表现日报',
+      text: 'CTR 3.2%，ROI 1.8，评论集中反馈桌面低噪和通勤便携。',
+      tags: ['投放', 'ROI', 'CTR'],
+    });
+    const performanceProjection = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'optimization',
+    });
+    const performanceStage = performanceProjection.stageRuns.find((stage) => stage.stageId === 'optimization');
+    assert.ok(performanceStage, '应存在调优阶段');
+    assert.equal(performanceStage.gateResults.some((gate) => gate.title === '缺投放表现'), false);
+    assert.ok(performanceStage.gateResults.some((gate) => gate.title === '缺运行复盘'));
+    assert.ok(performanceStage.outputRefs.some((ref) =>
+      ref.kind === 'input-source' &&
+      ref.id === performanceSource.id &&
+      ref.targetModule === 'knowledge-inputs'
+    ));
+
+    const reviewLog = await logs.append({
+      workspacePath,
+      kind: 'article',
+      status: 'succeeded',
+      title: '批次调优复盘',
+      summary: '汇总投放表现、素材审核结果和评论信号，下一轮优先补桌面低噪镜头和通勤收纳镜头。',
+      model: 'functional-run-review',
+      input: { sourceIds: [performanceSource.id] },
+      output: { nextSignals: ['桌面低噪镜头', '通勤收纳镜头'] },
+    });
+    const readyProjection = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'optimization',
+    });
+    const readyStage = readyProjection.stageRuns.find((stage) => stage.stageId === 'optimization');
+    assert.ok(readyStage, '应存在调优阶段');
+    assert.equal(readyStage.status, 'approved');
+    assert.equal(readyStage.gateResults.some((gate) => gate.title === '缺运行复盘'), false);
+    assert.ok(readyStage.outputRefs.some((ref) =>
+      ref.kind === 'generation-log' &&
+      ref.id === reviewLog.id &&
+      ref.summary.includes('已生成') &&
+      ref.targetModule === 'assets-history'
+    ));
   });
 });
 
-test('WorkflowEngine 会从 SOP 输入源路径自动导入文件并生成知识引用', async () => {
+test('内容制造批次复盘阶段会要求素材覆盖回写和成功素材沉淀', async () => {
   await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
     const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const brandKnowledgeBases = new BrandKnowledgeBaseStore(text);
-    const promptPacks = new PromptPackService(logs, text);
-    const sceneCards = new SceneLibraryStore(logs, promptPacks, text);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(
-      workflows,
-      inputSources,
-      promptDrafts,
-      sessions,
-      media,
-      undefined,
-      brandKnowledgeBases,
-      promptPacks,
-      sceneCards,
-    );
-    const knowledgePath = join(workspacePath, '唯他瑞葡聚糖知识库.md');
-    await writeFile(knowledgePath, [
-      '# 唯他瑞葡聚糖知识库',
-      '',
-      '产品事实：便携条包，适合早餐后和办公室抽屉场景。',
-      '核心卖点：降低坚持门槛，先讲使用场景，再讲卖点。',
-      '合规边界：不得承诺治疗、见效或绝对化收益。',
-    ].join('\n'), 'utf-8');
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'brand-scene-prompts');
-    assert.ok(definition, '应存在品牌知识库场景提示词 SOP');
+    const knowledgeMaps = new ContentKnowledgeMapStore();
 
-    const run = await engine.startRun({
+    const reviewTasks = new ContentReviewTaskStore();
+    const assetReviews = new AssetReviewStore();
+    const logs = new GenerationLogStore();
+    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+    const batches = new ContentBatchApplicationService(
+      new ContentBatchStore(),
+      inputSources,
+      knowledgeMaps,
+      reviewTasks,
+      assetReviews,
+      logs,
+      promptDrafts,
+    );
+    const now = '2026-06-01T00:00:00.000Z';
+
+    const source = await inputSources.register({
       workspacePath,
-      workflowDefinitionId: definition.id,
-      inputs: {
-        source: knowledgePath,
-        intent: '生成品牌知识库、场景库和小红书图片 Prompt 组。',
-        reviewOwner: '品牌负责人',
+      kind: 'manual-note',
+      purpose: 'product-brief',
+      title: '便携风扇产品资料',
+      text: '便携风扇，桌面低噪和通勤收纳场景。',
+    });
+    const row = {
+      id: 'row-feedback-1',
+      title: '桌面低噪使用场景',
+      summary: '办公室桌面低噪使用，产品主体清晰。',
+      tags: ['桌面', '低噪', '办公室'],
+      sourceRefs: [`input-source:${source.id}`],
+      evidenceRefs: ['evidence-feedback-1'],
+      materialStatus: 'missing',
+      materialRefs: [],
+      confidence: 88,
+      status: 'ready',
+    };
+    const map = await knowledgeMaps.save({
+      id: 'map-feedback-batch-1',
+      workspacePath,
+      title: '便携风扇内容知识地图',
+      status: 'ready',
+      syncStatus: 'local-only',
+      teamSync: {
+        backend: 'bugu',
+        status: 'local-only',
+        message: '本机草稿。',
       },
+      sourceInputSourceIds: [source.id],
+      brandKnowledgeBaseIds: [],
+      ipKnowledgeBaseIds: [],
+      sceneCardIds: [],
+      promptDraftIds: [],
+      sellingPoints: [row],
+      painPoints: [],
+      scenarios: [],
+      evidence: [{
+        id: 'evidence-feedback-1',
+        sourceType: 'input-source',
+        sourceId: source.id,
+        sourceTitle: source.title,
+        claim: '便携风扇适合办公室桌面低噪使用。',
+        excerpt: '桌面低噪和通勤收纳场景。',
+        status: 'ready',
+      }],
+      constraints: ['不承诺绝对静音。'],
+      gaps: [],
+      coverage: {
+        inputSourceCount: 1,
+        brandKnowledgeBaseCount: 0,
+        ipKnowledgeBaseCount: 0,
+        skuRowCount: 0,
+        competitorObservationCount: 0,
+        assetReviewCount: 0,
+        sceneCardCount: 0,
+        promptDraftCount: 0,
+        evidenceCount: 1,
+        gapCount: 0,
+        readyPercent: 100,
+      },
+      model: 'functional-test',
+      createdAt: now,
+      updatedAt: now,
+    });
+    const assetPath = join(workspacePath, 'office-desk-fan.mp4');
+    await writeFile(assetPath, TEST_VIDEO);
+    const approvedAsset = await assetReviews.review({
+      workspacePath,
+      assetKey: `imported:${source.id}:0:${assetPath}`,
+      kind: 'video',
+      sourceType: 'input-source',
+      sourceId: source.id,
+      path: assetPath,
+      title: '办公室桌面低噪实拍',
+      status: 'approved',
+      note: '覆盖办公室桌面低噪使用场景，可作为成功素材沉淀。',
+      tags: ['桌面', '低噪', '办公室', '高转化'],
     });
 
-    assert.equal(run.status, 'queued');
-    assert.ok(run.citations.some((citation) => citation.knowledgeBaseId.startsWith('input-source:') && /便携条包/.test(citation.excerpt)));
-    assert.equal(run.steps.find((step) => step.stepId === 'brand_extract')?.status, 'succeeded');
-    assert.equal(run.steps.find((step) => step.stepId === 'prompt_group')?.status, 'succeeded');
-    const importedSources = await inputSources.list(workspacePath);
-    const importedKnowledgeSource = importedSources.find((source) => source.title === '唯他瑞葡聚糖知识库.md' && source.status === 'converted');
-    assert.ok(importedKnowledgeSource);
-    assert.equal(importedKnowledgeSource.workflowRunId, run.id);
-    assert.equal(importedSources.every((source) => source.workflowRunId === run.id), true);
-    const inputStep = run.steps.find((step) => step.stepId === 'input_register');
-    assert.match(JSON.stringify(inputStep?.output ?? {}), /importedInputSourceIds/);
-    assert.ok(run.artifactRefs.some((ref) => ref.endsWith('唯他瑞葡聚糖知识库.md')));
+    const built = await batches.build({
+      workspacePath,
+      contentKnowledgeMapId: map.id,
+      title: '便携风扇短视频制造批次',
+      objective: '把已通过素材回写知识地图，并沉淀下一批可复用 Prompt。',
+    });
+    const missingProjection = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'feedback',
+    });
+    const missingStage = missingProjection.stageRuns.find((stage) => stage.stageId === 'feedback');
+    assert.ok(missingStage, '应存在复盘阶段');
+    assert.equal(missingStage.status, 'needs-human');
+    assert.ok(missingStage.gateResults.some((gate) => gate.title === '素材覆盖待回写'));
+    assert.ok(missingStage.gateResults.some((gate) => gate.title === '成功素材待沉淀'));
+    assert.ok(missingStage.recoveryTasks.some((task) =>
+      task.title === '回写素材覆盖' &&
+      task.targetModule === 'knowledge-map' &&
+      task.sourceRef?.id === approvedAsset.id
+    ));
+    assert.ok(missingStage.recoveryTasks.some((task) =>
+      task.title === '沉淀成功素材 Prompt' &&
+      task.targetModule === 'assets' &&
+      task.sourceRef?.id === approvedAsset.id
+    ));
+
+    await knowledgeMaps.update({
+      ...map,
+      sellingPoints: [{
+        ...row,
+        materialStatus: 'approved',
+        materialRefs: [approvedAsset.id],
+        performanceTags: ['高转化'],
+      }],
+      coverage: {
+        ...map.coverage,
+        assetReviewCount: 1,
+      },
+    });
+    const distilled = await promptDrafts.createFromContent({
+      workspacePath,
+      contentKnowledgeMapId: map.id,
+      contentKnowledgeMapTitle: map.title,
+      coverageRowIds: [row.id],
+      sourceRefs: [`content-knowledge-map:${map.id}`, `asset-review:${approvedAsset.id}`],
+      title: '办公室桌面低噪成功素材 Prompt',
+      purpose: 'video',
+      userIntent: '把已通过素材沉淀为下一批可复用的视频 Prompt。',
+      inputSourceIds: [source.id],
+      content: '办公室桌面低噪使用场景，产品主体清晰，口播克制，不承诺绝对静音。',
+      note: 'functional test',
+      model: 'local-successful-asset-distiller',
+      status: 'materialized',
+    });
+    const readyProjection = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'feedback',
+    });
+    const readyStage = readyProjection.stageRuns.find((stage) => stage.stageId === 'feedback');
+    assert.ok(readyStage, '应存在复盘阶段');
+    assert.equal(readyStage.status, 'approved');
+    assert.equal(readyStage.gateResults.some((gate) => gate.title === '素材覆盖待回写'), false);
+    assert.equal(readyStage.gateResults.some((gate) => gate.title === '成功素材待沉淀'), false);
+    assert.ok(readyStage.outputRefs.some((ref) =>
+      ref.kind === 'prompt-draft' &&
+      ref.id === distilled.id &&
+      ref.summary.includes('已沉淀') &&
+      !/confirmed|materialized/.test(ref.summary)
+    ));
+    assert.ok(readyStage.outputRefs.some((ref) =>
+      ref.kind === 'asset-review' &&
+      ref.id === approvedAsset.id &&
+      ref.summary.includes('已通过并入库')
+    ));
   });
 });
 
-test('WorkflowEngine 图片步骤成功后会自动进入素材审核台', async () => {
+test('内容制造批次审核阶段会把第三方成品视频排入素材审核', async () => {
   await withWorkspace(async (workspacePath) => {
-    const server = createServer((request, response) => {
-      if (request.url === '/v1/responses') {
-        response.setHeader('content-type', 'application/json');
-        response.end(JSON.stringify({ output: [{ type: 'image_generation_call', result: ONE_PIXEL_PNG }] }));
-        return;
-      }
-      response.statusCode = 404;
-      response.end('not found');
+    const inputSources = new InputSourceStore();
+    const knowledgeMaps = new ContentKnowledgeMapStore();
+
+    const reviewTasks = new ContentReviewTaskStore();
+    const assetReviews = new AssetReviewStore();
+    const logs = new GenerationLogStore();
+    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+    const batches = new ContentBatchApplicationService(
+      new ContentBatchStore(),
+      inputSources,
+      knowledgeMaps,
+      reviewTasks,
+      assetReviews,
+      logs,
+      promptDrafts,
+    );
+
+    const productSource = await inputSources.register({
+      workspacePath,
+      kind: 'manual-note',
+      purpose: 'product-brief',
+      title: '便携风扇产品资料',
+      text: '便携风扇，桌面和通勤场景，强调轻量和安全边界。',
     });
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    try {
-      const baseUrl = `http://127.0.0.1:${server.address().port}`;
-      const logs = new GenerationLogStore();
-      const text = new FakeTextGenerationService();
-      const inputSources = new InputSourceStore();
-      const promptDrafts = new PromptDraftStore(inputSources, text);
-      const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-      const assetReviews = new AssetReviewStore();
-      const media = new MediaProvider({
-        async readView() {
-          return {
-            apiEndpoint: 'https://api.anthropic.com',
-            hasApiKey: false,
-            textProvider: 'anthropic-claude-sdk',
-            textProtocol: 'claude-sdk',
-            textApiEndpoint: 'https://api.anthropic.com',
-            hasTextApiKey: false,
-            textModel: 'claude-sonnet-4-5',
-            imageProvider: 'openai-responses',
-            imageProtocol: 'openai-responses',
-            imageApiEndpoint: baseUrl,
-            imageOuterModel: 'test-outer-model',
-            hasImageApiKey: true,
-            imageModels: ['test-image-model'],
-            videoProvider: 'disabled',
-            videoApiEndpoint: '',
-            hasVideoApiKey: false,
-            videoModel: 'test-video-model',
-          };
-        },
-        async getImageApiKey() { return 'test-image-key'; },
-        async getVideoApiKey() { return undefined; },
-      }, logs);
-      const workflows = new WorkflowStore();
-      const engine = new WorkflowEngine(workflows, inputSources, promptDrafts, sessions, media, assetReviews);
-      const baseDefinition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'ip-longform');
-      assert.ok(baseDefinition, '应存在可复用的内置 SOP 定义');
-      const definition = await workflows.updateDefinition({
-        ...baseDefinition,
-        key: 'image-review-smoke',
-        title: '图片生成审核 SOP',
-        description: '登记输入源后生成图片 Prompt，真实生成图片并自动送审。',
-        tags: ['图片', '审核', 'SOP'],
-        outputSpec: ['PromptVersion', 'ImageArtifact', 'ReviewResult'],
-        steps: [
-          { id: 'input_register', title: '登记输入源', kind: 'input', description: '记录产品和场景输入。', dependsOn: [], outputKeys: ['InputSource'] },
-          { id: 'prompt_generate', title: '生成图片 Prompt', kind: 'prompt-generate', description: '生成图片生成可用 Prompt。', dependsOn: ['input_register'], outputKeys: ['PromptVersion'] },
-          { id: 'image_generate', title: '图片生成', kind: 'image-generate', description: '调用真实图片 provider 生成候选图。', dependsOn: ['prompt_generate'], outputKeys: ['ImageArtifact'] },
-          { id: 'human_review', title: '人工审核', kind: 'review', description: '确认图片是否可入素材库。', dependsOn: ['image_generate'], outputKeys: ['ReviewResult'] },
-          { id: 'asset_store', title: '入素材库', kind: 'asset-store', description: '保存通过审核的图片和来源追溯。', dependsOn: ['human_review'], outputKeys: ['AssetRecord'] },
-        ],
-      });
+    const draft = await promptDrafts.createFromContent({
+      workspacePath,
+      title: '便携风扇短视频制造单',
+      purpose: 'video',
+      userIntent: '复制到第三方平台生成成品视频。',
+      inputSourceIds: [productSource.id],
+      content: '只生成可审核的视频 Prompt，不伪造成片成功。',
+      status: 'confirmed',
+    });
+    const videoPath = join(workspacePath, 'third-party-finished-video.mp4');
+    await writeFile(videoPath, TEST_VIDEO);
+    const finishedVideo = await inputSources.importFile(workspacePath, videoPath, 'successful-asset', {
+      relatedPromptDraftId: draft.id,
+      tags: ['第三方生成', '成品视频'],
+    });
 
-      const run = await engine.startRun({
-        workspacePath,
-        workflowDefinitionId: definition.id,
-        inputs: {
-          source: '产品：便携条包；场景：早餐后自然光桌面。',
-          intent: '生成一张小红书种草图，产品主体清晰。',
-          reviewOwner: '素材审核人',
-        },
-      });
+    const built = await batches.build({
+      workspacePath,
+      title: '便携风扇短视频制造批次',
+      objective: '把第三方成品视频推进到人工素材审核。',
+    });
+    const projected = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'review',
+    });
+    const reviewStage = projected.stageRuns.find((stage) => stage.stageId === 'review');
+    assert.ok(reviewStage?.gateResults.some((gate) => gate.title === '成品视频待审核'));
+    assert.ok(reviewStage?.recoveryTasks.some((task) =>
+      task.targetModule === 'assets' &&
+      task.title.includes(finishedVideo.title) &&
+      task.message.includes('通过并入库')
+    ));
 
-      assert.equal(run.status, 'queued');
-      assert.equal(run.steps.find((step) => step.stepId === 'image_generate')?.status, 'succeeded');
-      assert.equal(run.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-      const storedLogs = await logs.list(workspacePath);
-      assert.equal(storedLogs.length, 1);
-      assert.equal(storedLogs[0].status, 'succeeded');
-      assert.equal(storedLogs[0].workflowRunId, run.id);
-      assert.equal(existsSync(storedLogs[0].artifactRefs[0]), true);
-      const reviews = await assetReviews.list(workspacePath);
-      assert.equal(reviews.length, 1);
-      assert.equal(reviews[0].status, 'pending');
-      assert.equal(reviews[0].workflowRunId, run.id);
-      assert.equal(reviews[0].sourceType, 'generation-log');
-      assert.equal(reviews[0].sourceId, storedLogs[0].id);
-      assert.equal(reviews[0].assetKey, `generated:${storedLogs[0].id}:0:${storedLogs[0].artifactRefs[0]}`);
-      assert.ok(run.artifactRefs.includes(`asset-review:${reviews[0].id}`));
+    const assetKey = `imported:${finishedVideo.id}:0:${finishedVideo.sourcePath}`;
+    const queued = await assetReviews.review({
+      workspacePath,
+      assetKey,
+      kind: 'video',
+      sourceType: 'input-source',
+      sourceId: finishedVideo.id,
+      path: finishedVideo.sourcePath,
+      title: finishedVideo.title,
+      status: 'pending',
+      note: '由批次审核阶段排队。',
+      tags: ['content-batch', '批次审核', ...finishedVideo.tags],
+    });
+    assert.equal(queued.status, 'pending');
+    assert.equal(queued.sourceId, finishedVideo.id);
 
-      const rejected = await workflows.recordManualEvent({
-        workspacePath,
-        workflowRunId: run.id,
-        event: 'asset-review-rejected',
-        assetReviewId: reviews[0].id,
-        assetKey: reviews[0].assetKey,
-      });
-      assert.equal(rejected.status, 'blocked');
-      assert.equal(rejected.steps.find((step) => step.stepId === 'human_review')?.status, 'blocked');
-      assert.match(rejected.summary, /驳回|回炉/);
+    const pendingProjected = await batches.advanceStage({
+      workspacePath,
+      batchId: built.id,
+      stageId: 'review',
+    });
+    const pendingStage = pendingProjected.stageRuns.find((stage) => stage.stageId === 'review');
+    assert.ok(pendingStage?.gateResults.some((gate) => gate.title === '候选素材待审核'));
+    assert.ok(pendingStage?.recoveryTasks.some((task) =>
+      task.targetModule === 'assets' &&
+      task.sourceRef?.id === queued.id
+    ));
+  });
+});
 
-      const completed = await workflows.recordManualEvent({
-        workspacePath,
-        workflowRunId: run.id,
-        event: 'asset-reviewed',
-        assetReviewId: reviews[0].id,
-        assetKey: reviews[0].assetKey,
-      });
-      assert.equal(completed.status, 'succeeded');
-      assert.equal(completed.steps.find((step) => step.stepId === 'human_review')?.status, 'succeeded');
-      assert.equal(completed.steps.find((step) => step.stepId === 'asset_store')?.status, 'succeeded');
-      assert.ok(completed.artifactRefs.includes(`asset-review:${reviews[0].id}`));
-      assert.ok(completed.artifactRefs.includes(reviews[0].assetKey));
-    } finally {
-      await new Promise((resolve) => server.close(resolve));
-    }
+test('Ontology v2 接入成熟度会从现有输入源投影 L0 L1 L2 与质量瓶颈', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const inputSources = new InputSourceStore();
+    await inputSources.register({
+      workspacePath,
+      kind: 'sku-table',
+      purpose: 'product-brief',
+      title: '商品库存日导出 CSV',
+      text: 'sku,price,stock\nfan-a,99,120',
+      tags: ['CSV', 'T+1', '映射'],
+    });
+    await inputSources.register({
+      workspacePath,
+      kind: 'manual-note',
+      purpose: 'user-feedback',
+      title: '评论搜索词粘贴',
+      text: '评论：办公室低噪，通勤轻便。',
+      tags: ['评论', '搜索词'],
+    });
+    await inputSources.register({
+      workspacePath,
+      kind: 'manual-note',
+      purpose: 'user-feedback',
+      title: '投放表现日报',
+      text: 'CTR 3.2%，ROI 1.8，预算 500。',
+      tags: ['投放', 'ROI', 'CTR'],
+    });
+
+    const summary = buildIntakeMaturitySummary(await inputSources.list(workspacePath));
+    assert.equal(summary.sourceCount, 6);
+    assert.equal(summary.projections.some((source) => source.name === '商品与库存' && source.level === 'L1'), true);
+    assert.equal(summary.projections.some((source) => source.name === '搜索与评论' && source.responsibility === 'self-serve'), true);
+    assert.equal(summary.projections.some((source) => source.name === '投放与流量' && source.responsibility === 'implementation'), true);
+    assert.equal(summary.projections.some((source) => source.name === '素材与证据' && source.coverage === 0 && source.health === 'bad'), true);
+    assert.ok(summary.averageCoverage > 0 && summary.averageCoverage < 100);
+    assert.ok(summary.bottleneckCount >= 1);
+  });
+});
+
+test('内容制造批次摘要会使用 Ontology v2 接入成熟度和瓶颈恢复任务', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const inputSources = new InputSourceStore();
+    const knowledgeMaps = new ContentKnowledgeMapStore();
+
+    const reviewTasks = new ContentReviewTaskStore();
+    const assetReviews = new AssetReviewStore();
+    const logs = new GenerationLogStore();
+    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+    const batches = new ContentBatchApplicationService(
+      new ContentBatchStore(),
+      inputSources,
+      knowledgeMaps,
+      reviewTasks,
+      assetReviews,
+      logs,
+      promptDrafts,
+    );
+
+    await inputSources.register({
+      workspacePath,
+      kind: 'manual-note',
+      purpose: 'product-brief',
+      title: '便携风扇产品资料',
+      text: '产品名：便携风扇。卖点：低噪、轻便、安全边界。',
+    });
+    await inputSources.register({
+      workspacePath,
+      kind: 'image',
+      purpose: 'reference',
+      title: '参考素材包',
+      sourcePath: join(workspacePath, 'reference.png'),
+      summary: '只登记了图片原文件，待视觉理解。',
+    });
+
+    const projected = await batches.build({
+      workspacePath,
+      title: '便携风扇短视频制造批次',
+      objective: '验证接入成熟度进入批次摘要。',
+    });
+    assert.ok(projected.intakeSummary.maturity, '应包含接入成熟度摘要');
+    assert.ok(projected.intakeSummary.productPlan, '应包含商品规划投影');
+    assert.ok(projected.intakeSummary.manufacturing, '应包含制造能力投影');
+    assert.equal(projected.intakeSummary.coveragePercent, projected.intakeSummary.maturity.averageCoverage);
+    assert.equal(projected.intakeSummary.maturity.sourceCount, 6);
+    assert.ok(projected.intakeSummary.maturity.bottleneckCount >= 1);
+    assert.equal(projected.intakeSummary.productPlan.mode, 'brand-full-coverage');
+    assert.equal(projected.intakeSummary.productPlan.allCovered, true);
+    assert.equal(projected.intakeSummary.productPlan.plannedCount, projected.intakeSummary.productPlan.candidateCount);
+    assert.equal(projected.intakeSummary.manufacturing.capabilities.some((capability) =>
+      capability.id === 'video-prompt' &&
+      capability.targetModule === 'video-prompt'
+    ), true);
+    const selectionStage = projected.stageRuns.find((stage) => stage.stageId === 'selection');
+    assert.ok(selectionStage?.outputRefs.some((ref) =>
+      ref.kind === 'product-plan' &&
+      ref.targetModule === 'content-batch'
+    ));
+    const manufacturingStage = projected.stageRuns.find((stage) => stage.stageId === 'manufacturing');
+    assert.ok(manufacturingStage?.outputRefs.some((ref) =>
+      ref.kind === 'manufacturing-plan' &&
+      ref.targetModule === 'content-batch'
+    ));
+    assert.ok(projected.intakeSummary.missingInputs.some((task) =>
+      task.title.includes('投放与流量') ||
+      task.title.includes('搜索与评论') ||
+      task.title.includes('平台与品牌规则')
+    ));
+    assert.equal(projected.intakeSummary.missingInputs.some((task) => /L0|L1|L2/.test(`${task.message} ${task.recoveryAction}`)), false);
+    assert.ok(projected.intakeSummary.missingInputs.some((task) => /手动补齐|文件映射|自动接入/.test(task.message)));
+
+    const ontologyBatch = projectContentBatchToOntologyV2(projected);
+    assert.equal(ontologyBatch.stageRuns.length, 9);
+    assert.equal(ontologyBatch.stageRuns.some((stage) => stage.stageId === 'manufacturing'), true);
+    const contractReport = buildOntologyV2BatchContractReport(projected);
+    assert.equal(contractReport.ok, true, JSON.stringify(contractReport.issues, null, 2));
+    assert.equal(contractReport.stageReports.some((stage) =>
+      stage.stageId === 'selection' &&
+      stage.primaryObject === 'ProductPlan / SelectionScore' &&
+      stage.outputCoverage > 0
+    ), true);
+    assert.equal(contractReport.stageReports.some((stage) =>
+      stage.stageId === 'manufacturing' &&
+      stage.primaryObject === 'VideoManufacturingJob' &&
+      stage.outputCoverage > 0
+    ), true);
   });
 });
 
@@ -16676,352 +11030,6 @@ test('图片素材回炉会生成 PromptDraft 新版本并让新日志关联原�
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
-  });
-});
-
-test('图片工作台生成候选图后可以回写图片 SOP 并继续审核', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const workflows = new WorkflowStore();
-    const baseDefinition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'brand-scene-prompts');
-    assert.ok(baseDefinition, '应存在可复用的内置 SOP 定义');
-    const definition = await workflows.updateDefinition({
-      ...baseDefinition,
-      key: 'manual-image-workbench-sop',
-      title: '图片工作台回写 SOP',
-      description: '从 SOP 打开图片工作台生成候选图后，应回写 image_generate 并进入人工审核。',
-      tags: ['图片', '工作台回写'],
-      outputSpec: ['ImageArtifact', 'ReviewResult', 'AssetRecord'],
-      steps: [
-        { id: 'input_register', title: '登记输入源', kind: 'input', description: '记录产品和场景输入。', dependsOn: [], outputKeys: ['InputSource'] },
-        { id: 'prompt_generate', title: '生成图片 Prompt', kind: 'prompt-generate', description: '生成图片工作台可用 Prompt。', dependsOn: ['input_register'], outputKeys: ['PromptVersion'] },
-        { id: 'image_generate', title: '图片生成', kind: 'image-generate', description: '用户在图片工作台生成候选图后回写。', dependsOn: ['prompt_generate'], outputKeys: ['ImageArtifact'] },
-        { id: 'human_review', title: '人工审核', kind: 'review', description: '确认图片是否可入素材库。', dependsOn: ['image_generate'], outputKeys: ['ReviewResult'] },
-        { id: 'asset_store', title: '入素材库', kind: 'asset-store', description: '保存通过审核的图片和来源追溯。', dependsOn: ['human_review'], outputKeys: ['AssetRecord'] },
-      ],
-    });
-
-    const run = await workflows.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputs: {
-        source: '产品资料和参考图',
-        intent: '生成一张小红书种草图。',
-        reviewOwner: '素材审核人',
-      },
-    });
-    assert.equal(run.status, 'queued');
-    assert.equal(run.steps.find((step) => step.stepId === 'image_generate')?.status, 'queued');
-
-    const generated = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: run.id,
-      event: 'image-candidates-generated',
-      generationLogId: 'log-image-001',
-      assetRefs: ['/tmp/bugu-image-001.png'],
-      summary: '功能测试图片工作台已生成候选图。',
-    });
-    assert.equal(generated.status, 'queued');
-    assert.equal(generated.steps.find((step) => step.stepId === 'image_generate')?.status, 'succeeded');
-    assert.equal(generated.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-    assert.ok(generated.artifactRefs.includes('generation-log:log-image-001'));
-    assert.ok(generated.artifactRefs.includes('/tmp/bugu-image-001.png'));
-
-    const completed = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: run.id,
-      event: 'asset-reviewed',
-      assetReviewId: 'review-image-001',
-      assetKey: 'generated:log-image-001:0:/tmp/bugu-image-001.png',
-    });
-    assert.equal(completed.status, 'succeeded');
-    assert.equal(completed.steps.find((step) => step.stepId === 'asset_store')?.status, 'succeeded');
-    assert.ok(completed.artifactRefs.includes('asset-review:review-image-001'));
-  });
-});
-
-test('视频素材包 SOP 可以通过手工事件推进到混剪清单', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const logs = new GenerationLogStore();
-    const text = new FakeTextGenerationService();
-    const inputSources = new InputSourceStore();
-    const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-    const assetReviews = new AssetReviewStore();
-    const overlayCards = new OverlayCardStore();
-    const mixPackages = new MixPackageStore(assetReviews);
-    const media = new MediaProvider({
-      async readView() {
-        return {
-          imageProvider: 'disabled',
-          imageProtocol: 'openai-responses',
-          imageApiEndpoint: '',
-          imageOuterModel: 'test-image-model',
-          imageModels: ['test-image-model'],
-          videoProvider: 'disabled',
-          videoApiEndpoint: '',
-          videoModel: 'test-video-model',
-        };
-      },
-      async getImageApiKey() { return undefined; },
-      async getVideoApiKey() { return undefined; },
-    }, logs);
-    const workflows = new WorkflowStore();
-    const engine = new WorkflowEngine(workflows, inputSources, promptDrafts, sessions, media, assetReviews);
-    const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'video-material-package');
-    assert.ok(definition, '应存在视频素材包 SOP');
-    assert.equal(definition.status, 'published');
-
-    const started = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputs: {
-        source: '品牌场景库和视频素材需求',
-        intent: '生成 15 秒视频素材 Prompt、绿幕文案图和混剪清单。',
-        reviewOwner: '视频负责人',
-        duration: '15',
-      },
-    });
-
-    const promptStep = started.steps.find((step) => step.stepId === 'prompt_generate');
-    const promptDraftId = promptStep?.output?.promptDraftId;
-    assert.equal(started.status, 'queued');
-    assert.equal(promptStep?.status, 'succeeded');
-    assert.equal(started.steps.find((step) => step.stepId === 'prompt_copy')?.status, 'queued');
-    assert.equal(typeof promptDraftId, 'string');
-
-    await promptDrafts.recordCopy({
-      workspacePath,
-      draftId: promptDraftId,
-      target: 'RunningHub',
-    });
-    const copied = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: started.id,
-      event: 'video-prompt-copied',
-      promptDraftId,
-      summary: '已复制到 RunningHub。',
-    });
-    assert.equal(copied.steps.find((step) => step.stepId === 'prompt_copy')?.status, 'succeeded');
-    assert.equal(copied.steps.find((step) => step.stepId === 'finished_video_import')?.status, 'queued');
-
-    const videoPath = join(workspacePath, 'third-party-finished-video.mp4');
-    await writeFile(videoPath, TEST_VIDEO);
-    const imported = await inputSources.importFile(workspacePath, videoPath, 'successful-asset', {
-      workflowRunId: copied.id,
-      relatedPromptDraftId: promptDraftId,
-      relatedSceneCardIds: ['scene-card-video-001'],
-      tags: ['第三方生成', '成品视频'],
-    });
-    assert.equal(imported.workflowRunId, copied.id);
-    assert.equal(imported.relatedPromptDraftId, promptDraftId);
-    assert.deepEqual(imported.relatedSceneCardIds, ['scene-card-video-001']);
-    const importedRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: copied.id,
-      event: 'finished-video-imported',
-      inputSourceId: imported.id,
-      promptDraftId,
-    });
-    assert.equal(importedRun.steps.find((step) => step.stepId === 'finished_video_import')?.status, 'succeeded');
-    assert.equal(importedRun.steps.find((step) => step.stepId === 'overlay_cards')?.status, 'queued');
-
-    const repeatedRun = await engine.startRun({
-      workspacePath,
-      workflowDefinitionId: definition.id,
-      inputSourceIds: [imported.id],
-      inputs: {
-        source: '新的品牌场景库和视频素材需求',
-        intent: '验证历史成品视频不会自动成为新 SOP 输入。',
-        reviewOwner: '视频负责人',
-        duration: '15',
-      },
-    });
-    assert.equal(repeatedRun.inputSourceIds.includes(imported.id), false);
-
-    const importedAssetKey = `imported:${imported.id}:0:${imported.sourcePath}`;
-    const earlyVideoReview = await assetReviews.review({
-      workspacePath,
-      assetKey: importedAssetKey,
-      kind: 'video',
-      sourceType: 'input-source',
-      sourceId: imported.id,
-      path: imported.sourcePath,
-      title: imported.title,
-      status: 'approved',
-      tags: imported.tags,
-    });
-    const earlyReviewedRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: importedRun.id,
-      event: 'asset-reviewed',
-      assetReviewId: earlyVideoReview.id,
-      assetKey: earlyVideoReview.assetKey,
-    });
-    assert.equal(earlyReviewedRun.status, 'queued');
-    assert.equal(earlyReviewedRun.steps.find((step) => step.stepId === 'overlay_cards')?.status, 'queued');
-    assert.equal(earlyReviewedRun.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-    assert.equal(earlyReviewedRun.steps.find((step) => step.stepId === 'export_manifest')?.status, 'queued');
-    assert.ok(earlyReviewedRun.artifactRefs.includes(`asset-review:${earlyVideoReview.id}`));
-    assert.ok(earlyReviewedRun.artifactRefs.includes(importedAssetKey));
-
-    const overlays = await overlayCards.generate({
-      workspacePath,
-      promptDraftId,
-      cards: [
-        { type: 'title', title: '标题卡', text: '早餐后顺手一次', durationSeconds: 3 },
-        { type: 'selling-point', title: '卖点卡', text: '便携条包，包里抽屉都能放', durationSeconds: 4 },
-      ],
-    });
-    const overlayRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: importedRun.id,
-      event: 'overlay-cards-generated',
-      promptDraftId,
-      overlayCardIds: overlays.map((card) => card.id),
-    });
-    assert.equal(overlayRun.steps.find((step) => step.stepId === 'overlay_cards')?.status, 'succeeded');
-    assert.equal(overlayRun.steps.find((step) => step.stepId === 'human_review')?.status, 'queued');
-
-    const overlayAssetKey = `overlay:${overlays[0].id}`;
-    await assetReviews.review({
-      workspacePath,
-      assetKey: overlayAssetKey,
-      kind: 'overlay',
-      sourceType: 'overlay-card',
-      sourceId: overlays[0].id,
-      path: overlays[0].assetPath,
-      title: overlays[0].title,
-      status: 'approved',
-      tags: overlays[0].tags,
-    });
-    const reviewedRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: overlayRun.id,
-      event: 'asset-reviewed',
-      assetReviewId: earlyVideoReview.id,
-      assetKey: earlyVideoReview.assetKey,
-    });
-    assert.equal(reviewedRun.steps.find((step) => step.stepId === 'human_review')?.status, 'succeeded');
-    assert.equal(reviewedRun.steps.find((step) => step.stepId === 'export_manifest')?.status, 'queued');
-
-    const [draft] = await promptDrafts.list(workspacePath);
-    const promptText = draft.versions.find((version) => version.id === draft.activeVersionId)?.content ?? draft.versions[0].content;
-    const pack = await mixPackages.exportPackage({
-      workspacePath,
-      workflowRunId: reviewedRun.id,
-      title: '视频素材包 SOP 功能测试',
-      platform: 'third-party-mix-tool',
-      assets: [
-        {
-          id: importedAssetKey,
-          kind: 'video',
-          title: imported.title,
-          path: imported.sourcePath,
-          sourceType: 'input-source',
-          sourceId: imported.id,
-          promptDraftId,
-          promptText,
-          tags: imported.tags,
-        },
-        {
-          id: overlayAssetKey,
-          kind: 'overlay',
-          title: overlays[0].title,
-          path: overlays[0].assetPath,
-          sourceType: 'overlay-card',
-          sourceId: overlays[0].id,
-          promptDraftId,
-          promptText: overlays[0].text,
-          tags: overlays[0].tags,
-        },
-      ],
-    });
-    const completed = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: reviewedRun.id,
-      event: 'mix-package-exported',
-      mixPackageId: pack.id,
-      manifestPath: pack.manifestPath,
-      manifestCsvPath: pack.manifestCsvPath,
-      importGuidePath: pack.importGuidePath,
-      packageDir: pack.packageDir,
-    });
-
-    assert.equal(completed.status, 'succeeded');
-    assert.equal(completed.steps.every((step) => step.status === 'succeeded'), true);
-    assert.ok(completed.artifactRefs.includes(`input-source:${imported.id}`));
-    assert.ok(completed.artifactRefs.includes(`overlay-card:${overlays[0].id}`));
-    assert.ok(completed.artifactRefs.includes(`asset-review:${earlyVideoReview.id}`));
-    assert.ok(completed.artifactRefs.includes(`mix-package:${pack.id}`));
-    assert.ok(existsSync(pack.manifestPath));
-    assert.ok(existsSync(pack.manifestCsvPath));
-    assert.ok(existsSync(pack.importGuidePath));
-    assert.ok(completed.artifactRefs.includes(pack.manifestCsvPath));
-    assert.ok(completed.artifactRefs.includes(pack.importGuidePath));
-    assert.equal(pack.workflowRunId, reviewedRun.id);
-    const manifest = JSON.parse(await readFile(pack.manifestPath, 'utf-8'));
-    const manifestCsv = await readFile(pack.manifestCsvPath, 'utf-8');
-    const importGuide = await readFile(pack.importGuidePath, 'utf-8');
-    assert.equal(manifest.workflowRunId, reviewedRun.id);
-    assert.equal(manifest.files.importGuide, 'import-guide.md');
-    assert.match(manifestCsv, /"kind","title","packagedPath"/);
-    assert.match(manifestCsv, /"reviewId","reviewStatus"/);
-    assert.match(manifestCsv, /"video"/);
-    assert.match(manifestCsv, /"overlay"/);
-    assert.match(importGuide, /第三方混剪软件/);
-    assert.match(importGuide, /manifest\.csv/);
-    assert.match(importGuide, /人工审核/);
-    assert.equal(manifest.assets.find((asset) => asset.kind === 'video')?.reviewStatus, 'approved');
-    assert.equal(manifest.assets.find((asset) => asset.kind === 'video')?.reviewId, earlyVideoReview.id);
-    assert.equal(pack.assets.find((asset) => asset.kind === 'video')?.promptDraftId, promptDraftId);
-    assert.equal(pack.assets.find((asset) => asset.kind === 'video')?.sourceId, imported.id);
-    assert.match(pack.assets.find((asset) => asset.kind === 'video')?.promptText ?? '', /视频 Prompt|任务/);
-
-    const recordedEvidence = await mixPackages.recordImportEvidence({
-      workspacePath,
-      mixPackageId: pack.id,
-      toolName: '剪映专业版',
-      importedAt: '2026-05-22T16:30:00+08:00',
-      operator: '剪辑验收',
-      importedAssetKinds: ['video', 'overlay'],
-      importedFileCount: pack.assets.length,
-      manifestImported: true,
-      timelineCreated: true,
-      result: 'verified',
-      notes: '已按导入说明核对成品视频、绿幕文案图和清单文件。',
-    });
-    assert.ok(recordedEvidence.externalImportEvidencePath);
-    assert.ok(recordedEvidence.externalImportEvidence);
-    assert.ok(existsSync(recordedEvidence.externalImportEvidencePath));
-    assert.ok(existsSync(join(recordedEvidence.packageDir, 'import-check.md')));
-    assert.equal(recordedEvidence.externalImportEvidence.toolName, '剪映专业版');
-    assert.deepEqual(recordedEvidence.externalImportEvidence.importedAssetKinds.sort(), ['overlay', 'video']);
-    assert.equal(recordedEvidence.externalImportEvidence.importedFileCount, 2);
-    assert.equal(recordedEvidence.externalImportEvidence.manifestImported, true);
-    assert.equal(recordedEvidence.externalImportEvidence.timelineCreated, true);
-    assert.ok(recordedEvidence.externalImportEvidence.evidenceFiles.includes('import-check.md'));
-    const evidenceJson = JSON.parse(await readFile(recordedEvidence.externalImportEvidencePath, 'utf-8'));
-    const importCheck = await readFile(join(recordedEvidence.packageDir, 'import-check.md'), 'utf-8');
-    assert.equal(evidenceJson.toolName, '剪映专业版');
-    assert.deepEqual(evidenceJson.importedAssetKinds.sort(), ['overlay', 'video']);
-    assert.match(importCheck, /第三方导入验收/);
-    assert.match(importCheck, /清单文件已导入或已核对：是/);
-
-    const importVerifiedRun = await workflows.recordManualEvent({
-      workspacePath,
-      workflowRunId: completed.id,
-      event: 'mix-package-import-verified',
-      mixPackageId: recordedEvidence.id,
-      externalImportEvidencePath: recordedEvidence.externalImportEvidencePath,
-      packageDir: recordedEvidence.packageDir,
-    });
-    assert.equal(importVerifiedRun.status, 'succeeded');
-    assert.ok(importVerifiedRun.artifactRefs.includes(recordedEvidence.externalImportEvidencePath));
-    assert.ok(importVerifiedRun.artifactRefs.includes(recordedEvidence.packageDir));
-    assert.equal(
-      importVerifiedRun.steps.find((step) => step.stepId === 'export_manifest')?.output?.externalImportEvidencePath,
-      recordedEvidence.externalImportEvidencePath,
-    );
   });
 });
 
@@ -17443,133 +11451,6 @@ test('素材拆解遇到 429 时不自动重试并提示用户手动重试', asy
       else process.env.CONTENT_STUDIO_VISION_ENDPOINT = previousEndpoint;
       if (previousKey === undefined) delete process.env.CONTENT_STUDIO_VISION_API_KEY;
       else process.env.CONTENT_STUDIO_VISION_API_KEY = previousKey;
-      await new Promise((resolve) => server.close(resolve));
-    }
-  });
-});
-
-test('小红书种草图 SOP 可以携带参考图输入并通过视觉反推进入后续步骤', async () => {
-  await withWorkspace(async (workspacePath) => {
-    let capturedRequest;
-    const server = createServer((request, response) => {
-      if (request.url === '/vision') {
-        let body = '';
-        request.on('data', (chunk) => { body += chunk.toString(); });
-        request.on('end', () => {
-          capturedRequest = JSON.parse(body);
-          response.setHeader('content-type', 'application/json');
-          response.end(JSON.stringify({
-            composition: '4:5，右下角产品主体，左上留白。',
-            lighting: '自然光，真实桌面。',
-            textArea: '左上标题区。',
-            style: 'UGC 手机实拍。',
-            reusableElements: ['自然光', '留白', '手持感'],
-            risks: ['不要复制竞品包装'],
-            prompt: '4:5，早餐桌自然光，右下产品主体，左上留白，UGC 手机实拍。',
-            negativePrompt: '竞品包装、Logo、医疗化承诺。',
-            qualityChecklist: ['主体一致', '留白明确', '无竞品元素'],
-          }));
-        });
-        return;
-      }
-      response.statusCode = 404;
-      response.end('not found');
-    });
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const previousEndpoint = process.env.CONTENT_STUDIO_VISION_ENDPOINT;
-    try {
-      process.env.CONTENT_STUDIO_VISION_ENDPOINT = `http://127.0.0.1:${server.address().port}/vision`;
-      const referencePath = join(workspacePath, 'reference.png');
-      await writeFile(referencePath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
-      const logs = new GenerationLogStore();
-      const text = new FakeTextGenerationService();
-      const inputSources = new InputSourceStore();
-      const promptDrafts = new PromptDraftStore(inputSources, text);
-      const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
-      const brandKnowledgeBases = new BrandKnowledgeBaseStore(text);
-      const promptPacks = new PromptPackService(logs, text);
-      const sceneCards = new SceneLibraryStore(logs, promptPacks, text);
-      const media = new MediaProvider({
-        async readView() {
-          return {
-            apiEndpoint: 'https://api.anthropic.com',
-            hasApiKey: false,
-            textProvider: 'anthropic-claude-sdk',
-            textProtocol: 'claude-sdk',
-            textApiEndpoint: 'https://api.anthropic.com',
-            hasTextApiKey: false,
-            textModel: 'claude-sonnet-4-5',
-            imageProvider: 'disabled',
-            imageProtocol: 'openai-responses',
-            imageApiEndpoint: '',
-            imageOuterModel: 'test-outer-model',
-            hasImageApiKey: false,
-            imageModels: ['test-image-model'],
-            videoProvider: 'disabled',
-            videoApiEndpoint: '',
-            hasVideoApiKey: false,
-            videoModel: 'test-video-model',
-          };
-        },
-        async getImageApiKey() { return undefined; },
-        async getVideoApiKey() { return undefined; },
-      }, logs);
-      const workflows = new WorkflowStore();
-      const reference = await inputSources.register({
-        workspacePath,
-        kind: 'image',
-        purpose: 'reference',
-        title: '参考图',
-        sourcePath: referencePath,
-        summary: '早餐桌参考图。',
-      });
-      const product = await inputSources.register({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'product-brief',
-        title: '产品资料',
-        text: '便携条包，早餐后使用。',
-      });
-      const engine = new WorkflowEngine(
-        workflows,
-        inputSources,
-        promptDrafts,
-        sessions,
-        media,
-        undefined,
-        brandKnowledgeBases,
-        promptPacks,
-        sceneCards,
-        new ReferenceReverseService(logs, inputSources, promptDrafts, new (await import('../../src/main/services/modelConfigStore.ts')).ModelConfigStore()),
-      );
-      const definition = (await workflows.listDefinitions(workspacePath)).find((item) => item.key === 'xiaohongshu-seeding-image');
-      assert.ok(definition, '应存在小红书种草图 SOP');
-
-      const run = await engine.startRun({
-        workspacePath,
-        workflowDefinitionId: definition.id,
-        inputSourceIds: [reference.id, product.id],
-        inputs: {
-          source: '参考图与产品资料',
-          intent: '生成小红书种草图 SOP。',
-          reviewOwner: '内容负责人',
-          platform: '小红书',
-        },
-      });
-
-      assert.equal(capturedRequest.operation, 'reference-reverse');
-      assert.equal(run.steps.find((step) => step.stepId === 'reference_reverse')?.status, 'succeeded');
-      assert.equal(run.steps.find((step) => step.stepId === 'prompt_generate')?.status, 'succeeded');
-      assert.equal(run.steps.find((step) => step.stepId === 'image_generate')?.status, 'blocked');
-      assert.ok(run.artifactRefs.some((ref) => ref.startsWith('prompt-draft:')));
-      assert.ok(run.artifactRefs.some((ref) => ref.startsWith('generation-log:')));
-      const referenceLog = (await logs.list(workspacePath)).find((log) => log.kind === 'reference-reverse');
-      assert.equal(referenceLog?.workflowRunId, run.id);
-      const [storedDraft] = await promptDrafts.list(workspacePath);
-      assert.equal(storedDraft.workflowRunId, run.id);
-    } finally {
-      if (previousEndpoint === undefined) delete process.env.CONTENT_STUDIO_VISION_ENDPOINT;
-      else process.env.CONTENT_STUDIO_VISION_ENDPOINT = previousEndpoint;
       await new Promise((resolve) => server.close(resolve));
     }
   });
@@ -18242,5 +12123,227 @@ test('视频拆解可以调用真实 Generic HTTP 理解 Provider 并写入日�
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
+  });
+});
+
+test('爆款视频拆解支持 OpenAI 兼容视觉链路和 LLM 环境变量', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const videoPath = join(workspacePath, 'reference.mp4');
+    await writeFile(videoPath, TEST_VIDEO);
+    const previousApiKey = process.env.LLM_API_KEY;
+    const previousBaseUrl = process.env.LLM_BASE_URL;
+    const previousVisualModel = process.env.VISUAL_MODEL;
+    const previousTextModel = process.env.LLM_MODEL;
+    const previousAuthPrefix = process.env.LLM_AUTH_PREFIX;
+    const capturedRequests = [];
+    const server = createServer((request, response) => {
+      if (request.url === '/v1/chat/completions') {
+        let body = '';
+        request.on('data', (chunk) => { body += chunk.toString(); });
+        request.on('end', () => {
+          const payload = JSON.parse(body);
+          capturedRequests.push({
+            authorization: request.headers.authorization,
+            payload,
+          });
+          response.setHeader('content-type', 'application/json');
+          if (payload.model === 'gemini-2.5-flash-test') {
+            response.end(JSON.stringify({
+              choices: [{
+                message: {
+                  role: 'assistant',
+                  content: JSON.stringify({
+                    characters: [{ id: '宝妈', voiceTraits: '亲切女声', threeViewPrompt: 'photorealistic mother character sheet' }],
+                    scenes: [{ id: '厨房', environment: '明亮厨房台面', lighting: '自然窗光' }],
+                    shots: [
+                      { startSec: 0, endSec: 3, shotType: 'close_up', characterId: '宝妈', characterAction: '指向油污', sceneId: '厨房', cameraMovement: '固定机位', description: '台面油污特写', objects: ['油污'], voiceover: '你家台面真的干净吗？' },
+                      { startSec: 3, endSec: 7, shotType: 'product_demo', characterId: '宝妈', characterAction: '喷涂产品', sceneId: '厨房', cameraMovement: '俯拍', description: '产品喷涂到油污上', objects: ['清洁喷雾'], voiceover: '喷一下等三秒。' },
+                      { startSec: 7, endSec: 11, shotType: 'comparison', characterId: '宝妈', characterAction: '擦拭对比', sceneId: '厨房', cameraMovement: '固定机位', description: '前后对比展示', objects: ['抹布'], voiceover: '轻轻一擦就亮了。' },
+                    ],
+                  }),
+                },
+                finish_reason: 'stop',
+              }],
+            }));
+            return;
+          }
+          response.end(JSON.stringify({
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: JSON.stringify({
+                  contentTitle: '痛点提问 · 厨房油污快清洁',
+                  hookType: { value: 'pain_point_question', confidence: 0.86, reasoning: '0秒口播提问台面是否干净，结合油污特写。' },
+                  hookElements: [{ name: '痛点提问', description: '用台面干净问题制造停留。', timestampRange: '00:00-00:03' }],
+                  emotionCurve: [
+                    { timestampSec: 0, emotion: 'curiosity', intensity: 70 },
+                    { timestampSec: 7, emotion: 'satisfaction', intensity: 82 },
+                  ],
+                  narrativeFramework: { value: 'PSP', confidence: 0.9, reasoning: '痛点、方案、证明依次出现。' },
+                  narrativeStages: [
+                    { name: '痛点', description: '油污特写和提问。', timeRange: '00:00-00:03', emotionShift: '平静到好奇' },
+                    { name: '方案', description: '产品喷涂。', timeRange: '00:03-00:07', emotionShift: '好奇到信任' },
+                    { name: '证明', description: '擦拭后对比。', timeRange: '00:07-00:11', emotionShift: '信任到满足' },
+                  ],
+                  pacing: { avgCutsPerSecond: 0.27, avgShotDurationSec: 3.7, wordsPerMinute: 160 },
+                  timeline: [
+                    { timestampSec: 0, label: '痛点提问', emotionLabel: 'curiosity', intensity: 7 },
+                    { timestampSec: 7, label: '效果证明', emotionLabel: 'satisfaction', intensity: 8 },
+                  ],
+                  viralScores: {
+                    hookStrength: { score: 7.2, reasoning: '开头问题明确。' },
+                    narrativeTension: { score: 7.0, reasoning: 'PSP 完整。' },
+                    pacingQuality: { score: 7.4, reasoning: '三镜头紧凑。' },
+                    emotionDesign: { score: 7.1, reasoning: '从好奇到满足。' },
+                    ctaEffectiveness: { score: 5.0, reasoning: '未出现强 CTA。' },
+                  },
+                }),
+              },
+              finish_reason: 'stop',
+            }],
+          }));
+        });
+        return;
+      }
+      response.statusCode = 404;
+      response.end('not found');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      process.env.LLM_API_KEY = 'gptproto-test-key';
+      process.env.LLM_BASE_URL = `http://127.0.0.1:${server.address().port}/v1`;
+      process.env.VISUAL_MODEL = 'gemini-2.5-flash-test';
+      process.env.LLM_MODEL = 'gpt-4o-test';
+      process.env.LLM_AUTH_PREFIX = '';
+
+      const logs = new GenerationLogStore();
+      const videos = new VideoWorkflowService(logs, new FakeTextGenerationService(), {
+        async readView() {
+          return {
+            videoProvider: 'disabled',
+            videoApiEndpoint: '',
+            videoModel: '',
+            textModel: 'claude-sonnet-4-5',
+          };
+        },
+        async getVideoApiKey() { return undefined; },
+      });
+      const breakdown = await videos.analyze({
+        workspacePath,
+        sourceType: 'file',
+        source: videoPath,
+        dimensions: ['开头钩子', '镜头节奏'],
+        citations: [citation],
+        selectedSkillSlugs: ['video-breakdown'],
+        params: { textModel: 'fake-claude-sonnet' },
+      });
+
+      assert.equal(capturedRequests.length, 2);
+      assert.equal(capturedRequests[0].authorization, 'gptproto-test-key');
+      assert.equal(capturedRequests[0].payload.model, 'gemini-2.5-flash-test');
+      assert.equal(capturedRequests[1].payload.model, 'gpt-4o-test');
+      assert.match(capturedRequests[0].payload.messages[0].content[0].image_url.url, /^data:video\/mp4;base64,/);
+      assert.equal(breakdown.contentTitle, '痛点提问 · 厨房油污快清洁');
+      assert.equal(breakdown.segments.length, 3);
+      assert.equal(breakdown.resourceFramework.characters[0].name, '宝妈');
+      assert.equal(breakdown.resourceFramework.scenes[0].name, '厨房');
+      assert.equal(breakdown.referenceScore, 6.8);
+      const storedLogs = await logs.list(workspacePath);
+      assert.equal(storedLogs[0].status, 'succeeded');
+      assert.match(storedLogs[0].model, /gemini-2\.5-flash-test \+ gpt-4o-test/);
+    } finally {
+      if (previousApiKey === undefined) delete process.env.LLM_API_KEY;
+      else process.env.LLM_API_KEY = previousApiKey;
+      if (previousBaseUrl === undefined) delete process.env.LLM_BASE_URL;
+      else process.env.LLM_BASE_URL = previousBaseUrl;
+      if (previousVisualModel === undefined) delete process.env.VISUAL_MODEL;
+      else process.env.VISUAL_MODEL = previousVisualModel;
+      if (previousTextModel === undefined) delete process.env.LLM_MODEL;
+      else process.env.LLM_MODEL = previousTextModel;
+      if (previousAuthPrefix === undefined) delete process.env.LLM_AUTH_PREFIX;
+      else process.env.LLM_AUTH_PREFIX = previousAuthPrefix;
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test('视频脚本生成会按已拆解镜头时间轴严格映射并输出资源框架', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const logs = new GenerationLogStore();
+    const text = new FakeTextGenerationService();
+    const breakdownLog = await logs.append({
+      workspacePath,
+      kind: 'video-breakdown',
+      status: 'succeeded',
+      title: '参考视频拆解',
+      summary: '已拆出 4 个镜头。',
+      model: 'gemini-2.5-flash + gpt-4o',
+      input: { source: 'reference.mp4' },
+      output: {
+        summary: '已拆出 4 个镜头。',
+        dimensions: ['镜头节奏'],
+        contentTitle: '痛点提问 · 厨房清洁',
+        durationSec: 14,
+        segments: [
+          { timeRange: '00:00-00:03', hook: '痛点', visual: '油污特写', voiceover: '油污擦不干净？', subtitle: '', rhythm: '快切', reusablePoint: '痛点提问', shotType: 'close_up', scene: '厨房', cameraMovement: '固定机位' },
+          { timeRange: '00:03-00:06', hook: '方案', visual: '喷涂', voiceover: '喷上等一会。', subtitle: '', rhythm: '演示', reusablePoint: '产品介入', shotType: 'product_demo', scene: '厨房', cameraMovement: '俯拍' },
+          { timeRange: '00:06-00:10', hook: '证明', visual: '擦拭', voiceover: '轻轻一擦。', subtitle: '', rhythm: '证明', reusablePoint: '效果证明', shotType: 'comparison', scene: '厨房', cameraMovement: '固定机位' },
+          { timeRange: '00:10-00:14', hook: 'CTA', visual: '总结', voiceover: '适合每天用。', subtitle: '', rhythm: '收束', reusablePoint: '轻 CTA', shotType: 'talking_head', scene: '厨房', cameraMovement: '缓慢推进' },
+        ],
+        pacing: {
+          avgCutsPerSecond: 0.28,
+          avgShotDurationSec: 3.5,
+          wordsPerMinute: 160,
+          rhythm: [
+            { timeRange: '00:00-00:03', shotType: 'close_up', intensity: 8, description: '油污特写', voiceover: '油污擦不干净？', scene: '厨房', cameraMovement: '固定机位' },
+            { timeRange: '00:03-00:06', shotType: 'product_demo', intensity: 6, description: '喷涂演示', voiceover: '喷上等一会。', scene: '厨房', cameraMovement: '俯拍' },
+            { timeRange: '00:06-00:10', shotType: 'comparison', intensity: 8, description: '擦拭前后对比', voiceover: '轻轻一擦。', scene: '厨房', cameraMovement: '固定机位' },
+            { timeRange: '00:10-00:14', shotType: 'talking_head', intensity: 5, description: '真人总结', voiceover: '适合每天用。', scene: '厨房', cameraMovement: '缓慢推进' },
+          ],
+        },
+        reusableFormula: ['痛点 -> 产品演示 -> 效果证明 -> 轻 CTA'],
+        risks: [{ level: 'warning', message: '不要复刻原视频人物和画面。' }],
+        resourceFramework: {
+          characters: [{ name: '宝妈', shotCount: 3, voiceTraits: '亲切女声', threeViewPrompt: 'source character prompt' }],
+          scenes: [{ name: '厨房', shotCount: 4, environment: '明亮厨房', lighting: '自然光' }],
+        },
+      },
+    });
+
+    const videos = new VideoWorkflowService(logs, text);
+    const script = await videos.generateScript({
+      workspacePath,
+      productName: '本方清洁喷雾',
+      sceneBackground: '居家厨房',
+      subtitleMode: 'burned-subtitle',
+      voiceStyle: '自然可信',
+      ratio: '4:5',
+      shotCount: 2,
+      durationSeconds: 8,
+      breakdownLogId: breakdownLog.id,
+      citations: [citation],
+      assetRefs: [],
+      selectedSkillSlugs: ['video-script-writer'],
+      params: { textModel: 'fake-claude-sonnet' },
+    });
+
+    assert.equal(script.storyboard.length, 4);
+    assert.deepEqual(script.storyboard.map((shot) => shot.timeRange), ['00:00-00:03', '00:03-00:06', '00:06-00:10', '00:10-00:14']);
+    assert.deepEqual(script.storyboard.map((shot) => shot.shotType), ['close_up', 'product_demo', 'comparison', 'talking_head']);
+    assert.equal(script.resourceFramework.characters[0].name, '目标达人');
+    assert.equal(script.resourceFramework.characters[0].shotCount, 4);
+    assert.equal(script.resourceFramework.scenes[0].sceneImagePrompt.includes('Bright realistic kitchen'), true);
+    const promptPayload = JSON.parse(text.calls.at(-1).prompt);
+    assert.equal(promptPayload.targetShotCount, 4);
+    assert.equal(promptPayload.targetDurationSeconds, 14);
+    assert.equal(promptPayload.scriptContext.exactMappingRequired, true);
+    assert.equal(promptPayload.scriptContext.referenceRhythm.length, 4);
+    assert.ok(promptPayload.requirements.some((item) => item.includes('2-6 秒')));
+    assert.ok(promptPayload.requirements.some((item) => item.includes('threeViewPrompt')));
+    assert.ok(promptPayload.requirements.some((item) => item.includes('sceneImagePrompt')));
+    assert.ok(promptPayload.requirements.some((item) => item.includes('before-after')));
+    const storedScriptLog = (await logs.list(workspacePath)).find((entry) => entry.kind === 'video-script');
+    assert.match(storedScriptLog.summary, /4 镜头、14s/);
+    assert.deepEqual(storedScriptLog.artifactRefs, [`generation-log:${breakdownLog.id}`]);
   });
 });

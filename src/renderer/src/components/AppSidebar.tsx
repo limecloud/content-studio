@@ -46,6 +46,7 @@ const NAV_ICONS = new Map<string, string>([
   ["文章生成", "✍️"],
   ["标题生成", "题"],
   ["脚本生成", "稿"],
+  ["内容制造", "造"],
   ["成型知识库", "📚"],
   ["内容知识地图", "图"],
   ["审核任务", "审"],
@@ -53,18 +54,10 @@ const NAV_ICONS = new Map<string, string>([
   ["场景库", "景"],
   ["IP 知识库", "IP"],
   ["输入源 / 文档转换", "源"],
-  ["品牌战情室", "战"],
-  ["目标树", "标"],
-  ["作战编组", "组"],
-  ["执行队列", "列"],
-  ["行动记录", "记"],
   ["素材库", "🗂️"],
   ["Prompt 工作台", "P"],
-  ["SOP 工作流", "S"],
   ["运行历史", "史"],
   ["skills 管理", "🧩"],
-  ["工作流定义", "流"],
-  ["Canvas 编排", "画"],
 ]);
 
 const NAV_ACTIVE_PARENT = new Map<ModuleKey, ModuleKey>([
@@ -73,8 +66,6 @@ const NAV_ACTIVE_PARENT = new Map<ModuleKey, ModuleKey>([
 ]);
 
 const ADVANCED_MODULES = new Set<ModuleKey>([
-  "workflow-definition",
-  "workflow-canvas",
 ]);
 
 export function AppSidebar({

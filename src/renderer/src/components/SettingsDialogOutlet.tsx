@@ -17,6 +17,7 @@ export function SettingsDialogOutlet({ app }: SettingsDialogOutletProps) {
       colorTheme={app.colorTheme}
       setColorTheme={app.setColorTheme}
       modelConfig={app.modelConfig}
+      modelCatalog={app.modelCatalog}
       modelDraft={app.modelDraft}
       setModelDraft={app.setModelDraft}
       menubarShow={app.menubarShow}
@@ -42,6 +43,7 @@ export function SettingsDialogOutlet({ app }: SettingsDialogOutletProps) {
       onOpenLogsDirectory={() => app.runAction(app.openLogsDirectory, '正在打开日志目录')}
       onGetSkillFileAssociation={app.getSkillFileAssociation}
       onSetSkillFileAssociationDefault={app.setSkillFileAssociationDefault}
+      onLoadModelCatalog={() => app.loadModelCatalog()}
       onSaveModelConfig={() => app.runAction(app.saveModelConfig)}
       onPasswordLogin={app.loginByPassword}
       onLogoutAuth={() => app.runAction(app.logoutAuth, '正在退出登录')}

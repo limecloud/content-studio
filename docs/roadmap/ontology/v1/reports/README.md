@@ -8,7 +8,7 @@
 本目录只保存真实线上验收报告，不保存本地 mock、单元测试输出或人工整理的通过截图。v1 是否可宣称完成，必须能回放以下事实：
 
 - Bugu 业务后端返回真实团队内容工作区。
-- 两个不同团队账号都能读取同一个工作区、同一个默认团队知识包、同一批知识地图快照、同一批构建运行、同一批品牌作战系统快照、同一批审核任务、同一批执行队列和同一批行动记录。
+- 两个不同团队账号都能读取同一个工作区、同一个默认团队知识包、同一批知识地图快照、同一批构建运行、同一批审核任务和同一批生产交接行动记录。
 - 至少一条团队行动记录保留交付物引用，且两个账号看到的交付物引用一致，用于证明补素材清单等交付包没有在团队共享链路丢失。
 - 团队知识包已经确认发布，公开包地址是 http/https 公网地址且可访问。
 - 公开包大小和 sha256 与 Bugu release 元数据一致。
@@ -75,8 +75,8 @@ npm run content:v1:verify-report -- \
 | 包完整性 | 有 `size > 0` 和 64 位十六进制 `sha256`。 |
 | 两账号共享 | actor A / B 看到同一个工作区和同一个非空 revision。 |
 | 团队知识包版本清单 | actor A / B 的 `releaseCount` 必须一致且大于 0；必须完整分页拉取，`releaseIds` 必须一致且数量等于 `releaseCount`，`releaseListComplete` 必须为 `true`。 |
-| 知识地图 / 构建运行 / 作战系统清单 | actor A / B 的 `knowledgeMapCount`、`buildRunCount`、`commandCenterCount` 一致且大于 0；必须完整分页拉取，`knowledgeMapIds`、`buildRunIds`、`commandCenterIds` 必须一致且数量等于对应 count，`knowledgeMapListComplete`、`buildRunListComplete`、`commandCenterListComplete` 必须为 `true`。 |
-| 审核 / 队列 / 行动清单 | actor A / B 的 `reviewTaskCount`、`executionQueueCount`、`actionRecordCount` 一致且都必须大于 0；必须完整分页拉取，`reviewTaskIds`、`executionQueueIds`、`actionRecordIds` 必须一致且数量等于对应 count，`reviewTaskListComplete`、`executionQueueListComplete`、`actionRecordListComplete` 必须为 `true`。 |
+| 知识地图 / 构建运行清单 | actor A / B 的 `knowledgeMapCount`、`buildRunCount` 一致且大于 0；必须完整分页拉取，`knowledgeMapIds`、`buildRunIds` 必须一致且数量等于对应 count，`knowledgeMapListComplete`、`buildRunListComplete` 必须为 `true`。 |
+| 审核任务 / 生产交接行动清单 | actor A / B 的 `reviewTaskCount`、`actionRecordCount` 一致且都必须大于 0；必须完整分页拉取，`reviewTaskIds`、`actionRecordIds` 必须一致且数量等于对应 count，`reviewTaskListComplete`、`actionRecordListComplete` 必须为 `true`。 |
 | 交付物引用 | actor A / B 至少看到一条带 `artifactRefs` 的行动记录；`actionArtifactRecordIds` 和 `actionArtifactRefsByRecordId` 必须一致，证明补素材清单、行动导出等交付线索没有在服务端或团队刷新时丢失。 |
 | 交付物安全 | `actionArtifactRefsByRecordId` 不能包含本机绝对路径、`file://` 或疑似凭证参数；两账号都必须能看到 `material-gap-list.json`，证明补素材清单交付链路真实进入团队事实源。 |
 | 不跳过 | 不能使用 `--skip-release` 或 `--skip-team` 作为完成证据。 |

@@ -9,10 +9,10 @@ Ontology 如果只存在个人本机，就无法支撑团队审核、素材回�
 
 v1 采用 **Bugu server-authoritative + desktop cache + offline draft + reviewed package** 的方案：
 
-- Bugu 业务后端是团队内容项目、审核、冲突、发布和业务审计事实源；`content-knowledge-maps`、`content-build-runs` 和 `content-command-centers` 是 v1 团队共享的 current 主事实源，分别承载团队知识地图快照、生成流程摘要和完整品牌作战系统快照。
-- `content-execution-queue` 和 `content-action-records` 是 compat 旁路事实源，只用于队列状态、行动审计和跨设备增量回填；它们不能替代 `content-command-centers` 的完整作战系统快照。
+- Bugu 业务后端是团队内容项目、审核、冲突、发布和业务审计事实源；`content-knowledge-maps`、`content-build-runs`、`content-review-tasks`、`content-action-records` 和 `content-knowledge-releases` 是 v1 团队共享的 current 事实源，分别承载团队知识地图快照、生成流程摘要、审核任务、生产交接行动记录和团队知识包版本。
+- 旧 `content-command-centers` 和 `content-execution-queue` 不再是当前客户端事实源；客户端运行时已收敛到内容制造批次和生产交接行动记录。
 - Bugu 服务端已新增同步冲突队列，旧版本提交不会覆盖当前团队版本；控制台可以查看冲突并记录人工处理结论。
-- Bugu 控制台已新增团队内容工作区面板，内容负责人可以在服务端侧查看当前工作区、待审核项、同步冲突、执行队列、行动记录、素材覆盖和团队知识包版本。
+- Bugu 控制台已新增团队内容工作区面板，内容负责人可以在服务端侧查看当前工作区、待审核项、同步冲突、行动记录、素材覆盖和团队知识包版本。
 - Content Studio 桌面端内容知识地图页已接入同步冲突队列，普通用户可查看冲突摘要、版本差异并记录已转人工处理；处理后本机地图回到待同步。
 - Content Studio 已能基于已同步工作区拉取 Bugu 团队知识包版本，保留本机预览路径，并显示服务端包地址、对象 key 和上传状态。
 - Content Studio 内容知识地图页已能在当前业务对象旁展示团队知识包详情，包括版本、文件、对象 key、sha256、确认状态和最近版本；普通用户不需要进入独立工程详情页。
@@ -23,8 +23,8 @@ v1 采用 **Bugu server-authoritative + desktop cache + offline draft + reviewed
 - Content Studio 在拿到 Bugu `workspaceId` 后，后续变更包和团队知识包发布会优先携带服务端工作区 ID，不再只依赖本机路径派生 key。
 - Content Studio 的 Prompt 草稿、Prompt 协作会话和 SOP 运行记录已能保存团队知识包版本引用；Prompt 工作台和 SOP 执行表单都能选择已发布团队知识包，团队成员可以追溯下游内容使用的是哪一版已审核口径。
 - Content Studio 素材覆盖回写已能生成“待确认补充”审核任务并同步到 Bugu；它只承接补证据、补规则和补素材标签，不自动覆盖团队当前主文案。
-- Content Studio 品牌战情室已能从 Bugu 团队工作区刷新行动记录，并把其他设备产生的生产交接回填到本机资源包交接状态；Bugu 会保留 Prompt 草稿、场景卡、SOP 运行、素材覆盖变更、审核任务引用和操作者角色，且按认证角色拒绝无权限写入，本机记录和团队记录按行动 ID 合并，不静默覆盖。
-- Bugu 侧审核任务、行动记录和执行队列已支持分页和状态 / 动作筛选；桌面端刷新品牌战情室行动记录时已按当前战情室 / 当前知识地图分批拉取，不必把多人工作区所有记录一次性塞回本机。
+- Content Studio 生产交接会把 Prompt 草稿、场景卡、SOP 运行、素材覆盖变更、审核任务引用和操作者角色写入 Bugu `content-action-records`；服务端按认证角色拒绝无权限写入，本机记录和团队记录按行动 ID 合并，不静默覆盖。
+- Bugu 侧审核任务和行动记录已支持分页和状态 / 动作筛选；当前客户端只按内容知识地图、审核任务和生产交接行动记录刷新团队事实。
 - LimeCore 只做 OEM 云服务端，提供租户、账号、权益、模型策略、Gateway、计费、发布中心和 Agent App enablement。
 - Content Studio 保留本地 `.content-studio/` 缓存、离线草稿和运行临时产物，保证桌面端体验和断网续写。
 - 已审核、可复用的知识通过 Agent Knowledge v0.7.2 包发布，作为团队运行时消费标准。
@@ -39,7 +39,7 @@ v1 采用 **Bugu server-authoritative + desktop cache + offline draft + reviewed
 | 层级 | 作用 | 可变性 |
 | --- | --- | --- |
 | 个人离线草稿 | 每个人本地构建、修订、试验和暂存。 | 可频繁变更，未同步时只对本人可见。 |
-| 团队事实源 | Bugu 保存团队知识地图快照、生成流程摘要、完整品牌作战系统快照、审核记录、队列旁路、行动旁路、素材覆盖和知识包 release。 | 通过服务端 revision、业务角色、冲突队列和 append-only 旁路合并。 |
+| 团队事实源 | Bugu 保存团队知识地图快照、生成流程摘要、审核任务、生产交接行动记录、素材覆盖和知识包 release。 | 通过服务端 revision、业务角色、冲突队列和 append-only 行动记录合并。 |
 | 已发布知识包 | 给 Prompt 工作台、SOP、Agent 客户端消费的稳定数据。 | 版本化发布，默认只读。 |
 
 ## 2. 共享模式
@@ -195,7 +195,7 @@ export type TeamRole =
 | `operator` | 组合资源包、执行标准动作、查看行动记录。 |
 | `viewer` | 只读查看已发布知识包、矩阵和行动记录。 |
 
-桌面端执行品牌战情室动作时会传当前用户团队角色；无权限角色和缺平台发布边界的生产动作会被拦截，Bugu 行动记录保留角色字段用于团队审计，并在服务端拒绝只读角色追加行动记录。
+桌面端执行生产交接动作时会传当前用户团队角色；无权限角色和缺平台发布边界的生产动作会被拦截，Bugu 行动记录保留角色字段用于团队审计，并在服务端拒绝只读角色追加行动记录。
 
 ### 3.3 `DraftChange`
 
@@ -322,8 +322,8 @@ v1 的团队 UI 分为桌面端业务工作台和 Bugu 控制台服务端视角�
 - Bugu 控制台可查看旧版本提交影响的内容项、合并处理清单、处理建议，并记录处理方向。
 - 面板可查看团队知识包待确认 / 已确认 / 已驳回状态；待确认版本需要负责人批准后才会成为默认版本，也可以被驳回后重新发布；服务端已支持多步骤确认、步骤角色校验和工作区默认确认模板，控制台显示确认进度并可切换模板。
 - Content Studio 内容知识地图页的团队知识包区域和右侧交付区都提供“拉取团队更新”；点击后执行同一工作区刷新，新的已发布版本会进入团队知识包详情、最近版本列表和本机团队版本缓存。目标 E2E 会先注入远端已发布版本，再点击该按钮验证页面显示远端版本、版本清单包含该版本，并且 preload 读取到公开包地址和文件清单。
-- Content Studio 普通列表入口会自动把 Bugu current 事实源读回本机缓存：内容知识地图列表拉取 `content-knowledge-maps`，生成流程列表拉取 `content-build-runs`，品牌战情室列表拉取 `content-command-centers`。这三条是团队共享主链，不再只依赖本机 JSON、知识包 release、执行队列或行动记录旁路。
-- Content Studio 品牌战情室提供“同步团队记录”辅助动作；普通用户可以看到团队同步状态、团队行动记录、资源包交接结果和被拦截原因，不需要理解服务端 action record 结构。该动作只补行动增量，完整品牌作战系统仍以 `content-command-centers` 为准。
+- Content Studio 普通列表入口会自动把 Bugu current 事实源读回本机缓存：内容知识地图列表拉取 `content-knowledge-maps`，生成流程列表拉取 `content-build-runs`，团队知识包区域拉取 release 列表；生产交接行动记录通过 `content-action-records` 保留审计和交付物线索，不再读回旧作战快照。
+- Content Studio 当前客户端不再提供旧品牌战情室同步入口；普通用户在内容知识地图、审核台、Prompt 工作台、SOP 和内容制造批次里看到团队同步状态、行动记录、交付结果和被拦截原因，不需要理解服务端 action record 结构。
 - 空态恢复路径指向客户端：先在 Content Studio 完成内容知识地图、审核和团队同步。
 - 普通用户可见文案不出现 Ontology / Concept / Relation 等工程术语。
 
@@ -338,8 +338,8 @@ v1 的团队 UI 分为桌面端业务工作台和 Bugu 控制台服务端视角�
 
 生产证据待补：
 
-- Content Studio 已提供 `content:v1:verify-online` 在线验收总入口，可汇总两账号共享和团队知识包下载验收，并支持 `--output=...` 归档 JSON 报告；两账号必须分页完整看到非空且同一批知识地图、构建运行、品牌作战系统，以及非空且同一批审核任务、执行队列和行动记录。
-- Content Studio 已提供 `content:v1:verify-report` 归档门禁，生产报告必须证明真实公网 API、真实团队账号、http/https 公网公开包地址、size、sha256、`content-knowledge-maps` 同清单、`content-build-runs` 同清单、`content-command-centers` 同清单、审核任务同清单且大于 0、执行队列同清单且大于 0、行动记录同清单且大于 0 和完整拉取标记；本地 mock、localhost 或内网地址报告不能作为完成证据。
+- Content Studio 已提供 `content:v1:verify-online` 在线验收总入口，可汇总两账号共享和团队知识包下载验收，并支持 `--output=...` 归档 JSON 报告；两账号必须分页完整看到非空且同一批知识地图、构建运行、审核任务、生产交接行动记录和团队知识包版本。
+- Content Studio 已提供 `content:v1:verify-report` 归档门禁，生产报告必须证明真实公网 API、真实团队账号、http/https 公网公开包地址、size、sha256、`content-knowledge-maps` 同清单、`content-build-runs` 同清单、审核任务同清单且大于 0、行动记录同清单且大于 0、团队知识包版本同清单且大于 0 和完整拉取标记；本地 mock、localhost 或内网地址报告不能作为完成证据。
 - 后续需要用真实账号和两台设备跑通提交、拉取、审核、发布和默认知识包消费，并归档报告。
 
 ## 7. 与 Agent Knowledge v0.7.2 的关系
@@ -388,7 +388,7 @@ Agent Knowledge 包只承载审核后的稳定数据：
 | --- | --- | --- |
 | T1 | 本地离线草稿和手动变更包。 | 验证 diff、冲突模型和敏感数据检查。 |
 | T2 | Bugu 团队内容工作区 API。 | 服务端保存工作区、revision、审核、行动记录和素材覆盖。 |
-| T3 | 桌面端同步。 | 支持提交、审核、执行队列、行动记录、素材覆盖和知识包版本同步；已补 `content-knowledge-maps`、`content-build-runs`、`content-command-centers` 三类 current 主事实源读回、本机待同步合并保护、团队行动记录只读刷新和生产交接回填；离线重试作为后续韧性优化，不影响 v1 本地主链。 |
+| T3 | 桌面端同步。 | 支持提交、审核、行动记录、素材覆盖和知识包版本同步；已补 `content-knowledge-maps`、`content-build-runs` current 主事实源读回、本机待同步合并保护、团队行动记录只读验收和生产交接记录同步；离线重试作为后续韧性优化，不影响 v1 本地主链。 |
 | T4 | 控制台团队视图。 | 已完成工作区面板、同步冲突查看、人工处理结论记录、知识包可分发状态、默认版本回滚、待确认版本批准、多步骤确认进度展示和工作区默认确认模板切换；更细权限配置属于后续管理增强，不作为 v1 本地完成门槛。 |
 | T5 | Release 管理。 | 已能将审核 revision 发布为 Agent Knowledge v0.7.2 包并登记对象 key / 下载地址；控制台可回滚默认版本；待确认版本需负责人批准后成为默认版本；服务端支持多步骤确认和默认确认模板；桌面端可在内容知识地图页点击“拉取团队更新”刷新团队版本并写入本机缓存；Prompt 工作台和 SOP 执行表单可选择团队版本，Prompt 草稿、Prompt 协作会话和 SOP 运行记录可追溯团队版本；只读在线验收总入口已能校验公开包地址、大小、sha256、三类 current 主事实源和两账号可见性，并能输出 JSON 报告；真实生产环境执行报告属于生产证据待补。 |
 | T6 | LimeCore OEM 云底座对接。 | 校验租户、权益、模型策略、发布中心和 Agent App enablement。 |
@@ -404,6 +404,6 @@ Agent Knowledge 包只承载审核后的稳定数据：
 - 能把审核后的 revision 发布为 Agent Knowledge v0.7.2 release。
 - Prompt 工作台和 SOP 能选择团队 release 作为知识源，并在草稿 / 运行记录里显示团队知识包版本。
 - 能用只读验收脚本验证团队知识包公开下载地址、大小和 sha256；只有元数据登记时不能显示为可分发成功。
-- 能用只读验收脚本验证两账号看到非空且一致的审核任务 ID 清单、执行队列 ID 清单和行动记录 ID 清单。
+- 能用只读验收脚本验证两账号看到非空且一致的审核任务 ID 清单和行动记录 ID 清单。
 - 离线导出包不包含 API Key、凭证和本机绝对路径。
 - 输入源共享范围会进入内容知识地图；“仅本机”资料不会同步到 Bugu，也不能发布为团队知识包；内容知识地图页必须把该状态展示为资料共享检查和恢复路径。

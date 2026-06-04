@@ -266,6 +266,7 @@ export interface ModelConfigView {
   hasTextApiKey: boolean;
   textApiKeyStatus: ModelSecretStatus;
   textModel: string;
+  textModels: string[];
   imageProvider: 'openai-responses' | 'disabled';
   imageProtocol: ImageGenerationProtocol;
   imageApiEndpoint: string;
@@ -273,11 +274,12 @@ export interface ModelConfigView {
   hasImageApiKey: boolean;
   imageApiKeyStatus: ModelSecretStatus;
   imageModels: string[];
-  videoProvider: 'generic-http' | 'disabled';
+  videoProvider: 'video-understanding-openai-compatible' | 'generic-http' | 'disabled';
   videoApiEndpoint: string;
   hasVideoApiKey: boolean;
   videoApiKeyStatus: ModelSecretStatus;
   videoModel: string;
+  videoModels: string[];
   updatedAt?: string;
 }
 
@@ -297,6 +299,7 @@ export interface SaveModelConfigInput {
   textApiKey?: string;
   clearTextApiKey?: boolean;
   textModel?: string;
+  textModels?: string[];
   textProtocol?: ModelConfigView['textProtocol'];
   imageProvider?: ModelConfigView['imageProvider'];
   imageProtocol?: ModelConfigView['imageProtocol'];
@@ -310,6 +313,7 @@ export interface SaveModelConfigInput {
   videoApiKey?: string;
   clearVideoApiKey?: boolean;
   videoModel?: string;
+  videoModels?: string[];
 }
 
 export interface SkillMetadata {
@@ -672,6 +676,131 @@ export interface ContentKnowledgeMapCoverageSummary {
 }
 
 export type InputSourceSensitivity = 'public' | 'internal' | 'confidential' | 'restricted';
+export type IntakeLevel = 'L0' | 'L1' | 'L2';
+export type IntakeResponsibility = 'self-serve' | 'implementation' | 'system-auto';
+export type IntakeConfidence = '高' | '中' | '低' | '无';
+export type IntakeHealth = 'ok' | 'warn' | 'bad' | 'info';
+
+export interface IntakeSourceProjection {
+  id: string;
+  name: string;
+  level: IntakeLevel;
+  responsibility: IntakeResponsibility;
+  adapterName: string;
+  adapterVersion: string;
+  adapterReuseCount: number;
+  coverage: number;
+  freshness: string;
+  confidence: IntakeConfidence;
+  health: IntakeHealth;
+  outputObjects: string[];
+  sourceIds: string[];
+  missingSourceCount: number;
+  fieldMappings: Array<{
+    sourceField: string;
+    ontologyField: string;
+    status: 'mapped' | 'ai-inferred' | 'ocr-pending' | 'missing';
+  }>;
+  impact: {
+    blocksTier: Array<'premium' | 'standard' | 'template' | 'ai-quick'>;
+    note: string;
+  };
+  upgrade?: {
+    next: IntakeLevel;
+    action: string;
+    blocker: string;
+  };
+}
+
+export interface IntakeMaturitySummary {
+  averageCoverage: number;
+  selfServeSourceCount: number;
+  l2SourceCount: number;
+  bottleneckCount: number;
+  sourceCount: number;
+  projections: IntakeSourceProjection[];
+}
+
+export type ManufacturingTier = 'premium' | 'standard' | 'template' | 'ai-quick';
+export type ManufacturingCapabilityStatus = 'ready' | 'needs-input' | 'blocked' | 'done';
+
+export interface ManufacturingCapabilityProjection {
+  id: 'image-generation' | 'video-prompt' | 'green-screen' | 'mix-export' | 'retouch' | 'video-import';
+  title: string;
+  targetModule: string;
+  status: ManufacturingCapabilityStatus;
+  tier: ManufacturingTier;
+  priority: number;
+  reason: string;
+  requiredInputs: string[];
+  output: string;
+  blockedReason?: string;
+}
+
+export interface ManufacturingPlanProjection {
+  recommendedTier: ManufacturingTier;
+  tierLabel: string;
+  tierReason: string;
+  blockedTiers: ManufacturingTier[];
+  capabilities: ManufacturingCapabilityProjection[];
+  primaryCapabilityId?: ManufacturingCapabilityProjection['id'];
+  materialCoveragePercent: number;
+  evidenceCoveragePercent: number;
+  readyPromptCount: number;
+  approvedAssetCount: number;
+  manufacturingArtifactCount: number;
+}
+
+export type ProductPlanWave = 'W1' | 'W2' | 'W3';
+export type ProductPlanDecision = 'deep-modeling' | 'standard-production' | 'template-production' | 'ai-quick';
+export type ProductPlanBudgetLevel = 'high' | 'medium-high' | 'medium' | 'low';
+
+export interface ProductPlanCandidateProjection {
+  id: string;
+  title: string;
+  sourceIds: string[];
+  skuHints: string[];
+  inventory?: number;
+  price?: number;
+}
+
+export interface ProductPlanItemProjection {
+  id: string;
+  skuId: string;
+  title: string;
+  clusterTitle: string;
+  sourceIds: string[];
+  manufacturingTier: ManufacturingTier;
+  tierLabel: string;
+  wave: ProductPlanWave;
+  budgetLevel: ProductPlanBudgetLevel;
+  decision: ProductPlanDecision;
+  opportunityScore: number;
+  marginScore: number;
+  inventoryScore: number;
+  evidenceScore: number;
+  assetScore: number;
+  riskScore: number;
+  totalScore: number;
+  confidence: 'high' | 'medium' | 'low';
+  reasons: string[];
+  recoveryActions: string[];
+}
+
+export interface ProductPlanProjection {
+  mode: 'brand-full-coverage';
+  modeLabel: string;
+  summary: string;
+  candidateCount: number;
+  plannedCount: number;
+  allCovered: boolean;
+  topTierCount: number;
+  bottleneckCount: number;
+  inputCoveragePercent: number;
+  distribution: Record<ManufacturingTier, number>;
+  waves: Record<ProductPlanWave, number>;
+  items: ProductPlanItemProjection[];
+}
 
 export interface ContentKnowledgeMapSourceSensitivitySummary {
   highest: InputSourceSensitivity;
@@ -766,239 +895,111 @@ export interface BuildContentKnowledgeMapInput {
   promptDraftIds?: string[];
 }
 
-export type BrandCommandCenterStatus = 'draft' | 'active' | 'needs-review' | 'blocked' | 'archived';
-export type BrandSignalType =
-  | 'feedback-pain'
-  | 'competitor-action'
-  | 'trend'
-  | 'ad-performance'
-  | 'material-performance'
-  | 'brand-risk'
-  | 'manual';
-export type BrandObjectiveType =
-  | 'acquisition'
-  | 'conversion'
-  | 'objection-handling'
-  | 'trust-building'
-  | 'price-defense'
-  | 'risk-control'
-  | 'evidence-gap'
-  | 'material-gap'
-  | 'retention';
-export type BrandCommandQueueStatus =
+export type ContentBatchStageId =
+  | 'selection'
+  | 'intent'
+  | 'modeling'
+  | 'selling'
+  | 'matrix'
+  | 'manufacturing'
+  | 'review'
+  | 'optimization'
+  | 'feedback';
+
+export type ContentBatchStatus = 'draft' | 'active' | 'blocked' | 'completed' | 'archived';
+export type ContentBatchRunStatus =
+  | 'draft'
   | 'ready'
-  | 'needs-review'
-  | 'needs-resource'
+  | 'running'
   | 'blocked'
-  | 'handed-off'
-  | 'written-back';
-export type BrandCommandActionType =
-  | 'generate-prompt-draft'
-  | 'create-scene-card'
-  | 'request-review'
-  | 'request-evidence'
-  | 'launch-sop-run'
-  | 'create-material-gap-list'
-  | 'write-back-material-coverage'
-  | 'confirm-objectives'
-  | 'confirm-resource-bundles'
-  | 'sync-execution-queue'
-  | 'review-action-records'
-  | 'export-action-records'
-  | 'content-production-blocked';
-export type BrandCommandActionOutcome = 'recorded' | 'blocked' | 'handoff' | 'needs-review' | 'needs-resource' | 'written-back';
-export type BrandCommandConfirmStage = 'objectives' | 'bundles' | 'queue';
+  | 'needs-human'
+  | 'approved'
+  | 'rejected';
+export type ContentBatchGateStatus = 'passed' | 'needs-input' | 'needs-review' | 'blocked';
+export type ContentBatchRecoveryStatus = 'open' | 'resolved' | 'blocked';
 
-export interface BrandCommandSignal {
+export interface ContentBatchArtifactRef {
+  kind: string;
   id: string;
-  type: BrandSignalType;
-  title: string;
   summary: string;
-  sourceLabel: string;
-  businessValue: number;
-  evidenceReadiness: number;
-  urgency: number;
-  riskLevel: number;
-  productionCost: number;
-  recommendedObjectiveType: BrandObjectiveType;
-  riskBoundary: string;
-  relatedMapRowIds: string[];
+  path?: string;
+  targetModule?: string;
 }
 
-export interface BrandCommandObjective {
+export interface ContentBatchGateResult {
   id: string;
-  type: BrandObjectiveType;
+  stageId: ContentBatchStageId;
+  status: ContentBatchGateStatus;
   title: string;
-  summary: string;
-  priority: 'P0' | 'P1' | 'P2';
-  channels: string[];
-  dimensions?: ContentKnowledgeMapCoverageDimensions;
-  successCriteria: string[];
-  signalIds: string[];
-}
-
-export interface BrandCommandResourceBundle {
-  id: string;
-  title: string;
-  objectiveId: string;
-  sourceKnowledgeMapId?: string;
-  coverageRowIds?: string[];
-  approvedCoverageRowIds?: string[];
-  sellingPointRefs: string[];
-  evidenceRefs: string[];
-  sceneRefs: string[];
-  sceneCardIds?: string[];
-  promptDraftIds: string[];
-  materialRefs: string[];
-  sopRefs: string[];
-  dimensions?: ContentKnowledgeMapCoverageDimensions;
-  constraints: string[];
-  gaps: string[];
-  handoffStatus?: 'none' | 'handed-off' | 'blocked';
-  handoffRefs?: string[];
-  lastHandoffSummary?: string;
-  lastBlockedReason?: string;
-  readyPercent: number;
-}
-
-export interface BrandCommandDecisionCheck {
-  key: string;
-  label: string;
-  status: 'passed' | 'needs-review' | 'needs-resource' | 'blocked';
   message: string;
   recoveryAction?: string;
+  sourceRef?: ContentBatchArtifactRef;
 }
 
-export interface BrandCommandCampaignCell {
+export interface ContentBatchRecoveryTask {
   id: string;
+  stageId: ContentBatchStageId;
+  status: ContentBatchRecoveryStatus;
   title: string;
-  objectiveId: string;
-  ownerRole: string;
-  agentRole: string;
-  channels: string[];
-  dimensions?: ContentKnowledgeMapCoverageDimensions;
-  timeWindow: string;
-  resourceBundleId: string;
-  decisionChecks: BrandCommandDecisionCheck[];
-  queueItemIds: string[];
-}
-
-export interface BrandCommandQueueItem {
-  id: string;
-  campaignCellId: string;
-  actionType: BrandCommandActionType;
-  title: string;
-  summary: string;
-  status: BrandCommandQueueStatus;
-  blockedReason?: string;
-  recoveryAction?: string;
-  outputTarget: 'prompt-draft' | 'scene-card' | 'review-task' | 'evidence-task' | 'sop-run' | 'material-gap' | 'material-coverage';
-  resourceBundleId: string;
-  dimensions?: ContentKnowledgeMapCoverageDimensions;
-  syncStatus?: ContentKnowledgeMapSyncStatus;
-  teamSync?: ContentKnowledgeMapTeamSyncSummary;
+  message: string;
+  recoveryAction: string;
+  targetModule: string;
+  sourceRef?: ContentBatchArtifactRef;
+  ownerLabel?: string;
   createdAt: string;
+}
+
+export interface ContentBatchStageRun {
+  id: string;
+  batchId: string;
+  stageId: ContentBatchStageId;
+  status: ContentBatchRunStatus;
+  inputRefs: ContentBatchArtifactRef[];
+  outputRefs: ContentBatchArtifactRef[];
+  gateResults: ContentBatchGateResult[];
+  recoveryTasks: ContentBatchRecoveryTask[];
+  agentRunRefs: ContentBatchArtifactRef[];
   updatedAt: string;
 }
 
-export interface BrandCommandActionRecord {
-  id: string;
-  queueItemId?: string;
-  campaignCellId?: string;
-  actionType: BrandCommandActionType;
-  title: string;
-  outcome: BrandCommandActionOutcome;
-  actorLabel: string;
-  actorRole?: ContentTeamRole;
-  inputSummary: string;
-  outputSummary: string;
-  blockedReason?: string;
-  writeBackSummary?: string;
-  promptDraftId?: string;
-  sceneCardId?: string;
-  workflowRunId?: string;
-  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
-  materialCoverageChangeId?: string;
-  reviewTaskId?: string;
-  artifactRefs?: string[];
-  syncStatus?: ContentKnowledgeMapSyncStatus;
-  teamSync?: ContentKnowledgeMapTeamSyncSummary;
-  createdAt: string;
+export interface ContentBatchIntakeSummary {
+  inputSourceCount: number;
+  convertedCount: number;
+  blockedCount: number;
+  coveragePercent: number;
+  maturity?: IntakeMaturitySummary;
+  productPlan?: ProductPlanProjection;
+  manufacturing?: ManufacturingPlanProjection;
+  missingInputs: ContentBatchRecoveryTask[];
 }
 
-export interface BrandCommandCenterRecord {
+export interface ContentBatchRecord {
   id: string;
   workspacePath: string;
   title: string;
-  status: BrandCommandCenterStatus;
-  syncStatus: ContentKnowledgeMapSyncStatus;
+  objective: string;
+  ownerIds: string[];
+  status: ContentBatchStatus;
+  currentStageId: ContentBatchStageId;
   sourceKnowledgeMapId?: string;
   sourceKnowledgeMapTitle?: string;
-  signals: BrandCommandSignal[];
-  objectives: BrandCommandObjective[];
-  resourceBundles: BrandCommandResourceBundle[];
-  campaignCells: BrandCommandCampaignCell[];
-  queueItems: BrandCommandQueueItem[];
-  actionRecords: BrandCommandActionRecord[];
-  constraints: string[];
-  gaps: string[];
-  teamSync: ContentKnowledgeMapTeamSyncSummary;
+  intakeSummary: ContentBatchIntakeSummary;
+  stageRuns: ContentBatchStageRun[];
   createdAt: string;
   updatedAt: string;
 }
 
-export interface BuildBrandCommandCenterInput {
+export interface BuildContentBatchInput {
   workspacePath: string;
   title?: string;
+  objective?: string;
   contentKnowledgeMapId?: string;
 }
 
-export interface RecordBrandCommandActionInput {
+export interface AdvanceContentBatchStageInput {
   workspacePath: string;
-  commandCenterId: string;
-  queueItemId: string;
-  actorLabel?: string;
-  actorRole?: ContentTeamRole;
-  note?: string;
-}
-
-export interface RecordBrandCommandReviewInput {
-  workspacePath: string;
-  commandCenterId: string;
-  summary: string;
-  actorLabel?: string;
-  actorRole?: ContentTeamRole;
-}
-
-export interface ConfirmBrandCommandStageInput {
-  workspacePath: string;
-  commandCenterId: string;
-  stage: BrandCommandConfirmStage;
-  actorLabel?: string;
-  actorRole?: ContentTeamRole;
-}
-
-export interface ExportBrandCommandActionRecordsInput {
-  workspacePath: string;
-  commandCenterId: string;
-  actorLabel?: string;
-  actorRole?: ContentTeamRole;
-}
-
-export interface BrandCommandActionRecordsExportResult {
-  status: 'exported' | 'blocked';
-  commandCenter?: BrandCommandCenterRecord;
-  packageDir?: string;
-  manifestPath?: string;
-  markdownPath?: string;
-  jsonPath?: string;
-  files: string[];
-  issues: string[];
-}
-
-export interface RefreshBrandCommandActionsInput {
-  workspacePath: string;
-  commandCenterId: string;
+  batchId: string;
+  stageId?: ContentBatchStageId;
 }
 
 export interface ExportContentKnowledgePackInput {
@@ -1320,13 +1321,12 @@ export interface SubmitContentReviewDecisionInput {
   reason?: string;
 }
 
-export type ContentProductionHandoffTarget = 'prompt-draft' | 'scene-card' | 'prompt-and-scene' | 'sop-run' | 'prompt-scene-sop';
+export type ContentProductionHandoffTarget = 'prompt-draft' | 'scene-card' | 'prompt-and-scene';
 
 export interface CreateContentProductionHandoffInput {
   workspacePath: string;
   reviewTaskId: string;
   target?: ContentProductionHandoffTarget;
-  workflowDefinitionId?: string;
   actorLabel?: string;
 }
 
@@ -1346,7 +1346,7 @@ export interface ContentProductionGroundingSummary {
 export interface ContentProductionHandoffActionRecord {
   id: string;
   batchId: string;
-  actionType: 'create-prompt-draft' | 'create-scene-card' | 'launch-sop-run' | 'blocked';
+  actionType: 'create-prompt-draft' | 'create-scene-card' | 'blocked';
   outcome: 'handoff' | 'blocked';
   title: string;
   inputSummary: string;
@@ -1402,7 +1402,6 @@ export interface ContentProductionHandoffResult {
   record?: ContentProductionHandoffRecord;
   promptDraft?: PromptDraft;
   sceneCard?: SceneCard;
-  workflowRun?: WorkflowRunRecord;
 }
 
 export interface WriteBackContentMaterialCoverageInput {
@@ -1453,6 +1452,7 @@ export type InputSourcePurpose =
   | 'reference'
   | 'product-brief'
   | 'user-feedback'
+  | 'task-input'
   | 'sop-input'
   | 'successful-asset';
 
@@ -1503,7 +1503,7 @@ export interface ImportInputSourceFromFileOptions {
   sensitivity?: InputSourceSensitivity;
 }
 
-export type PromptDraftPurpose = 'image' | 'video' | 'article' | 'green-screen' | 'sop' | 'skill';
+export type PromptDraftPurpose = 'image' | 'video' | 'article' | 'green-screen' | 'content-task' | 'sop' | 'skill';
 export type PromptDraftStatus = 'draft' | 'confirmed' | 'materialized' | 'archived';
 
 export interface PromptDraftVersion {
@@ -2128,7 +2128,24 @@ export interface ReferenceReverseResult {
   promptDraft: PromptDraft;
 }
 
-export type GenerationKind = 'article' | 'image' | 'video' | 'video-breakdown' | 'video-script' | 'prompt-pack' | 'scene-card' | 'reference-reverse';
+export type GenerationKind =
+  | 'article'
+  | 'image'
+  | 'video'
+  | 'video-breakdown'
+  | 'video-script'
+  | 'video-script-evaluation'
+  | 'video-script-shot-rewrite'
+  | 'prompt-pack'
+  | 'scene-card'
+  | 'reference-reverse';
+
+export interface GenerationLogReview {
+  rating?: 'useful' | 'needs-rework';
+  note?: string;
+  source: 'script-history' | 'asset-review' | 'manual';
+  updatedAt: string;
+}
 
 export interface GenerationLogEntry {
   id: string;
@@ -2148,8 +2165,16 @@ export interface GenerationLogEntry {
   output?: unknown;
   error?: string;
   durationMs?: number;
+  review?: GenerationLogReview;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UpdateGenerationLogReviewInput {
+  workspacePath: string;
+  logId: string;
+  rating?: GenerationLogReview['rating'] | null;
+  note?: string;
 }
 
 export interface GlobalGenerationParams {
@@ -2373,6 +2398,118 @@ export interface VideoBreakdownSegment {
   subtitle: string;
   rhythm: string;
   reusablePoint: string;
+  startSec?: number;
+  endSec?: number;
+  shotType?: string;
+  character?: string;
+  characterAction?: string;
+  scene?: string;
+  cameraMovement?: string;
+  objects?: string[];
+  intensity?: number;
+}
+
+export interface VideoBreakdownTranscriptSegment {
+  startSec: number;
+  endSec: number;
+  text: string;
+}
+
+export interface VideoBreakdownScene {
+  timestampSec: number;
+  startSec?: number;
+  endSec?: number;
+  shotType: string;
+  character?: string;
+  characterAction?: string;
+  scene?: string;
+  cameraMovement?: string;
+  description: string;
+  objects: string[];
+  voiceover?: string;
+}
+
+export interface VideoBreakdownScore {
+  score: number;
+  reasoning: string;
+}
+
+export interface VideoBreakdownWithConfidence<T = string> {
+  value: T;
+  confidence: number;
+  reasoning?: string;
+}
+
+export interface VideoBreakdownHook {
+  hookType?: VideoBreakdownWithConfidence;
+  elements: Array<{
+    name: string;
+    description: string;
+    timestampRange: string;
+  }>;
+  emotionCurve: Array<{
+    timestampSec: number;
+    emotion: string;
+    intensity: number;
+  }>;
+}
+
+export interface VideoBreakdownNarrative {
+  framework?: VideoBreakdownWithConfidence;
+  stages: Array<{
+    name: string;
+    description: string;
+    timeRange: string;
+    emotionShift?: string;
+  }>;
+}
+
+export interface VideoBreakdownPacing {
+  avgCutsPerSecond?: number;
+  avgShotDurationSec?: number;
+  wordsPerMinute?: number;
+  rhythm: Array<{
+    timeRange: string;
+    shotType: string;
+    intensity: number;
+    description: string;
+    voiceover?: string;
+    character?: string;
+    characterAction?: string;
+    scene?: string;
+    cameraMovement?: string;
+  }>;
+}
+
+export interface VideoBreakdownTimelineEvent {
+  timestampSec: number;
+  label: string;
+  emotionLabel: string;
+  intensity: number;
+}
+
+export interface VideoBreakdownResourceFramework {
+  characters: Array<{
+    name: string;
+    shotCount: number;
+    voiceTraits?: string;
+    threeViewPrompt?: string;
+  }>;
+  scenes: Array<{
+    name: string;
+    shotCount: number;
+    environment?: string;
+    lighting?: string;
+    sceneImagePrompt?: string;
+  }>;
+}
+
+export interface VideoBreakdownViralScores {
+  hookStrength?: VideoBreakdownScore;
+  narrativeTension?: VideoBreakdownScore;
+  pacingQuality?: VideoBreakdownScore;
+  emotionDesign?: VideoBreakdownScore;
+  ctaEffectiveness?: VideoBreakdownScore;
 }
 
 export interface VideoBreakdownResult {
@@ -2380,8 +2517,25 @@ export interface VideoBreakdownResult {
   summary: string;
   dimensions: string[];
   segments: VideoBreakdownSegment[];
+  contentTitle?: string;
+  platform?: string;
+  durationSec?: number;
+  transcript?: string;
+  transcriptSegments?: VideoBreakdownTranscriptSegment[];
+  scenes?: VideoBreakdownScene[];
+  hook?: VideoBreakdownHook;
+  narrative?: VideoBreakdownNarrative;
+  pacing?: VideoBreakdownPacing;
+  timeline?: VideoBreakdownTimelineEvent[];
+  viralScores?: VideoBreakdownViralScores;
+  resourceFramework?: VideoBreakdownResourceFramework;
+  overallConfidence?: number;
+  confidenceRate?: number;
+  richnessRate?: number;
+  referenceScore?: number;
   reusableFormula: string[];
   risks: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
+  warnings?: string[];
 }
 
 export interface VideoScriptGenerationRequest {
@@ -2403,6 +2557,20 @@ export interface VideoScriptGenerationRequest {
   params: Pick<GlobalGenerationParams, 'textModel'>;
 }
 
+export type VideoScriptScoreKey = 'hookScore' | 'structureScore' | 'sellingPointScore' | 'voiceoverScore' | 'pacingScore';
+
+export interface VideoScriptEvaluationScore {
+  score: number;
+  reasoning: string;
+}
+
+export interface VideoScriptEvaluationResult {
+  logId: string;
+  sourceScriptLogId?: string;
+  scores: Record<VideoScriptScoreKey, VideoScriptEvaluationScore> & { totalScore: number };
+  suggestions: string[];
+}
+
 export interface VideoStoryboardShot {
   shot: number;
   duration: string;
@@ -2410,6 +2578,16 @@ export interface VideoStoryboardShot {
   voiceover: string;
   subtitle: string;
   rhythm: string;
+  timeRange?: string;
+  shotType?: string;
+  character?: string;
+  characterAction?: string;
+  scene?: string;
+  cameraMovement?: string;
+  imagePrompt?: string;
+  videoPrompt?: string;
+  transitionHint?: string;
+  voiceStyle?: string;
 }
 
 export interface VideoScriptGenerationResult {
@@ -2418,6 +2596,48 @@ export interface VideoScriptGenerationResult {
   script: string;
   storyboard: VideoStoryboardShot[];
   videoPrompt: string;
+  resourceFramework?: VideoBreakdownResourceFramework;
+  evaluation?: VideoScriptEvaluationResult;
+  publishCheck: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
+}
+
+export interface VideoScriptEvaluationRequest {
+  workspacePath: string;
+  sourceScriptLogId?: string;
+  productName: string;
+  productDesc: string;
+  templateInfo?: {
+    hookType?: string;
+    framework?: string;
+    sourceTitle?: string;
+  };
+  script: VideoScriptGenerationResult;
+  citations: KnowledgeCitation[];
+  params: Pick<GlobalGenerationParams, 'textModel'>;
+}
+
+export interface VideoScriptShotRewriteRequest {
+  workspacePath: string;
+  sourceScriptLogId?: string;
+  rowIndex: number;
+  productName: string;
+  productDesc: string;
+  templateInfo?: {
+    hookType?: string;
+    framework?: string;
+    sourceTitle?: string;
+  };
+  script: VideoScriptGenerationResult;
+  citations: KnowledgeCitation[];
+  params: Pick<GlobalGenerationParams, 'textModel'>;
+}
+
+export interface VideoScriptShotRewriteResult {
+  logId: string;
+  sourceScriptLogId?: string;
+  rowIndex: number;
+  shot: VideoStoryboardShot;
+  reasoning?: string;
   publishCheck: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
 }
 
@@ -2516,13 +2736,9 @@ export interface ContentStudioApi {
   createContentKnowledgeRelease(input: CreateContentKnowledgeReleaseInput): Promise<ContentWorkspaceSyncResult>;
   listContentSyncConflicts(workspacePath: string): Promise<ContentSyncConflict[]>;
   resolveContentSyncConflict(input: ResolveContentSyncConflictInput): Promise<ContentSyncConflict | null>;
-  listBrandCommandCenters(workspacePath: string): Promise<BrandCommandCenterRecord[]>;
-  buildBrandCommandCenter(input: BuildBrandCommandCenterInput): Promise<BrandCommandCenterRecord>;
-  recordBrandCommandAction(input: RecordBrandCommandActionInput): Promise<BrandCommandCenterRecord>;
-  recordBrandCommandReview(input: RecordBrandCommandReviewInput): Promise<BrandCommandCenterRecord>;
-  confirmBrandCommandStage(input: ConfirmBrandCommandStageInput): Promise<BrandCommandCenterRecord>;
-  exportBrandCommandActionRecords(input: ExportBrandCommandActionRecordsInput): Promise<BrandCommandActionRecordsExportResult>;
-  refreshBrandCommandActions(input: RefreshBrandCommandActionsInput): Promise<BrandCommandCenterRecord>;
+  listContentBatches(workspacePath: string): Promise<ContentBatchRecord[]>;
+  buildContentBatch(input: BuildContentBatchInput): Promise<ContentBatchRecord>;
+  advanceContentBatchStage(input: AdvanceContentBatchStageInput): Promise<ContentBatchRecord>;
   exportContentKnowledgePack(input: ExportContentKnowledgePackInput): Promise<ContentKnowledgePackExportResult>;
   readContentKnowledgePackFile(input: ReadContentKnowledgePackFileInput): Promise<ContentKnowledgePackFilePreview>;
   listContentReviewTasks(workspacePath: string): Promise<ContentReviewTask[]>;
@@ -2560,13 +2776,6 @@ export interface ContentStudioApi {
   exportMixPackage(input: ExportMixPackageInput): Promise<MixPackageRecord>;
   recordMixPackageImportEvidence(input: RecordMixPackageImportEvidenceInput): Promise<MixPackageRecord>;
 
-  listWorkflowDefinitions(workspacePath: string): Promise<WorkflowDefinition[]>;
-  createWorkflowDraft(input: CreateWorkflowDraftInput): Promise<WorkflowDefinition>;
-  updateWorkflowDefinition(input: WorkflowDefinition): Promise<WorkflowDefinition>;
-  listWorkflowRuns(workspacePath: string): Promise<WorkflowRunRecord[]>;
-  startWorkflowRun(input: StartWorkflowRunInput): Promise<WorkflowRunRecord>;
-  recordWorkflowManualEvent(input: RecordWorkflowManualEventInput): Promise<WorkflowRunRecord>;
-
   selectAssetFiles(kind: AssetFileKind): Promise<string[]>;
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>;
   exportAsset(input: ExportAssetInput): Promise<string | null>;
@@ -2578,6 +2787,8 @@ export interface ContentStudioApi {
   reverseReferencePrompt(input: ReferenceReverseRequest): Promise<ReferenceReverseResult>;
   analyzeVideo(input: VideoBreakdownRequest): Promise<VideoBreakdownResult>;
   generateVideoScript(input: VideoScriptGenerationRequest): Promise<VideoScriptGenerationResult>;
+  evaluateVideoScript(input: VideoScriptEvaluationRequest): Promise<VideoScriptEvaluationResult>;
+  rewriteVideoScriptShot(input: VideoScriptShotRewriteRequest): Promise<VideoScriptShotRewriteResult>;
   generateImage(input: ImageGenerationRequest): Promise<MediaGenerationResult>;
   generateImageSkill(input: GenerateImageSkillInput): Promise<GenerateImageSkillResult>;
   importImageSkillFromFile(): Promise<GenerateImageSkillResult | null>;
@@ -2586,6 +2797,7 @@ export interface ContentStudioApi {
   listGenerationTasks(workspacePath: string): Promise<GenerationTaskRecord[]>;
   onGenerationTaskEvent(callback: (event: GenerationTaskEvent) => void): () => void;
   listGenerationLogs(workspacePath: string): Promise<GenerationLogEntry[]>;
+  updateGenerationLogReview(input: UpdateGenerationLogReviewInput): Promise<GenerationLogEntry | null>;
 
   runTask(input: RunTaskInput): Promise<RunTaskResult>;
   cancelTask(taskId: string): Promise<boolean>;
