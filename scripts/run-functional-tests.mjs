@@ -29,7 +29,7 @@ if (process.env.CONTENT_STUDIO_FUNCTIONAL_TEST_BUNDLE === '1') {
 }
 `,
   },
-  external: ['@anthropic-ai/claude-agent-sdk', 'fast-xml-parser', 'gray-matter', 'yauzl'],
+  external: ['fast-xml-parser', 'gray-matter', 'yauzl'],
   plugins: [{
     name: 'electron-test-shim',
     setup(build) {

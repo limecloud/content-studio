@@ -57,7 +57,7 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行生成服务 dry-run 诊断
 - 视频 Prompt：`VideoPromptModule` 只负责生成 / 复制 / 记录复制动作，不创建第三方任务。
 - DOCX / Markdown 输入源：`InputSourceStore` 导入文件后调用 `documentTextExtractor` 抽取可读文本，写入 `extractedText` 和可追溯 `markdownPath`；图片 / 视频等未理解素材保留 blocked 原因。
 - 默认知识引用：`useContentStudioApp` 生成提示词包时按“手动引用 -> 检索结果 -> 当前知识库重点章节 -> 已解析输入源”的顺序构造 `KnowledgeCitation`，避免导入 DOCX 后还必须先手动搜索才能进入提示词包。
-- PromptDraft 生成：`PromptDraftStore` 优先通过 `TextGenerationService.generateJson` 调用 Claude SDK / Anthropic / OpenAI / Gemini 显式协议 provider；未配置或失败时只生成 `blocked:text-provider` / `fallback:local-rule` 的可追溯本地草稿，不伪造成模型成功。
+- PromptDraft 生成：`PromptDraftStore` 优先通过 `TextGenerationService.generateJson` 调用 Anthropic Messages / OpenAI Chat / Gemini GenerateContent 显式协议 provider；未配置或失败时只生成 `blocked:text-provider` / `fallback:local-rule` 的可追溯本地草稿，不伪造成模型成功。
 - Agent 多轮会话：`AgentPromptSessionStore` 记录会话、用户意图、输入源快照、消息流和关联草稿；启动会话时先生成首版 PromptDraft，继续会话时会写入新的草稿版本并同步会话历史。
 - IP 场景延伸：`IpKnowledgeModule` 可从同一套 IP 六层知识库生成口播 / 长文 / 私域等 `ip-scenario-kb` 输入源和对应 `PromptDraft`，并通过运行追溯保留来源，避免不同场景各自发明人设。
 - 素材拆解：`ReferenceReverseService` 只在真实视觉理解 endpoint 可用时分析参考图 / 产品图，未配置时保持 blocked，不伪造“看过图”的结果；成功后会产出 `PromptDraft` 和 `generation-log:reference-reverse`。
@@ -1582,10 +1582,10 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行生成服务 dry-run 诊断
 已完成：
 
 - 普通用户工作台不再把 Agent 当页面装饰区。`AgentSessionPanel` 统一投影 `AgentPromptSession.messages` 和 `executionEvents`，模块侧不再硬编码固定助手气泡、固定执行脚本或 mock 对话；`projectAgentRuntimeReadModel` 会把 Tool / Permission / Human action / Artifact / Evidence / Snapshot 分层投影，`snapshot.updated` 只作为 runtime 恢复事实，不进入普通可见事件。
-- Prompt 对话执行层已从 Claude 专名收敛为协议中立 `PromptAgentService`，Claude 官方链路继续走 Claude Agent SDK，OpenAI Chat 兼容协议等非 Claude 文字模型首轮和续写会沿用当前模型，不再掉回 Claude SDK。
+- Prompt 对话执行层已收敛到 Lime App Server JSON-RPC：`AppServerPromptAgentService` 只负责把会话请求交给随包 App Server sidecar，并把 RuntimeCore / backend facts 投影回 `AgentPromptSession`，不再掉回旧 SDK runtime。
 - Human-in-the-loop 已形成可交互闭环：缺输入源时写入 `permission.requested -> action.required -> snapshot.updated`；用户点击补输入源后写入 `permission.resolved -> action.resolved -> snapshot.updated`；登记新输入源后回写 `context.resolved / evidence.changed` 并关闭待办；继续对话会基于新增 evidence 生成下一轮草稿或保持真实 blocked。
 - Runtime recovery 事实已补齐：首轮、续写、人工处理和补输入源都会追加 `snapshot.updated`，payload 包含 `sessionStatus`、`eventCount`、`messageCount`、`draftIds`、`pendingActionIds`、`artifactRefs` 和 `evidenceRefs`。续写快照基于“历史事件 + 本轮事件”计算，避免丢失旧证据和旧待办状态。
-- Provider trace 已进入模型事件：HTTP / Claude SDK 成功和失败都会返回脱敏 provider events；缺 Key / 失败路径保留 `model.failed` 和 `providerEvents`，并要求配置模型，不伪造成模型成功。
+- Provider trace 已进入模型事件：App Server runtime events 和显式 HTTP provider 成功 / 失败都会返回脱敏 provider events；缺 Key / 失败路径保留 `model.failed` 和 `providerEvents`，并要求配置模型，不伪造成模型成功。
 - 浏览器开发桥接不再手写一套假 runtime。`devContentStudioBridge` 使用同类 runtime fact、permission resolution 和 snapshot 规则；开发模式明确记录 `blocked:browser-dev-runtime`，不会生成 `model.completed` 伪成功，也不会把继续对话变成另一个新假会话。
 - 生产 UI 中“看起来像按钮但永远不能点”的静态假入口已收敛：图片 / 视频空历史状态不再显示禁用“复制”按钮；视频链接“不下载”改为状态文本；设置页服务条款 / 隐私政策 / 官网改为待配置状态文本；Skills 菜单移除未接通的 `Try in chat` 假入口。
 - 静态原型去掉 `mock-img / fake-input` 命名，改为 `visual-preview / readonly-field`；v2 UX 文案审计新增规则，阻断禁用复制按钮、禁用不下载按钮、后续提供外链按钮、未接通试聊入口和 mock / fake 原型命名回退。
@@ -1980,6 +1980,50 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行生成服务 dry-run 诊断
 当前判断：
 
 - 视觉 provider strict 从“字段形状存在”收口为“能支撑真实参考素材拆解和人工审核边界”，减少无风险提示的假拆解通过空间。
+
+### 6.93 2026-06-05 AI 生图 SOP 主链落地
+
+已完成：
+
+- 图片模块新增“素材生产任务”业务对象，使用 `ImageProductionTask` 和 `ShotPrompt` 承载产品图、参考图、场景 / 脚本摘要、产品一致性规则、负面约束、镜头 Prompt、测试日志、批量日志和审核记录。
+- `ImageProductionTaskStore` 持久化到工作区 `.content-studio/image-production-tasks.json`，支持创建任务、更新任务、更新镜头和追加生成日志；缺失任务或缺失镜头会报错，不再隐式创建幽灵镜头。
+- 图片生成请求新增 `productionTaskId`、`shotPromptId`、`generationStage`、`consistencyRules`、`negativeConstraints`，后台任务提交后在主进程侧立即绑定生成日志到镜头，任务完成后同步推进 `test-review / batch-review / blocked / needs-rework`。
+- 图片 provider prompt 会注入产品一致性规则和负面约束，避免任务级 SOP 约束只停留在前端。
+- 图片工作台支持“新建 / 保存生产任务 -> 添加镜头 -> 测试生成 -> 通过测试 -> 批量生成 -> 送审入库 / 回炉”的主路径；测试图通过只更新镜头状态，批量图通过才写入 `AssetReviewRecord`。
+- 素材审核记录新增 `productionTaskId` 和 `shotPromptId`，素材库卡片显示 SOP 生产、任务、镜头和运行记录追溯。
+- `docs/roadmap/yamei/` 是被忽略的参考资料目录；本条作为已跟踪路线图事实源，记录本轮参考亚美唯他 SOP 后真正落地的是通用 AI 生图生产主链，不是品牌专属功能。
+
+验证：
+
+- `npm run typecheck` 通过。
+- `npm run build` 通过。
+- `npm run test:functional` 通过，125/125；覆盖 SOP 后台日志绑定、测试 / 批量状态推进、blocked / failed 状态、Store 持久化、缺失镜头报错、provider prompt 注入一致性和负面约束。
+- `npm run smoke:electron` 通过。
+- `node scripts/run-playwright-e2e.mjs tests/e2e/electron-app.spec.mjs -g "AI 生图 SOP 生产线支持测试图确认、批量生成和审核入库"` 通过。
+
+当前判断：
+
+- AI 生图已经从“单次生成工具”推进到可执行的 SOP 素材生产工作台：产品 / 参考输入、镜头 Prompt、测试生成、人工确认、批量生成、审核入库、回炉和素材库追溯均有结构化对象与自动化证据。
+- 仍不把完整亚美唯他 7 步 SOP 宣称完成：PPTX 图片级 OCR、产品知识包人工确认、场景脚本自动拆镜头、图生视频 Prompt、混剪 manifest、成片批次和分发回写仍属于后续视频 / 混剪 / 复盘阶段。
+
+### 6.94 2026-06-06 Lime App Server 随包分发验证
+
+已完成：
+
+- Agent runtime 已按当前路线收敛到 `Frontend -> Electron Desktop Host IPC -> Lime App Server JSON-RPC -> RuntimeCore / backend`；Prompt 对话和 `agent:run` 不再回流旧本地 SDK runtime。
+- `npm run verify:local` 通过，覆盖 typecheck、build、v2 provider dry-run / 业务验收 / UX 文案审计、功能测试、Electron smoke 和 Playwright E2E 28/28。
+- `npm run smoke:app-server` 通过，默认仓库 resources 路径返回 `source=resources`、`protocol=appserver.v0`、`content.draft.generate`、runtime events、artifact 和 evidence。
+- `npm run app-server:backend:test` 通过，覆盖 packaged backend 缺模型失败、echo 成功，以及 OpenAI Chat / Anthropic Messages / Gemini GenerateContent 三种协议级请求与响应映射。
+- `npm run dist:mac` 通过，生成 macOS DMG / zip 分发包；`release/mac-arm64/布谷AI.app/Contents/Resources/app-server` 包含 `current/app-server`、`app-server.release.json` 和 `backend/content-backend.mjs`。
+- zip 分发包检查通过，确认 `Contents/Resources/app-server/current/app-server`、`app-server.release.json` 和 `backend/content-backend.mjs` 已进入压缩包。
+- `hdiutil verify release/布谷AI-0.18.0-arm64.dmg` 通过；只读挂载 DMG 后，用镜像内 `APP_SERVER_RESOURCES_DIR` 跑 `npm run smoke:app-server` 通过，证明最终安装镜像内 sidecar 可启动并产出 runtime artifact / evidence。
+- `npm run app-server:backend:live` 在无 `CONTENT_STUDIO_TEXT_API_KEY` / provider-specific key 环境下按预期失败，并明确提示需要真实 provider config、echo mode 不允许；该 gate 不能被无 Key 环境伪造成发布通过。
+- `npm run test:functional -- --test-name-pattern "当前主线禁止回流"` 通过；当前主线扫描未发现旧第三方 Agent runtime 残留。
+
+当前判断：
+
+- Lime App Server 已被打包进内容工厂，并通过源码 resources、打包 `.app`、zip 和 DMG 镜像四个层面的 smoke / 资源检查。
+- macOS 分发技术链路已本地验证；发布级仍不能宣称真实模型完成，因为 `app-server:backend:live` 需要受控密钥和真实网络模型输出。
 
 ## 7. 剩余工作
 

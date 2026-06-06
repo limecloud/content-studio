@@ -84,13 +84,13 @@ const modelConfig: ModelConfigView = {
   apiEndpoint: "",
   hasApiKey: true,
   safeStorageAvailable: false,
-  textProvider: "anthropic-claude-sdk",
-  textProtocol: "claude-sdk",
+  textProvider: "http-text-generation",
+  textProtocol: "openai-chat",
   textApiEndpoint: "",
   hasTextApiKey: true,
   textApiKeyStatus: "available",
-  textModel: "claude-sonnet-4-5",
-  textModels: ["claude-sonnet-4-5"],
+  textModel: "gpt-4o-mini",
+  textModels: ["gpt-4o-mini"],
   imageProvider: "openai-responses",
   imageProtocol: "openai-responses",
   imageApiEndpoint: "",
@@ -108,7 +108,7 @@ const modelConfig: ModelConfigView = {
 };
 
 const modelCatalog: ModelCatalogView = {
-  textModels: ["claude-sonnet-4-5"],
+  textModels: ["gpt-4o-mini"],
   imageModels: ["gpt-image-2"],
   videoModels: ["gemini-2.5-flash", "gpt-4o", "veo-3.1"],
   source: "offline-seed",

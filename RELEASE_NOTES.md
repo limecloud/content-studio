@@ -1,5 +1,36 @@
 # Release Notes
 
+## v0.19.0 - 2026-06-06
+
+### Lime App Server Agent Runtime
+
+- Agent runtime 主线全面收敛到 `Frontend -> Electron Desktop Host IPC -> Lime App Server JSON-RPC -> RuntimeCore / backend`，Renderer 只消费 runtime facts 投影。
+- 新增 `AppServerSidecarService` 和 `AppServerPromptAgentService`，`agent:run`、Prompt 工作台会话、artifact 和 evidence 均通过随包 App Server sidecar 进入 RuntimeCore / packaged external backend。
+- 删除旧本地 Agent SDK runtime 服务文件和依赖，禁止恢复第二套 runtime adapter 或旧 runtime fallback。
+- `resources/app-server` 新增 packaged external backend、smoke、backend test、release manifest 准备脚本和 live gate；未配置真实 provider key 时明确失败，不伪造成功。
+
+### 打包与 GitHub Actions
+
+- `electron-builder.yml` 和 OEM builder 均把 `resources/app-server` 打包到 `process.resourcesPath/app-server`。
+- Release GitHub Actions 会准备 App Server sidecar 资源；若未配置独立 release manifest，会从 `limecloud/lime` 指定 tag 构建 `app-server` sidecar 并生成随包 manifest。
+- CI / release verify 新增 App Server resource/backend tests；OEM 产物检查强制验证 sidecar binary、release manifest 和 packaged backend。
+- macOS DMG / zip 分发包已验证包含 App Server sidecar，且只读挂载 DMG 后可通过 `smoke:app-server` 产出 runtime events、artifact 和 evidence。
+
+### 内容生产主链
+
+- AI 生图 SOP 生产线新增素材生产任务、镜头 Prompt、测试图确认、批量生成、审核入库和素材库追溯。
+- 图片生成请求注入产品一致性规则和负面约束，后台生成日志与镜头状态同步推进。
+- 素材审核记录补充生产任务和镜头引用，素材库能回到 SOP 生产任务、镜头和运行记录。
+
+### 验证
+
+- `npm run verify:local`
+- `npm run app-server:backend:test`
+- `npm run smoke:app-server`
+- `npm run dist:mac`
+- `APP_SERVER_RESOURCES_DIR="release/mac-arm64/布谷AI.app/Contents/Resources/app-server" npm run smoke:app-server`
+- `hdiutil verify release/布谷AI-0.19.0-arm64.dmg`
+
 ## v0.18.0 - 2026-06-04
 
 ### 爆款视频拆解与内容生产迁移

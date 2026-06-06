@@ -187,7 +187,7 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 任务：
 
 1. 保存 `agent-prompt-sessions.json` 和 `prompt-drafts.json`。
-2. 支持选择品牌场景库、IP 知识库、普通输入源，填写用户意图，发起 Claude SDK Agent 会话。
+2. 支持选择品牌场景库、IP 知识库、普通输入源，填写用户意图，发起 Lime App Server Agent 会话。
 3. 支持多轮调整 Prompt 草稿。
 4. 支持从 `PromptGroup` 进入图片、视频 Prompt、文案或绿幕图任务。
 5. 支持确认 Prompt，并标记用途：文案、图片、视频 Prompt、绿幕图、SOP、Skill。

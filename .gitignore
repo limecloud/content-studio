@@ -38,3 +38,8 @@ docs/roadmap/v3/**/.DS_Store
 !docs/roadmap/ontology/
 !docs/roadmap/ontology/**
 docs/roadmap/ontology/**/.DS_Store
+!docs/roadmap/limeagent/
+!docs/roadmap/limeagent/**
+docs/roadmap/limeagent/**/.DS_Store
+resources/app-server/current/
+resources/app-server/app-server.release.json

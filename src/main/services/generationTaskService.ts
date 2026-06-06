@@ -9,7 +9,9 @@ import type {
   GeneratePromptPackInput,
   GenerateSceneCardsInput,
   MediaGenerationResult,
+  ImageGenerationRequest,
   ReferenceReverseRequest,
+  ShotPromptStatus,
   SubmitGenerationTaskInput,
   VideoBreakdownRequest,
   VideoScriptGenerationRequest,
@@ -17,6 +19,7 @@ import type {
 import { MediaProvider } from '../providers/mediaProvider';
 import { ArticleGenerationService } from './articleGenerationService';
 import { GenerationLogStore, type CreateLogInput } from './generationLogStore';
+import { ImageProductionTaskStore } from './imageProductionTaskStore';
 import { PromptPackService } from './promptPackService';
 import { ReferenceReverseService } from './referenceReverseService';
 import { SceneLibraryStore } from './sceneLibraryStore';
@@ -126,6 +129,16 @@ function taskMessage(status: GenerationStatus, log: GenerationLogEntry): string 
   return logToMediaMessage(log);
 }
 
+function imageProductionShotStatus(input: SubmitGenerationTaskInput, log: GenerationLogEntry): ShotPromptStatus | undefined {
+  if (input.kind !== 'image') return undefined;
+  const payload = input.input as ImageGenerationRequest;
+  if (!payload.generationStage) return undefined;
+  if (log.status === 'succeeded') return payload.generationStage === 'test' ? 'test-review' : 'batch-review';
+  if (log.status === 'blocked') return 'blocked';
+  if (log.status === 'failed') return 'needs-rework';
+  return undefined;
+}
+
 export class GenerationTaskService {
   private readonly tasks = new Map<string, GenerationTaskRecord>();
 
@@ -137,6 +150,7 @@ export class GenerationTaskService {
     private readonly sceneCards: SceneLibraryStore,
     private readonly videoWorkflow: VideoWorkflowService,
     private readonly referenceReverse: ReferenceReverseService,
+    private readonly imageProductionTasks?: ImageProductionTaskStore,
     private readonly publish?: TaskEventPublisher,
   ) {}
 
@@ -149,6 +163,7 @@ export class GenerationTaskService {
   async submit(input: SubmitGenerationTaskInput): Promise<GenerationTaskRecord> {
     const now = new Date().toISOString();
     const log = await this.logs.append(initialLogInput(input));
+    await this.bindImageProductionLog(input, log.id);
     const task: GenerationTaskRecord = {
       id: randomUUID(),
       workspacePath: inputWorkspace(input),
@@ -164,6 +179,19 @@ export class GenerationTaskService {
     this.emit(task, log);
     void this.run(input, task.id, log.id);
     return task;
+  }
+
+  private async bindImageProductionLog(input: SubmitGenerationTaskInput, logId: string): Promise<void> {
+    if (input.kind !== 'image' || !this.imageProductionTasks) return;
+    const payload = input.input as ImageGenerationRequest;
+    if (!payload.productionTaskId || !payload.shotPromptId || !payload.generationStage) return;
+    await this.imageProductionTasks.appendGenerationLog({
+      workspacePath: payload.workspacePath,
+      taskId: payload.productionTaskId,
+      shotPromptId: payload.shotPromptId,
+      generationStage: payload.generationStage,
+      logId,
+    });
   }
 
   private async run(input: SubmitGenerationTaskInput, taskId: string, logId: string): Promise<void> {
@@ -192,6 +220,11 @@ export class GenerationTaskService {
       const logs = await this.logs.list(inputWorkspace(input));
       const log = logs.find((item) => item.id === logId);
       if (!log) return;
+      try {
+        await this.syncImageProductionStatus(input, log);
+      } catch {
+        // SOP 任务同步失败不能阻断后台生成任务自身的完成事件。
+      }
       await this.updateTask(taskId, {
         status: log.status,
         message: taskMessage(log.status, log),
@@ -231,6 +264,19 @@ export class GenerationTaskService {
       return;
     }
     await this.referenceReverse.generate(input.input as ReferenceReverseRequest, { logId });
+  }
+
+  private async syncImageProductionStatus(input: SubmitGenerationTaskInput, log: GenerationLogEntry): Promise<void> {
+    if (input.kind !== 'image' || !this.imageProductionTasks) return;
+    const payload = input.input as ImageGenerationRequest;
+    const status = imageProductionShotStatus(input, log);
+    if (!payload.productionTaskId || !payload.shotPromptId || !status) return;
+    await this.imageProductionTasks.updateShot({
+      workspacePath: payload.workspacePath,
+      taskId: payload.productionTaskId,
+      shotPromptId: payload.shotPromptId,
+      patch: { status },
+    });
   }
 
   async resultForTask(task: GenerationTaskRecord): Promise<MediaGenerationResult | null> {

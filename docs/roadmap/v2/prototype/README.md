@@ -52,7 +52,7 @@ PRD 映射：
 本帧已经显式覆盖 v2 PRD 内容：
 
 - `US-01 / UC-03`：无知识库素材拆解，不强制先选知识库。
-- `US-02 / UC-02`：Claude SDK Agent 读 DOCX / Markdown，并基于用户意图多轮调整。
+- `US-02 / UC-02`：Lime App Server Agent 读 DOCX / Markdown，并基于用户意图多轮调整。
 - `US-13 / UC-15`：品牌 / 产品知识库先生成场景库，再生成提示词组。
 - `US-14 / UC-16`：从场景卡生成 UGC 手机实拍图片 / 图生视频 Prompt。
 - `US-15 / UC-17`：IP 知识库六层体系，不混入品牌知识库。

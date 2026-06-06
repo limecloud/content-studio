@@ -31,6 +31,10 @@ import type {
   GenerateImageSkillInput,
   GenerateSceneCardsInput,
   ImageGenerationRequest,
+  AppendShotGenerationLogInput,
+  CreateImageProductionTaskInput,
+  UpdateImageProductionTaskInput,
+  UpdateShotPromptInput,
   KnowledgeSearchInput,
   PromptPack,
   ReferenceReverseRequest,
@@ -81,13 +85,13 @@ import { MediaProvider } from './providers/mediaProvider';
 import { AgentKnowledgeContentExportService } from './services/agentKnowledgeContentExportService';
 import { ArticleGenerationService } from './services/articleGenerationService';
 import { AgentPromptSessionStore } from './services/agentPromptSessionStore';
+import { AppServerPromptAgentService } from './services/appServerPromptAgentService';
+import { AppServerSidecarService } from './services/appServerSidecarService';
 import { BrandKnowledgeBaseStore } from './services/brandKnowledgeBaseStore';
 import { AssetReviewStore } from './services/assetReviewStore';
 import { AutoUpdateService } from './services/autoUpdateService';
 import { BuguAuthService } from './services/buguAuthService';
 import { BuguContentWorkspaceSyncAdapter } from './services/buguContentWorkspaceSyncAdapter';
-import { ClaudeAgentService } from './services/claudeAgentService';
-import { PromptAgentService } from './services/claudePromptAgentService';
 import { ContentKnowledgeMapApplicationService } from './services/contentKnowledgeMapApplicationService';
 import { ContentKnowledgeMapBuildRunStore } from './services/contentKnowledgeMapBuildRunStore';
 import { ContentKnowledgeMapStore } from './services/contentKnowledgeMapStore';
@@ -105,6 +109,7 @@ import { ContentBatchStore } from './services/contentBatchStore';
 import { FileAssociationService } from './services/fileAssociationService';
 import { GenerationLogStore } from './services/generationLogStore';
 import { GenerationTaskService } from './services/generationTaskService';
+import { ImageProductionTaskStore } from './services/imageProductionTaskStore';
 import { ImageSkillGenerationService } from './services/imageSkillGenerationService';
 import { InputSourceStore } from './services/inputSourceStore';
 import { KnowledgeBaseStore } from './services/knowledgeBaseStore';
@@ -373,11 +378,12 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const knowledgeBases = new KnowledgeBaseStore();
   const logs = new GenerationLogStore();
   const textGeneration = new TextGenerationService(modelConfig);
-  const promptAgent = new PromptAgentService(settings, modelConfig, textGeneration);
+  const appServer = new AppServerSidecarService();
+  const promptAgent = new AppServerPromptAgentService(appServer, modelConfig);
   const imageSkills = new ImageSkillGenerationService(textGeneration);
   const inputSources = new InputSourceStore();
   const promptDrafts = new PromptDraftStore(inputSources, textGeneration, skills);
-  const agentPromptSessions = new AgentPromptSessionStore(inputSources, promptDrafts, textGeneration, promptAgent, skills);
+  const agentPromptSessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent, skills);
   const brandKnowledgeBases = new BrandKnowledgeBaseStore(textGeneration);
   const ipKnowledgeBases = new IpKnowledgeBaseStore(textGeneration);
   const overlayCards = new OverlayCardStore();
@@ -424,6 +430,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const articles = new ArticleGenerationService(logs, textGeneration);
   const videoWorkflow = new VideoWorkflowService(logs, textGeneration, modelConfig);
   const media = new MediaProvider(modelConfig, logs);
+  const imageProductionTasks = new ImageProductionTaskStore();
   const contentMaterialFeedback = new ContentMaterialFeedbackService(
     contentKnowledgeMapStore,
     assetReviews,
@@ -463,10 +470,9 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     sceneCards,
     videoWorkflow,
     referenceReverse,
+    imageProductionTasks,
     (event) => mainWindow.webContents.send('generationTasks:event', event),
   );
-  const agent = new ClaudeAgentService(settings, modelConfig, skills);
-
   const publish = (event: AgentEvent) => {
     mainWindow.webContents.send(`agent:event:${event.taskId}`, event);
   };
@@ -743,6 +749,11 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('video:script', (_event, input: VideoScriptGenerationRequest) => videoWorkflow.generateScript(input));
   ipcMain.handle('video:script:evaluate', (_event, input: VideoScriptEvaluationRequest) => videoWorkflow.evaluateScript(input));
   ipcMain.handle('video:script:rewriteShot', (_event, input: VideoScriptShotRewriteRequest) => videoWorkflow.rewriteScriptShot(input));
+  ipcMain.handle('imageProduction:listTasks', (_event, workspacePath: string) => imageProductionTasks.list(workspacePath));
+  ipcMain.handle('imageProduction:createTask', (_event, input: CreateImageProductionTaskInput) => imageProductionTasks.create(input));
+  ipcMain.handle('imageProduction:updateTask', (_event, input: UpdateImageProductionTaskInput) => imageProductionTasks.update(input));
+  ipcMain.handle('imageProduction:updateShotPrompt', (_event, input: UpdateShotPromptInput) => imageProductionTasks.updateShot(input));
+  ipcMain.handle('imageProduction:appendGenerationLog', (_event, input: AppendShotGenerationLogInput) => imageProductionTasks.appendGenerationLog(input));
   ipcMain.handle('image:generate', (_event, input: ImageGenerationRequest) => media.generateImage(input));
   ipcMain.handle('imageSkills:generate', (_event, input: GenerateImageSkillInput) => imageSkills.generate(input));
   ipcMain.handle('imageSkills:importFromFile', async () => {
@@ -776,6 +787,10 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     });
   });
 
-  ipcMain.handle('agent:run', async (_event, input: RunTaskInput) => ({ taskId: await agent.run(input, publish) }));
-  ipcMain.handle('agent:cancel', (_event, taskId: string) => agent.cancel(taskId));
+  ipcMain.handle('agent:run', async (_event, input: RunTaskInput) => ({
+    taskId: await appServer.runAgent(input, publish),
+  }));
+  ipcMain.handle('agent:cancel', (_event, taskId: string) => appServer.cancelAgent(taskId));
+  ipcMain.handle('appServer:health', () => appServer.healthCheck());
+  ipcMain.handle('appServer:smoke', () => appServer.runSmoke());
 }

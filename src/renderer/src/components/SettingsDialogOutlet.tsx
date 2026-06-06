@@ -28,8 +28,8 @@ export function SettingsDialogOutlet({ app }: SettingsDialogOutletProps) {
       setNotificationsEnabled={app.setNotificationsEnabled}
       reduceAnimation={app.reduceAnimation}
       setReduceAnimation={app.setReduceAnimation}
-      syncClaudeHistory={app.syncClaudeHistory}
-      setSyncClaudeHistory={app.setSyncClaudeHistory}
+      syncLocalAssetHistory={app.syncLocalAssetHistory}
+      setSyncLocalAssetHistory={app.setSyncLocalAssetHistory}
       shortcutActive={app.shortcutActive}
       setShortcutActive={app.setShortcutActive}
       commandWhitelist={app.commandWhitelist}

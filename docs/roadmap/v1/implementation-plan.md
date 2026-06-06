@@ -1,8 +1,10 @@
 # 布谷AI内容工厂 v1 实施计划
 
 更新时间：2026-05-19
-状态：Draft
-技术栈：Electron + React + Vite + Claude SDK + 文件系统 能力
+状态：Archived historical source
+技术栈：Electron + React + Vite + 文件系统能力；Agent runtime 当前已统一收敛到 Lime App Server sidecar
+
+> 归档说明：本文件记录 v1 阶段的历史实施计划，部分条目包含已废弃的本地 SDK runtime 表述。当前实现和后续演进不得回流该路径；事实源以 `docs/roadmap/v2/`、`docs/roadmap/limeagent/`、`src/main/services/appServerSidecarService.ts` 和 `src/main/services/appServerPromptAgentService.ts` 为准。
 
 ## 0. 当前基线
 
@@ -10,7 +12,7 @@
 
 - 2026-05-19 已完成上一代 Web 调研，结论沉淀到 `docs/roadmap/v1/yanshi-legacy-research.md`。
 - Electron 主进程、preload、React renderer 基础骨架。
-- 官方 `@anthropic-ai/claude-agent-sdk` 依赖。
+- 本条为历史基线：旧版曾包含本地 Agent SDK 依赖；当前已移除，Agent runtime 统一通过随包 Lime App Server sidecar 进入 RuntimeCore / backend。
 - `SettingsStore` 保存 Anthropic API Key 与 工作区。
 - `SkillManager` 扫描内置、用户、项目 能力。
 - 4 个内容生产内置 skills。
@@ -24,7 +26,7 @@ v1 需要把当前通用布谷AI内容工厂骨架改造成深色 AI 电商内�
 | --- | --- | --- |
 | current | `src/main/services/settingsStore.ts` | API Key、工作区、本地配置。 |
 | current | `src/main/services/skillManager.ts` | 能力 文件系统扫描与安装。 |
-| current | `src/main/services/claudeAgentService.ts` | Claude SDK 文本编排入口。 |
+| dead | `src/main/services/claudeAgentService.ts` | 历史本地 SDK 文本编排入口，当前已删除，不允许恢复为 runtime fallback。 |
 | new current | `src/main/services/modelConfigStore.ts` | 统一 API endpoint 和文字 / 图片 / 视频模型配置。 |
 | new current | `src/main/services/skillSelectionStore.ts` | 当前工作区 启用的 能力。 |
 | new current | `src/main/services/knowledgeBaseStore.ts` | 工作区 已成型知识库、章节、标签和引用片段。 |
@@ -43,7 +45,7 @@ v1 需要把当前通用布谷AI内容工厂骨架改造成深色 AI 电商内�
 | new current | `src/renderer/src/features/asset-library/*` | 素材库与生成历史 UI。 |
 | future | 策略分析、竞品 / 差评 / 店铺抓取、AI 自动搭建知识库、批量处理、定时任务、云端协作知识库、向量 向量检索、团队素材库 | v1 不实现。 |
 
-事实源声明：v1 只向 `布谷AI Electron main services + renderer workbench` 收敛；不引入 Tauri、不 fork Craft、不新增独立后端服务。
+事实源声明：本文件为 v1 历史归档；当前 Agent runtime 只向 `Electron main Desktop Host + Lime App Server JSON-RPC + RuntimeCore / backend` 收敛，不新增第二套 runtime adapter。
 
 ## 2. 开发切片
 

@@ -37,6 +37,10 @@ import type {
   GenerateImageSkillInput,
   GenerateSceneCardsInput,
   ImageGenerationRequest,
+  AppendShotGenerationLogInput,
+  CreateImageProductionTaskInput,
+  UpdateImageProductionTaskInput,
+  UpdateShotPromptInput,
   ImportContentDraftChangeInput,
   ImportInputSourceFromFileOptions,
   InputSourcePurpose,
@@ -212,6 +216,11 @@ const api: ContentStudioApi = {
   generateVideoScript: (input: VideoScriptGenerationRequest) => ipcRenderer.invoke('video:script', input),
   evaluateVideoScript: (input: VideoScriptEvaluationRequest) => ipcRenderer.invoke('video:script:evaluate', input),
   rewriteVideoScriptShot: (input: VideoScriptShotRewriteRequest) => ipcRenderer.invoke('video:script:rewriteShot', input),
+  listImageProductionTasks: (workspacePath: string) => ipcRenderer.invoke('imageProduction:listTasks', workspacePath),
+  createImageProductionTask: (input: CreateImageProductionTaskInput) => ipcRenderer.invoke('imageProduction:createTask', input),
+  updateImageProductionTask: (input: UpdateImageProductionTaskInput) => ipcRenderer.invoke('imageProduction:updateTask', input),
+  updateShotPrompt: (input: UpdateShotPromptInput) => ipcRenderer.invoke('imageProduction:updateShotPrompt', input),
+  appendShotGenerationLog: (input: AppendShotGenerationLogInput) => ipcRenderer.invoke('imageProduction:appendGenerationLog', input),
   generateImage: (input: ImageGenerationRequest) => ipcRenderer.invoke('image:generate', input),
   generateImageSkill: (input: GenerateImageSkillInput) => ipcRenderer.invoke('imageSkills:generate', input),
   importImageSkillFromFile: () => ipcRenderer.invoke('imageSkills:importFromFile'),
@@ -228,6 +237,8 @@ const api: ContentStudioApi = {
 
   runTask: (input: RunTaskInput) => ipcRenderer.invoke('agent:run', input),
   cancelTask: (taskId: string) => ipcRenderer.invoke('agent:cancel', taskId),
+  getAppServerHealth: () => ipcRenderer.invoke('appServer:health'),
+  runAppServerSmoke: () => ipcRenderer.invoke('appServer:smoke'),
   onAgentEvent: (taskId: string, callback: (event: AgentEvent) => void) => {
     const channel = `agent:event:${taskId}`;
     const listener = (_event: Electron.IpcRendererEvent, payload: AgentEvent) => callback(payload);

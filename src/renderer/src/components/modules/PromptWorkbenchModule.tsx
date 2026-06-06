@@ -14,7 +14,6 @@ import type {
   SkillRef,
   TextGenerationProtocol,
 } from '../../../../shared/types';
-import { isClaudeModelName } from '../../../../shared/types';
 import { isPromptDistilledSource, isReusablePromptInputSource } from '../../../../shared/inputSourcePolicy';
 import { skillKey, textProtocolLabel } from '../../app/formatters';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
@@ -222,12 +221,9 @@ function uniqueNonEmptyModels(models: Array<string | undefined>): string[] {
 function resolveDefaultSessionTextModel(
   textModel: string | undefined,
   textModels: string[],
-  textProtocol?: TextGenerationProtocol,
 ): string {
   const configuredModel = textModel?.trim();
-  if (textProtocol !== 'claude-sdk') return configuredModel ?? textModels[0] ?? '';
-  if (isClaudeModelName(configuredModel)) return configuredModel;
-  return textModels.find(isClaudeModelName) ?? '';
+  return configuredModel ?? textModels[0] ?? '';
 }
 
 function sessionStatusClass(status: AgentPromptSession['status']): StatusPillTone {
@@ -397,8 +393,8 @@ export function PromptWorkbenchModule({
 }: PromptWorkbenchModuleProps) {
   const feature = V2_FEATURES[featureKey];
   const defaultSessionTextModel = useMemo(
-    () => resolveDefaultSessionTextModel(textModel, textModels, textProtocol),
-    [textModel, textModels, textProtocol],
+    () => resolveDefaultSessionTextModel(textModel, textModels),
+    [textModel, textModels],
   );
   const [purpose, setPurpose] = useState<PromptDraftPurpose>(initialPurpose);
   const [title, setTitle] = useState(initialTitle);
@@ -459,11 +455,8 @@ export function PromptWorkbenchModule({
     visibleSessions.find((session) => activeDraft?.id && session.promptDraftIds.includes(activeDraft.id)) ??
     visibleSessions[0];
   const sessionModelOptions = useMemo(() => {
-    const models = uniqueNonEmptyModels([sessionTextModel, textModel, ...textModels]);
-    if (textProtocol !== 'claude-sdk') return models;
-    const claudeModels = models.filter(isClaudeModelName);
-    return claudeModels.length ? claudeModels : models;
-  }, [sessionTextModel, textModel, textModels, textProtocol]);
+    return uniqueNonEmptyModels([sessionTextModel, textModel, ...textModels]);
+  }, [sessionTextModel, textModel, textModels]);
   const [draftContent, setDraftContent] = useState(activeContent(activeDraft));
   const [sessionAdjustment, setSessionAdjustment] = useState('请结合用户意图继续收紧文案结构，并补充合规提醒。');
   const selectedSources = useMemo(
@@ -505,12 +498,8 @@ export function PromptWorkbenchModule({
   }, [activeDraft?.id, activeDraft?.activeVersionId]);
 
   useEffect(() => {
-    if (isClaudeModelName(activeSession?.model)) {
-      setSessionTextModel(activeSession.model);
-      return;
-    }
     setSessionTextModel(defaultSessionTextModel);
-  }, [activeSession?.id, activeSession?.model, defaultSessionTextModel]);
+  }, [activeSession?.id, defaultSessionTextModel]);
 
   useEffect(() => {
     setPurpose(initialPurpose);
@@ -550,8 +539,7 @@ export function PromptWorkbenchModule({
   ]);
 
   const canGenerate = workspaceReady && !busy && userIntent.trim().length > 0;
-  const sessionModelReady = textProtocol !== 'claude-sdk' || !sessionTextModel || isClaudeModelName(sessionTextModel);
-  const canStartSession = canGenerate && sessionModelReady;
+  const canStartSession = canGenerate;
   const canSave = workspaceReady && !busy && Boolean(activeDraft) && draftContent.trim().length > 0;
   const canUseCurrentDraft = canSave && Boolean(activeDraft);
   const activePurpose = activeDraft?.purpose ?? purpose;
@@ -698,7 +686,7 @@ export function PromptWorkbenchModule({
         {activeSession ? (
           <button
             className="primary small"
-            disabled={!workspaceReady || busy || !sessionAdjustment.trim() || !sessionModelReady}
+            disabled={!workspaceReady || busy || !sessionAdjustment.trim()}
             onClick={() => onContinueSession({ sessionId: activeSession.id, message: sessionAdjustment, textModel: sessionTextModel })}
           >
             继续会话
@@ -726,9 +714,9 @@ export function PromptWorkbenchModule({
           </button>
         ) : null}
       </ActionGroup>
-      {busy || !sessionModelReady || (activeSession && !sessionAdjustment.trim()) ? (
+      {busy || (activeSession && !sessionAdjustment.trim()) ? (
         <span className="scene-prompt-inline-recovery">
-          {busy ? '处理中' : !sessionModelReady ? '待选择 Claude 模型' : '待输入调整要求'}
+          {busy ? '处理中' : '待输入调整要求'}
         </span>
       ) : null}
     </>
@@ -879,11 +867,6 @@ export function PromptWorkbenchModule({
               {visibleSkills.length === 0 ? <span className="prompt-skill-empty">暂无可用 skill</span> : null}
             </div>
           </div>
-          {!sessionModelReady ? (
-            <div className="inline-warning subtle">
-              Claude SDK Agent 只能使用 Claude 系列模型，请在会话模型中选择 Claude 模型后再启动。
-            </div>
-          ) : null}
           <div className="prompt-source-list">
             {orderedInputSources.map((source) => (
               <label key={source.id} className="prompt-source-option">

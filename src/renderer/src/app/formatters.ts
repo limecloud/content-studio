@@ -114,7 +114,6 @@ export function generationServiceLabel(model?: string): string {
 
 export function textProtocolLabel(protocol?: TextGenerationProtocol): string {
   if (!protocol) return '协议未记录';
-  if (protocol === 'claude-sdk') return 'Claude SDK';
   if (protocol === 'anthropic-messages') return 'Anthropic Messages';
   if (protocol === 'openai-chat') return 'OpenAI Chat';
   if (protocol === 'gemini-generate-content') return 'Gemini GenerateContent';

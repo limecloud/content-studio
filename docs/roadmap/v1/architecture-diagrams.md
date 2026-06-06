@@ -1,7 +1,9 @@
 # 布谷AI内容工厂 v1 架构与流程图
 
 更新时间：2026-05-19
-状态：Draft
+状态：Archived historical source
+
+> 归档说明：本文件保留 v1 阶段架构图，包含已废弃的本地 SDK runtime 设想。当前架构图以 `docs/roadmap/v2/architecture-diagrams.md` 和 `docs/roadmap/limeagent/` 为准：Renderer 只经 Preload / IPC 进入 Electron Desktop Host，由 main 侧通过 Lime App Server JSON-RPC 连接 RuntimeCore / backend，且 Lime `app-server` sidecar 随内容工厂打包。
 
 ## 1. 设计结论
 

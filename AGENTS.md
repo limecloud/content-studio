@@ -1,6 +1,6 @@
 # 布谷AI内容工厂 Agent 指南
 
-本文件只用于开发 `limecloud/content-studio` 仓库本身。规则参考 Lime 主仓库的工程协作方式，但按本项目的 Electron + React + Claude SDK 内容工厂定位收敛。
+本文件只用于开发 `limecloud/content-studio` 仓库本身。规则参考 Lime 主仓库的工程协作方式，但按本项目的 Electron + React + Lime Agent Server 内容工厂定位收敛。
 
 ## 基本原则
 
@@ -39,9 +39,9 @@
 - 主进程：`src/main/`，IPC 在 `src/main/ipc.ts`。
 - Preload bridge：`src/preload/index.ts`。
 - 共享协议：`src/shared/types.ts` 是前后端类型契约事实源。
-- 文本编排：`src/main/services/textGenerationService.ts` 只负责编排配置，具体调用下沉到 `src/main/providers/textGenerationProvider.ts`；Claude / Anthropic 官方链路走 `claude-sdk`，Anthropic 兼容、OpenAI 兼容、Gemini 原生链路必须走显式协议生成服务，禁止把非 Claude 模型硬塞进 Claude SDK 运行底座。
+- 文本编排：`src/main/services/textGenerationService.ts` 只负责编排配置，具体调用下沉到 `src/main/providers/textGenerationProvider.ts`；文字生成只走显式 HTTP 协议生成服务，Anthropic 兼容、OpenAI 兼容、Gemini 原生链路必须使用各自协议，禁止恢复 SDK 私有运行底座。
 - 媒体生成：`src/main/providers/mediaProvider.ts` 只负责编排日志和视频，图片协议下沉到 `src/main/providers/imageGenerationProvider.ts`；图片必须走真实生成服务；未配置时返回可追溯 `blocked`，禁止生成 SVG 占位或伪造成功。视频生成可走 Generic HTTP 生成服务；未配置真实生成服务时只允许保存 blocked 队列请求。
-- Pi 边界：当前不引入 Pi；只有当非 Claude 模型需要完整会话、工具调用、权限、安全模式、MCP / 能力调度和会话恢复时，才按路线图重新评估。
+- Agent runtime 边界：当前统一接入 Lime Agent Server；不再引入第二套 runtime adapter，也不保留任何旧 runtime fallback。
 - 视频拆解：`src/main/services/videoWorkflowService.ts` 可走同一个 Generic HTTP 视频端点并发送 `operation: "analyze"`；未配置真实理解生成服务时只能 blocked，禁止模板伪造拆解。
 - 本地数据：工作区下 `.content-studio/`，不要硬编码用户目录。
 - 路线图：`docs/roadmap/v1/`。
@@ -72,12 +72,12 @@
 - AI Agent 是跨模块通用能力，不是某个页面的装饰区；Agent UI 默认复用 `src/renderer/src/components/agent/`，会话事实来自 `AgentPromptSession.messages` 和 `executionEvents`，禁止在模块内硬编码假 assistant 气泡、固定执行脚本或 mock 对话。
 - Agent 交互表面必须遵循 `/Users/coso/Documents/dev/ai/limecloud/agentui`：UI 只投影 runtime facts，必须区分 Composer、Message Parts、Runtime Status、Tool UI、Human-in-the-loop、Task Capsule、Artifact 和 Evidence；禁止把上下文说明、工具结果、审批状态或交付物塞进普通助手正文。
 - Agent 执行层必须遵循 `/Users/coso/Documents/dev/ai/limecloud/agentruntime`：runtime 拥有 session / thread / turn / task / run / tool / action / artifact / evidence 事实；UI-only state 不能成为执行成功、权限、交付物或审核结论的事实源。
-- 完整 Agent runtime 参考 `/Users/coso/Documents/dev/js/craft-agents-oss` 的分层：Claude 官方链路走 Claude Agent SDK；需要非 Claude 完整会话、工具调用、权限、安全模式、MCP / 能力调度和会话恢复时，按 Pi SDK 路径单独建 runtime adapter，不把 Pi / OpenAI / Gemini 硬塞进 Claude SDK，也不在 React UI 中模拟 runtime。
+- 完整 Agent runtime 以 Lime Agent Server 为事实源；会话、工具、权限、安全模式、MCP / 能力调度和会话恢复都必须通过 App Server sidecar 投影到 UI，不在 React UI 中模拟 runtime，也不新增第二套 runtime adapter。
 - Human-in-the-loop 必须可交互：至少包含用户输入、Agent 输出、执行事件、可编辑业务对象、人工确认 / 交付动作和 blocked 恢复路径；只展示状态、说明文案或只读时间线不算 Agent 工作台。
 - Agent 页面仍必须绑定当前业务对象和交付物；聊天框只能承载协作过程，不能把内容工厂退化成无业务边界的通用聊天页。
 - 用户可见能力必须真实可追溯；未接入能力用 disabled / blocked / 后续接入表达。
 - 图片未接入真实生成服务时不得生成占位图；视频未接入真实生成服务时只保存 blocked 队列文件，并写入 `artifactRefs`。
-- 文字生成默认用协议化 生成服务路由；`claude-sdk` 可复用 Claude Code 登录 / API Key，其他协议必须使用对应端点和 Key。测试或 smoke 如需避免外发，使用 `CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY=1` 强制走 blocked 分支。
+- 文字生成默认用协议化 HTTP 生成服务路由；各协议必须使用对应端点和 Key。测试或 smoke 如需避免外发，使用 `CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY=1` 强制走 blocked 分支。
 
 ## 代码变更规则
 

@@ -6,7 +6,6 @@ import type {
   SkillSelectionView,
   TextGenerationProtocol,
 } from '../../../shared/types';
-import { isClaudeModelName } from '../../../shared/types';
 import { formatDuration, generationServiceLabel, kindLabel, sectionLabel, skillKey, statusLabel, textProtocolLabel } from '../app/formatters';
 import type { SetGlobalParams } from '../app/types';
 
@@ -76,7 +75,6 @@ export function ParamsPanel({
       ),
     [params.videoModel, videoModels],
   );
-  const textModelProtocolMismatch = textProtocol === 'claude-sdk' && !isClaudeModelName(params.textModel);
   const collapseButton = (
     <button
       className="params-panel-collapse-btn"
@@ -149,11 +147,6 @@ export function ParamsPanel({
                 ))}
               </select>
             </label>
-            {textModelProtocolMismatch ? (
-              <div className="inline-warning subtle">
-                Claude SDK 只支持 Claude 系列模型；当前文字模型与协议不一致。
-              </div>
-            ) : null}
             <label>
               <span>图片模型</span>
               <select

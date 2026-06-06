@@ -1673,7 +1673,7 @@
           <div class="canvas">
             <div class="v2-flow" aria-label="v2 PRD 主链路">
               <div class="flow-step"><b>1 输入源</b><span>DOCX / 参考图 / 视频 / SKU / 历史素材</span></div>
-              <div class="flow-step"><b>2 Agent 理解</b><span>Claude SDK 读文档，多轮追问和纠偏</span></div>
+              <div class="flow-step"><b>2 Agent 理解</b><span>Lime App Server 读文档，多轮追问和纠偏</span></div>
               <div class="flow-step"><b>3 中间结构</b><span>场景库、IP 六层、视频拆解、变量表</span></div>
               <div class="flow-step"><b>4 Prompt 组</b><span>图片 / 图生视频 / 文案 / 绿幕图提示词</span></div>
               <div class="flow-step"><b>5 生产素材</b><span>图片、文案、视频 Prompt、可选导入视频</span></div>
@@ -2129,7 +2129,7 @@
         kpis: [["1", "IP 知识库"], ["3", "追问"], ["1", "正文草稿"], ["Markdown", "导出"]],
         flow: ["选择知识库", "输入意图", "Agent 追问", "生成大纲", "生成正文", "发布检查"],
         panels: [
-          ["Agent 读文档", "Claude SDK Agent 带着用户意图读取知识库，而不是一次性摘要。", ["来源章节", "多轮追问", "口吻规则"]],
+          ["Agent 读文档", "Lime App Server Agent 带着用户意图读取知识库，而不是一次性摘要。", ["来源章节", "多轮追问", "口吻规则"]],
           ["发布检查", "检查事实、标题、结构、平台表达和高风险承诺。", ["公众号", "小红书", "知乎 / B 站"]]
         ],
         preview: "用户意图：基于嘉文老师 IP 知识库，写一篇视频号口播转公众号长文。\nAgent 追问：目标人群、立场强度、案例是否可公开、是否需要产品转化。",
@@ -2347,14 +2347,14 @@
         status: "图片未配置",
         primary: "配置生成服务",
         secondary: "健康检查",
-        kpis: [["Claude", "文字"], ["未配置", "图片"], ["可选", "视频"], ["待配置", "失败策略"]],
+        kpis: [["App Server", "Agent"], ["未配置", "图片"], ["可选", "视频"], ["待配置", "失败策略"]],
         flow: ["填写 Key", "保存主进程", "健康检查", "路由调用", "记录状态", "失败恢复"],
         panels: [
-          ["协议边界", "Claude SDK 走 Claude 官方链路，其他协议必须走显式 provider，不硬塞进 Claude runtime。", ["Claude SDK", "OpenAI 兼容", "Gemini 原生"]],
+          ["协议边界", "Agent runtime 只走随包 Lime App Server；文字、图片、视频仍按各自显式 provider 协议调用。", ["App Server", "OpenAI 兼容", "Gemini 原生"]],
           ["媒体边界", "图片必须真实生成；视频可内部 API 或外部 Prompt；未配置时只保存待配置请求。", ["图片生成服务", "视频生成服务", "待配置"]]
         ],
         preview: "健康检查：文字模型可用；图片模型未配置 Key；视频模型为可选外部 Prompt 模式。",
-        table: [["文字模型", "可用", "Claude SDK / Gemini", "可用"], ["图片模型", "未配置", "真实生成服务", "待配置"], ["视频模型", "可选", "Prompt 外部复制", "可用"]]
+        table: [["Agent runtime", "可用", "Lime App Server", "可用"], ["图片模型", "未配置", "真实生成服务", "待配置"], ["视频模型", "可选", "Prompt 外部复制", "可用"]]
       }
     };
 

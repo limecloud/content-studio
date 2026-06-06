@@ -1,8 +1,10 @@
 # 布谷AI内容工厂 v1 路线图
 
 更新时间：2026-05-18
-状态：Draft
+状态：Archived historical source
 参考来源：用户提供的 5 张「光合引擎 - AI 电商图片工作台」截图
+
+> 归档说明：本目录保留 2026-05 v1 阶段的历史设计记录，不再作为当前 Agent runtime 和打包架构事实源。当前主线以 `docs/roadmap/v2/` 与 `docs/roadmap/limeagent/` 为准：`Frontend -> Electron Desktop Host IPC -> Lime App Server JSON-RPC -> RuntimeCore / backend`，并随 Electron 包携带 Lime `app-server` sidecar 与 packaged external backend。
 
 ## 一句话目标
 
@@ -88,12 +90,12 @@ v1 默认完整实现 `文章生成`、`已成型知识库接入 / 引用检索`
 | [`prd.md`](./prd.md) | 产品需求、用户流程、功能范围和验收标准。 |
 | [`ui-blueprint.md`](./ui-blueprint.md) | 桌面 UI 骨架、页面状态、字段、视觉规范和截图映射。 |
 | [`architecture-diagrams.md`](./architecture-diagrams.md) | 系统架构图、内容工程流程图、关键时序图和数据关系图。 |
-| [`implementation-plan.md`](./implementation-plan.md) | Electron/Claude SDK/能力/模型 API 的实现切片、文件写集和验证计划。 |
+| [`implementation-plan.md`](./implementation-plan.md) | v1 历史阶段的 Electron / 能力 / 模型 API 实现切片、文件写集和验证计划。 |
 
 ## 当前决策
 
 1. v1 继续用 布谷AI 当前 Electron 技术栈，不切 Tauri。
-2. Claude SDK 负责文本编排、提示词生成、内容策略和 能力调度；图片 / 视频模型调用通过独立 生成服务网关封装。
+2. 本条为历史决策：v1 曾计划由本地 SDK runtime 承担文本编排和能力调度；当前主线已废弃该路径，统一由 Lime App Server sidecar 提供 Agent runtime。
 3. skills 是一等能力，必须有独立的 `skills 管理` 页面；生成主链里仍优先用「预设提示词」「生成模式」「拆解维度」表达，避免让普通用户理解工程概念。
 4. 模型配置采用统一 API 端点和 API Key，分开配置文字、图片、视频模型。
 5. 知识库是文章、图片提示词和视频脚本的本地事实源；v1 只接入已成型的产品型知识库和个人 IP 型知识库，做选择、导入、关键词检索和引用注入，不做策略分析和 AI 自动搭建知识库。

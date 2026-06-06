@@ -32,8 +32,9 @@
     auto
     auto
     auto
-    minmax(190px, 0.92fr)
-    minmax(280px, 1.08fr);
+    minmax(190px, 0.48fr)
+    minmax(170px, 0.32fr)
+    minmax(360px, 1.82fr);
   align-content: stretch;
   height: 100%;
   overflow-y: hidden;
@@ -41,7 +42,7 @@
 }
 
 .image-canvas-stage[data-prompt-mode="free"] {
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(220px, 0.62fr) minmax(360px, 1.58fr);
 }
 
 .image-canvas-stage .image-preview-canvas {

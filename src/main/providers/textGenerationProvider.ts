@@ -1,6 +1,3 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { Options } from '@anthropic-ai/claude-agent-sdk';
-import { statSync } from 'node:fs';
 import type {
   AgentPromptExecutionEventKind,
   AgentPromptExecutionEventStatus,
@@ -9,7 +6,6 @@ import type {
   ModelConfigView,
 } from '../../shared/types';
 import { resolveAuthorizationHeader } from './multimodalProviderUtils';
-import { buildClaudeSubprocessEnv, ensureClaudeConfig, resolveClaudeCodeExecutable } from '../services/claudeSdkRuntime';
 
 export class TextProviderBlockedError extends Error {
   readonly code = 'TEXT_PROVIDER_NOT_CONFIGURED';
@@ -128,17 +124,6 @@ function textMaxTokens(): number {
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 16384;
 }
 
-function ensureWorkspaceDirectory(workspacePath: string): void {
-  const normalized = workspacePath.trim();
-  if (!normalized) throw new TextProviderBlockedError('工作区路径为空：请先在设置中选择有效的工作区目录。');
-  try {
-    if (statSync(normalized).isDirectory()) return;
-  } catch {
-    // 下面统一给出用户可读错误，避免 SDK 子进程暴露 spawn ENOENT/ENOTDIR。
-  }
-  throw new TextProviderBlockedError('工作区路径不是可访问目录：请在设置中重新选择工作区后再生成。');
-}
-
 function buildJsonSystemPrompt(input: GenerateJsonInput, includeSchema: boolean): string {
   return [
     input.systemPrompt,
@@ -247,91 +232,6 @@ function modelFailedEvent(
       ...payload,
     },
   };
-}
-
-class ClaudeSdkTextProvider implements JsonTextProvider {
-  async generateJson<T>(input: GenerateJsonInput, runtime: TextRuntimeConfig): Promise<TextGenerationOutput<T>> {
-    ensureWorkspaceDirectory(input.workspacePath);
-    ensureClaudeConfig();
-    const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable();
-    const providerEvents: TextProviderRuntimeEvent[] = [
-      modelRequestedEvent(runtime, 'claude-agent-sdk', runtime.baseUrl),
-    ];
-    const options: Options = {
-      cwd: input.workspacePath,
-      model: runtime.model,
-      maxTurns: input.maxTurns ?? 2,
-      tools: [],
-      allowedTools: [],
-      persistSession: false,
-      systemPrompt: buildJsonSystemPrompt(input, false),
-      thinking: { type: 'disabled' },
-      env: buildClaudeSubprocessEnv({ apiKey: runtime.apiKey, baseUrl: runtime.baseUrl }),
-      settingSources: ['user', 'project'],
-      outputFormat: { type: 'json_schema', schema: input.schema },
-    };
-    if (pathToClaudeCodeExecutable) options.pathToClaudeCodeExecutable = pathToClaudeCodeExecutable;
-
-    let assistantText = '';
-    let resultText = '';
-    let structuredOutput: unknown;
-    try {
-      for await (const message of query({ prompt: input.prompt, options })) {
-        providerEvents.push({
-          eventClass: message.type === 'assistant' ? 'model.delta' : 'run.status',
-          kind: 'model',
-          status: 'completed',
-          phase: message.type === 'assistant' ? 'streaming' : 'waiting_provider',
-          title: 'Claude SDK message',
-          detail: message.type,
-          model: runtime.model,
-          payload: { providerMessageType: message.type },
-        });
-        if (message.type === 'assistant') assistantText += contentText(message.message.content);
-        if (message.type === 'result') {
-          const payload = message as Record<string, unknown>;
-          if (payload.subtype === 'success') {
-            resultText = typeof payload.result === 'string' ? payload.result : '';
-            structuredOutput = payload.structured_output;
-          }
-          if (payload.subtype && payload.subtype !== 'success') {
-            const errors = Array.isArray(payload.errors) ? payload.errors.join('; ') : String(payload.subtype);
-            throw new TextProviderFailedError(errors, [
-              ...providerEvents,
-              modelFailedEvent(runtime, errors, { subtype: payload.subtype }),
-            ]);
-          }
-        }
-      }
-    } catch (error) {
-      if (error instanceof TextProviderFailedError) throw error;
-      const message = sanitizeProviderError(error);
-      if (isAuthError(message)) {
-        throw new TextProviderBlockedError(
-          '文字模型无法启动：请先登录 Claude Code，或在设置中保存 Anthropic / Claude API Key 后再生成。',
-          [...providerEvents, modelFailedEvent(runtime, message, { auth: true })],
-        );
-      }
-      throw new TextProviderFailedError(message, [...providerEvents, modelFailedEvent(runtime, message)]);
-    }
-
-    const rawText = resultText || assistantText;
-    return {
-      value: parseJsonObject<T>(structuredOutput, rawText),
-      model: runtime.model,
-      rawText,
-      protocol: runtime.protocol,
-      providerEvents: [
-        ...providerEvents,
-        modelCompletedEvent(runtime, {
-          transport: 'claude-agent-sdk',
-          resultTextLength: resultText.length,
-          assistantTextLength: assistantText.length,
-          hasStructuredOutput: Boolean(structuredOutput),
-        }),
-      ],
-    };
-  }
 }
 
 class AnthropicMessagesTextProvider implements JsonTextProvider {
@@ -539,5 +439,5 @@ export function createTextProvider(protocol: ModelConfigView['textProtocol']): J
   if (protocol === 'anthropic-messages') return new AnthropicMessagesTextProvider();
   if (protocol === 'openai-chat') return new OpenAIChatTextProvider();
   if (protocol === 'gemini-generate-content') return new GeminiGenerateContentTextProvider();
-  return new ClaudeSdkTextProvider();
+  throw new TextProviderBlockedError(`不支持的文字协议：${protocol}`);
 }

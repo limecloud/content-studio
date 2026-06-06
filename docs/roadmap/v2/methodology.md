@@ -38,7 +38,7 @@
 /Users/coso/Documents/other/嘉文老师_IP知识库_v1.0.docx
 ```
 
-这些文件可以转换成 Markdown，但事实源仍然是文档。Claude SDK runtime 的 AI Agent 应该带着用户意图去读取这些文档，和用户多轮调整后生成 Prompt / SOP / Skill。
+这些文件可以转换成 Markdown，但事实源仍然是文档。随包 Lime App Server / RuntimeCore 的 AI Agent 应该带着用户意图去读取这些文档，和用户多轮调整后生成 Prompt / Skill 草稿 / 内容制造批次模板。
 
 楚川方法论里，知识库是内容工厂的底座，作用不是简单检索，而是帮助 Agent 判断：
 
@@ -54,7 +54,7 @@
 ```text
 DOCX / Markdown 知识库文档
 -> 转 Markdown / 建文本索引
--> Claude SDK Agent 按用户意图读取
+-> Lime App Server Agent 按用户意图读取
 -> Agent 提取相关观点 / 卖点 / 痛点 / 证据
 -> 用户多轮调整方向
 -> Prompt 草稿

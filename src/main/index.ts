@@ -1,9 +1,10 @@
 import { app, BrowserWindow, ipcMain, Menu, net, protocol, type MenuItemConstructorOptions } from 'electron';
-import { extname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, extname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { registerIpc } from './ipc';
 import { getOemRuntimeConfig } from './services/oemRuntimeConfig';
 
+const mainModuleDir = dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | null = null;
 const pendingSkillPackages: string[] = [];
 let rendererAcceptsSkillPackages = false;
@@ -96,7 +97,7 @@ function createWindow(): BrowserWindow {
     paintWhenInitiallyHidden: true,
     backgroundColor: '#060514',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(mainModuleDir, '../preload/index.mjs'),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
@@ -118,7 +119,7 @@ function createWindow(): BrowserWindow {
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+    void mainWindow.loadFile(join(mainModuleDir, '../renderer/index.html'));
   }
   return mainWindow;
 }

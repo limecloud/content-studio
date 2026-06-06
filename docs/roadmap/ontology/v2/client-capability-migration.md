@@ -3,7 +3,7 @@
 状态：Draft v2 / SOP Runtime Retired
 更新时间：2026-06-01
 关联：[`README.md`](./README.md)、[`architecture.md`](./architecture.md)、[`data-intake-workbench-prd.md`](./data-intake-workbench-prd.md)
-代码基线：`content-studio` 客户端（Electron + React 19 + `@anthropic-ai/claude-agent-sdk`，src 约 6.7 万行 / 136 文件）
+代码基线：`content-studio` 客户端（Electron + React 19 + Lime App Server sidecar，src 约 6.7 万行 / 136 文件）
 
 ---
 
@@ -13,7 +13,7 @@
 
 把代码读完后的结论与「看截图」时一致、但更强：现有客户端和 ontology v2 **高度互补**，而且客户端已经真实实现了 v2 设计里大量「未接入」的部分。
 
-- **客户端 = 手 + 半个脑**：33+ 图片能力、视频生成、混剪、文章/脚本、知识库体系、审核闭环、生产交接、内容制造批次投影、基于 claude-agent-sdk 的本地 Agent 编排——都是可复用底座。
+- **客户端 = 手 + 半个脑**：33+ 图片能力、视频生成、混剪、文章/脚本、知识库体系、审核闭环、生产交接、内容制造批次投影、基于 Lime App Server sidecar 的 Agent 编排——都是可复用底座。
 - **ontology v2 = 另一半脑 + 纪律**：批次驱动、全量分档、数据接入成熟度分层、规则门禁、不伪造成片、本地/云端双 Runtime 拓扑。
 
 两者关系不是「合并两个 UI」，而是：**ontology v2 提供编排骨架与纪律，现有客户端能力降级为阶段调用的工具 / agent / 事实源**。
@@ -26,7 +26,7 @@
 
 | 此前以为要新建 | 实际已实现（代码位置） |
 | --- | --- |
-| 本地 Agent Runtime | `claudeAgentService.ts`（claude-agent-sdk，maxTurns、工具集、Skill 集成）+ `claudeSdkRuntime.ts`（跨平台可执行解析） |
+| Agent Runtime | `appServerSidecarService.ts`（随包 sidecar、JSON-RPC、packaged backend）+ `appServerPromptAgentService.ts`（Agent 会话投影） |
 | 内容制造批次 / 运行追溯 | `contentBatchApplicationService.ts`、`contentBatchStore.ts`、`ontologyV2.ts`；旧 `workflowEngine.ts` 已退役，不再作为接入底座 |
 | 知识库 / 事实源 | `brandKnowledgeBaseStore.ts` / `ipKnowledgeBaseStore.ts` / `contentKnowledgeMapStore.ts` |
 | 规则门禁 / 合规 | `contentKnowledgeMapSensitivityPolicy.ts` / `contentProductionHandoffService.ts` + 提示词包合规边界 |
@@ -98,7 +98,7 @@
 ## 5. 与已定架构的衔接
 
 - **接 Tier（商品规划分档）**：这些生成能力正是制造档位的引擎。精品档=真人拍摄+图片精修+多视角；AI快产档=全自动跑换模特/换背景/视频生成。33+ 功能就是 Tier 落地的引擎。
-- **接双 Runtime（architecture §5）**：生成能力是 tools。`claudeAgentService.ts` 已是本地编排底座——轻交互（提示词调试、单图精修）走本地低延迟，重渲染（视频生成）走服务端算力。服务端批量 Runtime 需要从内容制造批次、Agent 任务契约和 tool 定义抽共享层，不能复用已退役的 `workflowEngine.ts`。
+- **接统一 Runtime（architecture §5）**：生成能力是 tools。当前本地桌面端通过随包 Lime App Server sidecar 进入 RuntimeCore / backend；轻交互（提示词调试、单图精修）和重渲染（视频生成）的调度差异应落到 App Server policy / backend 能力，不在 content-studio 再建第二套 runtime。批量调度需要从内容制造批次、Agent 任务契约和 tool 定义抽共享层，不能复用已退役的 `workflowEngine.ts`。
 - **接不伪造成片**：客户端已守此纪律（blocked 而非占位）。接入真引擎后，blocked 可变真产出，但仍过审核门禁。
 - **接数据接入工作台（PRD）**：`inputSourceStore.ts` 已支持多类型输入，是 L0 自助接入的现成实现；缺的是成熟度分层 L0/L1/L2 与适配器库。
 
@@ -123,4 +123,4 @@
 1. **两套 v2 的关系**：客户端有自己的 `docs/roadmap/v2/`（已实现路线），我们在 `docs/roadmap/ontology/v2/`（本体重构）。是把 ontology v2 作为客户端 v2 的「下一阶段重构」，还是平行的设计探索？需要先对齐，否则两条线会越走越远。
 2. **宫格过渡**：33+ 功能宫格是现有用户的肌肉记忆，直接砍会断崖。是否需要过渡期内「批次主路径 + 宫格作为高级/直达入口」并存？
 3. **数据驱动配置的复用**：`dressingkit-ai-image-shared.json`（228 案例）这类数据驱动资产，如何映射成 v2 的 tool 定义 + Tier 能力表？
-4. **claude-agent-sdk 与双 Runtime**：现有 `claudeAgentService` 是本地编排，服务端批量 Runtime 是否复用同一套 agent / tool 定义？（architecture §5 要求「同一套定义、两个 runtime」，需验证当前内容制造批次和 tool 契约可否抽出共享定义层）
+4. **Lime App Server 与统一 Runtime**：现有 `AppServerSidecarService` 是本地桌面 host 的唯一 Agent runtime 通道，服务端批量调度是否复用同一套 agent / tool 定义？（architecture §5 要求「同一套定义、统一 runtime 事实」，需验证当前内容制造批次和 tool 契约可否抽出共享定义层）

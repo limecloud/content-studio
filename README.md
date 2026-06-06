@@ -4,7 +4,7 @@
 
 # 布谷AI · 内容工厂
 
-布谷AI 是一个基于 Electron、React、Vite、官方 `@anthropic-ai/claude-agent-sdk` 和协议化生成服务路由的桌面内容工厂。
+布谷AI 是一个基于 Electron、React、Vite、Lime Agent Server 和协议化生成服务路由的桌面内容工厂。
 
 产品主线不是通用聊天平台，而是面向电商和个人 IP 内容生产的「已成型知识库 -> 提示词包 -> 场景库 -> 文章 / 图片 / 视频素材」闭环。
 
@@ -21,8 +21,9 @@
 ## 当前定位
 
 - **桌面壳**：Electron + React + Vite + TypeScript。
-- **文本编排底座**：Claude / Anthropic 官方链路默认走 `@anthropic-ai/claude-agent-sdk`；OpenAI、Gemini 和兼容网关走显式协议，不把非 Claude 模型硬塞进 Claude SDK。
-- **能力库**：支持内置能力和工作区 `.claude/skills` / `.agents/skills`；用户主目录能力仅在调试环境变量开启时扫描。
+- **Agent 执行底座**：Prompt 工作台和通用 Agent 执行统一走 Lime Agent Server sidecar，Electron main 只投影 runtime facts 到 UI。
+- **文本编排底座**：文字生成只走显式 HTTP 协议；Anthropic Messages、OpenAI Chat、Gemini GenerateContent 和兼容网关按各自协议配置端点 / Key / 模型。
+- **能力库**：支持内置能力和工作区 `.bugu/skills` 主路径；工作区 `.claude/skills` / `.agents/skills` 仅作为兼容扫描，用户主目录能力仅在调试环境变量开启时扫描。
 - **知识库**：v1 只消费已经成型的产品型知识库和个人 IP 型知识库。
 - **本地事实源**：工作区下的 `.content-studio` 保存知识库索引、提示词包、场景卡、生成日志和能力启用状态。
 - **安全边界**：API Key 只在 Electron main process 保存，Renderer 不读取明文 Key、不直接执行文件或命令；未配置真实生成服务时返回 `blocked`，不再用 mock/占位产物伪装成功。
@@ -57,7 +58,7 @@ npm run dev
 
 首次运行后：
 
-1. 打开「模型配置」：先选择文字协议和图片协议，再填写对应端点 / Key / 模型。Claude 官方路径可复用本机 Claude Code 登录；兼容网关可选择 Anthropic Messages、OpenAI Chat 或 Gemini GenerateContent；视频端点会收到 `operation: "analyze"` 或生成请求 payload。
+1. 打开「模型配置」：先选择文字协议和图片协议，再填写对应端点 / Key / 模型。文字网关可选择 Anthropic Messages、OpenAI Chat 或 Gemini GenerateContent；视频端点会收到 `operation: "analyze"` 或生成请求 payload。
 2. 选择一个工作区。
 3. 在「知识库」中安装内置样例或导入 DOCX / Markdown / TXT / JSON 成型知识库。
 4. 检索并选择知识引用。
@@ -97,29 +98,27 @@ docs/roadmap/v1/          v1 PRD、UI 蓝图、架构图和实施计划
 
 ## 能力路径
 
-布谷AI优先使用 Claude 官方路径，同时兼容 Craft 风格路径：
+布谷AI优先使用工作区 `.bugu/skills` 能力路径，同时兼容历史 Craft / Agent 风格路径：
 
 ```text
-<workspace>/.claude/skills/{slug}/SKILL.md
-<workspace>/.agents/skills/{slug}/SKILL.md
-~/.claude/skills/{slug}/SKILL.md
-~/.agents/skills/{slug}/SKILL.md
+<workspace>/.bugu/skills/{slug}/SKILL.md        # current，安装 / 管理写入这里
+<workspace>/.claude/skills/{slug}/SKILL.md      # compat，只扫描
+<workspace>/.agents/skills/{slug}/SKILL.md      # compat，只扫描
+~/.claude/skills/{slug}/SKILL.md                # dev-only，需要 CONTENT_STUDIO_INCLUDE_USER_SKILLS=1
+~/.agents/skills/{slug}/SKILL.md                # dev-only，需要 CONTENT_STUDIO_INCLUDE_USER_SKILLS=1
 ```
 
 ## 模型协议边界
 
-当前迭代不引入 Pi；先用轻量协议路由覆盖内容工厂 v1 的文本和媒体生成链路：
+Agent runtime 统一由 Lime Agent Server 承接；客户端不再保留 SDK fallback 或第二套 runtime adapter。文本和媒体生成走显式协议路由：
 
 | 能力 | 协议 | 典型端点 |
 | --- | --- | --- |
-| Claude 官方文字 | `claude-sdk` | `https://api.anthropic.com` 或本机 Claude Code 登录 |
 | Anthropic 兼容文字 | `anthropic-messages` | `/v1/messages` |
 | OpenAI 兼容文字 | `openai-chat` | `/v1/chat/completions` |
 | Gemini 原生文字 / 图片 | `gemini-generate-content` | `/v1beta/models/{model}:generateContent` |
 | OpenAI Responses 图片 | `openai-responses` | `/v1/responses` + `image_generation` |
 | Chat 图片兼容网关 | `openai-chat-data-uri` | `/v1/chat/completions` 返回 `data:image/...;base64` |
-
-Pi 只作为后续完整会话运行底座候选：当非 Claude 模型也需要会话恢复、工具调用、权限、安全模式、MCP / 能力调度时再评估引入。
 
 ## 本地验证
 
@@ -153,5 +152,3 @@ npm run verify:local
 ## 参考
 
 - Craft 开源项目: https://github.com/craft-ai-agents/craft-agents-oss
-- Claude SDK 文档: https://docs.claude.com/en/docs/agent-sdk/overview
-- Claude SDK 能力文档: https://docs.claude.com/en/docs/agent-sdk/skills

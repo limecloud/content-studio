@@ -42,6 +42,8 @@ export class AssetReviewStore {
           id: existing?.id ?? randomUUID(),
           workspacePath: input.workspacePath,
           workflowRunId: normalizeText(input.workflowRunId) || existing?.workflowRunId,
+          productionTaskId: normalizeText(input.productionTaskId) || existing?.productionTaskId,
+          shotPromptId: normalizeText(input.shotPromptId) || existing?.shotPromptId,
           assetKey,
           kind: input.kind,
           sourceType: input.sourceType,

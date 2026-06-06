@@ -1,0 +1,10 @@
+{
+  "capabilities": [
+    {
+      "id": "content.draft.generate",
+      "title": "Generate Draft",
+      "methods": ["agentSession/turn/start"],
+      "appIds": ["content-studio"]
+    }
+  ]
+}

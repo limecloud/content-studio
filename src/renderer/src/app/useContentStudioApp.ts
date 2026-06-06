@@ -38,6 +38,10 @@ import type {
   GenerateSceneCardsInput,
   GlobalGenerationParams,
   ImageGenerationRequest,
+  ImageProductionTask,
+  ImageProductionTaskStatus,
+  ShotPrompt,
+  ShotPromptStatus,
   InputSourcePurpose,
   InputSourceRecord,
   InputSourceSensitivity,
@@ -270,6 +274,71 @@ function cleanPathList(value: unknown): string[] {
     .map((item) => item.trim());
 }
 
+function imageLogStage(log: GenerationLogEntry): ImageGenerationRequest["generationStage"] | undefined {
+  const input = imageRequestFromLog(log);
+  return input?.generationStage;
+}
+
+function imageLogProductionIds(log: GenerationLogEntry): { taskId?: string; shotPromptId?: string } {
+  const input = imageRequestFromLog(log);
+  return {
+    taskId: input?.productionTaskId,
+    shotPromptId: input?.shotPromptId,
+  };
+}
+
+function nextShotStatusFromLog(log: GenerationLogEntry): ShotPromptStatus | undefined {
+  const stage = imageLogStage(log);
+  if (!stage) return undefined;
+  if (log.status === "succeeded") return stage === "test" ? "test-review" : "batch-review";
+  if (log.status === "blocked") return "blocked";
+  if (log.status === "failed") return "needs-rework";
+  return undefined;
+}
+
+function imageRefsFromGenerationLog(log: GenerationLogEntry): string[] {
+  const output = log.output && typeof log.output === "object"
+    ? log.output as Record<string, unknown>
+    : {};
+  const outputRefs = Array.isArray(output.assetRefs)
+    ? output.assetRefs.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+  return outputRefs.length ? outputRefs : log.artifactRefs ?? [];
+}
+
+function generatedAssetKey(logId: string, assetRef: string, index: number): string {
+  return `generated:${logId}:${index}:${assetRef}`;
+}
+
+function shotPromptSeedsFromText(text: string, fallbackPrompt: string): Array<{
+  title: string;
+  scene: string;
+  prompt: string;
+  negativePrompt?: string;
+  status: ShotPromptStatus;
+}> {
+  const normalized = text.trim();
+  const lines = normalized
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*(?:镜头|shot)?\s*\d+[\s.、:：-]*/i, "").trim())
+    .filter((line) => line.length >= 8);
+  const candidates = lines.length >= 2
+    ? lines
+    : normalized
+      .split(/[；;]/)
+      .map((line) => line.trim())
+      .filter((line) => line.length >= 12);
+  const prompts = (candidates.length >= 2 ? candidates : [fallbackPrompt || normalized || "当前画面需求"])
+    .slice(0, 12);
+  return prompts.map((prompt, index) => ({
+    title: `镜头 ${String(index + 1).padStart(2, "0")}`,
+    scene: prompt.slice(0, 48),
+    prompt,
+    negativePrompt: "不改变产品结构、包装文字和主体比例，不生成医疗化或夸大表达。",
+    status: prompt.trim() ? "ready" : "draft",
+  }));
+}
+
 function isMissingGenerationTaskHandler(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return (
@@ -496,7 +565,7 @@ export function useContentStudioApp() {
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [modelSettingView, setModelSettingView] =
-    useState<ModelSettingView>("edit_claude");
+    useState<ModelSettingView>("edit_text_http");
   const [providerTab, setProviderTab] = useState<ProviderTab>("recommended");
   const [responsesApiActive, setResponsesApiActive] = useState(false);
 
@@ -505,7 +574,7 @@ export function useContentStudioApp() {
   const [autoStart, setAutoStart] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [reduceAnimation, setReduceAnimation] = useState(false);
-  const [syncClaudeHistory, setSyncClaudeHistory] = useState(false);
+  const [syncLocalAssetHistory, setSyncLocalAssetHistory] = useState(false);
   const [shortcutActive, setShortcutActive] = useState(true);
   const [commandWhitelist, setCommandWhitelist] = useState(false);
 
@@ -520,7 +589,7 @@ export function useContentStudioApp() {
   const [modelDraft, setModelDraft] = useState<ModelDraft>({
     apiEndpoint: "",
     apiKey: "",
-    textProtocol: "claude-sdk",
+    textProtocol: "openai-chat",
     imageApiEndpoint: "",
     imageApiKey: "",
     imageProtocol: "openai-responses",
@@ -593,6 +662,8 @@ export function useContentStudioApp() {
   });
   const [logs, setLogs] = useState<GenerationLogEntry[]>([]);
   const [generationTasks, setGenerationTasks] = useState<GenerationTaskRecord[]>([]);
+  const [imageProductionTasks, setImageProductionTasks] = useState<ImageProductionTask[]>([]);
+  const [activeImageProductionTaskId, setActiveImageProductionTaskId] = useState("");
   const [overlayCards, setOverlayCards] = useState<OverlayCardRecord[]>([]);
   const [assetReviews, setAssetReviews] = useState<AssetReviewRecord[]>([]);
   const [mixPackages, setMixPackages] = useState<MixPackageRecord[]>([]);
@@ -783,6 +854,12 @@ export function useContentStudioApp() {
   ]);
   const activeEditableScene = activeScenes[0] ?? sceneCards[0];
   const selectedSceneIdsForRequest = activeScenes.map((scene) => scene.id);
+  const activeImageProductionTask = useMemo(
+    () =>
+      imageProductionTasks.find((task) => task.id === activeImageProductionTaskId) ??
+      imageProductionTasks[0],
+    [activeImageProductionTaskId, imageProductionTasks],
+  );
   const defaultKnowledgeCitations = useMemo(() => {
     if (!activeKnowledgeBase) return [];
     const preferredTypes: KnowledgeSectionType[] =
@@ -960,6 +1037,8 @@ export function useContentStudioApp() {
       setSceneCards([]);
       setLogs([]);
       setGenerationTasks([]);
+      setImageProductionTasks([]);
+      setActiveImageProductionTaskId("");
       setInputSources([]);
       setPromptDrafts([]);
       setAgentPromptSessions([]);
@@ -998,6 +1077,7 @@ export function useContentStudioApp() {
       nextSceneCards,
       nextLogs,
       nextGenerationTasks,
+      nextImageProductionTasks,
       nextInputSources,
       nextPromptDrafts,
       nextAgentPromptSessions,
@@ -1021,6 +1101,7 @@ export function useContentStudioApp() {
         window.contentStudio.listSceneCards(workspace),
         window.contentStudio.listGenerationLogs(workspace),
         window.contentStudio.listGenerationTasks(workspace),
+        window.contentStudio.listImageProductionTasks(workspace),
         window.contentStudio.listInputSources(workspace),
         window.contentStudio.listPromptDrafts(workspace),
         window.contentStudio.listAgentPromptSessions(workspace),
@@ -1043,6 +1124,7 @@ export function useContentStudioApp() {
     setSceneCards(nextSceneCards);
     setLogs(nextLogs);
     setGenerationTasks(nextGenerationTasks);
+    setImageProductionTasks(nextImageProductionTasks);
     setInputSources(nextInputSources);
     setPromptDrafts(nextPromptDrafts);
     setAgentPromptSessions(nextAgentPromptSessions);
@@ -1066,6 +1148,7 @@ export function useContentStudioApp() {
     setActiveContentKnowledgeMapId((current) => current || nextContentKnowledgeMaps[0]?.id || "");
     setActiveContentReviewTaskId((current) => current || nextContentReviewTasks[0]?.id || "");
     setActivePromptPackId((current) => current || nextPromptPacks[0]?.id || "");
+    setActiveImageProductionTaskId((current) => current || nextImageProductionTasks[0]?.id || "");
     setSelectedSceneIds((current) => {
       const availableSceneIds = new Set(nextSceneCards.map((scene) => scene.id));
       return current.filter((sceneId) => availableSceneIds.has(sceneId));
@@ -1105,6 +1188,9 @@ export function useContentStudioApp() {
           assetRefs: outputRefs.length ? outputRefs : event.log.artifactRefs ?? [],
           billing: event.log.kind === "video" ? videoCostEstimateFromOutput(output) : undefined,
         });
+      }
+      if (event.log.kind === "image" && event.log.status !== "queued" && event.log.status !== "running") {
+        void syncShotStatusFromLog(event.log);
       }
     });
     return () => unsubscribe();
@@ -1327,7 +1413,7 @@ export function useContentStudioApp() {
     setModelDraft({
       apiEndpoint: modelConfig?.textApiEndpoint ?? "",
       apiKey: "",
-      textProtocol: modelConfig?.textProtocol ?? "claude-sdk",
+      textProtocol: modelConfig?.textProtocol ?? "openai-chat",
       imageApiEndpoint: modelConfig?.imageApiEndpoint ?? "",
       imageApiKey: "",
       imageProtocol: modelConfig?.imageProtocol ?? "openai-responses",
@@ -3063,6 +3149,224 @@ export function useContentStudioApp() {
     await refresh(workspace);
   }
 
+  function updateImageProductionTaskState(task: ImageProductionTask): void {
+    setImageProductionTasks((current) => [
+      task,
+      ...current.filter((item) => item.id !== task.id),
+    ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+    setActiveImageProductionTaskId(task.id);
+  }
+
+  async function createImageProductionTask(input?: {
+    title?: string;
+    sourceSummary?: string;
+  }): Promise<ImageProductionTask> {
+    const workspace = requireWorkspace();
+    const sourceSummary = input?.sourceSummary || suggestedImagePrompt;
+    const task = await window.contentStudio.createImageProductionTask({
+      workspacePath: workspace,
+      title: input?.title || activeScenes[0]?.title || "图片素材生产任务",
+      sourceSummary,
+      productImageRefs,
+      referenceImageRefs,
+      consistencyRules: [
+        "产品外观、包装文字、尺寸比例和主体结构必须保持一致。",
+        "参考图只作为构图、光线、姿态和氛围参考，不得编造产品事实。",
+      ],
+      negativeConstraints: [
+        "不生成医疗化、夸大承诺或无法由资料支撑的表达。",
+        "不改变产品包装结构，不添加无来源的文字、Logo 或规格。",
+      ],
+      shotPrompts: shotPromptSeedsFromText(sourceSummary, suggestedImagePrompt).map((shot) => ({
+        ...shot,
+        referenceImageRefs,
+      })),
+    });
+    updateImageProductionTaskState(task);
+    await refresh(workspace);
+    return task;
+  }
+
+  async function updateImageProductionTask(input: {
+    taskId: string;
+    title?: string;
+    status?: ImageProductionTaskStatus;
+    sourceSummary?: string;
+    productImageRefs?: string[];
+    referenceImageRefs?: string[];
+    consistencyRules?: string[];
+    negativeConstraints?: string[];
+    activeShotPromptId?: string;
+  }): Promise<ImageProductionTask> {
+    const workspace = requireWorkspace();
+    const task = await window.contentStudio.updateImageProductionTask({
+      workspacePath: workspace,
+      ...input,
+    });
+    updateImageProductionTaskState(task);
+    return task;
+  }
+
+  async function updateShotPrompt(input: {
+    taskId: string;
+    shotPromptId?: string;
+    patch: Partial<Omit<ShotPrompt, "id" | "createdAt" | "updatedAt">>;
+  }): Promise<ImageProductionTask> {
+    const workspace = requireWorkspace();
+    const task = await window.contentStudio.updateShotPrompt({
+      workspacePath: workspace,
+      ...input,
+    });
+    updateImageProductionTaskState(task);
+    return task;
+  }
+
+  async function syncShotStatusFromLog(log: GenerationLogEntry): Promise<void> {
+    const { taskId, shotPromptId } = imageLogProductionIds(log);
+    const status = nextShotStatusFromLog(log);
+    if (!taskId || !shotPromptId || !status) return;
+    const task = await window.contentStudio.updateShotPrompt({
+      workspacePath: log.workspacePath,
+      taskId,
+      shotPromptId,
+      patch: { status },
+    });
+    setImageProductionTasks((current) => [
+      task,
+      ...current.filter((item) => item.id !== task.id),
+    ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+  }
+
+  async function generateImageForShot(input: {
+    taskId: string;
+    shotPromptId: string;
+    generationStage: "test" | "batch";
+  }, context?: ActionContext): Promise<void> {
+    const workspace = requireWorkspace();
+    requireModelKeyReadable("image");
+    const task = imageProductionTasks.find((item) => item.id === input.taskId);
+    const shot = task?.shotPrompts.find((item) => item.id === input.shotPromptId);
+    if (!task || !shot) throw new Error("请选择要生成的镜头 Prompt。");
+    const prompt = shot.prompt.trim();
+    if (!prompt) throw new Error("镜头 Prompt 为空，不能开始生成。");
+    const referenceRefs = Array.from(new Set([
+      ...shot.referenceImageRefs,
+      ...task.referenceImageRefs,
+      ...referenceImageRefs,
+    ])).slice(0, 6);
+    const nextParams = {
+      ...paramsForImageGeneration(params),
+      count: input.generationStage === "test" ? 1 : Math.max(1, params.count),
+    };
+    const generationInput: ImageGenerationRequest = {
+      workspacePath: workspace,
+      productionTaskId: task.id,
+      shotPromptId: shot.id,
+      generationStage: input.generationStage,
+      productImageRefs: task.productImageRefs.length ? task.productImageRefs : productImageRefs,
+      referenceImageRefs: referenceRefs,
+      prompt,
+      negativeConstraints: [
+        ...task.negativeConstraints,
+        ...(shot.negativePrompt ? [shot.negativePrompt] : []),
+      ].filter(Boolean),
+      consistencyRules: task.consistencyRules,
+      promptMode: imagePromptMode,
+      generationMode: imageGenerationMode,
+      template: imageTemplate,
+      templateInputs: imageTemplateInputs,
+      watermark: imageWatermark,
+      promptPackId: activePromptPack?.id,
+      sceneCardIds: selectedSceneIdsForRequest,
+      citations: citationsForRequest,
+      selectedSkillSlugs:
+        skillSelection?.enabledSkills.map((skill) => skill.slug) ?? [],
+      params: nextParams,
+    };
+    const submission = await submitMediaGeneration({
+      kind: "image",
+      input: generationInput,
+    });
+    const logId = submission.type === "task" ? submission.task.logId : submission.result.logId;
+    const nextTask = submission.type === "fallback"
+      ? await window.contentStudio.appendShotGenerationLog({
+        workspacePath: workspace,
+        taskId: task.id,
+        shotPromptId: shot.id,
+        generationStage: input.generationStage,
+        logId,
+      })
+      : undefined;
+    context?.throwIfCancelled();
+    if (nextTask) updateImageProductionTaskState(nextTask);
+    applyMediaGenerationSubmission(submission);
+    await refresh(workspace);
+    if (submission.type === "fallback") {
+      const nextLogs = await window.contentStudio.listGenerationLogs(workspace);
+      const log = nextLogs.find((item) => item.id === logId);
+      if (log) await syncShotStatusFromLog(log);
+    }
+  }
+
+  async function reviewShotAsset(input: {
+    taskId: string;
+    shotPromptId: string;
+    logId: string;
+    assetRef: string;
+    status: "approved" | "rejected";
+    note?: string;
+  }): Promise<void> {
+    const workspace = requireWorkspace();
+    const task = imageProductionTasks.find((item) => item.id === input.taskId);
+    const shot = task?.shotPrompts.find((item) => item.id === input.shotPromptId);
+    const log = logs.find((item) => item.id === input.logId);
+    if (!task || !shot || !log) throw new Error("缺少镜头、任务或生成记录，无法审核入库。");
+    const stage = imageLogStage(log);
+    const assetRefs = imageRefsFromGenerationLog(log);
+    const assetIndex = Math.max(0, assetRefs.indexOf(input.assetRef));
+    const review = await window.contentStudio.reviewAsset({
+      workspacePath: workspace,
+      workflowRunId: log.workflowRunId,
+      productionTaskId: task.id,
+      shotPromptId: shot.id,
+      assetKey: generatedAssetKey(log.id, input.assetRef, assetIndex),
+      kind: "image",
+      sourceType: "generation-log",
+      sourceId: log.id,
+      path: input.assetRef,
+      title: `${shot.title} · ${fileNameFromPath(input.assetRef)}`,
+      status: input.status,
+      note: input.note,
+      tags: [
+        "AI生图",
+        "SOP生产",
+        stage === "test" ? "测试生成" : "批量生成",
+        task.title,
+        shot.title,
+      ],
+    });
+    setAssetReviews((current) => [
+      review,
+      ...current.filter((item) => item.assetKey !== review.assetKey),
+    ]);
+    const nextStatus: ShotPromptStatus = input.status === "rejected"
+      ? "needs-rework"
+      : stage === "test"
+        ? "test-approved"
+        : "approved";
+    const nextTask = await window.contentStudio.updateShotPrompt({
+      workspacePath: workspace,
+      taskId: task.id,
+      shotPromptId: shot.id,
+      patch: {
+        status: nextStatus,
+        reviewIds: Array.from(new Set([...shot.reviewIds, review.id])),
+      },
+    });
+    updateImageProductionTaskState(nextTask);
+    await refresh(workspace);
+  }
+
   function reviewForRework(input: ReworkAssetRequest): AssetReviewRecord | undefined {
     if (input.assetKey) {
       const review = assetReviews.find((item) => item.assetKey === input.assetKey);
@@ -4648,8 +4952,8 @@ export function useContentStudioApp() {
     setNotificationsEnabled,
     reduceAnimation,
     setReduceAnimation,
-    syncClaudeHistory,
-    setSyncClaudeHistory,
+    syncLocalAssetHistory,
+    setSyncLocalAssetHistory,
     shortcutActive,
     setShortcutActive,
     commandWhitelist,
@@ -4738,6 +5042,10 @@ export function useContentStudioApp() {
     setSceneCardDraft,
     logs,
     generationTasks,
+    imageProductionTasks,
+    activeImageProductionTask,
+    activeImageProductionTaskId,
+    setActiveImageProductionTaskId,
     workflowRuns,
     referenceReverseResult,
     referenceReverseError,
@@ -4898,6 +5206,11 @@ export function useContentStudioApp() {
     exportMixPackage,
     recordMixPackageImportEvidence,
     reviewAsset,
+    createImageProductionTask,
+    updateImageProductionTask,
+    updateShotPrompt,
+    generateImageForShot,
+    reviewShotAsset,
     reworkAsset,
     distillAssetPrompt,
     useScenePromptInImage,

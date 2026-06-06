@@ -4,20 +4,21 @@ import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { extname, join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { ArticleGenerationService } from '../../src/main/services/articleGenerationService.ts';
 import { AgentPromptSessionStore } from '../../src/main/services/agentPromptSessionStore.ts';
+import { AppServerSidecarService } from '../../src/main/services/appServerSidecarService.ts';
 import { AssetReviewStore } from '../../src/main/services/assetReviewStore.ts';
 import { AutoUpdateService } from '../../src/main/services/autoUpdateService.ts';
 import { BrandKnowledgeBaseStore } from '../../src/main/services/brandKnowledgeBaseStore.ts';
-import { PromptAgentService } from '../../src/main/services/claudePromptAgentService.ts';
 import { ContentBatchApplicationService } from '../../src/main/services/contentBatchApplicationService.ts';
 import { ContentBatchStore } from '../../src/main/services/contentBatchStore.ts';
 import { GenerationLogStore } from '../../src/main/services/generationLogStore.ts';
+import { ImageProductionTaskStore } from '../../src/main/services/imageProductionTaskStore.ts';
 import { ImageSkillGenerationService } from '../../src/main/services/imageSkillGenerationService.ts';
 import { InputSourceStore } from '../../src/main/services/inputSourceStore.ts';
 import { IpKnowledgeBaseStore } from '../../src/main/services/ipKnowledgeBaseStore.ts';
@@ -33,7 +34,6 @@ import { TextGenerationService, TextProviderBlockedError } from '../../src/main/
 import { VideoWorkflowService } from '../../src/main/services/videoWorkflowService.ts';
 import { AgentKnowledgeContentExportService } from '../../src/main/services/agentKnowledgeContentExportService.ts';
 import { BuguContentWorkspaceSyncAdapter } from '../../src/main/services/buguContentWorkspaceSyncAdapter.ts';
-import { buildClaudeSubprocessEnv, resolveAsarUnpackedPath } from '../../src/main/services/claudeSdkRuntime.ts';
 import { ContentKnowledgeMapApplicationService } from '../../src/main/services/contentKnowledgeMapApplicationService.ts';
 import { buildContentKnowledgeMapDraft } from '../../src/main/services/contentKnowledgeMapBuilder.ts';
 import { validateContentKnowledgeMapBuild } from '../../src/main/services/contentKnowledgeMapValidator.ts';
@@ -48,6 +48,7 @@ import { ContentProductionHandoffStore } from '../../src/main/services/contentPr
 import { ContentReviewTaskApplicationService } from '../../src/main/services/contentReviewTaskApplicationService.ts';
 import { ContentReviewTaskStore } from '../../src/main/services/contentReviewTaskStore.ts';
 import { ContentTeamKnowledgePromptDraftService } from '../../src/main/services/contentTeamKnowledgePromptDraftService.ts';
+import { GenerationTaskService } from '../../src/main/services/generationTaskService.ts';
 import { ContentWorkspaceSyncService } from '../../src/main/services/contentWorkspaceSyncService.ts';
 import { buildPromptGroundingSummary } from '../../src/main/services/promptGroundingAssembler.ts';
 import { getOemRuntimeConfig } from '../../src/main/services/oemRuntimeConfig.ts';
@@ -173,6 +174,268 @@ async function withWorkspace(run) {
   }
 }
 
+async function withEnv(overrides, run) {
+  const previous = new Map();
+  for (const key of Object.keys(overrides)) {
+    previous.set(key, process.env[key]);
+    const value = overrides[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return await run();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+async function collectAppServerAgentEvents(service, input) {
+  const events = [];
+  const taskId = await service.runAgent(input, (event) => events.push(event));
+  await waitForAssertion(() => {
+    assert.ok(events.some((event) => event.type === 'done' || event.type === 'error'));
+  }, 3000);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  return { taskId, events };
+}
+
+async function collectAppServerAgentEventsUntil(service, input, predicate, timeoutMs = 1000) {
+  const events = [];
+  const taskId = await service.runAgent(input, (event) => events.push(event));
+  await waitForAssertion(() => {
+    assert.ok(events.some(predicate));
+  }, timeoutMs);
+  return { taskId, events };
+}
+
+async function appServerSidecarAvailable() {
+  const service = new AppServerSidecarService();
+  return (await service.healthCheck()).available;
+}
+
+async function writeFakeAppServerBinary(targetPath, events) {
+  await writeFile(targetPath, `#!/usr/bin/env node
+import { createInterface } from 'node:readline';
+import { writeFileSync } from 'node:fs';
+
+const capturePath = process.env.FAKE_APP_SERVER_CAPTURE_PATH;
+if (!capturePath) {
+  throw new Error('missing fake app-server capture path');
+}
+const turnEvents = ${JSON.stringify(events)};
+const captures = { initialize: null, sessionStart: null, turnStart: null };
+
+function writeCapture() {
+  writeFileSync(capturePath, JSON.stringify(captures, null, 2));
+}
+
+function respond(message) {
+  process.stdout.write(JSON.stringify(message) + '\\n');
+}
+
+const lines = createInterface({ input: process.stdin });
+lines.on('line', (line) => {
+  if (!line.trim()) return;
+  const request = JSON.parse(line);
+  if (request.method === 'initialize') {
+    captures.initialize = request.params;
+    writeCapture();
+    respond({
+      id: request.id,
+      result: {
+        serverInfo: { name: 'fake-app-server', version: '0.0.0-test', protocolVersion: 'appserver.v0' },
+      },
+    });
+    return;
+  }
+  if (request.method === 'initialized') return;
+  if (request.method === 'agentSession/start') {
+    captures.sessionStart = request.params;
+    writeCapture();
+    respond({
+      id: request.id,
+      result: {
+        session: {
+          sessionId: request.params.sessionId,
+          threadId: request.params.threadId,
+          appId: request.params.appId,
+          workspaceId: request.params.workspaceId,
+          status: 'idle',
+        },
+      },
+    });
+    return;
+  }
+  if (request.method === 'agentSession/turn/start') {
+    captures.turnStart = request.params;
+    writeCapture();
+    respond({
+      id: request.id,
+      result: {
+        turn: {
+          turnId: request.params.turnId,
+          sessionId: request.params.sessionId,
+          status: 'accepted',
+        },
+      },
+    });
+    for (const event of turnEvents) {
+      respond({ method: 'agentSession/event', params: { event } });
+    }
+    return;
+  }
+  if (request.method === 'agentSession/turn/cancel') {
+    respond({ id: request.id, result: {} });
+    return;
+  }
+  respond({ id: request.id, result: {} });
+});
+`, 'utf8');
+  await chmod(targetPath, 0o755);
+}
+
+async function writeFakeAppServerSmokeBinary(targetPath) {
+  await writeFile(targetPath, `#!/usr/bin/env node
+import { createInterface } from 'node:readline';
+import { writeFileSync } from 'node:fs';
+
+const capturePath = process.env.FAKE_APP_SERVER_CAPTURE_PATH;
+if (!capturePath) {
+  throw new Error('missing fake app-server capture path');
+}
+const capture = {
+  argv: process.argv.slice(2),
+  env: {
+    ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE || '',
+  },
+  requests: [],
+};
+
+function writeCapture() {
+  writeFileSync(capturePath, JSON.stringify(capture, null, 2));
+}
+
+function respond(message) {
+  process.stdout.write(JSON.stringify(message) + '\\n');
+}
+
+writeCapture();
+const lines = createInterface({ input: process.stdin });
+lines.on('line', (line) => {
+  if (!line.trim()) return;
+  const request = JSON.parse(line);
+  capture.requests.push({ id: request.id, method: request.method, params: request.params });
+  writeCapture();
+  if (request.method === 'initialize') {
+    respond({
+      id: request.id,
+      result: {
+        serverInfo: { name: 'fake-app-server', version: '0.0.0-test', protocolVersion: 'appserver.v0' },
+      },
+    });
+    return;
+  }
+  if (request.method === 'initialized') return;
+  if (request.method === 'capability/list') {
+    respond({
+      id: request.id,
+      result: {
+        capabilities: [{ id: 'content.draft.generate', title: 'Draft', methods: ['agentSession/turn/start'] }],
+      },
+    });
+    return;
+  }
+  if (request.method === 'agentSession/start') {
+    respond({
+      id: request.id,
+      result: {
+        session: {
+          sessionId: request.params.sessionId,
+          threadId: request.params.threadId,
+          appId: request.params.appId,
+          workspaceId: request.params.workspaceId,
+          status: 'idle',
+        },
+      },
+    });
+    return;
+  }
+  if (request.method === 'agentSession/turn/start') {
+    respond({
+      id: request.id,
+      result: {
+        turn: {
+          turnId: request.params.turnId,
+          sessionId: request.params.sessionId,
+          status: 'accepted',
+        },
+      },
+    });
+    respond({
+      method: 'agentSession/event',
+      params: { event: { type: 'message.delta', payload: { text: 'packaged smoke message' } } },
+    });
+    respond({
+      method: 'agentSession/event',
+      params: {
+        event: {
+          type: 'artifact.snapshot',
+          payload: {
+            artifactId: 'content-studio-draft-smoke',
+            artifactRef: 'content-studio-draft-smoke',
+            title: 'Packaged Smoke Draft',
+            kind: 'markdown',
+          },
+        },
+      },
+    });
+    return;
+  }
+  if (request.method === 'artifact/read') {
+    respond({
+      id: request.id,
+      result: {
+        artifacts: [{ artifactRef: 'content-studio-draft-smoke', title: 'Packaged Smoke Draft', kind: 'markdown' }],
+      },
+    });
+    return;
+  }
+  if (request.method === 'evidence/export') {
+    respond({
+      id: request.id,
+      result: {
+        events: [
+          { type: 'message.delta', payload: { text: 'packaged smoke message' } },
+          { type: 'artifact.snapshot', payload: { artifactRef: 'content-studio-draft-smoke' } },
+        ],
+        artifacts: [{ artifactRef: 'content-studio-draft-smoke', title: 'Packaged Smoke Draft', kind: 'markdown' }],
+      },
+    });
+    return;
+  }
+  respond({ id: request.id, result: {} });
+});
+`, 'utf8');
+  await chmod(targetPath, 0o755);
+}
+
+async function waitForAssertion(assertion, timeoutMs = 1000) {
+  const startedAt = Date.now();
+  let lastError;
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      return await assertion();
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  throw lastError;
+}
+
 function createPublicPackageFetch(localBaseUrl, publicBaseUrl) {
   return (url, init = {}) => {
     const text = String(url);
@@ -182,6 +445,820 @@ function createPublicPackageFetch(localBaseUrl, publicBaseUrl) {
     return fetch(mappedUrl, init);
   };
 }
+
+const LEGACY_AGENT_RUNTIME_SCAN_TARGETS = [
+  'README.md',
+  'package.json',
+  'electron-builder.yml',
+  'resources/app-server/README.md',
+  'docs/roadmap/limeagent',
+  'docs/roadmap/v2',
+  'docs/roadmap/ontology/v2/client-capability-migration.md',
+  'src/main',
+  'src/preload',
+  'src/shared',
+  'src/renderer/src',
+];
+
+const LEGACY_AGENT_RUNTIME_FORBIDDEN_PATTERNS = [
+  /@anthropic-ai\/claude-agent-sdk/i,
+  /\bclaude-agent-sdk\b/i,
+  /\bClaude SDK\b/i,
+  /\bClaude SDK Agent\b/i,
+  /\bClaude SDK runtime\b/i,
+  /\bClaude Agent SDK\b/i,
+  /\bclaudeSdk[A-Za-z0-9_]*/i,
+  /\bclaudeAgent[A-Za-z0-9_]*/i,
+  /\bclaudePrompt[A-Za-z0-9_]*/i,
+  /\bPi\b/,
+];
+
+const LEGACY_AGENT_RUNTIME_TEXT_EXTENSIONS = new Set([
+  '.css',
+  '.html',
+  '.js',
+  '.json',
+  '.jsx',
+  '.md',
+  '.mjs',
+  '.ts',
+  '.tsx',
+  '.txt',
+  '.yaml',
+  '.yml',
+]);
+
+function shouldScanLegacyAgentRuntimeFile(relativePath) {
+  return LEGACY_AGENT_RUNTIME_TEXT_EXTENSIONS.has(extname(relativePath).toLowerCase());
+}
+
+async function listFilesForLegacyAgentRuntimeScan(targets, root = process.cwd()) {
+  const files = [];
+  async function visit(relativePath) {
+    const absolutePath = join(root, relativePath);
+    let entries;
+    try {
+      entries = await readdir(absolutePath, { withFileTypes: true });
+    } catch (error) {
+      if (error?.code === 'ENOTDIR') {
+        files.push(relativePath);
+        return;
+      }
+      if (error?.code === 'ENOENT') return;
+      throw error;
+    }
+
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === 'out' || entry.name === 'dist') continue;
+      const childPath = `${relativePath}/${entry.name}`;
+      if (entry.isDirectory()) {
+        await visit(childPath);
+      } else if (entry.isFile() && shouldScanLegacyAgentRuntimeFile(childPath)) {
+        files.push(childPath);
+      }
+    }
+  }
+
+  for (const target of targets) {
+    if (shouldScanLegacyAgentRuntimeFile(target)) files.push(target);
+    else await visit(target);
+  }
+  return files;
+}
+
+test('当前主线禁止回流 Pi 或 Claude SDK Agent runtime', async () => {
+  const files = await listFilesForLegacyAgentRuntimeScan(LEGACY_AGENT_RUNTIME_SCAN_TARGETS);
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, 'utf8');
+    const lines = content.split(/\r?\n/);
+    lines.forEach((line, index) => {
+      for (const pattern of LEGACY_AGENT_RUNTIME_FORBIDDEN_PATTERNS) {
+        if (!pattern.test(line)) continue;
+        violations.push(`${file}:${index + 1}: ${line.trim()}`);
+      }
+    });
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test('content-studio consumes App Server external backend sidecar', async () => {
+  const service = new AppServerSidecarService();
+  const health = await service.healthCheck();
+  if (!health.available) {
+    assert.equal(health.available, false);
+    assert.equal(health.source, 'missing');
+    assert.match(health.message ?? '', /APP_SERVER_BIN|app-server sidecar/);
+    return;
+  }
+
+  assert.equal(health.available, true);
+  assert.ok(['env', 'resources'].includes(health.source));
+  const result = await service.runSmoke();
+  assert.equal(result.ok, true, result.error);
+  assert.equal(result.protocolVersion, 'appserver.v0');
+  assert.ok(result.capabilityIds?.includes('content.draft.generate'));
+  assert.ok(result.eventTypes?.includes('message.delta'));
+  assert.ok(result.eventTypes?.includes('artifact.snapshot'));
+  assert.ok(result.artifactRefs?.includes('content-studio-draft-smoke'));
+  assert.ok((result.evidenceEventCount ?? 0) >= 2);
+  assert.equal(result.evidenceArtifactCount, 1);
+});
+
+test('App Server binary resolver prefers packaged resources over APP_SERVER_BIN override', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-resolve-'));
+  const binaryName = process.platform === 'win32' ? 'app-server.exe' : 'app-server';
+  const resourcesDir = join(tempDir, 'resources');
+  const currentDir = join(resourcesDir, 'current');
+  const packagedBinary = join(currentDir, binaryName);
+  const envBinary = join(tempDir, binaryName);
+  try {
+    await mkdir(currentDir, { recursive: true });
+    await writeFile(packagedBinary, 'packaged app server');
+    await writeFile(envBinary, 'env app server');
+    if (process.platform !== 'win32') {
+      await chmod(packagedBinary, 0o755);
+      await chmod(envBinary, 0o755);
+    }
+
+    await withEnv({
+      APP_SERVER_RESOURCES_DIR: resourcesDir,
+      APP_SERVER_BIN: envBinary,
+      CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+    }, async () => {
+      const service = new AppServerSidecarService();
+      const health = await service.healthCheck();
+      assert.equal(health.available, true);
+      assert.equal(health.binaryPath, packagedBinary);
+      assert.equal(health.source, 'resources');
+    });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('App Server smoke uses Node mode for packaged Electron backend command', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-smoke-env-'));
+  const appServerPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+  const capturePath = join(tempDir, 'smoke-capture.json');
+  try {
+    await writeFakeAppServerSmokeBinary(appServerPath);
+
+    await withEnv({
+      APP_SERVER_RESOURCES_DIR: undefined,
+      CONTENT_STUDIO_RESOURCES_DIR: undefined,
+      APP_SERVER_BIN: appServerPath,
+      CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+      FAKE_APP_SERVER_CAPTURE_PATH: capturePath,
+    }, async () => {
+      const service = new AppServerSidecarService();
+      const result = await service.runSmoke();
+      assert.equal(result.ok, true, result.error);
+      assert.equal(result.binaryPath, appServerPath);
+      assert.equal(result.source, 'env');
+      assert.ok(result.capabilityIds?.includes('content.draft.generate'));
+      assert.ok(result.eventTypes?.includes('message.delta'));
+      assert.ok(result.eventTypes?.includes('artifact.snapshot'));
+
+      const captured = JSON.parse(await readFile(capturePath, 'utf8'));
+      assert.equal(captured.env.ELECTRON_RUN_AS_NODE, '1');
+      assert.ok(captured.argv.includes('--backend-command'));
+      assert.ok(captured.argv.includes(process.execPath));
+      assert.ok(captured.argv.includes('--backend-arg'));
+      assert.ok(captured.argv.some((arg) => /query-loop-backend\.mjs$/.test(arg)));
+    });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('App Server agent path uses packaged backend and reports text model unavailable', async () => {
+  if (!await appServerSidecarAvailable()) return;
+
+  await withWorkspace(async (workspacePath) => {
+    await withEnv({
+      CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND: undefined,
+      CONTENT_STUDIO_APP_SERVER_BACKEND_ARGS: undefined,
+      CONTENT_STUDIO_APP_SERVER_BACKEND_ECHO: undefined,
+      CONTENT_STUDIO_TEXT_API_KEY: undefined,
+      OPENAI_API_KEY: undefined,
+      ANTHROPIC_API_KEY: undefined,
+      GEMINI_API_KEY: undefined,
+      GOOGLE_API_KEY: undefined,
+    }, async () => {
+      const service = new AppServerSidecarService();
+      const { taskId, events } = await collectAppServerAgentEvents(service, {
+        prompt: '写一篇内容草稿',
+        workspacePath,
+        permissionMode: 'ask',
+        selectedSkillSlugs: ['draft'],
+      });
+
+      assert.ok(taskId);
+      assert.ok(events.some((event) =>
+        event.type === 'error' && /文字模型未配置/.test(event.message)
+      ));
+      assert.equal(events.some((event) => event.type === 'done'), false);
+      assert.equal(service.cancelAgent(taskId), false);
+    });
+  });
+});
+
+test('App Server agent path uses packaged backend for draft artifact projection', async () => {
+  if (!await appServerSidecarAvailable()) return;
+
+  await withWorkspace(async (workspacePath) => {
+    await withEnv({
+      CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND: undefined,
+      CONTENT_STUDIO_APP_SERVER_BACKEND_ARGS: undefined,
+      CONTENT_STUDIO_APP_SERVER_BACKEND_ECHO: '1',
+    }, async () => {
+      const service = new AppServerSidecarService();
+      const { taskId, events } = await collectAppServerAgentEvents(service, {
+        prompt: '基于新品卖点写一篇公众号草稿',
+        workspacePath,
+        permissionMode: 'ask',
+        selectedSkillSlugs: ['draft', 'brand-voice'],
+      });
+
+      assert.ok(taskId);
+      assert.ok(events.some((event) =>
+        event.type === 'assistant' && event.text.includes('基于新品卖点写一篇公众号草稿')
+      ));
+      assert.ok(events.some((event) =>
+        event.type === 'result' && event.summary === 'Content Studio Draft'
+      ));
+      assert.ok(events.some((event) => event.type === 'result' && event.summary === 'App Server 内容草稿'));
+      assert.ok(events.some((event) => event.type === 'done'));
+      assert.equal(events.some((event) => event.type === 'error'), false);
+      assert.equal(service.cancelAgent(taskId), false);
+    });
+  });
+});
+
+test('App Server agent path maps external backend events to AgentEvent', async () => {
+  if (!await appServerSidecarAvailable()) return;
+
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-agent-success-'));
+    const backendPath = join(tempDir, 'agent-backend.mjs');
+    const capturePath = join(tempDir, 'turn-start.json');
+    try {
+      await writeFile(backendPath, `#!/usr/bin/env node
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const input = JSON.parse(readFileSync(0, 'utf8'));
+if (input.kind === 'turnStart') {
+  writeFileSync(process.argv[2], JSON.stringify(input.request, null, 2));
+  console.log(JSON.stringify({
+    events: [
+      { type: 'message.delta', payload: { text: 'App Server 生成内容片段' } },
+      {
+        type: 'artifact.snapshot',
+        payload: {
+          artifactId: 'agent-draft-artifact',
+          title: 'Agent Draft Artifact',
+          kind: 'markdown',
+          content: '# Draft'
+        }
+      },
+      { type: 'turn.completed', payload: { summary: 'Agent Draft Artifact' } }
+    ]
+  }));
+  process.exit(0);
+}
+if (input.kind === 'turnCancel') {
+  console.log(JSON.stringify({ events: [{ type: 'turn.canceled', payload: { ok: true } }] }));
+  process.exit(0);
+}
+console.log(JSON.stringify({ events: [] }));
+`);
+      await withEnv({
+        CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND: process.execPath,
+        CONTENT_STUDIO_APP_SERVER_BACKEND_ARGS: JSON.stringify([backendPath, capturePath]),
+      }, async () => {
+        const service = new AppServerSidecarService();
+        const { taskId, events } = await collectAppServerAgentEvents(service, {
+          prompt: '基于新品卖点写一篇公众号草稿',
+          workspacePath,
+          permissionMode: 'ask',
+          selectedSkillSlugs: ['draft', 'brand-voice'],
+        });
+
+        assert.ok(taskId);
+        assert.ok(events.some((event) => event.type === 'status' && /App Server/.test(event.message)));
+        assert.ok(events.some((event) =>
+          event.type === 'assistant' && event.text.includes('App Server 生成内容片段')
+        ));
+        assert.ok(events.some((event) =>
+          event.type === 'result' && event.summary === 'Agent Draft Artifact'
+        ));
+        assert.ok(events.some((event) => event.type === 'done'));
+        assert.equal(events.some((event) => event.type === 'error'), false);
+        assert.equal(service.cancelAgent(taskId), false);
+
+        const captured = JSON.parse(await readFile(capturePath, 'utf8'));
+        assert.equal(captured.input.text, '基于新品卖点写一篇公众号草稿');
+        assert.equal(captured.runtimeOptions.capabilityId, 'content.draft.generate');
+        assert.equal(captured.runtimeOptions.stream, true);
+        assert.deepEqual(captured.runtimeOptions.metadata.selectedSkillSlugs, ['draft', 'brand-voice']);
+        assert.equal(captured.runtimeOptions.metadata.permissionMode, 'ask');
+        assert.equal(captured.queueIfBusy, true);
+        assert.equal(captured.skipPreSubmitResume, true);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('App Server JSON-RPC client sends business object refs and treats backend failed events as terminal', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-json-rpc-'));
+    const appServerPath = join(tempDir, 'app-server');
+    const capturePath = join(tempDir, 'capture.json');
+    try {
+      await writeFakeAppServerBinary(appServerPath, [
+        { type: 'tool.started', payload: { toolName: 'content.fetch' } },
+        { type: 'tool.failed', payload: { message: 'backend tool failed for test' } },
+      ]);
+
+      await withEnv({
+        APP_SERVER_RESOURCES_DIR: undefined,
+        CONTENT_STUDIO_RESOURCES_DIR: undefined,
+        APP_SERVER_BIN: appServerPath,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND: process.execPath,
+        CONTENT_STUDIO_APP_SERVER_BACKEND_ARGS: JSON.stringify([capturePath]),
+        CONTENT_STUDIO_APP_SERVER_AGENT_TIMEOUT_MS: '1000',
+        FAKE_APP_SERVER_CAPTURE_PATH: capturePath,
+      }, async () => {
+        const service = new AppServerSidecarService();
+        const { taskId, events } = await collectAppServerAgentEvents(service, {
+          prompt: '验证 App Server JSON-RPC 路径',
+          workspacePath,
+          permissionMode: 'ask',
+          selectedSkillSlugs: ['draft'],
+          businessObjectRef: {
+            kind: 'promptDraft',
+            id: 'draft-json-rpc-1',
+            title: 'JSON-RPC Prompt 草稿',
+            metadata: { source: 'functional-test' },
+          },
+        });
+
+        assert.ok(taskId);
+        assert.ok(events.some((event) => event.type === 'tool' && event.name === 'tool.started'));
+        assert.ok(events.some((event) =>
+          event.type === 'error' && /backend tool failed for test/.test(event.message)
+        ));
+        assert.equal(events.some((event) => event.type === 'done'), false);
+
+        const captured = JSON.parse(await readFile(capturePath, 'utf8'));
+        assert.equal(captured.initialize.clientInfo.name, 'content_studio');
+        assert.equal(captured.initialize.clientInfo.title, 'Content Studio');
+        assert.equal(captured.initialize.capabilities.experimentalApi, false);
+        assert.deepEqual(captured.initialize.capabilities.optOutNotificationMethods, []);
+        assert.deepEqual(captured.sessionStart.businessObjectRef, {
+          kind: 'promptDraft',
+          id: 'draft-json-rpc-1',
+          title: 'JSON-RPC Prompt 草稿',
+          metadata: { source: 'functional-test' },
+        });
+        assert.equal(captured.turnStart.input.text, '验证 App Server JSON-RPC 路径');
+        assert.equal(captured.turnStart.runtimeOptions.capabilityId, 'content.draft.generate');
+        assert.equal(captured.turnStart.runtimeOptions.stream, true);
+        assert.deepEqual(captured.turnStart.runtimeOptions.metadata.selectedSkillSlugs, ['draft']);
+        assert.equal(captured.turnStart.runtimeOptions.metadata.permissionMode, 'ask');
+        assert.equal(captured.turnStart.queueIfBusy, true);
+        assert.equal(captured.turnStart.skipPreSubmitResume, true);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('App Server agent path can cancel delayed external backend without fake completion', async () => {
+  if (!await appServerSidecarAvailable()) return;
+
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-agent-cancel-'));
+    const backendPath = join(tempDir, 'slow-agent-backend.mjs');
+    try {
+      await writeFile(backendPath, `#!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+
+const input = JSON.parse(readFileSync(0, 'utf8'));
+if (input.kind === 'turnStart') {
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  console.log(JSON.stringify({
+    events: [
+      { type: 'message.delta', payload: { text: '延迟生成内容片段' } },
+      { type: 'turn.completed', payload: { summary: '延迟任务完成' } }
+    ]
+  }));
+  process.exit(0);
+}
+if (input.kind === 'turnCancel') {
+  console.log(JSON.stringify({ events: [{ type: 'turn.canceled', payload: { ok: true } }] }));
+  process.exit(0);
+}
+console.log(JSON.stringify({ events: [] }));
+`);
+      await withEnv({
+        CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND: process.execPath,
+        CONTENT_STUDIO_APP_SERVER_BACKEND_ARGS: JSON.stringify([backendPath]),
+      }, async () => {
+        const service = new AppServerSidecarService();
+        const { taskId, events } = await collectAppServerAgentEventsUntil(service, {
+          prompt: '生成一个较慢的内容草稿',
+          workspacePath,
+          permissionMode: 'ask',
+          selectedSkillSlugs: ['draft'],
+        }, (event) => event.type === 'status' && /正在通过 App Server/.test(event.message), 1000);
+
+        assert.equal(service.cancelAgent(taskId), true);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        assert.equal(events.some((event) => event.type === 'done'), false);
+        assert.equal(events.some((event) => event.type === 'assistant' && /延迟生成/.test(event.text)), false);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('App Server agent path surfaces backend stderr crash as error', async () => {
+  if (!await appServerSidecarAvailable()) return;
+
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-agent-crash-'));
+    const backendPath = join(tempDir, 'crash-agent-backend.mjs');
+    try {
+      await writeFile(backendPath, `#!/usr/bin/env node
+console.error('content backend crashed for test');
+process.exit(7);
+`);
+      await withEnv({
+        CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND: process.execPath,
+        CONTENT_STUDIO_APP_SERVER_BACKEND_ARGS: JSON.stringify([backendPath]),
+      }, async () => {
+        const service = new AppServerSidecarService();
+        const { taskId, events } = await collectAppServerAgentEvents(service, {
+          prompt: '触发 backend crash',
+          workspacePath,
+          permissionMode: 'ask',
+          selectedSkillSlugs: ['draft'],
+        });
+
+        assert.ok(taskId);
+        assert.ok(events.some((event) =>
+          event.type === 'error' &&
+          /external app-server backend exited/.test(event.message) &&
+          /content backend crashed for test/.test(event.message)
+        ));
+        assert.equal(events.some((event) => event.type === 'done'), false);
+        assert.equal(service.cancelAgent(taskId), false);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('App Server agent path recovers on next task after backend crash', async () => {
+  if (!await appServerSidecarAvailable()) return;
+
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-agent-recover-'));
+    const backendPath = join(tempDir, 'recover-agent-backend.mjs');
+    const counterPath = join(tempDir, 'counter.txt');
+    try {
+      await writeFile(backendPath, `#!/usr/bin/env node
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+
+const input = JSON.parse(readFileSync(0, 'utf8'));
+const counterPath = process.argv[2];
+const count = existsSync(counterPath) ? Number(readFileSync(counterPath, 'utf8')) : 0;
+writeFileSync(counterPath, String(count + 1));
+if (input.kind === 'turnStart' && count === 0) {
+  console.error('first backend invocation crashed');
+  process.exit(9);
+}
+if (input.kind === 'turnStart') {
+  console.log(JSON.stringify({
+    events: [
+      { type: 'message.delta', payload: { text: '恢复后的内容片段' } },
+      { type: 'artifact.snapshot', payload: { artifactId: 'recover-draft', title: 'Recover Draft', kind: 'markdown', content: '# Recover' } },
+      { type: 'turn.completed', payload: { summary: 'Recover Draft' } }
+    ]
+  }));
+  process.exit(0);
+}
+console.log(JSON.stringify({ events: [] }));
+`);
+      await withEnv({
+        CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND: process.execPath,
+        CONTENT_STUDIO_APP_SERVER_BACKEND_ARGS: JSON.stringify([backendPath, counterPath]),
+      }, async () => {
+        const service = new AppServerSidecarService();
+        const first = await collectAppServerAgentEvents(service, {
+          prompt: '第一次触发 crash',
+          workspacePath,
+          permissionMode: 'ask',
+          selectedSkillSlugs: ['draft'],
+        });
+        assert.ok(first.events.some((event) => event.type === 'error' && /first backend invocation crashed/.test(event.message)));
+        assert.equal(first.events.some((event) => event.type === 'done'), false);
+
+        const second = await collectAppServerAgentEvents(service, {
+          prompt: '第二次应恢复',
+          workspacePath,
+          permissionMode: 'ask',
+          selectedSkillSlugs: ['draft'],
+        });
+        assert.ok(second.events.some((event) => event.type === 'assistant' && /恢复后的内容片段/.test(event.text)));
+        assert.ok(second.events.some((event) => event.type === 'result' && event.summary === 'Recover Draft'));
+        assert.ok(second.events.some((event) => event.type === 'done'));
+        assert.equal(second.events.some((event) => event.type === 'error'), false);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('后台图片生成任务会绑定 SOP 镜头日志并推进测试/批量状态', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const logs = new GenerationLogStore();
+    const imageProductionTasks = new ImageProductionTaskStore();
+    const task = await imageProductionTasks.create({
+      workspacePath,
+      title: 'SOP 后台生图任务',
+      sourceSummary: '产品特写后进入多人使用场景。',
+      consistencyRules: ['产品包装和比例保持一致'],
+      negativeConstraints: ['不生成医疗化承诺'],
+      shotPrompts: [
+        { title: '镜头 01', scene: '产品特写', prompt: '早餐桌产品特写', status: 'ready' },
+      ],
+    });
+    const shot = task.shotPrompts[0];
+    const media = {
+      async generateImage(input, options = {}) {
+        const assetPath = join(workspacePath, `${input.generationStage}-result.png`);
+        await writeFile(assetPath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
+        await logs.update(input.workspacePath, options.logId, {
+          status: 'succeeded',
+          title: '图片生成完成',
+          summary: '图片生成完成。',
+          output: { assetRefs: [assetPath] },
+          artifactRefs: [assetPath],
+          durationMs: 1,
+        });
+        return { logId: options.logId, status: 'succeeded', message: 'ok', assetRefs: [assetPath] };
+      },
+      async generateVideo() {
+        throw new Error('本测试不应调用视频生成。');
+      },
+    };
+    const service = new GenerationTaskService(
+      logs,
+      media,
+      {},
+      {},
+      {},
+      {},
+      {},
+      imageProductionTasks,
+    );
+
+    const testRecord = await service.submit({
+      kind: 'image',
+      input: {
+        workspacePath,
+        productionTaskId: task.id,
+        shotPromptId: shot.id,
+        generationStage: 'test',
+        productImageRefs: [],
+        referenceImageRefs: [],
+        prompt: shot.prompt,
+        negativeConstraints: task.negativeConstraints,
+        consistencyRules: task.consistencyRules,
+        promptMode: 'free',
+        generationMode: 'smart',
+        template: '自由模式',
+        watermark: false,
+        citations: [],
+        selectedSkillSlugs: [],
+        params: { textModel: 'fake', imageModel: 'fake-image', videoModel: 'fake-video', runMode: 'single', count: 1, aspectRatio: '4:5', resolution: '1k', quality: 'low' },
+      },
+    });
+    const testingTask = (await imageProductionTasks.list(workspacePath))[0];
+    assert.equal(testingTask.shotPrompts[0].status, 'testing');
+    assert.deepEqual(testingTask.shotPrompts[0].testLogIds, [testRecord.logId]);
+
+    await waitForAssertion(async () => {
+      const [storedTask] = await imageProductionTasks.list(workspacePath);
+      assert.equal(storedTask.shotPrompts[0].status, 'test-review');
+      const storedLog = await logs.get(workspacePath, testRecord.logId);
+      assert.equal(storedLog?.status, 'succeeded');
+      assert.equal(service.list(workspacePath).find((item) => item.logId === testRecord.logId)?.status, 'succeeded');
+    });
+
+    const testApproved = await imageProductionTasks.updateShot({
+      workspacePath,
+      taskId: task.id,
+      shotPromptId: shot.id,
+      patch: { status: 'test-approved' },
+    });
+    const batchRecord = await service.submit({
+      kind: 'image',
+      input: {
+        workspacePath,
+        productionTaskId: task.id,
+        shotPromptId: shot.id,
+        generationStage: 'batch',
+        productImageRefs: [],
+        referenceImageRefs: [],
+        prompt: testApproved.shotPrompts[0].prompt,
+        negativeConstraints: task.negativeConstraints,
+        consistencyRules: task.consistencyRules,
+        promptMode: 'free',
+        generationMode: 'smart',
+        template: '自由模式',
+        watermark: false,
+        citations: [],
+        selectedSkillSlugs: [],
+        params: { textModel: 'fake', imageModel: 'fake-image', videoModel: 'fake-video', runMode: 'batch', count: 2, aspectRatio: '4:5', resolution: '1k', quality: 'low' },
+      },
+    });
+    const batchingTask = (await imageProductionTasks.list(workspacePath))[0];
+    assert.equal(batchingTask.shotPrompts[0].status, 'batching');
+    assert.deepEqual(batchingTask.shotPrompts[0].batchLogIds, [batchRecord.logId]);
+
+    await waitForAssertion(async () => {
+      const [storedTask] = await imageProductionTasks.list(workspacePath);
+      assert.equal(storedTask.shotPrompts[0].status, 'batch-review');
+      const storedLog = await logs.get(workspacePath, batchRecord.logId);
+      assert.equal(storedLog?.status, 'succeeded');
+    });
+  });
+});
+
+test('后台图片生成任务会把 SOP 镜头同步到待配置和回炉状态', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const submitImageTask = async ({ finalStatus, error }) => {
+      const logs = new GenerationLogStore();
+      const imageProductionTasks = new ImageProductionTaskStore();
+      const task = await imageProductionTasks.create({
+        workspacePath,
+        title: `SOP ${finalStatus} 生图任务`,
+        sourceSummary: '产品特写。',
+        shotPrompts: [
+          { title: '镜头 01', scene: '产品特写', prompt: '产品特写', status: 'ready' },
+        ],
+      });
+      const shot = task.shotPrompts[0];
+      const media = {
+        async generateImage(input, options = {}) {
+          await logs.update(input.workspacePath, options.logId, {
+            status: finalStatus,
+            title: finalStatus === 'blocked' ? '图片生成待配置' : '图片生成失败',
+            summary: finalStatus === 'blocked' ? '图片生成服务未配置。' : '图片生成服务失败。',
+            output: { assetRefs: [] },
+            artifactRefs: [],
+            error,
+            durationMs: 1,
+          });
+          return { logId: options.logId, status: finalStatus, message: error, assetRefs: [] };
+        },
+        async generateVideo() {
+          throw new Error('本测试不应调用视频生成。');
+        },
+      };
+      const service = new GenerationTaskService(logs, media, {}, {}, {}, {}, {}, imageProductionTasks);
+      const record = await service.submit({
+        kind: 'image',
+        input: {
+          workspacePath,
+          productionTaskId: task.id,
+          shotPromptId: shot.id,
+          generationStage: 'test',
+          productImageRefs: [],
+          referenceImageRefs: [],
+          prompt: shot.prompt,
+          promptMode: 'free',
+          generationMode: 'smart',
+          template: '自由模式',
+          watermark: false,
+          citations: [],
+          selectedSkillSlugs: [],
+          params: { textModel: 'fake', imageModel: 'fake-image', videoModel: 'fake-video', runMode: 'single', count: 1, aspectRatio: '4:5', resolution: '1k', quality: 'low' },
+        },
+      });
+      await waitForAssertion(async () => {
+        const storedTask = (await imageProductionTasks.list(workspacePath)).find((item) => item.id === task.id);
+        const storedLog = await logs.get(workspacePath, record.logId);
+        assert.equal(storedLog?.status, finalStatus);
+        assert.equal(storedLog?.output.assetRefs.length, 0);
+        assert.equal(storedTask?.shotPrompts[0].testLogIds[0], record.logId);
+        assert.equal(service.list(workspacePath).find((item) => item.logId === record.logId)?.status, finalStatus);
+      });
+      const storedTask = (await imageProductionTasks.list(workspacePath)).find((item) => item.id === task.id);
+      assert.ok(storedTask);
+      return storedTask;
+    };
+
+    const blockedTask = await submitImageTask({
+      finalStatus: 'blocked',
+      error: 'IMAGE_PROVIDER_NOT_CONFIGURED',
+    });
+    assert.equal(blockedTask.status, 'blocked');
+    assert.equal(blockedTask.shotPrompts[0].status, 'blocked');
+
+    const failedTask = await submitImageTask({
+      finalStatus: 'failed',
+      error: 'IMAGE_PROVIDER_FAILED',
+    });
+    assert.equal(failedTask.status, 'needs-rework');
+    assert.equal(failedTask.shotPrompts[0].status, 'needs-rework');
+  });
+});
+
+test('图片生产任务 Store 可以持久化镜头、测试/批量日志和状态门', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const store = new ImageProductionTaskStore();
+    const task = await store.create({
+      workspacePath,
+      title: 'SOP 生图任务',
+      sourceSummary: '镜头 1：产品特写\n镜头 2：人物手持产品',
+      productImageRefs: ['/tmp/product.png'],
+      referenceImageRefs: ['/tmp/ref.png'],
+      consistencyRules: ['产品外观一致'],
+      negativeConstraints: ['不夸大'],
+      shotPrompts: [
+        { title: '镜头 01', scene: '产品特写', prompt: '产品特写', status: 'ready' },
+        { title: '镜头 02', scene: '人物手持', prompt: '人物手持产品', status: 'ready' },
+      ],
+    });
+    assert.equal(task.shotPrompts.length, 2);
+    assert.equal(task.status, 'draft');
+    const first = task.shotPrompts[0];
+
+    const testing = await store.appendGenerationLog({
+      workspacePath,
+      taskId: task.id,
+      shotPromptId: first.id,
+      generationStage: 'test',
+      logId: 'log-test',
+    });
+    assert.equal(testing.status, 'testing');
+    assert.equal(testing.shotPrompts[0].status, 'testing');
+    assert.deepEqual(testing.shotPrompts[0].testLogIds, ['log-test']);
+
+    const reviewed = await store.updateShot({
+      workspacePath,
+      taskId: task.id,
+      shotPromptId: first.id,
+      patch: { status: 'test-approved' },
+    });
+    assert.equal(reviewed.status, 'test-approved');
+
+    const batching = await store.appendGenerationLog({
+      workspacePath,
+      taskId: task.id,
+      shotPromptId: first.id,
+      generationStage: 'batch',
+      logId: 'log-batch',
+    });
+    assert.equal(batching.status, 'batching');
+    assert.equal(batching.shotPrompts[0].status, 'batching');
+    assert.deepEqual(batching.shotPrompts[0].batchLogIds, ['log-batch']);
+
+    await assert.rejects(() => store.updateShot({
+      workspacePath,
+      taskId: task.id,
+      shotPromptId: 'missing-shot',
+      patch: { status: 'ready' },
+    }), /不存在镜头/);
+
+    await assert.rejects(() => store.appendGenerationLog({
+      workspacePath,
+      taskId: task.id,
+      shotPromptId: 'missing-shot',
+      generationStage: 'test',
+      logId: 'lost-log',
+    }), /不存在镜头/);
+
+    const reloaded = new ImageProductionTaskStore();
+    const list = await reloaded.list(workspacePath);
+    assert.equal(list[0].id, task.id);
+    assert.equal(list[0].shotPrompts[0].batchLogIds[0], 'log-batch');
+  });
+});
 
 test('skill 安装包支持根目录直接包含 SKILL.md', async () => {
   await withWorkspace(async (workspacePath) => {
@@ -636,7 +1713,7 @@ test('Bugu 团队同步适配器不发送本机路径并能解析服务端 revis
         gapCount: 0,
         readyPercent: 80,
       },
-      model: 'fake-claude-sonnet',
+      model: 'fake-text-model',
       createdAt: '2026-05-28T00:00:00.000Z',
       updatedAt: '2026-05-28T00:00:00.000Z',
     },
@@ -652,7 +1729,7 @@ test('Bugu 团队同步适配器不发送本机路径并能解析服务端 revis
       status: 'completed',
       contentKnowledgeMapId: 'map-1',
       contentKnowledgeMapTitle: '通勤防晒内容知识地图',
-      model: 'fake-claude-sonnet',
+      model: 'fake-text-model',
       inputSourceIds: ['input-1'],
       brandKnowledgeBaseIds: ['brand-1'],
       ipKnowledgeBaseIds: [],
@@ -2097,7 +3174,7 @@ test('内容知识地图构建会调用文字模型生成结构化矩阵而不�
       }
     });
     assert.ok(mapCall);
-    assert.equal(record.model, 'fake-claude-sonnet');
+    assert.equal(record.model, 'fake-text-model');
     assert.equal(record.sellingPoints[0].title, '模型命名卖点：通勤清爽补涂');
     assert.equal(record.painPoints[0].title, '模型归纳痛点：担心补涂厚重');
     assert.equal(record.scenarios[0].title, '模型组合场景：通勤包内补涂');
@@ -2110,7 +3187,7 @@ test('内容知识地图构建会调用文字模型生成结构化矩阵而不�
     assert.equal(buildRuns.length, 1);
     assert.equal(buildRuns[0].status, 'completed');
     assert.equal(buildRuns[0].contentKnowledgeMapId, record.id);
-    assert.equal(buildRuns[0].model, 'fake-claude-sonnet');
+    assert.equal(buildRuns[0].model, 'fake-text-model');
     assert.ok(buildRuns[0].readyPercent > 0);
     assert.ok(buildRuns[0].evidenceCount >= 1);
     assert.ok(buildRuns[0].steps.some((step) => step.key === 'prepare-seed' && step.status === 'completed'));
@@ -5807,7 +6884,7 @@ class FakeTextGenerationService {
   calls = [];
 
   async getRuntimeConfig(model) {
-    return { model: model || 'fake-claude-sonnet' };
+    return { model: model || 'fake-text-model' };
   }
 
   async generateJson(input) {
@@ -5823,7 +6900,7 @@ class FakeTextGenerationService {
     if (!task && typeof input.prompt === 'string' && input.prompt.includes('下游用途：')) {
       const hasSupplementSource = input.prompt.includes('补充产品资料');
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           title: '多轮 Prompt 草稿',
@@ -5838,7 +6915,7 @@ class FakeTextGenerationService {
     }
     if (task === 'generate_prompt_pack') {
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           name: '功能测试品牌提示词包',
@@ -5854,7 +6931,7 @@ class FakeTextGenerationService {
     }
     if (task === 'generate_brand_knowledge_base') {
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           title: '便携条包品牌知识库',
@@ -5874,7 +6951,7 @@ class FakeTextGenerationService {
       const evidenceRef = typeof firstEvidence.id === 'string' ? firstEvidence.id : '';
       const sourceRef = typeof firstEvidence.sourceRef === 'string' ? firstEvidence.sourceRef : '';
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           title: '通勤防晒内容知识地图',
@@ -5936,7 +7013,7 @@ class FakeTextGenerationService {
     }
     if (task === 'generate_ip_knowledge_base') {
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           title: '嘉文老师 IP 知识库',
@@ -5955,7 +7032,7 @@ class FakeTextGenerationService {
     }
     if (task === 'generate_scene_cards') {
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           cards: [1, 2, 3].map((index) => ({
@@ -5974,7 +7051,7 @@ class FakeTextGenerationService {
     }
     if (task === 'generate_article') {
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           titleCandidates: ['把产品讲成人话', '从使用场景开始做内容', '知识库驱动的内容草稿'],
@@ -6016,7 +7093,7 @@ class FakeTextGenerationService {
         };
       });
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           title: '早餐后场景短视频脚本',
@@ -6036,7 +7113,7 @@ class FakeTextGenerationService {
     }
     if (task === 'evaluate_video_script') {
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           hookScore: { score: 7, reasoning: '首镜头用痛点提问进入。' },
@@ -6051,7 +7128,7 @@ class FakeTextGenerationService {
     if (task === 'rewrite_video_script_shot') {
       const currentShot = parsedPrompt?.currentShot ?? {};
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           timeRange: currentShot.timeRange || currentShot.duration || '00:00-00:03',
@@ -6073,7 +7150,7 @@ class FakeTextGenerationService {
     }
     if (task === 'generate_image_skill') {
       return {
-        model: input.model || 'fake-claude-sonnet',
+        model: input.model || 'fake-text-model',
         rawText: '{}',
         value: {
           id: 'xiaohongshu-skincare-cover',
@@ -6099,40 +7176,73 @@ class FakeTextGenerationService {
   }
 }
 
-class FakePromptAgentService {
+class FakeAppServerPromptAgentService {
   draftCalls = [];
   refineCalls = [];
+  failDraftReason;
+  failRefineReason;
+
+  constructor(options = {}) {
+    this.failDraftReason = options.failDraftReason;
+    this.failRefineReason = options.failRefineReason;
+  }
 
   async generatePromptDraft(input) {
     this.draftCalls.push(input);
+    if (this.failDraftReason) throw new Error(this.failDraftReason);
+    const model = input.textModel || 'lime-agent-server-test';
     return {
-      title: 'Claude 会话草稿',
+      title: 'Lime Agent Server 会话草稿',
       content: [
-        'Claude 会话草稿',
+        'Lime Agent Server Prompt 草稿',
         '',
-        `模型：${input.textModel || 'claude-sonnet-4-5'}`,
+        `模型：${model}`,
         '',
         'Prompt 正文：',
         '围绕用户意图与输入源生成可执行 Prompt。',
       ].join('\n'),
-      note: `Claude SDK 会话草稿：${input.textModel || 'claude-sonnet-4-5'}`,
-      model: input.textModel || 'claude-sonnet-4-5',
-      protocol: 'claude-sdk',
+      note: `Lime Agent Server 会话草稿：${model}`,
+      model,
+      protocol: undefined,
+      providerEvents: [{
+        eventClass: 'model.completed',
+        kind: 'model',
+        status: 'completed',
+        phase: 'completed',
+        title: 'Lime Agent Server completed',
+        detail: model,
+        model,
+        payload: { runtime: 'lime-agent-server', operation: 'draft' },
+      }],
     };
   }
 
   async generateRefinedPrompt(input) {
     this.refineCalls.push(input);
+    if (this.failRefineReason) throw new Error(this.failRefineReason);
+    const hasSupplementSource = input.sourceSnapshots?.some((source) => source.title.includes('补充产品资料'));
+    const model = input.textModel || 'lime-agent-server-test';
     return {
       content: [
         input.previousContent,
         '',
         '本轮调整：',
         input.adjustment,
+        hasSupplementSource ? '补充产品资料：便携条包，早餐后与办公室抽屉场景，不承诺治疗。' : '',
       ].join('\n'),
-      note: `Claude SDK 多轮调整：${input.textModel || 'claude-sonnet-4-5'}`,
-      model: input.textModel || 'claude-sonnet-4-5',
-      protocol: 'claude-sdk',
+      note: `Lime Agent Server 多轮调整：${model}`,
+      model,
+      protocol: undefined,
+      providerEvents: [{
+        eventClass: 'model.completed',
+        kind: 'model',
+        status: 'completed',
+        phase: 'completed',
+        title: 'Lime Agent Server completed',
+        detail: model,
+        model,
+        payload: { runtime: 'lime-agent-server', operation: 'refine' },
+      }],
     };
   }
 }
@@ -6187,7 +7297,7 @@ test('AI 创建图片技能会生成当前内容工厂可用的模板配置', as
       description: '创建一个小红书护肤品封面技能，适合高端护肤品牌种草。',
     });
 
-    assert.equal(result.model, 'fake-claude-sonnet');
+    assert.equal(result.model, 'fake-text-model');
     assert.equal(result.template.id, 'xiaohongshu-skincare-cover');
     assert.equal(result.template.name, '小红书护肤封面');
     assert.equal(result.template.author, getOemRuntimeConfig().shortName);
@@ -6388,7 +7498,7 @@ test('内容工厂文字主链可以生成提示词包、场景卡、文章和�
       sceneCardIds: cards.map((card) => card.id),
       assetRefs: [],
       selectedSkillSlugs: ['article-drafter'],
-      params: { textModel: 'fake-claude-sonnet' },
+      params: { textModel: 'fake-text-model' },
     });
     assert.match(article.markdown, /# 把产品讲成人话/);
 
@@ -6406,7 +7516,7 @@ test('内容工厂文字主链可以生成提示词包、场景卡、文章和�
       citations: [citation],
       assetRefs: [],
       selectedSkillSlugs: ['video-script-writer'],
-      params: { textModel: 'fake-claude-sonnet' },
+      params: { textModel: 'fake-text-model' },
     });
     assert.equal(script.storyboard.length, 3);
 
@@ -6433,7 +7543,7 @@ test('视频脚本支持 AI 质检和单镜头重写并写入本地日志', asyn
       citations: [citation],
       assetRefs: [],
       selectedSkillSlugs: ['video-script-writer'],
-      params: { textModel: 'fake-claude-sonnet' },
+      params: { textModel: 'fake-text-model' },
     });
 
     const evaluation = await videos.evaluateScript({
@@ -6444,7 +7554,7 @@ test('视频脚本支持 AI 质检和单镜头重写并写入本地日志', asyn
       templateInfo: { hookType: '痛点提问', framework: 'PSP' },
       script,
       citations: [citation],
-      params: { textModel: 'fake-claude-sonnet' },
+      params: { textModel: 'fake-text-model' },
     });
     assert.equal(evaluation.scores.totalScore, 6.9);
     assert.equal(evaluation.suggestions.length, 3);
@@ -6458,7 +7568,7 @@ test('视频脚本支持 AI 质检和单镜头重写并写入本地日志', asyn
       templateInfo: { hookType: '痛点提问', framework: 'PSP' },
       script,
       citations: [citation],
-      params: { textModel: 'fake-claude-sonnet' },
+      params: { textModel: 'fake-text-model' },
     });
     assert.equal(rewrite.rowIndex, 1);
     assert.match(rewrite.shot.visual, /重写后的真实厨房/);
@@ -6542,7 +7652,7 @@ test('对话可以记录首版草稿和多轮调整', async () => {
     const text = new FakeTextGenerationService();
     const inputSources = new InputSourceStore();
     const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, new FakeAppServerPromptAgentService());
 
     const source = await inputSources.register({
       workspacePath,
@@ -6618,7 +7728,8 @@ test('对话可以记录首版草稿和多轮调整', async () => {
     assert.equal(started.session.executionEvents?.at(-2)?.owner, 'artifact');
     assert.deepEqual(started.session.executionEvents?.at(-2)?.artifactRefs, [`prompt-draft:${started.draft.id}`]);
     assert.equal(started.session.executionEvents?.find((event) => event.kind === 'source')?.status, 'completed');
-    assert.match(started.draft.versions[0].content, /Prompt 草稿/);
+    assert.match(started.draft.versions[0].content, /Lime Agent Server Prompt 草稿/);
+    assert.match(started.draft.versions[0].content, /Prompt 正文/);
 
     const continued = await sessions.continue({
       workspacePath,
@@ -6650,10 +7761,10 @@ test('对话可以记录首版草稿和多轮调整', async () => {
 test('Prompt 工作台手动草稿和协作会绑定团队知识包版本', async () => {
   await withWorkspace(async (workspacePath) => {
     const text = new FakeTextGenerationService();
-    const promptAgent = new FakePromptAgentService();
+    const promptAgent = new FakeAppServerPromptAgentService();
     const inputSources = new InputSourceStore();
     const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text, promptAgent);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent);
     const source = await inputSources.register({
       workspacePath,
       kind: 'manual-note',
@@ -6693,7 +7804,7 @@ test('Prompt 工作台手动草稿和协作会绑定团队知识包版本', asyn
       userIntent: '请协作打磨通勤补涂 Prompt。',
       inputSourceIds: [source.id],
       teamKnowledgeRelease,
-      textModel: 'claude-opus-4-1',
+      textModel: 'gpt-4o-mini',
     });
 
     assert.equal(promptAgent.draftCalls.length, 1);
@@ -6889,13 +8000,13 @@ test('团队知识包详情页交接会在主进程生成带版本依据的 Prom
   });
 });
 
-test('对话启动会显式使用当前选中的 Claude 模型', async () => {
+test('对话启动会把当前模型作为 Lime Agent Server metadata', async () => {
   await withWorkspace(async (workspacePath) => {
     const text = new FakeTextGenerationService();
-    const promptAgent = new FakePromptAgentService();
+    const promptAgent = new FakeAppServerPromptAgentService();
     const inputSources = new InputSourceStore();
     const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text, promptAgent);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent);
 
     const source = await inputSources.register({
       workspacePath,
@@ -6912,14 +8023,18 @@ test('对话启动会显式使用当前选中的 Claude 模型', async () => {
       purpose: 'image',
       userIntent: '生成小红书真实生活场景图片 Prompt。',
       inputSourceIds: [source.id],
-      textModel: 'claude-opus-4-1',
+      textModel: 'gpt-4o-mini',
     });
 
     assert.equal(promptAgent.draftCalls.length, 1);
-    assert.equal(promptAgent.draftCalls[0].textModel, 'claude-opus-4-1');
-    assert.equal(started.draft.model, 'claude-opus-4-1');
-    assert.equal(started.session.model, 'claude-opus-4-1');
-    assert.equal(started.session.textProtocol, 'claude-sdk');
+    assert.equal(promptAgent.draftCalls[0].textModel, 'gpt-4o-mini');
+    assert.equal(started.draft.model, 'gpt-4o-mini');
+    assert.equal(started.session.model, 'gpt-4o-mini');
+    assert.equal(started.session.textProtocol, undefined);
+    const startProviderEvents = started.session.executionEvents
+      ?.find((event) => event.eventClass === 'model.completed')
+      ?.payload?.providerEvents;
+    assert.equal(startProviderEvents?.some((event) => event.payload?.runtime === 'lime-agent-server'), true);
 
     const continued = await sessions.continue({
       workspacePath,
@@ -6928,171 +8043,31 @@ test('对话启动会显式使用当前选中的 Claude 模型', async () => {
     });
 
     assert.equal(promptAgent.refineCalls.length, 1);
-    assert.equal(promptAgent.refineCalls[0].textModel, 'claude-opus-4-1');
-    assert.equal(continued.draft.model, 'claude-opus-4-1');
-    assert.equal(continued.session.model, 'claude-opus-4-1');
+    assert.equal(promptAgent.refineCalls[0].textModel, 'gpt-4o-mini');
+    assert.equal(continued.draft.model, 'gpt-4o-mini');
+    assert.equal(continued.session.model, 'gpt-4o-mini');
 
     const switched = await sessions.continue({
       workspacePath,
       sessionId: started.session.id,
       message: '这一轮换成更快模型，保留同样结构。',
-      textModel: 'claude-haiku-4-5',
+      textModel: 'gpt-4.1-mini',
     });
 
     assert.equal(promptAgent.refineCalls.length, 2);
-    assert.equal(promptAgent.refineCalls[1].textModel, 'claude-haiku-4-5');
-    assert.equal(switched.draft.model, 'claude-haiku-4-5');
-    assert.equal(switched.session.model, 'claude-haiku-4-5');
+    assert.equal(promptAgent.refineCalls[1].textModel, 'gpt-4.1-mini');
+    assert.equal(switched.draft.model, 'gpt-4.1-mini');
+    assert.equal(switched.session.model, 'gpt-4.1-mini');
   });
 });
 
-test('对话会话使用非 Claude 协议时首轮和续写都沿用当前文字模型', async () => {
+test('对话会话首轮和续写都只记录 Lime Agent Server runtime 事实', async () => {
   await withWorkspace(async (workspacePath) => {
-    const requests = [];
-    const server = createServer((request, response) => {
-      if (request.url === '/v1/chat/completions') {
-        let body = '';
-        request.on('data', (chunk) => { body += chunk.toString(); });
-        request.on('end', () => {
-          const parsedBody = JSON.parse(body);
-          requests.push(parsedBody);
-          const output = requests.length === 1
-            ? {
-              title: 'OpenAI 协议 Prompt 草稿',
-              prompt: '基于便携条包生成 Prompt。',
-              followUpQuestions: [],
-              sourceWarnings: ['仅基于输入源'],
-              qualityChecklist: ['可追溯'],
-            }
-            : {
-              prompt: '继续基于便携条包改写。',
-              followUpQuestions: [],
-              sourceWarnings: [],
-            };
-          response.setHeader('content-type', 'application/json');
-          response.end(JSON.stringify({
-            choices: [{ message: { role: 'assistant', content: JSON.stringify(output) }, finish_reason: 'stop' }],
-          }));
-        });
-        return;
-      }
-      response.statusCode = 404;
-      response.end('not found');
-    });
-
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    try {
-      const baseUrl = `http://127.0.0.1:${server.address().port}`;
-      const modelConfig = {
-        async readView() {
-          return {
-            textProtocol: 'openai-chat',
-            textApiEndpoint: baseUrl,
-            textModel: 'gpt-compatible',
-            textApiKeyStatus: 'available',
-          };
-        },
-        async getTextApiKey() { return 'test-text-key'; },
-      };
-      const settings = {
-        async getAnthropicApiKey() { return undefined; },
-      };
-      const text = new TextGenerationService(modelConfig);
-      const promptAgent = new PromptAgentService(settings, modelConfig, text);
-      const inputSources = new InputSourceStore();
-      const promptDrafts = new PromptDraftStore(inputSources, text);
-      const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text, promptAgent);
-
-      const source = await inputSources.register({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'brand-kb',
-        title: '便携条包知识库',
-        text: '产品事实：便携条包。场景：早餐后、办公室抽屉。合规：不承诺治疗。',
-        tags: ['brand-kb'],
-      });
-
-      const started = await sessions.start({
-        workspacePath,
-        title: '便携条包 Prompt 会话',
-        purpose: 'image',
-        userIntent: '生成小红书真实生活场景图片 Prompt。',
-        inputSourceIds: [source.id],
-        textModel: 'gpt-compatible',
-      });
-
-      assert.equal(started.draft.textProtocol, 'openai-chat');
-      assert.equal(started.session.textProtocol, 'openai-chat');
-      assert.equal(started.draft.model, 'gpt-compatible');
-      assert.equal(started.session.model, 'gpt-compatible');
-      assert.match(started.draft.versions[0].note, /生成服务完成：gpt-compatible/);
-      assert.doesNotMatch(started.draft.versions[0].note, /Claude SDK/);
-      const startProviderEvents = started.session.executionEvents
-        ?.find((event) => event.eventClass === 'model.completed')
-        ?.payload?.providerEvents;
-      assert.equal(Array.isArray(startProviderEvents), true);
-      assert.equal(startProviderEvents.some((event) => (
-        event.eventClass === 'model.requested' &&
-        event.payload?.transport === 'http' &&
-        event.payload?.endpoint === `${baseUrl}/v1/chat/completions`
-      )), true);
-      assert.equal(startProviderEvents.some((event) => (
-        event.eventClass === 'model.completed' &&
-        event.payload?.status === 200 &&
-        event.payload?.finishReason === 'stop'
-      )), true);
-
-      const continued = await sessions.continue({
-        workspacePath,
-        sessionId: started.session.id,
-        message: '把平台改成小红书，镜头更自然，不要广告棚拍感。',
-      });
-
-      assert.equal(requests.length, 2);
-      assert.deepEqual(requests.map((item) => item.model), ['gpt-compatible', 'gpt-compatible']);
-      assert.equal(continued.draft.model, 'gpt-compatible');
-      assert.equal(continued.session.model, 'gpt-compatible');
-      assert.equal(continued.session.textProtocol, 'openai-chat');
-      assert.match(continued.draft.versions.at(-1)?.content ?? '', /继续基于便携条包改写/);
-      assert.match(continued.draft.versions.at(-1)?.note ?? '', /对话调整完成：gpt-compatible/);
-      assert.doesNotMatch(continued.draft.versions.at(-1)?.note ?? '', /Claude SDK|Agent 多轮调整/);
-      const continueProviderEvents = continued.session.executionEvents
-        ?.filter((event) => event.eventClass === 'model.completed')
-        .at(-1)
-        ?.payload?.providerEvents;
-      assert.equal(Array.isArray(continueProviderEvents), true);
-      assert.equal(continueProviderEvents.some((event) => (
-        event.eventClass === 'model.completed' &&
-        event.payload?.status === 200 &&
-        event.payload?.transport === 'http'
-      )), true);
-    } finally {
-      await new Promise((resolve) => server.close(resolve));
-    }
-  });
-});
-
-test('对话生成服务缺少密钥时保留 provider 失败事实并要求配置模型', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const modelConfig = {
-      async readView() {
-        return {
-          textProtocol: 'openai-chat',
-          textApiEndpoint: 'http://127.0.0.1:9',
-          textModel: 'gpt-compatible',
-          textApiKeyStatus: 'missing',
-        };
-      },
-      async getTextApiKey() { return undefined; },
-    };
-    const settings = {
-      async getAnthropicApiKey() { return undefined; },
-    };
-    const text = new TextGenerationService(modelConfig);
-    const promptAgent = new PromptAgentService(settings, modelConfig, text);
+    const text = new FakeTextGenerationService();
+    const promptAgent = new FakeAppServerPromptAgentService();
     const inputSources = new InputSourceStore();
     const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text, promptAgent);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent);
 
     const source = await inputSources.register({
       workspacePath,
@@ -7105,7 +8080,74 @@ test('对话生成服务缺少密钥时保留 provider 失败事实并要求配�
 
     const started = await sessions.start({
       workspacePath,
-      title: '缺密钥 Prompt 对话',
+      title: '便携条包 Prompt 会话',
+      purpose: 'image',
+      userIntent: '生成小红书真实生活场景图片 Prompt。',
+      inputSourceIds: [source.id],
+      textModel: 'gpt-compatible',
+    });
+
+    assert.equal(started.draft.textProtocol, undefined);
+    assert.equal(started.session.textProtocol, undefined);
+    assert.equal(started.draft.model, 'gpt-compatible');
+    assert.equal(started.session.model, 'gpt-compatible');
+    assert.match(started.draft.versions[0].note, /Lime Agent Server 会话草稿：gpt-compatible/);
+    const startProviderEvents = started.session.executionEvents
+      ?.find((event) => event.eventClass === 'model.completed')
+      ?.payload?.providerEvents;
+    assert.equal(Array.isArray(startProviderEvents), true);
+    assert.equal(startProviderEvents.some((event) => (
+      event.eventClass === 'model.completed' &&
+      event.payload?.runtime === 'lime-agent-server' &&
+      event.payload?.operation === 'draft'
+    )), true);
+
+    const continued = await sessions.continue({
+      workspacePath,
+      sessionId: started.session.id,
+      message: '把平台改成小红书，镜头更自然，不要广告棚拍感。',
+    });
+
+    assert.equal(promptAgent.refineCalls.length, 1);
+    assert.equal(promptAgent.refineCalls[0].textModel, 'gpt-compatible');
+    assert.equal(continued.draft.model, 'gpt-compatible');
+    assert.equal(continued.session.model, 'gpt-compatible');
+    assert.equal(continued.session.textProtocol, undefined);
+    assert.match(continued.draft.versions.at(-1)?.content ?? '', /本轮调整/);
+    assert.match(continued.draft.versions.at(-1)?.note ?? '', /Lime Agent Server 多轮调整：gpt-compatible/);
+    const continueProviderEvents = continued.session.executionEvents
+      ?.filter((event) => event.eventClass === 'model.completed')
+      .at(-1)
+      ?.payload?.providerEvents;
+    assert.equal(Array.isArray(continueProviderEvents), true);
+    assert.equal(continueProviderEvents.some((event) => (
+      event.eventClass === 'model.completed' &&
+      event.payload?.runtime === 'lime-agent-server' &&
+      event.payload?.operation === 'refine'
+    )), true);
+  });
+});
+
+test('Lime Agent Server 不可用时保留 runtime 失败事实并要求配置模型', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const text = new FakeTextGenerationService();
+    const promptAgent = new FakeAppServerPromptAgentService({ failDraftReason: 'sidecar offline' });
+    const inputSources = new InputSourceStore();
+    const promptDrafts = new PromptDraftStore(inputSources, text);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent);
+
+    const source = await inputSources.register({
+      workspacePath,
+      kind: 'manual-note',
+      purpose: 'brand-kb',
+      title: '便携条包知识库',
+      text: '产品事实：便携条包。场景：早餐后、办公室抽屉。合规：不承诺治疗。',
+      tags: ['brand-kb'],
+    });
+
+    const started = await sessions.start({
+      workspacePath,
+      title: 'Lime Agent Server blocked Prompt 对话',
       purpose: 'image',
       userIntent: '生成小红书真实生活场景图片 Prompt。',
       inputSourceIds: [source.id],
@@ -7123,22 +8165,18 @@ test('对话生成服务缺少密钥时保留 provider 失败事实并要求配�
     ));
     const providerEvents = modelFailure?.payload?.providerEvents;
     assert.equal(started.session.status, 'blocked');
-    assert.equal(started.draft.model, 'blocked:text-provider');
+    assert.equal(started.draft.model, 'blocked:lime-agent-server');
     assert.equal(modelFailure?.status, 'blocked');
     assert.equal(Array.isArray(providerEvents), true);
     assert.equal(providerEvents.some((event) => (
-      event.eventClass === 'model.requested' &&
-      event.payload?.transport === 'http' &&
-      event.payload?.endpoint === 'http://127.0.0.1:9/v1/chat/completions'
-    )), true);
-    assert.equal(providerEvents.some((event) => (
-      event.eventClass === 'model.failed' &&
-      event.payload?.auth === true
+      event.eventClass === 'runtime.error' &&
+      event.payload?.runtime === 'lime-agent-server' &&
+      event.payload?.error === 'sidecar offline'
     )), true);
     assert.equal(permissionRequest?.payload?.permissionDecision?.decision, 'ask');
     assert.equal(permissionRequest?.payload?.permissionDecision?.approvalActionId, configureAction?.actionId);
     assert.equal(configureAction?.phase, 'action_required');
-    assert.equal(configureAction?.payload?.providerStatus, 'blocked:text-provider');
+    assert.equal(configureAction?.payload?.providerStatus, 'blocked:lime-agent-server');
   });
 });
 
@@ -7147,7 +8185,7 @@ test('对话缺少输入源会写入待处理动作事实', async () => {
     const text = new FakeTextGenerationService();
     const inputSources = new InputSourceStore();
     const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, new FakeAppServerPromptAgentService());
 
     const started = await sessions.start({
       workspacePath,
@@ -7157,7 +8195,10 @@ test('对话缺少输入源会写入待处理动作事实', async () => {
       inputSourceIds: [],
     });
 
-    const requiredAction = started.session.executionEvents?.find((event) => event.eventClass === 'action.required');
+    const requiredAction = started.session.executionEvents?.find((event) => (
+      event.eventClass === 'action.required' &&
+      event.payload?.actionKind === 'add-input-source'
+    ));
     const permissionRequest = started.session.executionEvents?.find((event) => (
       event.eventClass === 'permission.requested' &&
       event.actionId === requiredAction?.actionId
@@ -7250,7 +8291,8 @@ test('对话缺少输入源会写入待处理动作事实', async () => {
     assert.match(continued.session.messages.at(-1)?.content ?? '', /便携条包/);
     assert.equal(continued.session.executionEvents?.some((event) => (
       event.eventClass === 'model.completed' &&
-      event.payload?.model === 'fake-claude-sonnet'
+      event.payload?.model === 'lime-agent-server-test' &&
+      event.payload?.providerEvents?.some((providerEvent) => providerEvent.payload?.runtime === 'lime-agent-server')
     )), true);
   });
 });
@@ -7330,7 +8372,7 @@ test('Prompt 生成服务不会把成功素材沉淀追溯源作为新输入源'
     const text = new FakeTextGenerationService();
     const inputSources = new InputSourceStore();
     const promptDrafts = new PromptDraftStore(inputSources, text);
-    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, text);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, new FakeAppServerPromptAgentService());
 
     const realSource = await inputSources.register({
       workspacePath,
@@ -7663,9 +8705,8 @@ test('v2 provider 验收脚本默认只做 dry-run 配置诊断', async () => {
   assert.equal(blocked.summary.blocked >= 3, true);
   assert.equal(blocked.checks.some((item) => item.name === 'video' && item.status === 'blocked'), true);
   const blockedText = blocked.checks.find((item) => item.name === 'text');
-  assert.ok(blockedText.requiredEnv.includes('CONTENT_STUDIO_TEXT_API_KEY or ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN'));
+  assert.ok(blockedText.requiredEnv.includes('CONTENT_STUDIO_TEXT_API_KEY or OPENAI_API_KEY'));
   assert.equal(blockedText.configured.apiKey, false);
-  assert.equal(blockedText.configured.oauthToken, false);
   assert.equal(blockedText.severity, 'blocking');
   assert.match(blockedText.nextAction, /配置文字模型 Key/);
   assert.ok(blocked.strictGate.reasons.includes('PROVIDER_CHECK_BLOCKED'));
@@ -11087,12 +12128,12 @@ test('素材拆解会复用模型设置的 OpenAI Responses 多模态配置生�
             apiEndpoint: 'https://api.anthropic.com',
             safeStorageAvailable: false,
             hasApiKey: false,
-            textProvider: 'anthropic-claude-sdk',
-            textProtocol: 'claude-sdk',
+            textProvider: 'http-text-generation',
+            textProtocol: 'openai-chat',
             textApiEndpoint: 'https://api.anthropic.com',
             hasTextApiKey: false,
             textApiKeyStatus: 'missing',
-            textModel: 'claude-sonnet-4-5',
+            textModel: 'gpt-4o-mini',
             imageProvider: 'openai-responses',
             imageProtocol: 'openai-responses',
             imageApiEndpoint: baseUrl,
@@ -11189,12 +12230,12 @@ test('素材拆解支持 Chat Completions 和 Gemini 多模态协议', async () 
               apiEndpoint: 'https://api.anthropic.com',
               safeStorageAvailable: false,
               hasApiKey: false,
-              textProvider: 'anthropic-claude-sdk',
-              textProtocol: 'claude-sdk',
+              textProvider: 'http-text-generation',
+              textProtocol: 'openai-chat',
               textApiEndpoint: 'https://api.anthropic.com',
               hasTextApiKey: false,
               textApiKeyStatus: 'missing',
-              textModel: 'claude-sonnet-4-5',
+              textModel: 'gpt-4o-mini',
               imageProvider: 'openai-responses',
               imageProtocol: protocol,
               imageApiEndpoint: baseUrl,
@@ -11299,12 +12340,12 @@ test('素材拆解缺少设置页多模态配置时引导用户配置模型', as
             apiEndpoint: 'https://api.anthropic.com',
             safeStorageAvailable: false,
             hasApiKey: false,
-            textProvider: 'anthropic-claude-sdk',
-            textProtocol: 'claude-sdk',
+            textProvider: 'http-text-generation',
+            textProtocol: 'openai-chat',
             textApiEndpoint: 'https://api.anthropic.com',
             hasTextApiKey: false,
             textApiKeyStatus: 'missing',
-            textModel: 'claude-sonnet-4-5',
+            textModel: 'gpt-4o-mini',
             imageProvider: 'disabled',
             imageProtocol: 'openai-responses',
             imageApiEndpoint: '',
@@ -11395,12 +12436,12 @@ test('素材拆解遇到 429 时不自动重试并提示用户手动重试', asy
             apiEndpoint: 'https://api.anthropic.com',
             safeStorageAvailable: false,
             hasApiKey: false,
-            textProvider: 'anthropic-claude-sdk',
-            textProtocol: 'claude-sdk',
+            textProvider: 'http-text-generation',
+            textProtocol: 'openai-chat',
             textApiEndpoint: 'https://api.anthropic.com',
             hasTextApiKey: false,
             textApiKeyStatus: 'missing',
-            textModel: 'claude-sonnet-4-5',
+            textModel: 'gpt-4o-mini',
             imageProvider: 'openai-responses',
             imageProtocol: 'gemini-generate-content',
             imageApiEndpoint: baseUrl,
@@ -11471,128 +12512,6 @@ test('知识库可以导入、结构化并参与搜索引用', async () => {
   });
 });
 
-test('Claude SDK 子进程环境会过滤非法路径并定位 asar 解包路径', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const notDirectory = join(workspacePath, 'not-a-directory');
-    await writeFile(notDirectory, 'not a directory', 'utf-8');
-    const previousPath = process.env.PATH;
-    const previousConfigDir = process.env.CLAUDE_CONFIG_DIR;
-    const previousNpmPrefix = process.env.npm_config_prefix;
-
-    try {
-      process.env.PATH = [notDirectory, workspacePath, previousPath].filter(Boolean).join(delimiter);
-      process.env.CLAUDE_CONFIG_DIR = notDirectory;
-      process.env.npm_config_prefix = '';
-
-      const env = buildClaudeSubprocessEnv({ extra: { EXTRA_EMPTY_VALUE: undefined } });
-      const pathEntries = env?.PATH?.split(delimiter) ?? [];
-
-      assert.ok(pathEntries.includes(workspacePath));
-      assert.ok(!pathEntries.includes(notDirectory));
-      assert.equal(env?.CLAUDE_CONFIG_DIR, undefined);
-      assert.equal(env?.npm_config_prefix, undefined);
-      assert.equal(env?.EXTRA_EMPTY_VALUE, undefined);
-      assert.ok(resolveAsarUnpackedPath('/Applications/Bugu.app/Contents/Resources/app.asar/node_modules/native/claude').includes('/app.asar.unpacked/'));
-    } finally {
-      if (previousPath === undefined) delete process.env.PATH;
-      else process.env.PATH = previousPath;
-      if (previousConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
-      else process.env.CLAUDE_CONFIG_DIR = previousConfigDir;
-      if (previousNpmPrefix === undefined) delete process.env.npm_config_prefix;
-      else process.env.npm_config_prefix = previousNpmPrefix;
-    }
-  });
-});
-
-test('Claude SDK 文字模型在工作区不是目录时返回可读错误', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const notDirectory = join(workspacePath, 'workspace-file');
-    await writeFile(notDirectory, 'not a directory', 'utf-8');
-    const previousRequireExplicitKey = process.env.CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY;
-    delete process.env.CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY;
-
-    try {
-      const text = new TextGenerationService({
-        async readView() {
-          return {
-            textProtocol: 'claude-sdk',
-            textApiEndpoint: '',
-            textModel: 'claude-sonnet-4-5',
-          };
-        },
-        async getTextApiKey() { return undefined; },
-      });
-
-      await assert.rejects(() => text.generateJson({
-        workspacePath: notDirectory,
-        systemPrompt: '只输出 JSON。',
-        prompt: '{"task":"invalid_workspace"}',
-        schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
-      }), /工作区路径不是可访问目录/);
-    } finally {
-      if (previousRequireExplicitKey === undefined) delete process.env.CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY;
-      else process.env.CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY = previousRequireExplicitKey;
-    }
-  });
-});
-
-test('Claude SDK 文字协议拒绝非 Claude 模型', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const text = new TextGenerationService({
-      async readView() {
-        return {
-          textProtocol: 'claude-sdk',
-          textApiEndpoint: 'https://api.anthropic.com',
-          textModel: 'gemini-3-pro-preview',
-        };
-      },
-      async getTextApiKey() { return 'test-text-key'; },
-    });
-
-    await assert.rejects(() => text.generateJson({
-      workspacePath,
-      systemPrompt: '只输出 JSON。',
-      prompt: '{"task":"model_mismatch"}',
-      schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
-    }), /Claude SDK 只支持 Claude 系列模型/);
-  });
-});
-
-test('Claude Prompt Agent 会拒绝非 Claude 模型选择', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const agent = new PromptAgentService(
-      {
-        async getAnthropicApiKey() {
-          return 'test-anthropic-key';
-        },
-      },
-      {
-        async readView() {
-          return {
-            textProtocol: 'claude-sdk',
-            textApiEndpoint: 'https://api.anthropic.com',
-            textModel: 'claude-sonnet-4-5',
-          };
-        },
-        async getTextApiKey() {
-          return 'test-text-key';
-        },
-      },
-    );
-
-    await assert.rejects(
-      () => agent.generateJson({
-        workspacePath,
-        model: 'gemini-3-pro-preview',
-        systemPrompt: '只输出 JSON。',
-        prompt: '{"task":"model_mismatch"}',
-        schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
-      }),
-      /Claude SDK 只支持 Claude 系列模型/,
-    );
-  });
-});
-
 test('文字模型支持 Anthropic 兼容 HTTP 网关生成 JSON', async () => {
   await withWorkspace(async (workspacePath) => {
     let capturedRequest;
@@ -11624,7 +12543,7 @@ test('文字模型支持 Anthropic 兼容 HTTP 网关生成 JSON', async () => {
           return {
             apiEndpoint: baseUrl,
             hasApiKey: true,
-            textProvider: 'anthropic-claude-sdk',
+            textProvider: 'http-text-generation',
             textProtocol: 'anthropic-messages',
             textApiEndpoint: baseUrl,
             hasTextApiKey: true,
@@ -11791,11 +12710,11 @@ test('媒体 Provider 可以调用真实 HTTP 适配器并沉淀图片/视频产
           return {
             apiEndpoint: 'https://api.anthropic.com',
             hasApiKey: false,
-            textProvider: 'anthropic-claude-sdk',
-            textProtocol: 'claude-sdk',
+            textProvider: 'http-text-generation',
+            textProtocol: 'openai-chat',
             textApiEndpoint: 'https://api.anthropic.com',
             hasTextApiKey: false,
-            textModel: 'claude-sonnet-4-5',
+            textModel: 'gpt-4o-mini',
             imageProvider: 'openai-responses',
             imageProtocol: 'openai-responses',
             imageApiEndpoint: baseUrl,
@@ -11910,6 +12829,11 @@ test('媒体 Provider 支持 Chat Completions 图片 data URI 协议', async () 
         productImageRefs: [],
         referenceImageRefs: [],
         prompt: '生成一张兜底测试图',
+        productionTaskId: 'task-sop-001',
+        shotPromptId: 'shot-001',
+        generationStage: 'test',
+        consistencyRules: ['产品包装颜色和文字必须与产品图一致'],
+        negativeConstraints: ['不要改变产品结构', '不要夸大功效'],
         promptMode: 'preset',
         generationMode: 'smart',
         template: '场景图',
@@ -11926,6 +12850,10 @@ test('媒体 Provider 支持 Chat Completions 图片 data URI 协议', async () 
       assert.match(capturedRequest.messages[0].content, /模板参数/);
       assert.match(capturedRequest.messages[0].content, /产品名称: 测试产品/);
       assert.match(capturedRequest.messages[0].content, /场景选择: 厨房餐厅/);
+      assert.match(capturedRequest.messages[0].content, /产品一致性规则/);
+      assert.match(capturedRequest.messages[0].content, /产品包装颜色和文字必须与产品图一致/);
+      assert.match(capturedRequest.messages[0].content, /负面约束/);
+      assert.match(capturedRequest.messages[0].content, /不要改变产品结构/);
       const storedLogs = await logs.list(workspacePath);
       assert.equal(storedLogs[0].output.endpoint, 'openai-chat-data-uri');
     } finally {
@@ -12112,7 +13040,7 @@ test('视频拆解可以调用真实 Generic HTTP 理解 Provider 并写入日�
         dimensions: ['开头钩子', '字幕口播'],
         citations: [citation],
         selectedSkillSlugs: ['video-breakdown'],
-        params: { textModel: 'fake-claude-sonnet' },
+        params: { textModel: 'fake-text-model' },
       });
       assert.equal(breakdown.segments.length, 1);
       assert.equal(breakdown.reusableFormula[0], '痛点 -> 顺手使用 -> 事实边界');
@@ -12223,7 +13151,7 @@ test('爆款视频拆解支持 OpenAI 兼容视觉链路和 LLM 环境变量', a
             videoProvider: 'disabled',
             videoApiEndpoint: '',
             videoModel: '',
-            textModel: 'claude-sonnet-4-5',
+            textModel: 'gpt-4o-mini',
           };
         },
         async getVideoApiKey() { return undefined; },
@@ -12235,7 +13163,7 @@ test('爆款视频拆解支持 OpenAI 兼容视觉链路和 LLM 环境变量', a
         dimensions: ['开头钩子', '镜头节奏'],
         citations: [citation],
         selectedSkillSlugs: ['video-breakdown'],
-        params: { textModel: 'fake-claude-sonnet' },
+        params: { textModel: 'fake-text-model' },
       });
 
       assert.equal(capturedRequests.length, 2);
@@ -12324,7 +13252,7 @@ test('视频脚本生成会按已拆解镜头时间轴严格映射并输出资�
       citations: [citation],
       assetRefs: [],
       selectedSkillSlugs: ['video-script-writer'],
-      params: { textModel: 'fake-claude-sonnet' },
+      params: { textModel: 'fake-text-model' },
     });
 
     assert.equal(script.storyboard.length, 4);

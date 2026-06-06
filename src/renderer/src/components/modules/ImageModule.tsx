@@ -17,7 +17,9 @@ import type {
   GenerationLogEntry,
   GlobalGenerationParams,
   ImageGenerationRequest,
+  ImageProductionTask,
   MediaGenerationResult,
+  ShotPrompt,
 } from "../../../../shared/types";
 import { IMAGE_TEMPLATE_CONFIGS } from "../../app/constants";
 import {
@@ -96,6 +98,17 @@ function resolvePromptCursor(value: string, cursorIndex: number): number {
   return cursorIndex;
 }
 
+function listFromTextarea(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/\n+/)
+        .map((line) => line.replace(/^\s*[-*•\d.、)）]+\s*/, "").trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 12);
+}
+
 interface ImageModuleProps {
   busy: boolean;
   workspaceReady: boolean;
@@ -128,6 +141,10 @@ interface ImageModuleProps {
   setImageWatermark: Dispatch<SetStateAction<boolean>>;
   mediaResult: MediaGenerationResult | null;
   logs: GenerationLogEntry[];
+  imageProductionTasks: ImageProductionTask[];
+  activeImageProductionTask?: ImageProductionTask;
+  activeImageProductionTaskId: string;
+  setActiveImageProductionTaskId: (taskId: string) => void;
   onUseGeneratedImageAsReference: (path: string) => void;
   onRevealPath: (path: string) => void;
   onExportAsset: (path: string) => void;
@@ -138,6 +155,38 @@ interface ImageModuleProps {
   onClearProductImageRefs: () => void;
   onClearReferenceImageRefs: () => void;
   onGenerateImage: () => void;
+  onCreateImageProductionTask: (input?: {
+    title?: string;
+    sourceSummary?: string;
+  }) => Promise<ImageProductionTask>;
+  onUpdateImageProductionTask: (input: {
+    taskId: string;
+    title?: string;
+    sourceSummary?: string;
+    productImageRefs?: string[];
+    referenceImageRefs?: string[];
+    consistencyRules?: string[];
+    negativeConstraints?: string[];
+    activeShotPromptId?: string;
+  }) => Promise<ImageProductionTask>;
+  onUpdateShotPrompt: (input: {
+    taskId: string;
+    shotPromptId?: string;
+    patch: Partial<Omit<ShotPrompt, "id" | "createdAt" | "updatedAt">>;
+  }) => Promise<ImageProductionTask>;
+  onGenerateImageForShot: (input: {
+    taskId: string;
+    shotPromptId: string;
+    generationStage: "test" | "batch";
+  }) => void;
+  onReviewShotAsset: (input: {
+    taskId: string;
+    shotPromptId: string;
+    logId: string;
+    assetRef: string;
+    status: "approved" | "rejected";
+    note?: string;
+  }) => void;
 }
 
 export function ImageModule({
@@ -166,6 +215,10 @@ export function ImageModule({
   setImageWatermark,
   mediaResult,
   logs,
+  imageProductionTasks,
+  activeImageProductionTask,
+  activeImageProductionTaskId,
+  setActiveImageProductionTaskId,
   onUseGeneratedImageAsReference,
   onRevealPath,
   onExportAsset,
@@ -176,6 +229,11 @@ export function ImageModule({
   onClearProductImageRefs,
   onClearReferenceImageRefs,
   onGenerateImage,
+  onCreateImageProductionTask,
+  onUpdateImageProductionTask,
+  onUpdateShotPrompt,
+  onGenerateImageForShot,
+  onReviewShotAsset,
 }: ImageModuleProps) {
   const [templateOverrides, setTemplateOverrides] = useState<
     Record<string, ImageTemplateConfig>
@@ -216,6 +274,12 @@ export function ImageModule({
   const [promptCursorIndex, setPromptCursorIndex] = useState(0);
   const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
   const [manualMentionPicker, setManualMentionPicker] = useState(false);
+  const [taskDraftTitle, setTaskDraftTitle] = useState("");
+  const [taskDraftSummary, setTaskDraftSummary] = useState("");
+  const [taskDraftConsistencyRules, setTaskDraftConsistencyRules] = useState("");
+  const [taskDraftNegativeConstraints, setTaskDraftNegativeConstraints] = useState("");
+  const [shotDrafts, setShotDrafts] = useState<Record<string, { title: string; scene: string; prompt: string; negativePrompt: string }>>({});
+  const [taskActionError, setTaskActionError] = useState("");
 
   const templateConfigs = useMemo(
     () =>
@@ -229,6 +293,10 @@ export function ImageModule({
     templateConfigs[0];
   const isBatchShell = runMode === "parallel";
   const isFreeMode = imagePromptMode === "free";
+  const activeTask = activeImageProductionTask;
+  const activeShot =
+    activeTask?.shotPrompts.find((shot) => shot.id === activeTask.activeShotPromptId) ??
+    activeTask?.shotPrompts[0];
   const assetMentions: ImageMention[] = [
     ...productImageRefs.map((ref, index) => ({
       ref,
@@ -271,6 +339,10 @@ export function ImageModule({
       })),
   ];
   const imageLogs = logs.filter((log) => log.kind === "image").slice(0, 8);
+  const imageLogById = useMemo(
+    () => new Map(logs.filter((log) => log.kind === "image").map((log) => [log.id, log])),
+    [logs],
+  );
   const imageModelOptions = useMemo(
     () =>
       Array.from(
@@ -356,6 +428,42 @@ export function ImageModule({
     }
     return Array.isArray(value) ? value.length === 0 : !value?.trim();
   });
+
+  useEffect(() => {
+    if (!activeTask) {
+      setTaskDraftTitle("");
+      setTaskDraftSummary("");
+      setTaskDraftConsistencyRules("");
+      setTaskDraftNegativeConstraints("");
+      return;
+    }
+    setTaskDraftTitle(activeTask.title);
+    setTaskDraftSummary(activeTask.sourceSummary);
+    setTaskDraftConsistencyRules(activeTask.consistencyRules.join("\n"));
+    setTaskDraftNegativeConstraints(activeTask.negativeConstraints.join("\n"));
+  }, [
+    activeTask?.id,
+    activeTask?.title,
+    activeTask?.sourceSummary,
+    activeTask?.consistencyRules,
+    activeTask?.negativeConstraints,
+  ]);
+
+  useEffect(() => {
+    if (!activeTask) return;
+    setShotDrafts((current) => {
+      const next = { ...current };
+      for (const shot of activeTask.shotPrompts) {
+        next[shot.id] = {
+          title: next[shot.id]?.title ?? shot.title,
+          scene: next[shot.id]?.scene ?? shot.scene,
+          prompt: next[shot.id]?.prompt ?? shot.prompt,
+          negativePrompt: next[shot.id]?.negativePrompt ?? shot.negativePrompt ?? "",
+        };
+      }
+      return next;
+    });
+  }, [activeTask?.id, activeTask?.shotPrompts]);
 
   useEffect(() => {
     if (!fullscreenAssetRef) return undefined;
@@ -632,6 +740,217 @@ export function ImageModule({
     } finally {
       setSkillCreateBusy(false);
     }
+  };
+
+  const shotStatusLabel = (status: ShotPrompt["status"]): string => {
+    if (status === "ready") return "可测试";
+    if (status === "testing") return "测试生成中";
+    if (status === "test-review") return "测试待确认";
+    if (status === "test-approved") return "测试通过";
+    if (status === "batching") return "批量生成中";
+    if (status === "batch-review") return "批量待审核";
+    if (status === "approved") return "已入库";
+    if (status === "rejected" || status === "needs-rework") return "需回炉";
+    if (status === "blocked") return "待配置";
+    return "草稿";
+  };
+
+  const logAssetRefs = (log?: GenerationLogEntry): string[] => {
+    if (!log) return [];
+    const output = log.output && typeof log.output === "object"
+      ? log.output as Record<string, unknown>
+      : {};
+    const outputRefs = Array.isArray(output.assetRefs)
+      ? output.assetRefs.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [];
+    return outputRefs.length ? outputRefs : log.artifactRefs ?? [];
+  };
+
+  const stageLogsForShot = (shot: ShotPrompt, stage: "test" | "batch"): GenerationLogEntry[] => {
+    const ids = stage === "test" ? shot.testLogIds : shot.batchLogIds;
+    return ids.map((id) => imageLogById.get(id)).filter((log): log is GenerationLogEntry => Boolean(log));
+  };
+
+  const createTaskFromCurrentPrompt = async () => {
+    setTaskActionError("");
+    try {
+      const task = await onCreateImageProductionTask({
+        title: taskDraftTitle,
+        sourceSummary: taskDraftSummary || imagePromptDraft,
+      });
+      const consistencyRules = listFromTextarea(taskDraftConsistencyRules);
+      const negativeConstraints = listFromTextarea(taskDraftNegativeConstraints);
+      if (consistencyRules.length || negativeConstraints.length) {
+        const updatedTask = await onUpdateImageProductionTask({
+          taskId: task.id,
+          consistencyRules: consistencyRules.length ? consistencyRules : task.consistencyRules,
+          negativeConstraints: negativeConstraints.length ? negativeConstraints : task.negativeConstraints,
+        });
+        setActiveImageProductionTaskId(updatedTask.id);
+        return;
+      }
+      setActiveImageProductionTaskId(task.id);
+    } catch (error) {
+      setTaskActionError(error instanceof Error ? error.message : "图片生产任务创建失败。");
+    }
+  };
+
+  const saveActiveTask = async () => {
+    if (!activeTask) return;
+    setTaskActionError("");
+    try {
+      await onUpdateImageProductionTask({
+        taskId: activeTask.id,
+        title: taskDraftTitle,
+        sourceSummary: taskDraftSummary,
+        productImageRefs,
+        referenceImageRefs,
+        consistencyRules: listFromTextarea(taskDraftConsistencyRules),
+        negativeConstraints: listFromTextarea(taskDraftNegativeConstraints),
+      });
+    } catch (error) {
+      setTaskActionError(error instanceof Error ? error.message : "图片生产任务保存失败。");
+    }
+  };
+
+  const addShotPrompt = async () => {
+    if (!activeTask) {
+      await createTaskFromCurrentPrompt();
+      return;
+    }
+    setTaskActionError("");
+    try {
+      await onUpdateShotPrompt({
+        taskId: activeTask.id,
+        patch: {
+          title: `镜头 ${String(activeTask.shotPrompts.length + 1).padStart(2, "0")}`,
+          scene: taskDraftSummary || imagePromptDraft || "当前画面需求",
+          prompt: imagePromptDraft,
+          referenceImageRefs,
+          status: imagePromptDraft.trim() ? "ready" : "draft",
+        },
+      });
+    } catch (error) {
+      setTaskActionError(error instanceof Error ? error.message : "镜头 Prompt 新增失败。");
+    }
+  };
+
+  const saveShotPrompt = async (shot: ShotPrompt) => {
+    if (!activeTask) return;
+    const draft = shotDrafts[shot.id] ?? {
+      title: shot.title,
+      scene: shot.scene,
+      prompt: shot.prompt,
+      negativePrompt: shot.negativePrompt ?? "",
+    };
+    setTaskActionError("");
+    try {
+      await onUpdateShotPrompt({
+        taskId: activeTask.id,
+        shotPromptId: shot.id,
+        patch: {
+          ...draft,
+          status: draft.prompt.trim() ? "ready" : "draft",
+          referenceImageRefs: shot.referenceImageRefs.length ? shot.referenceImageRefs : referenceImageRefs,
+        },
+      });
+    } catch (error) {
+      setTaskActionError(error instanceof Error ? error.message : "镜头 Prompt 保存失败。");
+    }
+  };
+
+  const updateShotDraft = (shotId: string, patch: Partial<{ title: string; scene: string; prompt: string; negativePrompt: string }>) => {
+    setShotDrafts((current) => ({
+      ...current,
+      [shotId]: {
+        title: current[shotId]?.title ?? "",
+        scene: current[shotId]?.scene ?? "",
+        prompt: current[shotId]?.prompt ?? "",
+        negativePrompt: current[shotId]?.negativePrompt ?? "",
+        ...patch,
+      },
+    }));
+  };
+
+  const canBatchGenerate = (shot: ShotPrompt): boolean => {
+    return shot.status === "test-approved" || shot.status === "batch-review" || shot.status === "approved";
+  };
+
+  const handleShotAssetDecision = async (
+    shot: ShotPrompt,
+    stage: "test" | "batch",
+    log: GenerationLogEntry,
+    assetRef: string,
+    status: "approved" | "rejected",
+  ) => {
+    if (!activeTask) return;
+    if (stage === "test") {
+      await onUpdateShotPrompt({
+        taskId: activeTask.id,
+        shotPromptId: shot.id,
+        patch: {
+          status: status === "approved" ? "test-approved" : "needs-rework",
+        },
+      });
+      return;
+    }
+    onReviewShotAsset({
+      taskId: activeTask.id,
+      shotPromptId: shot.id,
+      logId: log.id,
+      assetRef,
+      status,
+      note: status === "approved"
+        ? "批量生成素材人工审核通过并入库。"
+        : "批量生成素材人工驳回，需要回炉修改 Prompt。",
+    });
+  };
+
+  const renderShotAssets = (shot: ShotPrompt, stage: "test" | "batch") => {
+    const stageLogs = stageLogsForShot(shot, stage);
+    const refs = stageLogs.flatMap((log) => logAssetRefs(log).map((assetRef) => ({ log, assetRef })));
+    if (!stageLogs.length) {
+      return (
+        <div className="image-shot-empty">
+          {stage === "test" ? "还没有测试图。" : "还没有批量结果。"}
+        </div>
+      );
+    }
+    return (
+      <div className="image-shot-result-grid">
+        {refs.length ? refs.map(({ log, assetRef }) => (
+          <figure key={`${log.id}:${assetRef}`} className="image-shot-result">
+            <button type="button" onClick={() => setFullscreenAssetRef(assetRef)}>
+              <img src={imageAssetSource(assetRef)} alt={fileNameFromPath(assetRef)} />
+            </button>
+            <figcaption>
+              <span>{statusLabel(log.status)}</span>
+              <button
+                type="button"
+                className="primary tiny"
+                disabled={log.status !== "succeeded"}
+                onClick={() => void handleShotAssetDecision(shot, stage, log, assetRef, "approved")}
+              >
+                {stage === "test" ? "通过测试" : "送审入库"}
+              </button>
+              <button
+                type="button"
+                className="ghost tiny"
+                disabled={log.status !== "succeeded"}
+                onClick={() => void handleShotAssetDecision(shot, stage, log, assetRef, "rejected")}
+              >
+                回炉
+              </button>
+            </figcaption>
+          </figure>
+        )) : stageLogs.map((log) => (
+          <div key={log.id} className={`image-shot-log ${log.status}`}>
+            <strong>{statusLabel(log.status)}</strong>
+            <span>{log.summary || log.error || "生成记录已保存。"}</span>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const renderTemplateField = (field: ImageTemplateField) => {
@@ -936,21 +1255,94 @@ export function ImageModule({
           })}
         </div>
 
-        {isBatchShell ? (
-          <div className="batch-shell-card compact-batch-card">
+        <div className="image-production-card">
+          <header>
             <div>
-              <strong>批量处理 Shell</strong>
-              <small>批量队列未接入前只展示任务入口，不伪造生成。</small>
+              <strong>素材生产任务</strong>
+              <small>{activeTask ? shotStatusLabel(activeShot?.status ?? "draft") : "未创建"}</small>
             </div>
-            <div className="batch-stat-grid">
-              {["任务总数", "已完成", "未完成", "等待区", "失败数量"].map(
-                (label) => (
-                  <span key={label}>
-                    <strong>0</strong>
-                    {label}
-                  </span>
-                ),
-              )}
+            <button
+              type="button"
+              className="ghost small"
+              disabled={!workspaceReady}
+              onClick={createTaskFromCurrentPrompt}
+            >
+              新建
+            </button>
+          </header>
+          {imageProductionTasks.length ? (
+            <label>
+              <span>当前任务</span>
+              <select
+                value={activeImageProductionTaskId || activeTask?.id || ""}
+                onChange={(event) => setActiveImageProductionTaskId(event.target.value)}
+              >
+                {imageProductionTasks.map((task) => (
+                  <option key={task.id} value={task.id}>{task.title}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label>
+            <span>任务名称</span>
+            <input
+              value={taskDraftTitle}
+              placeholder="例如：夏季种草图素材"
+              onChange={(event) => setTaskDraftTitle(event.target.value)}
+            />
+          </label>
+          <label>
+            <span>场景 / 脚本摘要</span>
+            <textarea
+              value={taskDraftSummary}
+              placeholder="描述这一组素材服务的场景、脚本或画面需求。"
+              onChange={(event) => setTaskDraftSummary(event.target.value)}
+            />
+          </label>
+          <label>
+            <span>产品一致性规则</span>
+            <textarea
+              className="compact"
+              value={taskDraftConsistencyRules}
+              placeholder="每行一条，例如：包装文字和主体比例保持一致。"
+              onChange={(event) => setTaskDraftConsistencyRules(event.target.value)}
+            />
+          </label>
+          <label>
+            <span>负面约束</span>
+            <textarea
+              className="compact"
+              value={taskDraftNegativeConstraints}
+              placeholder="每行一条，例如：不生成医疗化或夸大承诺。"
+              onChange={(event) => setTaskDraftNegativeConstraints(event.target.value)}
+            />
+          </label>
+          <div className="image-production-actions">
+            <button
+              type="button"
+              className="ghost small"
+              disabled={!activeTask}
+              onClick={saveActiveTask}
+            >
+              保存任务
+            </button>
+            <button
+              type="button"
+              className="primary small"
+              disabled={!workspaceReady}
+              onClick={addShotPrompt}
+            >
+              添加镜头
+            </button>
+          </div>
+          {taskActionError ? <div className="error-banner compact">{taskActionError}</div> : null}
+        </div>
+
+        {isBatchShell ? (
+          <div className="image-production-card compact">
+            <div>
+              <strong>批量生产已切到镜头卡</strong>
+              <small>先通过测试图，再在中间镜头区执行批量生成。</small>
             </div>
           </div>
         ) : null}
@@ -1230,6 +1622,127 @@ export function ImageModule({
         {templateActionError ? (
           <div className="error-banner">{templateActionError}</div>
         ) : null}
+
+        <section className="image-production-workbench" aria-label="镜头级图片生产">
+          <header className="image-production-workbench-head">
+            <div>
+              <p className="eyebrow">SOP 生产线</p>
+              <h3>{activeTask?.title || "先创建一组图片素材生产任务"}</h3>
+            </div>
+            <div className="image-production-metrics">
+              <span><strong>{activeTask?.shotPrompts.length ?? 0}</strong>镜头</span>
+              <span><strong>{activeTask?.shotPrompts.filter((shot) => shot.status === "approved").length ?? 0}</strong>已入库</span>
+              <span><strong>{activeTask?.shotPrompts.filter((shot) => shot.status === "needs-rework" || shot.status === "rejected").length ?? 0}</strong>回炉</span>
+            </div>
+          </header>
+          {activeTask ? (
+            <div className="image-shot-list">
+              {activeTask.shotPrompts.map((shot, index) => {
+                const draft = shotDrafts[shot.id] ?? {
+                  title: shot.title,
+                  scene: shot.scene,
+                  prompt: shot.prompt,
+                  negativePrompt: shot.negativePrompt ?? "",
+                };
+                const isActive = activeTask.activeShotPromptId === shot.id;
+                return (
+                  <article key={shot.id} className={`image-shot-card ${isActive ? "active" : ""} ${shot.status}`}>
+                    <div className="image-shot-card-head">
+                      <button
+                        type="button"
+                        className="image-shot-index"
+                        onClick={() => {
+                          void onUpdateImageProductionTask({
+                            taskId: activeTask.id,
+                            activeShotPromptId: shot.id,
+                          });
+                        }}
+                      >
+                        {String(index + 1).padStart(2, "0")}
+                      </button>
+                      <label>
+                        <span>镜头标题</span>
+                        <input
+                          value={draft.title}
+                          onChange={(event) => updateShotDraft(shot.id, { title: event.target.value })}
+                        />
+                      </label>
+                      <span className={`status-pill ${shot.status}`}>{shotStatusLabel(shot.status)}</span>
+                    </div>
+                    <div className="image-shot-grid">
+                      <label>
+                        <span>画面场景</span>
+                        <input
+                          value={draft.scene}
+                          onChange={(event) => updateShotDraft(shot.id, { scene: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        <span>负面约束</span>
+                        <input
+                          value={draft.negativePrompt}
+                          placeholder="不夸大、不改产品结构、不添加无来源包装文字"
+                          onChange={(event) => updateShotDraft(shot.id, { negativePrompt: event.target.value })}
+                        />
+                      </label>
+                    </div>
+                    <label className="image-shot-prompt">
+                      <span>镜头 Prompt</span>
+                      <textarea
+                        value={draft.prompt}
+                        placeholder="写清主体、动作、产品展示、构图、光线、风格和参考图约束。"
+                        onChange={(event) => updateShotDraft(shot.id, { prompt: event.target.value })}
+                      />
+                    </label>
+                    <div className="image-shot-actions">
+                      <button type="button" className="ghost small" onClick={() => saveShotPrompt(shot)}>
+                        保存镜头
+                      </button>
+                      <button
+                        type="button"
+                        className="primary small"
+                        disabled={busy || !workspaceReady || !draft.prompt.trim()}
+                        onClick={() => onGenerateImageForShot({
+                          taskId: activeTask.id,
+                          shotPromptId: shot.id,
+                          generationStage: "test",
+                        })}
+                      >
+                        测试生成
+                      </button>
+                      <button
+                        type="button"
+                        className="primary small"
+                        disabled={busy || !workspaceReady || !canBatchGenerate(shot)}
+                        onClick={() => onGenerateImageForShot({
+                          taskId: activeTask.id,
+                          shotPromptId: shot.id,
+                          generationStage: "batch",
+                        })}
+                      >
+                        批量生成
+                      </button>
+                    </div>
+                    <div className="image-shot-results">
+                      <section>
+                        <strong>测试图</strong>
+                        {renderShotAssets(shot, "test")}
+                      </section>
+                      <section>
+                        <strong>批量结果</strong>
+                        {renderShotAssets(shot, "batch")}
+                      </section>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state image-production-empty">
+              先在左侧创建素材生产任务。任务会把产品图、参考图、镜头 Prompt、测试生成、批量生成和审核入库串成同一条记录。
+            </div>
+          )}
+        </section>
 
         {!isFreeMode ? (
           <div className="image-template-parameter-dock" aria-label="技能参数">

@@ -32,11 +32,11 @@ interface StoredModelConfig {
 }
 
 const DEFAULT_CONFIG = {
-  textProvider: 'anthropic-claude-sdk' as const,
-  textProtocol: 'claude-sdk' as const,
-  textApiEndpoint: 'https://api.anthropic.com',
-  textModel: 'claude-sonnet-4-5',
-  textModels: ['claude-sonnet-4-5'],
+  textProvider: 'http-text-generation' as const,
+  textProtocol: 'openai-chat' as const,
+  textApiEndpoint: 'https://api.openai.com/v1',
+  textModel: 'gpt-4o-mini',
+  textModels: ['gpt-4o-mini'],
   imageProvider: 'disabled' as const,
   imageProtocol: 'openai-responses' as const,
   imageApiEndpoint: 'https://api.openai.com/v1',
@@ -194,7 +194,7 @@ function hostnameFromUrl(value: string): string {
 }
 
 function resolveCatalogEndpoints(source: RemoteModelSource): string[] {
-  if (source.protocol === 'anthropic-messages' || source.protocol === 'claude-sdk') {
+  if (source.protocol === 'anthropic-messages') {
     return resolveAnthropicModelsEndpoints(source.endpoint);
   }
   if (source.protocol === 'gemini-generate-content') {
@@ -207,7 +207,7 @@ function resolveCatalogEndpoints(source: RemoteModelSource): string[] {
 function catalogRequestHeaders(source: RemoteModelSource, endpoint: string): Record<string, string> {
   const headers: Record<string, string> = { accept: 'application/json' };
   const hostname = hostnameFromUrl(endpoint).toLowerCase();
-  if (source.protocol === 'anthropic-messages' || source.protocol === 'claude-sdk') {
+  if (source.protocol === 'anthropic-messages') {
     headers['x-api-key'] = source.apiKey;
     headers['anthropic-version'] = '2023-06-01';
     return headers;

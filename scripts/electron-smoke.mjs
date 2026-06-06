@@ -238,7 +238,7 @@ try {
       citations,
       selectedSkillSlugs: [],
       params: {
-        textModel: 'claude-sonnet-4-5',
+        textModel: 'gpt-4o-mini',
         imageModel: 'gpt-image-2',
         videoModel: 'veo-3.1',
         runMode: 'single',
@@ -258,7 +258,7 @@ try {
         promptPackId: undefined,
         citations,
         selectedSkillSlugs: [],
-        params: { textModel: 'claude-sonnet-4-5' },
+        params: { textModel: 'gpt-4o-mini' },
       });
     } catch (error) {
       breakdownError = error instanceof Error ? error.message : String(error);

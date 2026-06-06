@@ -1,15 +1,15 @@
 # 布谷AI内容工厂 v2 架构与流程图
 
-更新时间：2026-05-21
-状态：Draft
+更新时间：2026-06-06
+状态：Current planning source
 
 ## 1. 设计结论
 
 v2 的架构核心是「知识体系」「场景库」「Prompt 工作台」「工作流服务」和「产物登记」。品牌 / 产品知识库先生成 `PromptPack`，再生成 `SceneLibrary`，再生成 `PromptDraft` / `PromptGroup`；IP 素材先生成 `IpKnowledgeBase`，再延伸出 IP 运营场景库。参考图、参考视频、产品资料、SKU 表和竞品内容仍通过 `WorkflowInputSource` 进入大模型玩法。
 
-底层 Agent 架构参考 `/Users/coso/Documents/dev/js/craft-agents-oss`：Electron Renderer 只做工作台 UI，Electron Main 承担会话、工具、权限、来源、技能和持久化，真正的多轮 Agent 运行通过 `@anthropic-ai/claude-agent-sdk` 启动 Claude SDK runtime。`content-studio` 当前优先走 Claude SDK / Anthropic 链路；非 Claude 模型只走显式协议 provider，不把 OpenAI / Gemini 强塞进 Claude SDK，也不在 v2 默认引入 Pi。
+底层 Agent 架构统一遵循 Lime App Server 路线：`Frontend / Electron Renderer -> Electron Desktop Host IPC -> Lime App Server JSON-RPC -> RuntimeCore / backend`。Electron Renderer 只做工作台 UI 和 runtime facts 投影；Preload 只暴露类型化 facade；Electron Main 是 Desktop Host，负责 IPC、sidecar 生命周期、JSON-RPC client、事件投影和本地内容工厂 store 协调；真正的多轮 Agent 运行、工具调度、权限事实、artifact 和 evidence 都来自 Lime App Server 的 RuntimeCore / backend。
 
-当前落地版本已经具备协议化文字 provider、DOCX / Markdown 输入源抽取、PromptDraft 版本、AgentPromptSessionStore 会话、ReferenceReverseService 真实视觉反推、SOP 最小顺序执行器、知识引用随运行记录保存、品牌场景 SOP、图片生成后自动送审、素材审核、视频 Prompt 人工复制、成品视频导入、绿幕图和混剪包导出。完整 Claude SDK runtime 事件回放仍属于下一阶段，现阶段由 `AgentPromptSessionStore + PromptDraftStore + TextGenerationService + ReferenceReverseService` 承接“读取输入源 + 用户意图 -> 多轮 Prompt 草稿”的最小闭环。
+当前落地版本已经具备协议化文字 provider、DOCX / Markdown 输入源抽取、PromptDraft 版本、AgentPromptSessionStore 会话、ReferenceReverseService 真实视觉反推、SOP 最小顺序执行器、知识引用随运行记录保存、品牌场景 SOP、图片生成后自动送审、素材审核、视频 Prompt 人工复制、成品视频导入、绿幕图和混剪包导出。Agent runtime 已收敛到 `AppServerSidecarService + AppServerPromptAgentService`：`agent:run` / Prompt 工作台会话通过 App Server JSON-RPC 进入 RuntimeCore / packaged external backend，再把 `agentSession/event`、artifact 和 evidence 投影回现有 UI；旧第三方 Agent runtime 与本地 SDK runtime 均归类为 `dead`，不再作为接入路径。
 
 ## 2. 系统架构图
 
@@ -33,7 +33,7 @@ flowchart LR
     IPC[类型化 IPC Bridge]
   end
 
-  subgraph Main[Electron Main]
+  subgraph Main[Electron Main / Desktop Host]
     InputSource[WorkflowInputSourceStore]
     AgentSession[AgentPromptSessionStore]
     PromptDraft[PromptDraftStore]
@@ -43,12 +43,13 @@ flowchart LR
     WorkflowDef[WorkflowDefinitionStore]
     WorkflowRun[WorkflowRunStore]
     WorkflowEngine[WorkflowEngine]
-    AgentRuntime[ContentStudioAgentRuntime]
-    ClaudeAgent[ClaudeAgentService]
-    ClaudeRuntime[ClaudeSdkRuntime]
-    Permission[PermissionPolicy]
-    SkillRegistry["SkillManager / SkillDefinitionStore"]
-    AgentEvents[AgentEventBus]
+    AppServerPrompt[AppServerPromptAgentService]
+    AppServerSidecar[AppServerSidecarService]
+    JsonRpcClient[App Server JSON-RPC Client]
+    PermissionProjection[Permission / Action Projection]
+    SkillRegistry["SkillManager / Skill Catalog"]
+    AgentEvents[AgentEvent Projection]
+    ArtifactEvidence[Artifact / Evidence Projection]
     ArtifactStore[WorkflowArtifactStore（规划中）]
     KB[KnowledgeBaseStore]
     PromptPack[PromptPackService]
@@ -73,7 +74,7 @@ flowchart LR
     PromptPacks[prompt-packs.json]
     Sessions[agent-prompt-sessions.json]
     Drafts[prompt-drafts.json]
-    SkillDefs["skill-definitions.json / .claude/skills"]
+    SkillDefs["skill-definitions.json / .bugu/skills"]
     Definitions[workflow-definitions.json]
     Runs[workflow-runs.json]
     AssetReviews[asset-reviews.json]
@@ -83,13 +84,21 @@ flowchart LR
     LogFiles[generation-logs.json]
   end
 
-  subgraph Providers[模型与人工外部工具]
-    ClaudeSDK["@anthropic-ai/claude-agent-sdk"]
-    ClaudeAuth["Claude Code OAuth / Anthropic API Key"]
-    TextModel[文字模型]
-    VisionModel[多模态理解模型]
-    ImageModel[图片模型]
-    VideoAPI["Vidu / Runway / 其他视频 API"]
+  subgraph AppServer[Lime App Server JSON-RPC]
+    AppServerBinary["app-server sidecar --stdio"]
+    RuntimeCore[RuntimeCore]
+    ExecutionBackend[ExecutionBackend]
+    PackagedBackend["content-backend.mjs"]
+    RuntimeEvents["agentSession/event"]
+    RuntimeArtifacts["artifact/read"]
+    RuntimeEvidence["evidence/export"]
+  end
+
+  subgraph Providers[协议化模型与人工外部工具]
+    TextModel["Anthropic Messages / OpenAI Chat / Gemini GenerateContent"]
+    VisionModel["多模态理解 HTTP provider"]
+    ImageModel[图片生成服务]
+    VideoAPI["Vidu / Runway / Generic HTTP 视频 API"]
     External["RunningHub / 第三方视频平台"]
     Mix[第三方混剪软件]
   end
@@ -126,7 +135,7 @@ flowchart LR
   IPC --> WorkflowDef
   IPC --> WorkflowRun
   IPC --> WorkflowEngine
-  IPC --> ClaudeAgent
+  IPC --> AppServerSidecar
   IPC --> AssetReview
   IPC --> MixPackage
   IPC --> ModelConfig
@@ -140,7 +149,7 @@ flowchart LR
   WorkflowEngine --> PromptPack
   WorkflowEngine --> Scene
   WorkflowEngine --> PromptGroup
-  WorkflowEngine --> AgentRuntime
+  WorkflowEngine --> AppServerPrompt
   WorkflowEngine --> Text
   WorkflowEngine --> Vision
   WorkflowEngine --> Image
@@ -150,18 +159,35 @@ flowchart LR
   WorkflowEngine --> ReferenceReverse
   WorkflowEngine --> AssetReview
 
-  AgentRuntime --> ClaudeAgent
-  AgentRuntime --> Permission
-  AgentRuntime --> SkillRegistry
-  ClaudeAgent --> ClaudeRuntime
-  ClaudeAgent --> AgentEvents
-  ClaudeRuntime --> ClaudeSDK
-  ClaudeRuntime --> ClaudeAuth
+  AppServerPrompt --> AppServerSidecar
+  AppServerSidecar --> JsonRpcClient
+  JsonRpcClient --> AppServerBinary
+  AppServerBinary --> RuntimeCore
+  RuntimeCore --> ExecutionBackend
+  ExecutionBackend --> PackagedBackend
+  PackagedBackend --> TextModel
+  RuntimeCore --> RuntimeEvents
+  RuntimeCore --> RuntimeArtifacts
+  RuntimeCore --> RuntimeEvidence
+  RuntimeEvents --> AgentEvents
+  RuntimeArtifacts --> ArtifactEvidence
+  RuntimeEvidence --> ArtifactEvidence
+  AgentEvents --> PermissionProjection
+  PermissionProjection --> AgentSession
+  ArtifactEvidence --> AgentSession
+  ArtifactEvidence --> WorkflowRun
+  ArtifactEvidence --> PromptDraft
+  AppServerPrompt --> AgentSession
+  AppServerPrompt --> PromptDraft
+  AppServerSidecar --> AgentEvents
+  AppServerSidecar --> ArtifactEvidence
+  AppServerSidecar --> IPC
+  AppServerPrompt --> SkillRegistry
   AgentEvents --> AgentSession
   AgentEvents --> WorkflowRun
   AgentEvents --> IPC
 
-  AgentSession --> AgentRuntime
+  AgentSession --> AppServerPrompt
   AgentSession --> Text
   AgentSession --> Vision
   PromptDraft --> PromptPack
@@ -183,20 +209,17 @@ flowchart LR
   ArtifactStore --> AssetFiles
   Logs --> LogFiles
 
-  ClaudeSDK --> TextModel
   Text --> TextModel
-  Text --> ClaudeRuntime
   Vision --> VisionModel
-  Vision --> ClaudeRuntime
   Image --> ImageModel
   Video --> VideoAPI
   Video --> External
   Export --> Mix
 ```
 
-## 3. Claude SDK Agent Runtime 架构图
+## 3. Lime App Server JSON-RPC Agent Runtime 架构图
 
-`craft-agents-oss` 的关键经验是：会话是 Agent 的隔离边界，工具调用、权限请求、来源引用和流式事件都要从 runtime 回写到本地会话，而不是只保存最终文本。布谷 v2 需要把这层单独建模，否则知识库读文档、多轮 Prompt 调整、Skill 调用和 SOP 运行记录会混在一起。
+Lime 路线的关键约束是：Frontend 不拥有 runtime，Electron Desktop Host 不实现第二套 runtime，App Server JSON-RPC 是唯一 runtime 通道。会话、thread、turn、tool、action、artifact 和 evidence 都是 RuntimeCore / backend facts；content-studio 只把这些 facts 投影到 `AgentPromptSession`、`WorkflowRun`、`PromptDraft` 和 UI。
 
 ```mermaid
 flowchart TD
@@ -207,85 +230,116 @@ flowchart TD
     ReviewUI["运行详情 / 审核台"]
   end
 
-  subgraph IPC[Preload + IPC]
-    AgentRun["agent:run"]
-    AgentCancel["agent:cancel"]
-    WorkflowRunIPC["workflow:run"]
-    SkillIPC["skill:list / skill:install"]
+  subgraph Preload[Preload Typed Facade]
+    RunFacade["contentStudio.runAgentTask"]
+    CancelFacade["contentStudio.cancelAgentTask"]
+    HealthFacade["contentStudio.getAppServerHealth"]
+    SmokeFacade["contentStudio.runAppServerSmoke"]
   end
 
-  subgraph Runtime["Electron Main: Agent Runtime"]
+  subgraph Host[Electron Main / Desktop Host IPC]
+    AgentRun["ipcMain agent:run"]
+    AgentCancel["ipcMain agent:cancel"]
+    HealthIPC["ipcMain appServer:health"]
+    SmokeIPC["ipcMain appServer:smoke"]
     SessionStore[AgentPromptSessionStore]
     RunStore[WorkflowRunStore]
-    ContextBuilder[AgentContextBuilder]
-    SkillRegistry["SkillManager / SkillDefinitionStore"]
+    PromptDraftStore[PromptDraftStore]
+    SkillRegistry["SkillManager / Skill Catalog"]
     SourceResolver["InputSource / Knowledge Resolver"]
-    PermissionPolicy[PermissionPolicy]
-    ClaudeAgent[ClaudeAgentService]
-    ClaudeRuntime[ClaudeSdkRuntime]
-    EventMapper[AgentEvent Mapper]
-    ArtifactWriter["PromptDraft / Artifact Writer"]
+    PromptAgent[AppServerPromptAgentService]
+    SidecarService[AppServerSidecarService]
+    JsonRpcClient["App Server JSON-RPC stdio client"]
+    EventMapper["Runtime Event Projection"]
+    ArtifactMapper["Artifact / Evidence Projection"]
   end
 
-  subgraph SDK[Claude SDK Runtime]
-    ClaudeQuery["query()"]
-    ClaudeSession[SDK Session]
-    ToolUse["Read / Write / Edit / Bash / WebFetch / Skill"]
-    Env["ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL / Claude Code OAuth"]
+  subgraph AppServer[Lime App Server]
+    Initialize["initialize / initialized"]
+    Capability["capability/list"]
+    SessionStart["agentSession/start"]
+    TurnStart["agentSession/turn/start"]
+    TurnCancel["agentSession/turn/cancel"]
+    RuntimeEvent["agentSession/event notification"]
+    ArtifactRead["artifact/read"]
+    EvidenceExport["evidence/export"]
+    RuntimeCore[RuntimeCore]
+    Backend["ExecutionBackend / packaged external backend"]
   end
 
   subgraph Workspace[工作区事实源]
     Docs["DOCX / Markdown / 原始素材"]
-    Skills[".claude/skills / skill-definitions.json"]
+    Skills[".bugu/skills / skill-definitions.json"]
     Sessions[agent-prompt-sessions.json]
     Runs[workflow-runs.json]
     Drafts[prompt-drafts.json]
     Artifacts[workflow-artifacts.json（规划中）]
   end
 
-  Chat --> AgentRun
-  Form --> WorkflowRunIPC
-  SkillUI --> SkillIPC
-  AgentRun --> SessionStore
-  WorkflowRunIPC --> RunStore
-  AgentRun --> ContextBuilder
-  WorkflowRunIPC --> ContextBuilder
+  Chat --> RunFacade
+  Form --> RunFacade
+  SkillUI --> RunFacade
+  ReviewUI --> CancelFacade
+  RunFacade --> AgentRun
+  CancelFacade --> AgentCancel
+  HealthFacade --> HealthIPC
+  SmokeFacade --> SmokeIPC
 
-  ContextBuilder --> SourceResolver
-  ContextBuilder --> SkillRegistry
-  ContextBuilder --> PermissionPolicy
+  AgentRun --> SidecarService
+  AgentCancel --> SidecarService
+  HealthIPC --> SidecarService
+  SmokeIPC --> SidecarService
+  PromptAgent --> SidecarService
+  PromptAgent --> SourceResolver
+  PromptAgent --> SkillRegistry
+  PromptAgent --> SessionStore
+  PromptAgent --> PromptDraftStore
   SourceResolver --> Docs
   SkillRegistry --> Skills
 
-  ContextBuilder --> ClaudeAgent
-  PermissionPolicy --> ClaudeAgent
-  ClaudeAgent --> ClaudeRuntime
-  ClaudeRuntime --> Env
-  ClaudeRuntime --> ClaudeQuery
-  ClaudeQuery --> ClaudeSession
-  ClaudeSession --> ToolUse
+  SidecarService --> JsonRpcClient
+  JsonRpcClient --> Initialize
+  JsonRpcClient --> Capability
+  JsonRpcClient --> SessionStart
+  JsonRpcClient --> TurnStart
+  JsonRpcClient --> TurnCancel
+  JsonRpcClient --> RuntimeEvent
+  JsonRpcClient --> ArtifactRead
+  JsonRpcClient --> EvidenceExport
+  Initialize --> RuntimeCore
+  Capability --> RuntimeCore
+  SessionStart --> RuntimeCore
+  TurnStart --> RuntimeCore
+  TurnCancel --> RuntimeCore
+  RuntimeCore --> Backend
+  Backend --> RuntimeEvent
+  Backend --> ArtifactRead
+  Backend --> EvidenceExport
 
-  ToolUse --> EventMapper
-  ClaudeSession --> EventMapper
+  RuntimeEvent --> EventMapper
+  ArtifactRead --> ArtifactMapper
+  EvidenceExport --> ArtifactMapper
   EventMapper --> SessionStore
   EventMapper --> RunStore
-  EventMapper --> ArtifactWriter
+  EventMapper --> ReviewUI
+  ArtifactMapper --> PromptDraftStore
+  ArtifactMapper --> RunStore
   EventMapper --> ReviewUI
 
   SessionStore --> Sessions
   RunStore --> Runs
-  ArtifactWriter --> Drafts
-  ArtifactWriter --> Artifacts
+  PromptDraftStore --> Drafts
+  ArtifactMapper --> Artifacts
 ```
 
 运行约束：
 
-- `AgentPromptSession` 是多轮 Prompt 生产的会话边界，保存用户意图、Agent 追问、来源引用、SDK session id 和事件。
+- `AgentPromptSession` 是多轮 Prompt 生产的本地投影边界，保存用户意图、Agent 追问、来源引用、App Server session / turn id 和事件。
 - `WorkflowRun` 是 SOP 执行边界，引用一个或多个 `AgentPromptSession`、`SkillRun` 和 artifact。
-- Claude SDK runtime 可以读取工作区文档、调用允许的工具和项目 Skill；所有工具事件必须映射为可审计的 `AgentEvent`。
-- `PermissionPolicy` 默认不能是全自动写入；生产素材链路可读优先，写文件、调用外部 API、批量改动必须有显式策略。
-- `ClaudeSdkRuntime` 负责 SDK 子进程环境、Claude Code OAuth / Anthropic API Key、兼容 base URL 和 SDK 配置修复。
-- 非 Claude 协议仍通过 `TextGenerationProvider`、`VisionProvider` 等显式 provider 调用，用于结构化 JSON、图片理解或兼容模型，不进入 Claude SDK Agent runtime。
+- RuntimeCore / backend 可以按 App Server policy 调用工具、生成 artifact 和导出 evidence；所有 `*.failed`、`action.required`、tool、artifact 事件都必须映射为可审计的 `AgentEvent` 或 `executionEvents`。
+- Electron Main 只负责 JSON-RPC client、生命周期和投影，不在 content-studio 内重写 RuntimeCore、ExecutionBackend 或第二套 runtime adapter。
+- Renderer 不直接 spawn sidecar、不读取 stdout、不持有 JSON-RPC message；它只能消费 Preload 暴露的 typed facade 和业务事件投影。
+- 文本、视觉、图片、视频模型仍走各自显式 HTTP provider；Agent runtime 统一由 App Server 调度，不再保留旧第三方 Agent runtime 或本地 SDK runtime fallback。
 
 ## 4. 通用 SOP 执行流程
 
@@ -411,11 +465,11 @@ flowchart TD
   WorkflowEngine --> PromptExport
   WorkflowEngine --> ExportProvider
 
-  TextProvider --> Claude["Claude SDK / Anthropic"]
+  TextProvider --> AnthropicText["Anthropic Messages HTTP"]
   TextProvider --> OpenAIText[OpenAI Chat]
-  TextProvider --> GeminiText[Gemini]
+  TextProvider --> GeminiText[Gemini GenerateContent]
 
-  VisionProvider --> ClaudeVision[Claude 多模态]
+  VisionProvider --> AnthropicVision["Anthropic Messages Vision HTTP"]
   VisionProvider --> OpenAIVision["OpenAI / GPT Image 理解"]
   VisionProvider --> GeminiVision[Gemini 多模态]
 

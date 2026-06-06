@@ -143,6 +143,10 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         setImageWatermark={app.setImageWatermark}
         mediaResult={app.mediaResult}
         logs={app.logs}
+        imageProductionTasks={app.imageProductionTasks}
+        activeImageProductionTask={app.activeImageProductionTask}
+        activeImageProductionTaskId={app.activeImageProductionTaskId}
+        setActiveImageProductionTaskId={app.setActiveImageProductionTaskId}
         onUseGeneratedImageAsReference={app.useGeneratedImageAsReference}
         onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
         onExportAsset={(path) => app.runAction(() => app.exportAsset(path))}
@@ -153,6 +157,11 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onClearProductImageRefs={app.clearProductImageRefs}
         onClearReferenceImageRefs={app.clearReferenceImageRefs}
         onGenerateImage={() => app.runAction(app.generateImage)}
+        onCreateImageProductionTask={(input) => app.createImageProductionTask(input)}
+        onUpdateImageProductionTask={(input) => app.updateImageProductionTask(input)}
+        onUpdateShotPrompt={(input) => app.updateShotPrompt(input)}
+        onGenerateImageForShot={(input) => app.runAction((context) => app.generateImageForShot(input, context), input.generationStage === 'test' ? '正在测试生成' : '正在批量生成')}
+        onReviewShotAsset={(input) => app.runAction(() => app.reviewShotAsset(input), input.status === 'approved' ? '正在审核入库' : '正在记录回炉')}
       />
     );
   }

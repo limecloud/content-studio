@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "布谷AI内容工厂桌面应用，用于知识库、提示词、图片、视频和文章生产。",
   "type": "module",
   "main": "out/main/index.js",
@@ -29,6 +29,12 @@
     "dist:linux": "npm run build && electron-builder --config electron-builder.yml --linux AppImage --publish never",
     "smoke:electron": "node scripts/electron-smoke.mjs",
     "smoke:electron:headed": "node scripts/electron-smoke.mjs --headed",
+    "smoke:app-server": "node scripts/app-server-smoke.mjs",
+    "app-server:prepare": "node scripts/prepare-app-server-resources.mjs",
+    "app-server:prepare:release": "node scripts/prepare-app-server-resources.mjs",
+    "app-server:prepare:test": "node --test scripts/prepare-app-server-resources.test.mjs",
+    "app-server:backend:test": "node --test scripts/app-server-backend.test.mjs",
+    "app-server:backend:live": "node scripts/app-server-backend-live-check.mjs",
     "verify:v2:providers": "node scripts/v2-provider-check.mjs",
     "verify:v2:providers:strict": "node scripts/v2-provider-check.mjs --strict",
     "verify:v2:acceptance": "node scripts/run-v2-business-acceptance.mjs",
@@ -42,7 +48,6 @@
     "verify:local": "npm run typecheck && npm run content:v1:verify-readiness && npm run build && npm run verify:v2 && npm run test:functional && npm run smoke:electron && npm run test:e2e"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.143",
     "@types/yauzl": "^2.10.3",
     "fast-xml-parser": "^5.8.0",
     "gray-matter": "^4.0.3",

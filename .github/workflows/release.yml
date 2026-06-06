@@ -136,6 +136,9 @@ jobs:
           sudo apt-get install -y xvfb
           npx playwright install-deps chromium
 
+      - name: Run App Server resource tests
+        run: npm run app-server:prepare:test && npm run app-server:backend:test
+
       - name: Run release verification
         run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run verify:local
 
@@ -163,6 +166,7 @@ jobs:
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       OEM_BRAND: ${{ matrix.brand }}
+      LIME_APP_SERVER_REF: ${{ vars.LIME_APP_SERVER_REF || 'v1.59.0' }}
 
     steps:
       - name: Checkout release ref
@@ -176,6 +180,9 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Setup Rust for App Server sidecar
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install Linux package helpers
         if: runner.os == 'Linux'
         run: |
@@ -188,14 +195,54 @@ jobs:
       - name: Package renderer and main process
         run: npm run build
 
+      - name: Checkout Lime App Server source
+        uses: actions/checkout@v4
+        with:
+          repository: limecloud/lime
+          ref: ${{ env.LIME_APP_SERVER_REF }}
+          path: .tmp/lime-app-server-source
+
+      - name: Build Lime App Server sidecar
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cargo build \
+            --manifest-path ".tmp/lime-app-server-source/lime-rs/Cargo.toml" \
+            -p app-server \
+            --release
+
+      - name: Prepare App Server sidecar resources
+        shell: bash
+        env:
+          APP_SERVER_RELEASE_MANIFEST: ${{ vars.APP_SERVER_RELEASE_MANIFEST }}
+          APP_SERVER_RELEASE_MANIFEST_URL: ${{ vars.APP_SERVER_RELEASE_MANIFEST_URL }}
+          APP_SERVER_RELEASE_BINARY: ${{ vars.APP_SERVER_RELEASE_BINARY }}
+        run: |
+          set -euo pipefail
+          if [ -n "${APP_SERVER_RELEASE_MANIFEST:-}" ] || [ -n "${APP_SERVER_RELEASE_MANIFEST_URL:-}" ]; then
+            npm run app-server:prepare:release
+            exit 0
+          fi
+          sidecar=".tmp/lime-app-server-source/lime-rs/target/release/app-server"
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            sidecar="${sidecar}.exe"
+          fi
+          npm run app-server:prepare:release -- \
+            --binary "${sidecar}" \
+            --version "${LIME_APP_SERVER_REF#v}"
+
       - name: Prepare OEM build
         run: node scripts/prepare-oem-build.mjs --brand=${{ matrix.brand }}
+        env:
+          CONTENT_STUDIO_REQUIRE_APP_SERVER_RESOURCES: '1'
 
       - name: Package desktop app
         run: npx electron-builder --config .tmp/oem/${{ matrix.brand }}/electron-builder.json ${{ matrix.target }} --publish never
 
       - name: Assert OEM artifact scope
         run: node scripts/assert-oem-artifact-scope.mjs --brand=${{ matrix.brand }}
+        env:
+          CONTENT_STUDIO_REQUIRE_APP_SERVER_RESOURCES: '1'
 
       - name: Upload packaged artifacts
         uses: actions/upload-artifact@v4

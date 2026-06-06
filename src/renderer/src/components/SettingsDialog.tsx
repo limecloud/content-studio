@@ -37,8 +37,8 @@ interface SettingsDialogProps extends BuguAuthActions {
   setNotificationsEnabled: Dispatch<SetStateAction<boolean>>;
   reduceAnimation: boolean;
   setReduceAnimation: Dispatch<SetStateAction<boolean>>;
-  syncClaudeHistory: boolean;
-  setSyncClaudeHistory: Dispatch<SetStateAction<boolean>>;
+  syncLocalAssetHistory: boolean;
+  setSyncLocalAssetHistory: Dispatch<SetStateAction<boolean>>;
   shortcutActive: boolean;
   setShortcutActive: Dispatch<SetStateAction<boolean>>;
   commandWhitelist: boolean;
@@ -143,8 +143,8 @@ export function SettingsDialog({
   setNotificationsEnabled,
   reduceAnimation,
   setReduceAnimation,
-  syncClaudeHistory,
-  setSyncClaudeHistory,
+  syncLocalAssetHistory,
+  setSyncLocalAssetHistory,
   shortcutActive,
   setShortcutActive,
   commandWhitelist,
@@ -458,7 +458,7 @@ export function SettingsDialog({
                     <strong>同步本地素材历史</strong>
                     <span>将本地内容生产记录同步到当前工作区</span>
                   </div>
-                  <div className={`switch ${syncClaudeHistory ? 'active' : ''}`} onClick={() => setSyncClaudeHistory(!syncClaudeHistory)}></div>
+                  <div className={`switch ${syncLocalAssetHistory ? 'active' : ''}`} onClick={() => setSyncLocalAssetHistory(!syncLocalAssetHistory)}></div>
                 </div>
 
                 <div className="settings-row-item">
@@ -629,7 +629,6 @@ export function SettingsDialog({
                       <label>
                         <span>协议</span>
                         <select value={modelDraft.textProtocol} onChange={(event) => setModelDraft((current) => ({ ...current, textProtocol: event.target.value as ModelDraft['textProtocol'] }))}>
-                          <option value="claude-sdk">Claude SDK（Anthropic 官方）</option>
                           <option value="anthropic-messages">Anthropic Messages 兼容</option>
                           <option value="openai-chat">OpenAI Chat Completions</option>
                           <option value="gemini-generate-content">Gemini GenerateContent</option>
@@ -693,7 +692,7 @@ export function SettingsDialog({
                               event.preventDefault();
                               addTextModel();
                             }}
-                            placeholder="输入文字模型 ID，例如 claude-sonnet-4-5"
+                            placeholder="输入文字模型 ID，例如 gpt-4o-mini"
                           />
                           <button type="button" className="ghost small" onClick={addTextModel} disabled={!textModelDraft.trim()}>添加模型</button>
                         </div>
@@ -1030,7 +1029,7 @@ export function SettingsDialog({
             setAutoStart(true);
             setNotificationsEnabled(true);
             setReduceAnimation(false);
-            setSyncClaudeHistory(false);
+            setSyncLocalAssetHistory(false);
             setShortcutActive(true);
             setCommandWhitelist(false);
           }}>恢复默认</button>

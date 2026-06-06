@@ -16,7 +16,7 @@ const resourcesDir = join(projectRoot, 'resources');
 function startModelCatalogServer() {
   const requests = [];
   const models = [
-    'claude-remote-text',
+    'gpt-remote-text-primary',
     'gpt-remote-text',
     'gpt-remote-text-03',
     'gpt-remote-text-04',
@@ -120,7 +120,7 @@ test('远程模型目录分流到文字、图片、视频模型池并支持切�
     await expect(page.locator('.model-config-section')).not.toContainText('图片生成');
     await expect(page.locator('.model-config-section')).not.toContainText('视频理解 / 生成');
 
-    await expect(page.locator('.model-preset-row button').filter({ hasText: 'claude-remote-text' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.model-preset-row button').filter({ hasText: 'gpt-remote-text-primary' })).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.model-preset-row button').filter({ hasText: 'gpt-image-remote' })).toHaveCount(0);
     await expect(page.locator('.model-preset-row button').filter({ hasText: 'veo-remote-video' })).toHaveCount(0);
 
@@ -134,7 +134,7 @@ test('远程模型目录分流到文字、图片、视频模型池并支持切�
     await textSection.getByRole('button', { name: '收起' }).click();
     await expect(hiddenTextPreset).toHaveCount(0);
 
-    await page.locator('.model-config-section').filter({ hasText: '文字生成' }).locator('select').filter({ hasText: 'claude-remote-text' }).selectOption('gpt-remote-text');
+    await page.locator('.model-config-section').filter({ hasText: '文字生成' }).locator('select').filter({ hasText: 'gpt-remote-text-primary' }).selectOption('gpt-remote-text');
     await expect(page.locator('.model-config-section').filter({ hasText: '文字生成' }).locator('.image-model-priority-item').first()).toContainText('gpt-remote-text');
 
     await page.locator('.model-list-item').filter({ hasText: '图片生成' }).click();

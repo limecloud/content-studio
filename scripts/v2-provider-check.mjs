@@ -2,11 +2,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 const DEFAULTS = {
-  textProtocol: 'claude-sdk',
+  textProtocol: 'openai-chat',
   textEndpoint: 'https://api.anthropic.com',
   openaiTextEndpoint: 'https://api.openai.com/v1',
   geminiTextEndpoint: 'https://generativelanguage.googleapis.com/v1beta',
-  textModel: 'claude-sonnet-4-5',
+  textModel: 'gpt-4o-mini',
   imageProtocol: 'openai-responses',
   imageEndpoint: 'https://api.openai.com/v1',
   imageModel: 'gpt-image-2',
@@ -15,13 +15,12 @@ const DEFAULTS = {
   visionModel: 'vision-provider',
 };
 
-const TEXT_PROTOCOLS = new Set(['claude-sdk', 'anthropic-messages', 'openai-chat', 'gemini-generate-content']);
+const TEXT_PROTOCOLS = new Set(['anthropic-messages', 'openai-chat', 'gemini-generate-content']);
 const IMAGE_PROTOCOLS = new Set(['openai-responses', 'openai-chat-data-uri', 'gemini-generate-content']);
 
 function textRequiredEnv(protocol) {
   if (protocol === 'openai-chat') return ['CONTENT_STUDIO_TEXT_API_KEY or OPENAI_API_KEY'];
   if (protocol === 'gemini-generate-content') return ['CONTENT_STUDIO_TEXT_API_KEY or GEMINI_API_KEY or GOOGLE_API_KEY'];
-  if (protocol === 'claude-sdk') return ['CONTENT_STUDIO_TEXT_API_KEY or ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN'];
   return ['CONTENT_STUDIO_TEXT_API_KEY or ANTHROPIC_API_KEY'];
 }
 
@@ -78,7 +77,7 @@ function textKey(env, protocol) {
     protocol === 'openai-chat' ? 'OPENAI_API_KEY' : '',
     protocol === 'gemini-generate-content' ? 'GEMINI_API_KEY' : '',
     protocol === 'gemini-generate-content' ? 'GOOGLE_API_KEY' : '',
-    protocol === 'claude-sdk' || protocol === 'anthropic-messages' ? 'ANTHROPIC_API_KEY' : '',
+    protocol === 'anthropic-messages' ? 'ANTHROPIC_API_KEY' : '',
   );
 }
 
@@ -112,7 +111,7 @@ function providerRecovery(check) {
   if (reason === 'TEXT_PROVIDER_KEY_MISSING') {
     return {
       requiredEnv: textRequiredEnv(check.protocol),
-      nextAction: '配置文字模型 Key 后重跑 provider 检查；Claude SDK 可复用 Claude Code OAuth。',
+      nextAction: '配置文字模型 Key 后重跑 provider 检查；文字生成只走显式 HTTP 协议。',
     };
   }
   if (reason === 'VISION_ENDPOINT_MISSING') {
@@ -638,13 +637,12 @@ async function checkTextProvider(env, allowNetwork) {
   const model = envValue(env, 'CONTENT_STUDIO_TEXT_MODEL') || DEFAULTS.textModel;
   const endpoint = cleanBaseUrl(envValue(env, 'CONTENT_STUDIO_TEXT_BASE_URL'), defaultTextEndpoint(protocol));
   const key = textKey(env, protocol);
-  const oauthToken = envValue(env, 'CLAUDE_CODE_OAUTH_TOKEN');
-  if (!key && !(protocol === 'claude-sdk' && oauthToken)) {
+  if (!key) {
     return providerCheck('text', 'blocked', {
       protocol,
       model,
       reason: 'TEXT_PROVIDER_KEY_MISSING',
-      configured: configuredFlags({ apiKey: key, oauthToken }),
+      configured: configuredFlags({ apiKey: key }),
     });
   }
   if (!allowNetwork) {
@@ -652,7 +650,7 @@ async function checkTextProvider(env, allowNetwork) {
       protocol,
       model,
       reason: 'NETWORK_CHECK_NOT_ENABLED',
-      configured: configuredFlags({ apiKey: key, oauthToken }),
+      configured: configuredFlags({ apiKey: key }),
     });
   }
 
@@ -683,12 +681,12 @@ async function checkTextProvider(env, allowNetwork) {
       });
       if (!hasTextProviderOutput(protocol, payload)) throw new Error('TEXT_PROVIDER_NO_MODEL_OUTPUT');
     }
-    return providerCheck('text', 'succeeded', { protocol, model, configured: configuredFlags({ apiKey: key, oauthToken }) });
+    return providerCheck('text', 'succeeded', { protocol, model, configured: configuredFlags({ apiKey: key }) });
   } catch (error) {
     return providerCheck('text', 'failed', {
       protocol,
       model,
-      configured: configuredFlags({ apiKey: key, oauthToken }),
+      configured: configuredFlags({ apiKey: key }),
       error: sanitizeError(error instanceof Error ? error.message : String(error)),
     });
   }

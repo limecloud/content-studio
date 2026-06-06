@@ -18,17 +18,15 @@ import { isReusablePromptInputSource } from '../../shared/inputSourcePolicy';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import { getWorkspaceDataDir } from './paths';
 import { InputSourceStore } from './inputSourceStore';
-import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { PromptDraftStore } from './promptDraftStore';
 import { SkillManager } from './skillManager';
 import { buildSkillRuntimeContext, type SkillRuntimeContext } from './skillRuntimeContext';
-import { TextGenerationService, TextProviderBlockedError, TextProviderFailedError } from './textGenerationService';
 import type {
   GenerateAgentPromptDraftInput,
   GenerateAgentPromptDraftResult,
   GenerateAgentPromptRefinementInput,
   GenerateAgentPromptRefinementResult,
-} from './claudePromptAgentService';
+} from './appServerPromptAgentService';
 import type { TextProviderRuntimeEvent } from '../providers/textGenerationProvider';
 
 function sessionsFilePath(workspacePath: string): string {
@@ -96,37 +94,8 @@ function sourceSnapshotText(sources: AgentPromptSourceSnapshot[]): string {
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 
-function compactMessages(messages: AgentPromptMessage[]): string {
-  return messages.slice(-12).map((message) => [
-    `${message.role}/${message.kind}`,
-    message.model ? `model: ${message.model}` : '',
-    message.content.slice(0, 2400),
-  ].filter(Boolean).join('\n')).join('\n\n');
-}
-
-const REFINE_PROMPT_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['prompt', 'followUpQuestions', 'sourceWarnings'],
-  properties: {
-    prompt: { type: 'string' },
-    followUpQuestions: { type: 'array', items: { type: 'string' } },
-    sourceWarnings: { type: 'array', items: { type: 'string' } },
-  },
-};
-
 const AGENT_RUNTIME_SCHEMA_VERSION = 'agent-runtime-draft-2026-05';
 const CONTENT_STUDIO_RUNTIME_ID = 'content-studio-agent-prompt-runtime';
-
-interface RefinePromptOutput {
-  prompt: string;
-  followUpQuestions: string[];
-  sourceWarnings: string[];
-}
-
-function normalizeList(values: string[] | undefined): string[] {
-  return (values ?? []).map((value) => String(value).trim()).filter(Boolean).slice(0, 8);
-}
 
 function reusableSessionModel(model?: string): string | undefined {
   const trimmed = model?.trim();
@@ -134,23 +103,22 @@ function reusableSessionModel(model?: string): string | undefined {
   return trimmed;
 }
 
-function formatRefinedContent(previousContent: string, adjustment: string, output: RefinePromptOutput): string {
-  const prompt = String(output.prompt ?? '').trim();
+function blockedDraftContent(input: StartAgentPromptSessionInput, reason: string): string {
   return [
-    prompt || previousContent,
+    '# Prompt 草稿未生成',
     '',
-    '本轮调整：',
-    adjustment.trim(),
+    '用户意图：',
+    input.userIntent.trim(),
     '',
-    normalizeList(output.followUpQuestions).length ? '仍需追问 / 人工确认：' : '',
-    ...normalizeList(output.followUpQuestions).map((item, index) => `${index + 1}. ${item}`),
+    '处理状态：',
+    `Lime Agent Server 未完成本轮生成，原因：${reason}`,
     '',
-    normalizeList(output.sourceWarnings).length ? '来源与合规提醒：' : '',
-    ...normalizeList(output.sourceWarnings).map((item, index) => `${index + 1}. ${item}`),
-  ].filter((line) => line !== '').join('\n');
+    '恢复路径：',
+    '请确认 Lime Agent Server sidecar、App Server backend 和文字模型配置可用后重试。',
+  ].join('\n');
 }
 
-function fallbackRefinedContent(previousContent: string, adjustment: string, reason: string): string {
+function blockedRefinedContent(previousContent: string, adjustment: string, reason: string): string {
   return [
     previousContent,
     '',
@@ -158,8 +126,34 @@ function fallbackRefinedContent(previousContent: string, adjustment: string, rea
     adjustment.trim(),
     '',
     '处理状态：',
-    `文字模型未完成，本轮只记录调整意图，原因：${reason}`,
+    `Lime Agent Server 未完成本轮调整，原因：${reason}`,
+    '',
+    '恢复路径：',
+    '请确认 Lime Agent Server sidecar、App Server backend 和文字模型配置可用后重试。',
   ].join('\n');
+}
+
+function limeAgentServerErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function blockedProviderEvents(reason: string, operation: 'draft' | 'refine'): TextProviderRuntimeEvent[] {
+  return [
+    {
+      eventClass: 'runtime.error',
+      kind: 'model',
+      status: 'failed',
+      phase: 'blocked',
+      title: 'Lime Agent Server blocked',
+      detail: reason,
+      model: 'blocked:lime-agent-server',
+      payload: {
+        runtime: 'lime-agent-server',
+        operation,
+        error: reason,
+      },
+    },
+  ];
 }
 
 function resolvedActionTitle(decision: RespondAgentPromptActionInput['decision']): string {
@@ -591,7 +585,7 @@ function buildStartExecutionEvents(input: {
         owner: 'runtime',
         phase: 'action_required',
         title: '需要配置文字模型',
-        detail: '配置 Claude 或兼容文字生成服务后，可继续本轮 Prompt 草稿。',
+        detail: '配置显式 HTTP 文字生成服务后，可继续本轮 Prompt 草稿。',
         actionId: `action:${input.sessionId}:configure-text-model`,
         stepId: 'action:configure-text-model',
         payload: { actionKind: 'configure-text-model', providerStatus: input.draft.model },
@@ -836,7 +830,7 @@ function buildContinueExecutionEvents(input: {
         owner: 'runtime',
         phase: 'action_required',
         title: '需要配置文字模型',
-        detail: '配置 Claude 或兼容文字生成服务后，可继续本轮调整。',
+        detail: '配置显式 HTTP 文字生成服务后，可继续本轮调整。',
         actionId: `action:${input.sessionId}:configure-text-model`,
         stepId: 'action:configure-text-model',
         payload: { actionKind: 'configure-text-model', providerStatus: input.generated.model },
@@ -890,8 +884,7 @@ export class AgentPromptSessionStore {
   constructor(
     private readonly inputSources: InputSourceStore,
     private readonly promptDrafts: PromptDraftStore,
-    private readonly textGeneration: TextGenerationService,
-    private readonly promptAgent?: AgentPromptModelService,
+    private readonly promptAgent: AgentPromptModelService,
     private readonly skills = new SkillManager(),
   ) {}
 
@@ -908,8 +901,9 @@ export class AgentPromptSessionStore {
     const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, input);
     let draft: PromptDraft;
     let providerEvents: TextProviderRuntimeEvent[] | undefined;
-    if (this.promptAgent) {
-      const generated = await this.promptAgent.generatePromptDraft({
+    let generated: GenerateAgentPromptDraftResult;
+    try {
+      generated = await this.promptAgent.generatePromptDraft({
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
         title: input.title,
@@ -924,36 +918,33 @@ export class AgentPromptSessionStore {
         textModel: input.textModel,
         teamKnowledgeRelease: input.teamKnowledgeRelease,
       });
-      providerEvents = generated.providerEvents;
-      draft = await this.promptDrafts.createFromContent({
-        workspacePath: input.workspacePath,
-        workflowRunId: input.workflowRunId,
-        teamKnowledgeRelease: input.teamKnowledgeRelease,
-        title: input.title?.trim() || generated.title || '模型生成 Prompt 草稿',
-        purpose: input.purpose,
-        userIntent: input.userIntent.trim(),
-        inputSourceIds,
-        sceneCardIds: input.sceneCardIds ?? [],
-        selectedSkills: skillContext.skillRefs,
-        content: generated.content,
-        note: generated.note,
-        model: generated.model,
-        textProtocol: generated.protocol,
-      });
-    } else {
-      draft = await this.promptDrafts.generate({
-        workspacePath: input.workspacePath,
-        workflowRunId: input.workflowRunId,
-        title: input.title,
-        purpose: input.purpose,
-        userIntent: input.userIntent,
-        inputSourceIds,
-        sceneCardIds: input.sceneCardIds,
-        selectedSkills: skillContext.skillRefs,
-        selectedSkillSlugs: skillContext.skillRefs.map((skill) => skill.slug),
-        teamKnowledgeRelease: input.teamKnowledgeRelease,
-      });
+    } catch (error) {
+      const reason = limeAgentServerErrorMessage(error);
+      generated = {
+        title: 'Lime Agent Server 未完成',
+        content: blockedDraftContent(input, reason),
+        note: `Lime Agent Server 未完成，已记录本轮意图：${reason}`,
+        model: 'blocked:lime-agent-server',
+        protocol: undefined,
+        providerEvents: blockedProviderEvents(reason, 'draft'),
+      };
     }
+    providerEvents = generated.providerEvents;
+    draft = await this.promptDrafts.createFromContent({
+      workspacePath: input.workspacePath,
+      workflowRunId: input.workflowRunId,
+      teamKnowledgeRelease: input.teamKnowledgeRelease,
+      title: input.title?.trim() || generated.title || '模型生成 Prompt 草稿',
+      purpose: input.purpose,
+      userIntent: input.userIntent.trim(),
+      inputSourceIds,
+      sceneCardIds: input.sceneCardIds ?? [],
+      selectedSkills: skillContext.skillRefs,
+      content: generated.content,
+      note: generated.note,
+      model: generated.model,
+      textProtocol: generated.protocol,
+    });
     const now = new Date().toISOString();
     const sessionId = randomUUID();
     const turnId = randomUUID();
@@ -1043,9 +1034,12 @@ export class AgentPromptSessionStore {
     const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, {
       selectedSkills: session.selectedSkills ?? draft.selectedSkills ?? [],
     });
-    const generated = this.promptAgent
-      ? await this.promptAgent.generateRefinedPrompt({
+    let generated: GenerateAgentPromptRefinementResult;
+    try {
+      generated = await this.promptAgent.generateRefinedPrompt({
         workspacePath: input.workspacePath,
+        sessionId: session.id,
+        promptDraftId: draft.id,
         purpose: session.purpose,
         previousContent,
         adjustment,
@@ -1053,14 +1047,17 @@ export class AgentPromptSessionStore {
         messages: session.messages,
         skillContext,
         textModel: input.textModel ?? reusableSessionModel(session.model),
-      })
-      : await this.generateRefinedContent(
-        session,
-        previousContent,
-        adjustment,
-        skillContext,
-        input.textModel ?? reusableSessionModel(session.model),
-      );
+      });
+    } catch (error) {
+      const reason = limeAgentServerErrorMessage(error);
+      generated = {
+        content: blockedRefinedContent(previousContent, adjustment, reason),
+        note: `Lime Agent Server 调整未完成，已记录本轮要求：${reason}`,
+        model: 'blocked:lime-agent-server',
+        protocol: undefined,
+        providerEvents: blockedProviderEvents(reason, 'refine'),
+      };
+    }
     const updatedDraft = await this.promptDrafts.update({
       workspacePath: input.workspacePath,
       draftId: draft.id,
@@ -1410,78 +1407,4 @@ export class AgentPromptSessionStore {
     return updatedSession;
   }
 
-  private async generateRefinedContent(
-    session: AgentPromptSession,
-    previousContent: string,
-    adjustment: string,
-    skillContext: SkillRuntimeContext,
-    textModel?: string,
-  ): Promise<{
-    content: string;
-    note: string;
-    model: string;
-    protocol?: AgentPromptSession['textProtocol'];
-    providerEvents?: TextProviderRuntimeEvent[];
-  }> {
-    try {
-      const result = await this.textGeneration.generateJson<RefinePromptOutput>({
-        workspacePath: session.workspacePath,
-        model: textModel,
-        systemPrompt: [
-          `你是${getOemRuntimeConfig().productName}内容工厂的 Prompt 多轮调整 Agent。`,
-          '你必须基于会话输入源、已有 Prompt 草稿和用户本轮调整要求改写 Prompt。',
-          '必须保留来源约束，不编造输入源没有的卖点、功效、背书或用户案例。',
-          '如果调整要求缺少必要信息，要给出追问；如果来源存在 blocked，要提醒人工确认。',
-          skillContext.promptText ? '本轮会话绑定了 skills，你必须持续遵守这些执行规范。' : '',
-        ].join('\n'),
-        prompt: [
-          `下游用途：${session.purpose}`,
-          '',
-          skillContext.promptText ? '本轮 skill 执行规范：' : '',
-          skillContext.promptText,
-          skillContext.promptText ? '' : '',
-          '输入源快照：',
-          sourceSnapshotText(session.sourceSnapshots),
-          '',
-          '会话记录：',
-          compactMessages(session.messages),
-          '',
-          '当前 Prompt 草稿：',
-          previousContent,
-          '',
-          '本轮用户调整要求：',
-          adjustment,
-          '',
-          '请返回改写后的完整 Prompt 正文，并列出仍需追问和来源风险。',
-        ].join('\n'),
-        schema: REFINE_PROMPT_SCHEMA,
-        maxTurns: 2,
-      });
-      return {
-        content: formatRefinedContent(previousContent, adjustment, result.value),
-        note: [
-          `对话调整完成：${result.model}`,
-          skillContext.skillRefs.length ? `已应用 ${skillContext.skillRefs.length} 个 skill：${skillContext.summaryText}` : '',
-        ].filter(Boolean).join('；'),
-        model: result.model,
-        protocol: result.protocol,
-        providerEvents: result.providerEvents,
-      };
-    } catch (error) {
-      const reason = error instanceof TextProviderBlockedError
-        ? error.message
-        : error instanceof TextProviderFailedError
-          ? `文字模型生成失败：${error.message}`
-          : `文字模型生成异常：${error instanceof Error ? error.message : String(error)}`;
-      return {
-        content: fallbackRefinedContent(previousContent, adjustment, reason),
-        note: `对话调整未完成，已记录本轮要求：${reason}`,
-        model: error instanceof TextProviderBlockedError ? 'blocked:text-provider' : 'fallback:local-rule',
-        protocol: undefined,
-        providerEvents: error instanceof TextProviderBlockedError || error instanceof TextProviderFailedError
-          ? error.runtimeEvents
-          : undefined,
-      };
-    }
-  }
 }

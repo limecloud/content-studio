@@ -4,10 +4,10 @@ export type PermissionMode = 'ask' | 'safe' | 'allow-all';
 export type SkillSource = 'builtin' | 'project' | 'project-compat' | 'user' | 'user-compat';
 export type KnowledgeBaseSource = 'builtin' | 'workspace';
 export type KnowledgeBaseType = 'product-kb' | 'personal-ip-kb';
-export type TextGenerationProtocol = 'claude-sdk' | 'anthropic-messages' | 'openai-chat' | 'gemini-generate-content';
+export type TextGenerationProtocol = 'anthropic-messages' | 'openai-chat' | 'gemini-generate-content';
 export type ImageGenerationProtocol = 'openai-responses' | 'openai-chat-data-uri' | 'gemini-generate-content';
 export type ModelSecretStatus = 'missing' | 'available' | 'requires-reauthorization';
-export const TEXT_GENERATION_PROTOCOLS: readonly TextGenerationProtocol[] = ['claude-sdk', 'anthropic-messages', 'openai-chat', 'gemini-generate-content'];
+export const TEXT_GENERATION_PROTOCOLS: readonly TextGenerationProtocol[] = ['anthropic-messages', 'openai-chat', 'gemini-generate-content'];
 export const IMAGE_GENERATION_PROTOCOLS: readonly ImageGenerationProtocol[] = ['openai-responses', 'openai-chat-data-uri', 'gemini-generate-content'];
 
 export function isTextGenerationProtocol(value: unknown): value is TextGenerationProtocol {
@@ -16,10 +16,6 @@ export function isTextGenerationProtocol(value: unknown): value is TextGeneratio
 
 export function isImageGenerationProtocol(value: unknown): value is ImageGenerationProtocol {
   return typeof value === 'string' && IMAGE_GENERATION_PROTOCOLS.includes(value as ImageGenerationProtocol);
-}
-
-export function isClaudeModelName(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().toLowerCase().startsWith('claude-');
 }
 
 export type KnowledgeSectionType =
@@ -260,7 +256,7 @@ export interface ModelConfigView {
   apiEndpoint: string;
   hasApiKey: boolean;
   safeStorageAvailable: boolean;
-  textProvider: 'anthropic-claude-sdk';
+  textProvider: 'http-text-generation';
   textProtocol: TextGenerationProtocol;
   textApiEndpoint: string;
   hasTextApiKey: boolean;
@@ -1813,6 +1809,8 @@ export interface AssetReviewRecord {
   id: string;
   workspacePath: string;
   workflowRunId?: string;
+  productionTaskId?: string;
+  shotPromptId?: string;
   assetKey: string;
   kind: MixPackageAssetKind;
   sourceType: AssetReviewSourceType;
@@ -1830,6 +1828,8 @@ export interface AssetReviewRecord {
 export interface ReviewAssetInput {
   workspacePath: string;
   workflowRunId?: string;
+  productionTaskId?: string;
+  shotPromptId?: string;
   assetKey: string;
   kind: MixPackageAssetKind;
   sourceType: AssetReviewSourceType;
@@ -2218,9 +2218,14 @@ export interface ImageGenerationRequest {
   workspacePath: string;
   workflowRunId?: string;
   reworkSource?: AssetReworkSource;
+  productionTaskId?: string;
+  shotPromptId?: string;
+  generationStage?: 'test' | 'batch';
   productImageRefs: string[];
   referenceImageRefs: string[];
   prompt: string;
+  negativeConstraints?: string[];
+  consistencyRules?: string[];
   promptMode: 'free' | 'preset';
   generationMode: 'smart' | 'fixed';
   template: string;
@@ -2252,6 +2257,82 @@ export interface MediaGenerationResult {
   message: string;
   assetRefs: string[];
   billing?: VideoCostEstimate;
+}
+
+export type ImageProductionTaskStatus = 'draft' | 'testing' | 'test-review' | 'test-approved' | 'batching' | 'batch-review' | 'completed' | 'needs-rework' | 'blocked';
+export type ShotPromptStatus = 'draft' | 'ready' | 'testing' | 'test-review' | 'test-approved' | 'batching' | 'batch-review' | 'approved' | 'rejected' | 'needs-rework' | 'blocked';
+
+export interface ShotPrompt {
+  id: string;
+  title: string;
+  scene: string;
+  prompt: string;
+  negativePrompt?: string;
+  productAction?: string;
+  camera?: string;
+  lighting?: string;
+  referenceImageRefs: string[];
+  status: ShotPromptStatus;
+  testLogIds: string[];
+  batchLogIds: string[];
+  reviewIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImageProductionTask {
+  id: string;
+  workspacePath: string;
+  title: string;
+  status: ImageProductionTaskStatus;
+  sourceSummary: string;
+  productImageRefs: string[];
+  referenceImageRefs: string[];
+  consistencyRules: string[];
+  negativeConstraints: string[];
+  shotPrompts: ShotPrompt[];
+  activeShotPromptId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateImageProductionTaskInput {
+  workspacePath: string;
+  title?: string;
+  sourceSummary?: string;
+  productImageRefs?: string[];
+  referenceImageRefs?: string[];
+  consistencyRules?: string[];
+  negativeConstraints?: string[];
+  shotPrompts?: Array<Partial<Omit<ShotPrompt, 'id' | 'createdAt' | 'updatedAt'>> & { id?: string }>;
+}
+
+export interface UpdateImageProductionTaskInput {
+  workspacePath: string;
+  taskId: string;
+  title?: string;
+  status?: ImageProductionTaskStatus;
+  sourceSummary?: string;
+  productImageRefs?: string[];
+  referenceImageRefs?: string[];
+  consistencyRules?: string[];
+  negativeConstraints?: string[];
+  activeShotPromptId?: string;
+}
+
+export interface UpdateShotPromptInput {
+  workspacePath: string;
+  taskId: string;
+  shotPromptId?: string;
+  patch: Partial<Omit<ShotPrompt, 'id' | 'createdAt' | 'updatedAt'>>;
+}
+
+export interface AppendShotGenerationLogInput {
+  workspacePath: string;
+  taskId: string;
+  shotPromptId: string;
+  generationStage: 'test' | 'batch';
+  logId: string;
 }
 
 export type GenerationTaskKind =
@@ -2641,11 +2722,20 @@ export interface VideoScriptShotRewriteResult {
   publishCheck: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
 }
 
+export interface AppServerBusinessObjectRef {
+  kind: string;
+  id: string;
+  title?: string;
+  uri?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface RunTaskInput {
   prompt: string;
   workspacePath: string;
   permissionMode: PermissionMode;
   selectedSkillSlugs?: string[];
+  businessObjectRef?: AppServerBusinessObjectRef;
 }
 
 export type AgentEvent =
@@ -2658,6 +2748,54 @@ export type AgentEvent =
 
 export interface RunTaskResult {
   taskId: string;
+}
+
+export interface AppServerJsonRpcError {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+
+export interface AppServerJsonRpcMessage {
+  id?: number | string;
+  method?: string;
+  params?: unknown;
+  result?: unknown;
+  error?: AppServerJsonRpcError;
+}
+
+export interface AppServerRuntimeEvent {
+  eventId?: string;
+  sequence?: number;
+  sessionId?: string;
+  threadId?: string;
+  turnId?: string;
+  type: string;
+  timestamp?: string;
+  payload?: unknown;
+}
+
+export type AppServerSidecarSource = 'env' | 'resources' | 'missing';
+
+export interface AppServerHealthCheckResult {
+  available: boolean;
+  protocolVersion: string;
+  source: AppServerSidecarSource;
+  binaryPath?: string;
+  message?: string;
+}
+
+export interface AppServerSmokeResult {
+  ok: boolean;
+  protocolVersion: string;
+  source: AppServerSidecarSource;
+  binaryPath?: string;
+  capabilityIds?: string[];
+  eventTypes?: string[];
+  artifactRefs?: string[];
+  evidenceEventCount?: number;
+  evidenceArtifactCount?: number;
+  error?: string;
 }
 
 export interface ContentStudioApi {
@@ -2789,6 +2927,11 @@ export interface ContentStudioApi {
   generateVideoScript(input: VideoScriptGenerationRequest): Promise<VideoScriptGenerationResult>;
   evaluateVideoScript(input: VideoScriptEvaluationRequest): Promise<VideoScriptEvaluationResult>;
   rewriteVideoScriptShot(input: VideoScriptShotRewriteRequest): Promise<VideoScriptShotRewriteResult>;
+  listImageProductionTasks(workspacePath: string): Promise<ImageProductionTask[]>;
+  createImageProductionTask(input: CreateImageProductionTaskInput): Promise<ImageProductionTask>;
+  updateImageProductionTask(input: UpdateImageProductionTaskInput): Promise<ImageProductionTask>;
+  updateShotPrompt(input: UpdateShotPromptInput): Promise<ImageProductionTask>;
+  appendShotGenerationLog(input: AppendShotGenerationLogInput): Promise<ImageProductionTask>;
   generateImage(input: ImageGenerationRequest): Promise<MediaGenerationResult>;
   generateImageSkill(input: GenerateImageSkillInput): Promise<GenerateImageSkillResult>;
   importImageSkillFromFile(): Promise<GenerateImageSkillResult | null>;
@@ -2802,4 +2945,6 @@ export interface ContentStudioApi {
   runTask(input: RunTaskInput): Promise<RunTaskResult>;
   cancelTask(taskId: string): Promise<boolean>;
   onAgentEvent(taskId: string, callback: (event: AgentEvent) => void): () => void;
+  getAppServerHealth(): Promise<AppServerHealthCheckResult>;
+  runAppServerSmoke(): Promise<AppServerSmokeResult>;
 }

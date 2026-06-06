@@ -41,10 +41,22 @@ if (!existsSync(releaseDir)) {
 
 const files = await walk(releaseDir);
 let runtimeConfigCount = 0;
+let appServerBinaryCount = 0;
+let appServerManifestCount = 0;
+let appServerBackendCount = 0;
 for (const file of files) {
   const rel = relative(releaseDir, file).split(sep).join('/');
   if (rel.includes('oem/brands')) {
     throw new Error(`产物中不应包含品牌清单目录：${rel}`);
+  }
+  if (rel.endsWith('app-server/current/app-server') || rel.endsWith('app-server/current/app-server.exe')) {
+    appServerBinaryCount += 1;
+  }
+  if (rel.endsWith('app-server/app-server.release.json')) {
+    appServerManifestCount += 1;
+  }
+  if (rel.endsWith('app-server/backend/content-backend.mjs')) {
+    appServerBackendCount += 1;
   }
   if (!rel.endsWith('resources/oem-runtime-config.json')) {
     continue;
@@ -62,6 +74,16 @@ if (runtimeConfigCount === 0) {
 
 if (runtimeConfigCount > 1) {
   throw new Error(`产物中存在多个 runtime config：${runtimeConfigCount}`);
+}
+
+if (process.env.CONTENT_STUDIO_REQUIRE_APP_SERVER_RESOURCES === '1') {
+  const missing = [];
+  if (appServerBinaryCount === 0) missing.push('app-server/current/app-server(.exe)');
+  if (appServerManifestCount === 0) missing.push('app-server/app-server.release.json');
+  if (appServerBackendCount === 0) missing.push('app-server/backend/content-backend.mjs');
+  if (missing.length) {
+    throw new Error(`产物中缺少 App Server 资源：${missing.join(', ')}`);
+  }
 }
 
 console.log(`OEM 产物范围检查通过：${brandId}`);

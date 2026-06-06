@@ -11,7 +11,7 @@ export { IMAGE_TEMPLATE_CONFIGS, IMAGE_TEMPLATE_OPTIONS } from '../../../shared/
 import type { ColorTheme, NavItem } from './types';
 
 export const DEFAULT_PARAMS: GlobalGenerationParams = {
-  textModel: 'claude-sonnet-4-5',
+  textModel: 'gpt-4o-mini',
   imageModel: 'gpt-image-2',
   videoModel: 'veo-3.1',
   runMode: 'single',

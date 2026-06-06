@@ -98,6 +98,12 @@ function formatImageReferenceRows(input: ImageGenerationRequest): string {
     .join("\n");
 }
 
+function formatOptionalRows(title: string, rows?: string[]): string {
+  const normalized = (rows ?? []).map((row) => row.trim()).filter(Boolean);
+  if (normalized.length === 0) return "";
+  return `${title}：\n${normalized.map((row, index) => `${index + 1}. ${row}`).join("\n")}`;
+}
+
 function buildImagePrompt(input: ImageGenerationRequest): string {
   const citationText = input.citations.length
     ? input.citations
@@ -114,6 +120,8 @@ function buildImagePrompt(input: ImageGenerationRequest): string {
   const templatePromptContext = useTemplateSkill
     ? formatImageTemplatePromptContext(input.template)
     : "";
+  const consistencyRules = formatOptionalRows("产品一致性规则", input.consistencyRules);
+  const negativeConstraints = formatOptionalRows("负面约束", input.negativeConstraints);
   return [
     "你是电商内容工厂的图片生成器。请生成真实可用的中文电商图片素材，不要输出解释文字。",
     useTemplateSkill
@@ -127,6 +135,8 @@ function buildImagePrompt(input: ImageGenerationRequest): string {
     `画幅：${input.params.aspectRatio}；分辨率：${input.params.resolution}；质量：${input.params.quality}。`,
     `产品图数量：${input.productImageRefs.length}；参考图数量：${input.referenceImageRefs.length}。如果附带了图片，请保持产品主体一致，并参考风格而不是复制版式。`,
     `图片引用清单：\n${formatImageReferenceRows(input)}`,
+    consistencyRules,
+    negativeConstraints,
     `核心提示词：${input.prompt || "根据知识库生成一张电商场景图，突出产品主体和真实使用场景。"}`,
     `知识引用：\n${citationText}`,
     "约束：中文文字必须清晰且尽量少；不要英文乱码；不要医疗化、治愈化、绝对化承诺；不要虚构品牌 Logo。",

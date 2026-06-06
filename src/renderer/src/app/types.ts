@@ -62,7 +62,7 @@ export type ColorTheme =
   | 'luxury';
 
 export type SettingsTab = 'general' | 'theme' | 'model' | 'account' | 'about';
-export type ModelSettingView = 'provider_list' | 'edit_claude' | 'edit_deepseek' | 'edit_custom';
+export type ModelSettingView = 'provider_list' | 'edit_text_http' | 'edit_deepseek' | 'edit_custom';
 export type ProviderTab = 'recommended' | 'domestic' | 'aggregate' | 'overseas' | 'local';
 
 export type SetGlobalParams = Dispatch<SetStateAction<GlobalGenerationParams>>;

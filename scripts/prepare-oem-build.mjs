@@ -6,6 +6,7 @@ import process from 'node:process';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const brandDir = join(rootDir, 'oem', 'brands');
+const appServerResourceDir = join(rootDir, 'resources', 'app-server');
 
 function normalizeCliValue(name) {
   const prefix = `--${name}=`;
@@ -41,6 +42,26 @@ function requiredString(record, key) {
   return value;
 }
 
+function appServerBinaryName() {
+  return process.platform === 'win32' ? 'app-server.exe' : 'app-server';
+}
+
+function requireAppServerResourcesIfNeeded() {
+  if (process.env.CONTENT_STUDIO_REQUIRE_APP_SERVER_RESOURCES !== '1') return;
+  const manifestPath = join(appServerResourceDir, 'app-server.release.json');
+  const binaryPath = join(appServerResourceDir, 'current', appServerBinaryName());
+  const backendPath = join(appServerResourceDir, 'backend', 'content-backend.mjs');
+  const missing = [manifestPath, binaryPath, backendPath].filter((item) => !existsSync(item));
+  if (missing.length) {
+    throw new Error(
+      [
+        '缺少 App Server 发布资源，请先运行 npm run app-server:prepare:release。',
+        ...missing.map((item) => `- ${toPosixPath(relative(rootDir, item))}`),
+      ].join('\n'),
+    );
+  }
+}
+
 function resolveIconPath(brand, key) {
   const iconPath = brand.icons?.[key];
   if (!iconPath) throw new Error(`品牌 ${brand.brandId} 缺少 ${key} 图标配置`);
@@ -72,6 +93,7 @@ function buildElectronBuilderConfig({ brand, version, tempBuildDir, runtimeConfi
     files: ['out/**', 'package.json'],
     extraResources: [
       { from: 'resources', to: 'resources' },
+      { from: 'resources/app-server', to: 'app-server' },
       { from: runtimeConfig, to: 'resources/oem-runtime-config.json' },
     ],
     fileAssociations: [
@@ -136,6 +158,7 @@ const brandPath = join(brandDir, `${brandId}.json`);
 if (!existsSync(brandPath)) {
   throw new Error(`未找到品牌配置：oem/brands/${brandId}.json`);
 }
+requireAppServerResourcesIfNeeded();
 
 const packageJson = await readJson(join(rootDir, 'package.json'));
 const brand = await readJson(brandPath);

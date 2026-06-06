@@ -211,6 +211,12 @@ async function withContentStudio(testInfo, callback, options) {
   }
 }
 
+async function closeHttpServer(server) {
+  server.closeAllConnections?.();
+  server.closeIdleConnections?.();
+  await new Promise((resolveClose) => server.close(resolveClose));
+}
+
 async function clickButton(page, label) {
   const scopes = [
     page.locator('.settings-modal'),
@@ -5042,7 +5048,7 @@ test('业务主链在无真实 Provider 时 blocked，不伪造成果', async ({
           citations,
           assetRefs: [],
           selectedSkillSlugs: [],
-          params: { textModel: 'claude-sonnet-4-5' },
+          params: { textModel: 'gpt-4o-mini' },
         });
       } catch (error) {
         articleError = error instanceof Error ? error.message : String(error);
@@ -5060,7 +5066,7 @@ test('业务主链在无真实 Provider 时 blocked，不伪造成果', async ({
         citations,
         selectedSkillSlugs: [],
         params: {
-          textModel: 'claude-sonnet-4-5',
+          textModel: 'gpt-4o-mini',
           imageModel: 'gpt-image-2',
           videoModel: 'veo-3.1',
           runMode: 'single',
@@ -5080,7 +5086,7 @@ test('业务主链在无真实 Provider 时 blocked，不伪造成果', async ({
           dimensions: ['开头钩子', '视觉节奏'],
           citations,
           selectedSkillSlugs: [],
-          params: { textModel: 'claude-sonnet-4-5' },
+          params: { textModel: 'gpt-4o-mini' },
         });
       } catch (error) {
         videoBreakdownError = error instanceof Error ? error.message : String(error);
@@ -5101,7 +5107,7 @@ test('业务主链在无真实 Provider 时 blocked，不伪造成果', async ({
           citations,
           assetRefs: [],
           selectedSkillSlugs: [],
-          params: { textModel: 'claude-sonnet-4-5' },
+          params: { textModel: 'gpt-4o-mini' },
         });
       } catch (error) {
         videoScriptError = error instanceof Error ? error.message : String(error);
@@ -5286,7 +5292,7 @@ test('文章生成通过本地文字 Provider mock 生成正文并记录成功�
       status: 'succeeded',
       error: '',
     });
-    expect([setup.provider.textModel, 'claude-sonnet-4-5']).toContain(result.articleLog.model);
+    expect([setup.provider.textModel, 'gpt-4o-mini']).toContain(result.articleLog.model);
 
     const articleLayout = await page.evaluate(() => {
       const workbench = document.querySelector('.article-workbench');
@@ -5851,6 +5857,11 @@ test('视频脚本历史可保存反馈并进入 Prompt 交接', async ({}, test
       },
       publishCheck: [{ level: 'warning', message: '细菌和安全表述需提供依据。' }],
     };
+    const todayBase = new Date();
+    todayBase.setHours(8, 0, 0, 0);
+    const yesterdayBase = new Date(todayBase);
+    yesterdayBase.setDate(todayBase.getDate() - 1);
+    const isoAt = (base, minutes) => new Date(base.getTime() + minutes * 60_000).toISOString();
     const linkedBreakdownLog = {
       id: 'fixture-linked-breakdown',
       workspacePath: workspaceDir,
@@ -5872,13 +5883,13 @@ test('视频脚本历史可保存反馈并进入 Prompt 交接', async ({}, test
         risks: [],
       },
       artifactRefs: ['/tmp/kitchen-template.mp4'],
-      createdAt: '2026-06-04T08:00:00.000Z',
-      updatedAt: '2026-06-04T08:00:00.000Z',
+      createdAt: isoAt(todayBase, 0),
+      updatedAt: isoAt(todayBase, 0),
     };
     const extraHistoryLogs = Array.from({ length: 16 }, (_, index) => {
       const createdAt = index < 9
-        ? `2026-06-04T07:${String(index).padStart(2, '0')}:00.000Z`
-        : `2026-06-03T07:${String(index).padStart(2, '0')}:00.000Z`;
+        ? isoAt(todayBase, index)
+        : isoAt(yesterdayBase, index);
       return {
         id: `fixture-video-script-extra-${index}`,
         workspacePath: workspaceDir,
@@ -5923,8 +5934,8 @@ test('视频脚本历史可保存反馈并进入 Prompt 交接', async ({}, test
       input: { productName: '植物清洁喷雾', breakdownLogId: linkedBreakdownLog.id },
       output: scriptOutput,
       artifactRefs: [`generation-log:${linkedBreakdownLog.id}`],
-      createdAt: '2026-06-04T08:30:00.000Z',
-      updatedAt: '2026-06-04T08:30:00.000Z',
+      createdAt: isoAt(todayBase, 30),
+      updatedAt: isoAt(todayBase, 30),
     }, linkedBreakdownLog, ...extraHistoryLogs], null, 2));
 
     await page.evaluate(async (workspacePath) => {
@@ -6171,5 +6182,190 @@ test('图片生成成功后以预览大盘展示真实图片', async ({}, testIn
     expect(capturedImageRequest?.tools?.[0]?.model).toBe('test-image-model');
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
+  }
+});
+
+test('AI 生图 SOP 生产线支持测试图确认、批量生成和审核入库', async ({}, testInfo) => {
+  const capturedImageRequests = [];
+  const server = createServer((request, response) => {
+    if (request.url === '/v1/responses') {
+      let body = '';
+      request.on('data', (chunk) => { body += chunk.toString(); });
+      request.on('end', () => {
+        capturedImageRequests.push(JSON.parse(body));
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify({ output: [{ type: 'image_generation_call', result: ONE_PIXEL_PNG }] }));
+      });
+      return;
+    }
+    response.statusCode = 404;
+    response.end('not found');
+  });
+  const baseUrl = await new Promise((resolveListen) => {
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('无法启动本地图片生成服务。');
+      resolveListen(`http://127.0.0.1:${address.port}`);
+    });
+  });
+
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async ({ workspacePath, endpoint }) => {
+        const api = window.contentStudio;
+        await api.saveSettings({ workspacePath });
+        await api.saveModelConfig({
+          imageProvider: 'openai-responses',
+          imageProtocol: 'openai-responses',
+          imageApiEndpoint: endpoint,
+          imageApiKey: 'test-image-key',
+          imageOuterModel: 'test-router-model',
+          imageModels: ['test-image-model'],
+        });
+      }, { workspacePath: workspaceDir, endpoint: baseUrl });
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待 SOP 生图工作台重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickButton(page, '图片生成');
+      await expect(page.locator('.image-production-workbench')).toContainText('SOP 生产线');
+      await page.locator('.image-prompt-panel textarea').fill('早餐桌自然光，手拿便携条包，产品主体清晰，UGC 手机实拍。');
+      await page.locator('.image-production-card label').filter({ hasText: '任务名称' }).locator('input').fill('SOP 测试图生产任务');
+      await page.locator('.image-production-card label').filter({ hasText: '场景 / 脚本摘要' }).locator('textarea').fill([
+        '镜头 1：早餐桌自然光，手拿便携条包，产品主体清晰。',
+        '镜头 2：办公室抽屉备用场景，产品包装文字保持一致。',
+      ].join('\n'));
+      await page.locator('.image-production-card label').filter({ hasText: '产品一致性规则' }).locator('textarea').fill([
+        'SOP 自定义规则：包装颜色、文字和袋型必须一致。',
+        'SOP 自定义规则：参考图只作为构图和光线参考。',
+      ].join('\n'));
+      await page.locator('.image-production-card label').filter({ hasText: '负面约束' }).locator('textarea').fill([
+        'SOP 自定义负面：不要添加无来源 Logo。',
+        'SOP 自定义负面：不要生成医疗化承诺。',
+      ].join('\n'));
+      await page.locator('.image-production-card button').filter({ hasText: '新建' }).click();
+
+      await expect(page.locator('.image-shot-card')).toHaveCount(2, { timeout: 20_000 });
+      const firstShot = page.locator('.image-shot-card').first();
+      await expect(firstShot.locator('.image-shot-card-head input')).toHaveValue('镜头 01');
+      const readShotGenerationTrace = async () => page.evaluate(async (workspacePath) => {
+        const tasks = await window.contentStudio.listImageProductionTasks(workspacePath);
+        const task = tasks.find((item) => item.title === 'SOP 测试图生产任务');
+        const shot = task?.shotPrompts[0];
+        const logs = await window.contentStudio.listGenerationLogs(workspacePath);
+        const testLog = logs.find((log) => log.id === shot?.testLogIds[0]);
+        const batchLog = logs.find((log) => log.id === shot?.batchLogIds[0]);
+        return {
+          taskId: task?.id ?? '',
+          shotId: shot?.id ?? '',
+          shotStatus: shot?.status ?? '',
+          test: {
+            logId: shot?.testLogIds[0] ?? '',
+            logStatus: testLog?.status ?? '',
+            logStage: testLog?.input?.generationStage ?? '',
+            logProductionTaskId: testLog?.input?.productionTaskId ?? '',
+            logShotPromptId: testLog?.input?.shotPromptId ?? '',
+            assetCount: Array.isArray(testLog?.output?.assetRefs) ? testLog.output.assetRefs.length : 0,
+          },
+          batch: {
+            logId: shot?.batchLogIds[0] ?? '',
+            logStatus: batchLog?.status ?? '',
+            logStage: batchLog?.input?.generationStage ?? '',
+            logProductionTaskId: batchLog?.input?.productionTaskId ?? '',
+            logShotPromptId: batchLog?.input?.shotPromptId ?? '',
+            assetCount: Array.isArray(batchLog?.output?.assetRefs) ? batchLog.output.assetRefs.length : 0,
+          },
+        };
+      }, workspaceDir);
+      const readReviewTrace = async () => page.evaluate(async (workspacePath) => {
+        const task = (await window.contentStudio.listImageProductionTasks(workspacePath)).find((item) => item.title === 'SOP 测试图生产任务');
+        const shot = task?.shotPrompts[0];
+        const reviews = await window.contentStudio.listAssetReviews(workspacePath);
+        const review = reviews.find((item) => item.productionTaskId === task?.id && item.shotPromptId === shot?.id);
+        return {
+          taskId: task?.id ?? '',
+          shotId: shot?.id ?? '',
+          shotStatus: shot?.status ?? '',
+          reviewStatus: review?.status ?? '',
+          reviewProductionTaskId: review?.productionTaskId ?? '',
+          reviewShotPromptId: review?.shotPromptId ?? '',
+          reviewTags: review?.tags ?? [],
+          reviewIds: shot?.reviewIds ?? [],
+        };
+      }, workspaceDir);
+      await firstShot.getByRole('button', { name: '测试生成' }).click();
+
+      await expect.poll(readShotGenerationTrace, {
+        message: '等待 SOP 测试图生成并绑定镜头日志',
+        timeout: 20_000,
+      }).toMatchObject({
+        shotStatus: 'test-review',
+        test: {
+          logStatus: 'succeeded',
+          logStage: 'test',
+          assetCount: 1,
+        },
+      });
+      const testTrace = await readShotGenerationTrace();
+      expect(testTrace.test.logProductionTaskId).toBe(testTrace.taskId);
+      expect(testTrace.test.logShotPromptId).toBe(testTrace.shotId);
+
+      const testResultSection = firstShot.locator('.image-shot-results > section').first();
+      await expect(testResultSection.locator('.image-shot-result img')).toBeVisible({ timeout: 20_000 });
+      await expect(testResultSection).toContainText('成功');
+      await testResultSection.getByRole('button', { name: '通过测试' }).click();
+      await expect.poll(async () => page.evaluate(async (workspacePath) => {
+        const task = (await window.contentStudio.listImageProductionTasks(workspacePath)).find((item) => item.title === 'SOP 测试图生产任务');
+        return task?.shotPrompts[0]?.status ?? '';
+      }, workspaceDir), {
+        message: '等待测试图人工确认通过',
+        timeout: 20_000,
+      }).toBe('test-approved');
+
+      await expect(firstShot.getByRole('button', { name: '批量生成' })).toBeEnabled({ timeout: 20_000 });
+      await firstShot.getByRole('button', { name: '批量生成' }).click();
+      await expect.poll(readShotGenerationTrace, {
+        message: '等待 SOP 批量生成并绑定镜头日志',
+        timeout: 20_000,
+      }).toMatchObject({
+        shotStatus: 'batch-review',
+        batch: {
+          logStatus: 'succeeded',
+          logStage: 'batch',
+          assetCount: 1,
+        },
+      });
+      const batchTrace = await readShotGenerationTrace();
+      expect(batchTrace.batch.logProductionTaskId).toBe(batchTrace.taskId);
+      expect(batchTrace.batch.logShotPromptId).toBe(batchTrace.shotId);
+
+      const batchResultSection = firstShot.locator('.image-shot-results > section').nth(1);
+      await expect(batchResultSection.locator('.image-shot-result img')).toBeVisible({ timeout: 20_000 });
+      await expect(batchResultSection).toContainText('成功');
+      await batchResultSection.getByRole('button', { name: '送审入库' }).click();
+      await expect.poll(readReviewTrace, {
+        message: '等待 SOP 批量素材审核入库',
+        timeout: 20_000,
+      }).toMatchObject({
+        shotStatus: 'approved',
+        reviewStatus: 'approved',
+        reviewTags: expect.arrayContaining(['AI生图', 'SOP生产', '批量生成']),
+      });
+      const reviewTrace = await readReviewTrace();
+      expect(reviewTrace.reviewProductionTaskId).toBe(reviewTrace.taskId);
+      expect(reviewTrace.reviewShotPromptId).toBe(reviewTrace.shotId);
+      expect(reviewTrace.reviewIds.length).toBeGreaterThanOrEqual(1);
+
+      const serializedRequests = JSON.stringify(capturedImageRequests);
+      expect(capturedImageRequests.length).toBeGreaterThanOrEqual(2);
+      expect(serializedRequests).toContain('产品一致性规则');
+      expect(serializedRequests).toContain('负面约束');
+      expect(serializedRequests).toContain('SOP 自定义规则：包装颜色、文字和袋型必须一致');
+      expect(serializedRequests).toContain('SOP 自定义负面：不要添加无来源 Logo');
+    });
+  } finally {
+    await closeHttpServer(server);
   }
 });

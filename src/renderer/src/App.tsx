@@ -161,7 +161,7 @@ export function App() {
 
       <ParamsPanel
         params={app.params}
-        textProtocol={app.modelConfig?.textProtocol ?? "claude-sdk"}
+        textProtocol={app.modelConfig?.textProtocol ?? "openai-chat"}
         textModels={app.textModelOptions}
         imageModels={app.imageModelOptions}
         videoModels={app.videoModelOptions}

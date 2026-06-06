@@ -102,6 +102,9 @@ interface AssetItem {
   inputSource?: InputSourceRecord;
   reviewRecord?: AssetReviewRecord;
   relatedPromptDraft?: PromptDraft;
+  productionTaskId?: string;
+  shotPromptId?: string;
+  generationStage?: 'test' | 'batch';
 }
 
 type ReviewTone = 'ready' | 'warning' | 'blocked' | 'idle';
@@ -294,10 +297,28 @@ function relatedDraftForLog(log: GenerationLogEntry, promptDrafts: PromptDraft[]
   });
 }
 
+function imageProductionMetaFromLog(log: GenerationLogEntry): {
+  productionTaskId?: string;
+  shotPromptId?: string;
+  generationStage?: 'test' | 'batch';
+} {
+  const input = log.input && typeof log.input === 'object' ? log.input as Record<string, unknown> : {};
+  return {
+    productionTaskId: typeof input.productionTaskId === 'string' ? input.productionTaskId : undefined,
+    shotPromptId: typeof input.shotPromptId === 'string' ? input.shotPromptId : undefined,
+    generationStage: input.generationStage === 'test' || input.generationStage === 'batch' ? input.generationStage : undefined,
+  };
+}
+
 function collectGeneratedAssets(logs: GenerationLogEntry[], promptDrafts: PromptDraft[]): AssetItem[] {
   return logs.flatMap((log) => {
     if (log.status !== 'succeeded' || (log.kind !== 'image' && log.kind !== 'video')) return [];
     const relatedDraft = relatedDraftForLog(log, promptDrafts);
+    const productionMeta = imageProductionMetaFromLog(log);
+    const productionTags = [
+      productionMeta.productionTaskId ? 'SOP生产' : '',
+      productionMeta.generationStage === 'test' ? '测试生成' : productionMeta.generationStage === 'batch' ? '批量生成' : '',
+    ].filter(Boolean);
     return extractGeneratedAssetRefsFromLog(log)
       .filter((path) => isImageFilePath(path) || isVideoFilePath(path))
       .map((path, index) => ({
@@ -306,10 +327,10 @@ function collectGeneratedAssets(logs: GenerationLogEntry[], promptDrafts: Prompt
         source: 'generation' as const,
         path,
         title: fileNameFromPath(path),
-        subtitle: `${kindLabel(log.kind)} · ${generationServiceLabel(log.model)} · ${formatDuration(log.durationMs)}`,
+        subtitle: `${kindLabel(log.kind)} · ${productionMeta.generationStage === 'test' ? '测试生成' : productionMeta.generationStage === 'batch' ? '批量生成' : generationServiceLabel(log.model)} · ${formatDuration(log.durationMs)}`,
         prompt: extractPromptFromLog(log),
         createdAt: log.createdAt,
-        tags: [kindLabel(log.kind), generationServiceLabel(log.model), statusLabel(log.status)],
+        tags: [kindLabel(log.kind), generationServiceLabel(log.model), statusLabel(log.status), ...productionTags],
         model: log.model,
         durationMs: log.durationMs,
         promptDraftId: relatedDraft?.id,
@@ -318,6 +339,7 @@ function collectGeneratedAssets(logs: GenerationLogEntry[], promptDrafts: Prompt
         reworkSource: log.reworkSource,
         log,
         relatedPromptDraft: relatedDraft,
+        ...productionMeta,
       }));
   });
 }
@@ -399,11 +421,14 @@ function sourceLabel(asset: AssetItem): string {
 
 function lineageSummary(asset: AssetItem): string[] {
   return [
+    asset.productionTaskId ? 'SOP任务' : '',
+    asset.shotPromptId ? '镜头可追溯' : '',
+    asset.generationStage === 'test' ? '测试生成' : asset.generationStage === 'batch' ? '批量生成' : '',
     asset.workflowRunId ? '任务可追溯' : '无任务来源',
     asset.promptDraftId ? '提示词可追溯' : '未关联提示词',
     asset.sceneCardIds?.length ? `场景 ${asset.sceneCardIds.length} 张` : '未关联场景',
     asset.reworkSource ? '回炉生成' : '首次候选',
-  ];
+  ].filter(Boolean);
 }
 
 function promptTraceLabel(asset: AssetItem): string {
