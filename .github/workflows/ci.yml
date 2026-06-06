@@ -51,20 +51,41 @@ jobs:
           path: .tmp/lime-app-server-source
 
       - name: Build Lime App Server sidecar
+        id: app_server_sidecar
         shell: bash
         run: |
           set -euxo pipefail
+          source_dir=".tmp/lime-app-server-source"
+          if [ -f "${source_dir}/lime-rs/Cargo.toml" ]; then
+            workspace="${source_dir}/lime-rs"
+          elif [ -f "${source_dir}/src-tauri/Cargo.toml" ]; then
+            workspace="${source_dir}/src-tauri"
+          else
+            find "${source_dir}" -maxdepth 3 -name Cargo.toml -print
+            echo "Lime App Server Cargo workspace not found" >&2
+            exit 1
+          fi
           cargo build \
-            --manifest-path ".tmp/lime-app-server-source/lime-rs/Cargo.toml" \
+            --manifest-path "${workspace}/Cargo.toml" \
             -p app-server \
             --release
+          sidecar="${workspace}/target/release/app-server"
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            sidecar="${sidecar}.exe"
+          fi
+          if [ ! -f "${sidecar}" ]; then
+            ls -la "${workspace}/target/release"
+            echo "Built App Server sidecar not found: ${sidecar}" >&2
+            exit 1
+          fi
+          echo "binary=${sidecar}" >> "${GITHUB_OUTPUT}"
 
       - name: Prepare App Server sidecar resources
         shell: bash
         run: |
           set -euxo pipefail
           npm run app-server:prepare:release -- \
-            --binary ".tmp/lime-app-server-source/lime-rs/target/release/app-server" \
+            --binary "${{ steps.app_server_sidecar.outputs.binary }}" \
             --version "${LIME_APP_SERVER_REF#v}"
 
       - name: Run local verification
