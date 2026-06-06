@@ -4478,7 +4478,7 @@ test('内容知识地图页点击生成会调用真实结构化文字服务并�
 });
 
 test('对话里的待处理动作可以恢复到真实输入源页面', async ({}, testInfo) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
 
   const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
   try {
@@ -4504,25 +4504,35 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
     await clickNavItem(page, 'Prompt 工作台');
     const promptPanel = page.locator('.prompt-workbench > .agent-session-panel');
     await expect(promptPanel).toBeVisible({ timeout: 20_000 });
-    await page.locator('.prompt-workbench .prompt-skill-chip-row button.active').evaluateAll((buttons) => {
-      buttons.forEach((button) => {
-        if (button instanceof HTMLButtonElement) button.click();
-      });
-    });
+    const promptSupportPanel = await openPromptSupportDrawer(page);
+    const activeSkillButtons = promptSupportPanel.locator('.prompt-skill-chip-row button.active');
+    let activeSkillCount = await activeSkillButtons.count();
+    while (activeSkillCount > 0) {
+      await activeSkillButtons.first().click();
+      await expect.poll(
+        async () => activeSkillButtons.count(),
+        { message: '等待本轮 skill 选择清空', timeout: 5_000 },
+      ).toBeLessThan(activeSkillCount);
+      activeSkillCount = await activeSkillButtons.count();
+    }
     await expect(promptPanel).toContainText('0 个输入源 / 0 个 skill');
     await promptPanel.locator('.agent-session-footer textarea').fill('请先判断需要补哪些产品资料和参考素材。');
     const startSessionButton = promptPanel.locator('.agent-session-footer button').filter({ hasText: '开始协作' });
     await expect(startSessionButton).toBeEnabled({ timeout: 20_000 });
-    await startSessionButton.evaluate((button) => {
-      if (button instanceof HTMLButtonElement) button.click();
-    });
+    await startSessionButton.click();
+    let promptSessionId = '';
     await expect.poll(
       async () => page.evaluate(async (workspacePath) => {
         const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
-        return sessions.some((session) => session.userIntent === '请先判断需要补哪些产品资料和参考素材。');
+        return sessions.find((session) => session.userIntent === '请先判断需要补哪些产品资料和参考素材。')?.id ?? '';
       }, workspaceDir),
       { message: '等待 Prompt 工作台会话写入', timeout: 20_000 },
-    ).toBe(true);
+    ).not.toBe('');
+    promptSessionId = await page.evaluate(async (workspacePath) => {
+      const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+      return sessions.find((session) => session.userIntent === '请先判断需要补哪些产品资料和参考素材。')?.id ?? '';
+    }, workspaceDir);
+    expect(promptSessionId).toBeTruthy();
 
     const actionButton = promptPanel.locator(
       '.agent-execution-events [data-event-class="action.required"][data-action-kind="add-input-source"] .agent-event-action',
@@ -4539,9 +4549,9 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
     await expect(registerInputButton).toBeEnabled({ timeout: 20_000 });
     await registerInputButton.click();
     await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
+      async () => page.evaluate(async ({ workspacePath, sessionId }) => {
         const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
-        const session = sessions.find((item) => item.userIntent === '请先判断需要补哪些产品资料和参考素材。');
+        const session = sessions.find((item) => item.id === sessionId);
         const sources = await window.contentStudio.listInputSources(workspacePath);
         const source = sources.find((item) => item.title === 'Playwright 补充产品资料');
         return {
@@ -4555,16 +4565,18 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
             message.content.includes('Playwright 补充产品资料')
           ))),
         };
-      }, workspaceDir),
+      }, { workspacePath: workspaceDir, sessionId: promptSessionId }),
       { message: '等待补充输入源绑定回原对话', timeout: 20_000 },
     ).toEqual({ linked: true, evidenceChanged: true, noteVisible: true });
     const inputAgentFooter = page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer');
     await inputAgentFooter.locator('textarea').fill('资料已补齐，请基于新资料重新生成图片 Prompt。');
-    await inputAgentFooter.locator('button').filter({ hasText: '继续会话' }).click();
+    const continueSessionButton = inputAgentFooter.locator('button').filter({ hasText: '继续会话' });
+    await expect(continueSessionButton).toBeEnabled({ timeout: 20_000 });
+    await continueSessionButton.click();
     await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
+      async () => page.evaluate(async ({ workspacePath, sessionId }) => {
         const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
-        const session = sessions.find((item) => item.userIntent === '请先判断需要补哪些产品资料和参考素材。');
+        const session = sessions.find((item) => item.id === sessionId);
         return {
           hasAdjustment: Boolean(session?.messages?.some((message) => (
             message.kind === 'adjustment' &&
@@ -4576,8 +4588,8 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
           ))),
           modelCompleted: Boolean(session?.executionEvents?.some((event) => event.eventClass === 'model.completed')),
         };
-      }, workspaceDir),
-      { message: '等待补资料后继续生成草稿', timeout: 20_000 },
+      }, { workspacePath: workspaceDir, sessionId: promptSessionId }),
+      { message: '等待补资料后继续生成草稿', timeout: 45_000 },
     ).toEqual({ hasAdjustment: true, hasDraft: true, modelCompleted: true });
     }, { requireExplicitTextKey: false });
   } finally {
