@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react';
+import { AgentTimeline, RuntimeFactsPanel } from '@limecloud/agent-runtime-ui';
 import type { AgentPromptExecutionEvent, AgentPromptSession } from '../../../../shared/types';
 import type { StatusPillTone } from '../WorkbenchPrimitives';
 import { StatusPill } from '../WorkbenchPrimitives';
-import {
-  projectAgentRuntimeReadModel,
-  type AgentRuntimeReadModel,
-  type AgentRuntimeEventProjection,
-} from './agentRuntimeProjection';
+import { projectAgentRuntimeReadModel } from './agentRuntimeProjection';
 
 export type AgentExecutionStepState = 'done' | 'active' | 'idle' | 'blocked';
 
@@ -20,6 +17,7 @@ export interface AgentExecutionStep {
 export type AgentActionResolver = (event: AgentPromptExecutionEvent) => void;
 
 interface AgentSessionPanelProps {
+  variant?: 'default' | 'claw';
   eyebrow?: string;
   title: ReactNode;
   session?: AgentPromptSession;
@@ -82,65 +80,46 @@ export function AgentExecutionTimeline({ steps }: { steps: AgentExecutionStep[] 
   );
 }
 
-export function AgentExecutionEvents({
-  events,
-  onResolveAction,
+function AgentBusinessObjectBar({
+  label,
+  session,
+  statusLabel,
 }: {
-  events: AgentRuntimeEventProjection[];
-  onResolveAction?: AgentActionResolver;
+  label?: ReactNode;
+  session?: AgentPromptSession;
+  statusLabel?: ReactNode;
 }) {
-  if (!events.length) return null;
+  if (!label && !session) return null;
+  const sourceCount = session?.sourceSnapshots.length ?? session?.inputSourceIds.length ?? 0;
+  const draftCount = session?.promptDraftIds.length ?? 0;
   return (
-    <div className="agent-execution-events" aria-label="执行事件">
-      {events.map((event) => (
-        <article
-          key={event.id}
-          className={event.status}
-          data-event-class={event.source.eventClass}
-          data-owner={event.source.owner}
-          data-phase={event.source.phase}
-          data-surface={event.surface}
-          data-action-kind={event.actionKind || undefined}
-        >
-          <span />
+    <div className="agent-business-object-bar" aria-label="当前业务对象">
+      <div>
+        <span>{label ?? session?.title}</span>
+        <strong>{session?.title ?? label}</strong>
+      </div>
+      <dl>
+        <div>
+          <dt>输入</dt>
+          <dd>{sourceCount}</dd>
+        </div>
+        <div>
+          <dt>草稿</dt>
+          <dd>{draftCount}</dd>
+        </div>
+        {statusLabel ? (
           <div>
-            <strong>{event.title}</strong>
-            {event.detail ? <small>{event.detail}</small> : null}
+            <dt>状态</dt>
+            <dd>{statusLabel}</dd>
           </div>
-          {event.action && onResolveAction ? (
-            <button type="button" className="agent-event-action" onClick={() => onResolveAction(event.source)}>
-              {event.action.buttonLabel}
-            </button>
-          ) : (
-            <em>{event.displayStatus}</em>
-          )}
-        </article>
-      ))}
-    </div>
-  );
-}
-
-export function AgentRuntimeSummary({ readModel }: { readModel: AgentRuntimeReadModel }) {
-  const items = [
-    { key: 'sources', label: '输入源', value: readModel.sourceCount },
-    { key: 'actions', label: '待处理', value: readModel.pendingActions.length },
-    { key: 'artifacts', label: '产物', value: readModel.artifactRefs.length },
-    { key: 'evidence', label: '证据', value: readModel.evidenceRefs.length },
-  ];
-  if (!readModel.events.length) return null;
-  return (
-    <div className="agent-runtime-summary" aria-label="协作事实摘要">
-      {items.map((item) => (
-        <span key={item.key} data-summary-kind={item.key} className={item.value > 0 ? 'ready' : 'idle'}>
-          <strong>{item.value}</strong>
-          <em>{item.label}</em>
-        </span>
-      ))}
+        ) : null}
+      </dl>
     </div>
   );
 }
 
 export function AgentSessionPanel({
+  variant = 'default',
   eyebrow = '助手',
   title,
   session,
@@ -167,9 +146,71 @@ export function AgentSessionPanel({
       : transcriptLabel;
   const displayTitle = displayNode(title);
   const displayTranscriptLabel = displayNode(resolvedTranscriptLabel);
+  if (variant !== 'claw') {
+    return (
+      <section className="agent-session-panel">
+        <div className="agent-session-head">
+          <div>
+            <p className="eyebrow">{eyebrow}</p>
+            <h3>{displayTitle}</h3>
+          </div>
+          {statusLabel ? <StatusPill tone={statusTone}>{statusLabel}</StatusPill> : null}
+        </div>
+
+        <div className="agent-session-transcript" aria-label="对话转录">
+          <AgentBusinessObjectBar label={displayTranscriptLabel} session={session} statusLabel={statusLabel} />
+
+          {context ? <div className="agent-session-context">{context}</div> : null}
+
+          <div className="agent-session-workbench">
+            <div className="agent-session-flow" aria-label="Claw 会话流">
+              <AgentExecutionTimeline steps={steps} />
+
+              <AgentTimeline
+                messages={session?.messages}
+                empty={empty}
+                runningLabel={runningLabel}
+                messageTitle={messageTitle}
+                messageMeta={messageMeta}
+                messagePreview={messagePreview}
+              />
+            </div>
+
+            <aside className="agent-session-sidecar" aria-label="运行事实">
+              <RuntimeFactsPanel
+                readModel={runtimeReadModel}
+                onResolveAction={onResolveAction ? (event) => onResolveAction(event) : undefined}
+              />
+
+              {sessions.length > 1 && onSelectSession ? (
+                <div className="agent-session-switcher" aria-label="对话列表">
+                  {sessions.slice(0, 6).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={item.id === session?.id ? 'active' : ''}
+                      onClick={() => onSelectSession(item.id)}
+                    >
+                      <strong>{normalizeAgentDisplayText(item.title)}</strong>
+                      <small>{item.messages.length} 条消息</small>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </aside>
+          </div>
+
+          {artifact ? <div className="agent-session-artifact">{artifact}</div> : null}
+        </div>
+
+        {footer ? <div className="agent-session-footer">{footer}</div> : null}
+      </section>
+    );
+  }
+
   return (
-    <section className="agent-session-panel">
-      <div className="agent-session-head">
+    <section className="agent-session-panel agent-session-claw-shell">
+      <div className="agent-session-head agent-claw-navbar">
         <div>
           <p className="eyebrow">{eyebrow}</p>
           <h3>{displayTitle}</h3>
@@ -177,77 +218,58 @@ export function AgentSessionPanel({
         {statusLabel ? <StatusPill tone={statusTone}>{statusLabel}</StatusPill> : null}
       </div>
 
-      <div className="agent-session-transcript" aria-label="对话转录">
-        {displayTranscriptLabel ? (
-          <div className="agent-session-divider">
-            {displayTranscriptLabel}
-          </div>
-        ) : null}
+      <div className="agent-session-workbench agent-claw-workspace">
+        <aside className="agent-claw-context" aria-label="当前任务上下文">
+          <AgentBusinessObjectBar label={displayTranscriptLabel} session={session} statusLabel={statusLabel} />
+          {context ? <div className="agent-session-context">{context}</div> : null}
+          <AgentExecutionTimeline steps={steps} />
+        </aside>
 
-        {context ? <div className="agent-session-context">{context}</div> : null}
-
-        <AgentRuntimeSummary readModel={runtimeReadModel} />
-        <AgentExecutionTimeline steps={steps} />
-        <AgentExecutionEvents events={runtimeReadModel.visibleEvents} onResolveAction={onResolveAction} />
-
-        {sessions.length > 1 && onSelectSession ? (
-          <div className="agent-session-switcher" aria-label="对话列表">
-            {sessions.slice(0, 6).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={item.id === session?.id ? 'active' : ''}
-                onClick={() => onSelectSession(item.id)}
-              >
-                <strong>{normalizeAgentDisplayText(item.title)}</strong>
-                <small>{item.messages.length} 条消息</small>
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        {session ? session.messages.map((message) => {
-          const preview = messagePreview(message);
-          const rawContent = message.content.trim();
-          const canExpand = typeof preview === 'string' && preview !== rawContent;
-          return (
-            <article key={message.id} className={`agent-turn ${message.role}`}>
-              <div className="agent-turn-head">
-                <strong>{messageTitle(message)}</strong>
-                <small>{messageMeta(message)}</small>
+        <main className="agent-claw-chat" aria-label="对话工作区">
+          <div className="agent-session-flow agent-claw-message-viewport" aria-label="Claw 会话流">
+            {!steps.length ? null : (
+              <div className="agent-claw-inline-progress">
+                <span>执行进度</span>
+                <AgentExecutionTimeline steps={steps} />
               </div>
-              <p>{preview}</p>
-              {message.model ? <small className="agent-turn-model">{message.model}</small> : null}
-              {canExpand ? (
-                <details className="agent-turn-details">
-                  <summary>{message.role === 'user' ? '查看上下文' : '查看完整输出'}</summary>
-                  <pre>{rawContent}</pre>
-                </details>
-              ) : null}
-            </article>
-          );
-        }) : empty === null ? null : (
-          <div className="agent-empty-session">
-            {empty === undefined ? (
-              <>
-                <strong>还没有消息</strong>
-                <span>发送后开始记录本次对话。</span>
-              </>
-            ) : empty}
-          </div>
-        )}
+            )}
 
-        {runningLabel ? (
-          <div className="agent-runtime-event">
-            <strong>执行中</strong>
-            <span>{runningLabel}</span>
+            <AgentTimeline
+              messages={session?.messages}
+              empty={empty}
+              runningLabel={runningLabel}
+              messageTitle={messageTitle}
+              messageMeta={messageMeta}
+              messagePreview={messagePreview}
+            />
           </div>
-        ) : null}
+          {footer ? <div className="agent-session-footer agent-claw-input-slot">{footer}</div> : null}
+        </main>
 
-        {artifact ? <div className="agent-session-artifact">{artifact}</div> : null}
+        <aside className="agent-session-sidecar agent-claw-sidecar" aria-label="运行事实">
+          <RuntimeFactsPanel
+            readModel={runtimeReadModel}
+            artifact={artifact}
+            onResolveAction={onResolveAction ? (event) => onResolveAction(event) : undefined}
+          />
+
+          {sessions.length > 1 && onSelectSession ? (
+            <div className="agent-session-switcher" aria-label="对话列表">
+              {sessions.slice(0, 6).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={item.id === session?.id ? 'active' : ''}
+                  onClick={() => onSelectSession(item.id)}
+                >
+                  <strong>{normalizeAgentDisplayText(item.title)}</strong>
+                  <small>{item.messages.length} 条消息</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </aside>
       </div>
-
-      {footer ? <div className="agent-session-footer">{footer}</div> : null}
     </section>
   );
 }

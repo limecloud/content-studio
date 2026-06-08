@@ -21,6 +21,8 @@ npm-debug.log*
 !.codex/skills/bugu-product-design-cheatsheet/SKILL.md
 !.codex/skills/content-studio-design-language/
 !.codex/skills/content-studio-design-language/**
+!.codex/skills/content-studio-release-workflow/
+!.codex/skills/content-studio-release-workflow/**
 !.codex/skills/content-studio-oem-release/
 !.codex/skills/content-studio-oem-release/**
 .wrangler/
@@ -43,3 +45,5 @@ docs/roadmap/ontology/**/.DS_Store
 docs/roadmap/limeagent/**/.DS_Store
 resources/app-server/current/
 resources/app-server/app-server.release.json
+.content-studio/
+forge-out/

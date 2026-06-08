@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isImageGenerationProtocol, type ImageGenerationProtocol, type ImageGenerationRequest, type MediaGenerationResult, type VideoCostEstimate, type VideoGenerationRequest } from '../../shared/types';
-import { generateImageAssets } from './imageGenerationProvider';
+import { isImageGenerationProtocol, type GenerationStatus, type ImageGenerationProtocol, type ImageGenerationRequest, type MediaGenerationResult, type VideoCostEstimate, type VideoGenerationRequest } from '../../shared/types';
+import { buildImagePrompt, generateImageAssets } from './imageGenerationProvider';
+import type { AppServerCapabilityTurnResult, AppServerSidecarService, AppServerTurnArtifact } from '../services/appServerSidecarService';
 import { GenerationLogStore, type CreateLogInput } from '../services/generationLogStore';
 import { ModelConfigStore } from '../services/modelConfigStore';
 import { getOemRuntimeConfig } from '../services/oemRuntimeConfig';
 import { getWorkspaceAssetDir } from '../services/paths';
+
+type MediaModelConfigStore = Pick<ModelConfigStore, 'readView'> & Partial<Pick<ModelConfigStore, 'getImageApiKey' | 'getVideoApiKey'>>;
+type MediaAppServerRuntime = Pick<AppServerSidecarService, 'runCapabilityTurn'>;
+
+const APP_SERVER_IMAGE_CAPABILITY_ID = 'content.image.generate';
+const APP_SERVER_VIDEO_CAPABILITY_ID = 'content.video.generate';
 
 function nowSlug(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -74,8 +81,15 @@ function roundCost(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function normalizedVideoDurationSeconds(value: unknown): number {
+  const duration = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(duration) && duration >= 5
+    ? Math.min(300, Math.round(duration))
+    : 18;
+}
+
 function videoCostEstimate(input: VideoGenerationRequest, providerResponse?: unknown): VideoCostEstimate {
-  const durationSeconds = Math.max(1, input.params.durationSeconds || 1);
+  const durationSeconds = normalizedVideoDurationSeconds(input.params.durationSeconds);
   const providerCost = collectNumberFields(providerResponse, [
     'cost',
     'total_cost',
@@ -128,6 +142,114 @@ function formatVideoCost(cost: VideoCostEstimate): string {
   return `${symbol}${cost.estimatedCost.toFixed(2)}（${cost.durationSeconds}s × ${symbol}${cost.unitPrice.toFixed(2)}/秒）`;
 }
 
+function isGenerationStatus(value: unknown): value is GenerationStatus {
+  return value === 'queued' ||
+    value === 'running' ||
+    value === 'succeeded' ||
+    value === 'failed' ||
+    value === 'blocked' ||
+    value === 'cancelled';
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function stringField(record: Record<string, unknown> | undefined, field: string): string | undefined {
+  const value = record?.[field];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function stringArrayField(record: Record<string, unknown> | undefined, field: string): string[] {
+  const value = record?.[field];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+}
+
+function parseJsonRecord(value: string | undefined): Record<string, unknown> | undefined {
+  if (!value?.trim()) return undefined;
+  try {
+    return recordValue(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
+}
+
+function artifactPayloadRecord(artifact: AppServerTurnArtifact): Record<string, unknown> | undefined {
+  return recordValue(artifact.payload) ?? parseJsonRecord(artifact.content);
+}
+
+function runtimePayloadRecords(result: AppServerCapabilityTurnResult): Record<string, unknown>[] {
+  return [
+    ...result.artifacts.map(artifactPayloadRecord),
+    ...result.evidenceArtifacts.map(artifactPayloadRecord),
+    ...result.events.map((event) => recordValue(event.payload)),
+    ...result.evidenceEvents.map((event) => recordValue(event.payload)),
+  ].filter((record): record is Record<string, unknown> => Boolean(record));
+}
+
+function resultArtifactPaths(result: AppServerCapabilityTurnResult): string[] {
+  return Array.from(new Set([...result.artifacts, ...result.evidenceArtifacts]
+    .map((artifact) => artifact.path)
+    .filter((path): path is string => Boolean(path))));
+}
+
+function findMediaPayload(result: AppServerCapabilityTurnResult): Record<string, unknown> {
+  return runtimePayloadRecords(result).find((record) => (
+    isGenerationStatus(record.status) ||
+    Array.isArray(record.assetRefs) ||
+    typeof record.message === 'string' ||
+    record.billing ||
+    record.costEstimate
+  )) ?? {};
+}
+
+function isVideoCostEstimate(value: unknown): value is VideoCostEstimate {
+  const record = recordValue(value);
+  return Boolean(record &&
+    typeof record.currency === 'string' &&
+    record.unit === 'second' &&
+    typeof record.durationSeconds === 'number' &&
+    typeof record.unitPrice === 'number' &&
+    typeof record.estimatedCost === 'number' &&
+    (record.source === 'provider-response' || record.source === 'env' || record.source === 'default-internal-api'));
+}
+
+function mediaResultPayload(
+  result: AppServerCapabilityTurnResult,
+  fallbackMessage: string,
+): {
+  status: GenerationStatus;
+  message: string;
+  assetRefs: string[];
+  billing?: VideoCostEstimate;
+  error?: string;
+  payload: Record<string, unknown>;
+} {
+  const payload = findMediaPayload(result);
+  const assetRefs = Array.from(new Set([
+    ...stringArrayField(payload, 'assetRefs'),
+    ...stringArrayField(payload, 'artifactRefs'),
+    ...resultArtifactPaths(result),
+  ]));
+  const billing = isVideoCostEstimate(payload.billing)
+    ? payload.billing
+    : isVideoCostEstimate(payload.costEstimate)
+      ? payload.costEstimate
+      : undefined;
+  return {
+    status: isGenerationStatus(payload.status) ? payload.status : 'failed',
+    message: stringField(payload, 'message') ?? stringField(payload, 'summary') ?? fallbackMessage,
+    assetRefs,
+    billing,
+    error: stringField(payload, 'error') ?? stringField(payload, 'reason'),
+    payload,
+  };
+}
+
 async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: string, costEstimate: VideoCostEstimate): Promise<string[]> {
   const operationId = randomUUID().slice(0, 8);
   const outputDir = join(getWorkspaceAssetDir(input.workspacePath), 'videos');
@@ -140,7 +262,7 @@ async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: st
     reason: 'VIDEO_PROVIDER_NOT_CONFIGURED',
     model,
     aspectRatio: input.params.aspectRatio,
-    durationSeconds: input.params.durationSeconds,
+    durationSeconds: costEstimate.durationSeconds,
     costEstimate,
     prompt: input.prompt,
     script: input.script,
@@ -166,7 +288,7 @@ async function writeVideoQueueArtifacts(input: VideoGenerationRequest, model: st
     input.featureTitle ? `- 功能：${input.featureTitle}` : '',
     input.selectedCaseTitle ? `- 示例：${input.selectedCaseTitle}` : '',
     `- 比例：${input.params.aspectRatio}`,
-    `- 时长：${input.params.durationSeconds}s`,
+    `- 时长：${costEstimate.durationSeconds}s`,
     `- 内部 API 成本估算：${formatVideoCost(costEstimate)}`,
     `- 图片素材：${input.imageAssetRefs.length} 个`,
     `- 参考视频：${input.videoAssetRefs.length} 个`,
@@ -269,7 +391,11 @@ async function postGenericVideo(input: {
 }
 
 export class MediaProvider {
-  constructor(private readonly modelConfig: ModelConfigStore, private readonly logs: GenerationLogStore) {}
+  constructor(
+    private readonly modelConfig: MediaModelConfigStore,
+    private readonly logs: GenerationLogStore,
+    private readonly appServer?: MediaAppServerRuntime,
+  ) {}
 
   private async persistLog(workspacePath: string, logId: string | undefined, input: CreateLogInput) {
     if (logId) {
@@ -279,12 +405,240 @@ export class MediaProvider {
     return this.logs.append(input);
   }
 
+  private async generateImageWithAppServer(
+    input: ImageGenerationRequest,
+    options: { logId?: string } | undefined,
+    runtime: {
+      startedAt: number;
+      model: string;
+      protocol: ImageGenerationProtocol;
+      apiKey?: string;
+      provider: string;
+      endpoint: string;
+      outerModel: string;
+    },
+  ): Promise<MediaGenerationResult> {
+    try {
+      const imagePrompt = buildImagePrompt(input);
+      const result = await this.appServer!.runCapabilityTurn({
+        workspacePath: input.workspacePath,
+        capabilityId: APP_SERVER_IMAGE_CAPABILITY_ID,
+        input: {
+          text: imagePrompt,
+          compiledImagePrompt: imagePrompt,
+          request: input,
+          model: runtime.model,
+          protocol: runtime.protocol,
+          provider: runtime.provider,
+          endpoint: runtime.endpoint,
+          outerModel: runtime.outerModel,
+        },
+        selectedSkillSlugs: input.selectedSkillSlugs,
+        metadata: {
+          operation: 'generateImage',
+          imageModel: runtime.model,
+          imageProtocol: runtime.protocol,
+          imageProvider: runtime.provider,
+        },
+        businessObjectRef: {
+          kind: 'imageGeneration',
+          id: input.workflowRunId ?? input.productionTaskId ?? `${APP_SERVER_IMAGE_CAPABILITY_ID}:${runtime.model}`,
+          title: input.featureTitle ?? input.template,
+          metadata: {
+            promptPackId: input.promptPackId,
+            sceneCardIds: input.sceneCardIds ?? [],
+            generationMode: input.generationMode,
+            promptMode: input.promptMode,
+          },
+        },
+        backendEnv: {
+          CONTENT_STUDIO_IMAGE_PROTOCOL: runtime.protocol,
+          CONTENT_STUDIO_IMAGE_MODEL: runtime.model,
+          CONTENT_STUDIO_IMAGE_OUTER_MODEL: runtime.outerModel,
+          CONTENT_STUDIO_IMAGE_BASE_URL: runtime.endpoint,
+          CONTENT_STUDIO_IMAGE_API_KEY: runtime.apiKey ?? '',
+        },
+      });
+      const payload = mediaResultPayload(result, 'Lime App Server 未返回图片生成结果。');
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
+        workspacePath: input.workspacePath,
+        kind: 'image',
+        status: payload.status,
+        title: payload.status === 'succeeded' ? '图片素材生成结果' : payload.status === 'blocked' ? '图片素材生成未完成' : '图片素材生成失败',
+        summary: payload.message,
+        model: runtime.model,
+        workflowRunId: input.workflowRunId,
+        reworkSource: input.reworkSource,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        artifactRefs: payload.assetRefs,
+        input,
+        output: {
+          assetRefs: payload.assetRefs,
+          provider: runtime.provider,
+          endpoint: runtime.protocol,
+          runtime: 'lime-agent-server',
+          capabilityId: APP_SERVER_IMAGE_CAPABILITY_ID,
+          sessionId: result.sessionId,
+          turnId: result.turnId,
+          payload: payload.payload,
+        },
+        error: payload.status === 'succeeded' ? undefined : payload.error,
+        durationMs: Date.now() - runtime.startedAt,
+      });
+      return {
+        logId: log.id,
+        status: payload.status,
+        message: payload.message,
+        assetRefs: payload.assetRefs,
+      };
+    } catch (error) {
+      const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
+        workspacePath: input.workspacePath,
+        kind: 'image',
+        status: 'failed',
+        title: '图片素材生成失败',
+        summary: 'Lime App Server 图片生成 capability 调用失败，未生成占位素材。',
+        model: runtime.model,
+        workflowRunId: input.workflowRunId,
+        reworkSource: input.reworkSource,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        output: {
+          assetRefs: [],
+          provider: runtime.provider,
+          endpoint: runtime.protocol,
+          runtime: 'lime-agent-server',
+          capabilityId: APP_SERVER_IMAGE_CAPABILITY_ID,
+        },
+        error: message,
+        durationMs: Date.now() - runtime.startedAt,
+      });
+      return { logId: log.id, status: 'failed', message, assetRefs: [] };
+    }
+  }
+
+  private async generateVideoWithAppServer(
+    input: VideoGenerationRequest,
+    options: { logId?: string } | undefined,
+    runtime: {
+      startedAt: number;
+      model: string;
+      apiKey?: string;
+      endpoint: string;
+      provider: string;
+    },
+  ): Promise<MediaGenerationResult> {
+    const fallbackMeta = videoGenerationMeta(input, runtime.model, runtime.provider);
+    try {
+      const result = await this.appServer!.runCapabilityTurn({
+        workspacePath: input.workspacePath,
+        capabilityId: APP_SERVER_VIDEO_CAPABILITY_ID,
+        input: {
+          text: input.prompt || input.script || input.selectedCaseTitle || '生成视频素材。',
+          request: input,
+          model: runtime.model,
+          provider: runtime.provider,
+          endpoint: runtime.endpoint,
+        },
+        selectedSkillSlugs: input.selectedSkillSlugs,
+        metadata: {
+          operation: 'generateVideo',
+          videoModel: runtime.model,
+          videoProvider: runtime.provider,
+        },
+        businessObjectRef: {
+          kind: 'videoGeneration',
+          id: input.featureId ?? `${APP_SERVER_VIDEO_CAPABILITY_ID}:${runtime.model}`,
+          title: input.featureTitle ?? input.selectedCaseTitle ?? input.prompt.slice(0, 80),
+          metadata: {
+            promptPackId: input.promptPackId,
+            sceneCardIds: input.sceneCardIds ?? [],
+            aspectRatio: input.params.aspectRatio,
+            durationSeconds: input.params.durationSeconds,
+          },
+        },
+        backendEnv: {
+          CONTENT_STUDIO_VIDEO_MODEL: runtime.model,
+          CONTENT_STUDIO_VIDEO_PROVIDER: runtime.provider,
+          CONTENT_STUDIO_VIDEO_ENDPOINT: runtime.endpoint,
+          CONTENT_STUDIO_VIDEO_API_KEY: runtime.apiKey ?? '',
+          VIDEO_API_KEY: runtime.apiKey ?? '',
+        },
+      });
+      const payload = mediaResultPayload(result, 'Lime App Server 未返回视频生成结果。');
+      const costEstimate = payload.billing ?? fallbackMeta.costEstimate;
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
+        workspacePath: input.workspacePath,
+        kind: 'video',
+        status: payload.status,
+        title: payload.status === 'succeeded' ? '视频生成结果' : payload.status === 'queued' ? '视频生成服务已提交' : payload.status === 'blocked' ? '视频生成队列请求' : '视频生成失败',
+        summary: payload.message,
+        model: runtime.model,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        artifactRefs: payload.assetRefs,
+        input,
+        output: {
+          assetRefs: payload.assetRefs,
+          provider: runtime.provider,
+          model: runtime.model,
+          aspectRatio: input.params.aspectRatio,
+          durationSeconds: input.params.durationSeconds,
+          costEstimate,
+          runtime: 'lime-agent-server',
+          capabilityId: APP_SERVER_VIDEO_CAPABILITY_ID,
+          sessionId: result.sessionId,
+          turnId: result.turnId,
+          payload: payload.payload,
+        },
+        error: payload.status === 'succeeded' || payload.status === 'queued' ? undefined : payload.error,
+        durationMs: Date.now() - runtime.startedAt,
+      });
+      return {
+        logId: log.id,
+        status: payload.status,
+        message: payload.message,
+        assetRefs: payload.assetRefs,
+        billing: costEstimate,
+      };
+    } catch (error) {
+      const message = sanitizeProviderError(error instanceof Error ? error.message : String(error));
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
+        workspacePath: input.workspacePath,
+        kind: 'video',
+        status: 'failed',
+        title: '视频生成失败',
+        summary: 'Lime App Server 视频生成 capability 调用失败，未伪造视频素材。',
+        model: runtime.model,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        output: {
+          assetRefs: [],
+          ...fallbackMeta,
+          runtime: 'lime-agent-server',
+          capabilityId: APP_SERVER_VIDEO_CAPABILITY_ID,
+        },
+        error: message,
+        durationMs: Date.now() - runtime.startedAt,
+      });
+      return { logId: log.id, status: 'failed', message, assetRefs: [], billing: fallbackMeta.costEstimate };
+    }
+  }
+
   async generateImage(input: ImageGenerationRequest, options?: { logId?: string }): Promise<MediaGenerationResult> {
     const startedAt = Date.now();
     const config = await this.modelConfig.readView();
     const model = input.params.imageModel || config.imageModels[0];
     const protocol = protocolOverride(process.env.CONTENT_STUDIO_IMAGE_PROTOCOL, config.imageProtocol);
-    const apiKey = await this.modelConfig.getImageApiKey() || envImageApiKey(protocol);
+    const apiKey = await this.modelConfig.getImageApiKey?.() || envImageApiKey(protocol);
 
     if (!apiKey && config.imageApiKeyStatus === 'requires-reauthorization') {
       const message = '图片 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存图片 API Key 后再生成。';
@@ -311,6 +665,18 @@ export class MediaProvider {
         message,
         assetRefs: [],
       };
+    }
+
+    if (this.appServer) {
+      return this.generateImageWithAppServer(input, options, {
+        startedAt,
+        model,
+        protocol,
+        apiKey,
+        provider: config.imageProvider,
+        endpoint: process.env.CONTENT_STUDIO_IMAGE_BASE_URL || config.imageApiEndpoint,
+        outerModel: config.imageOuterModel,
+      });
     }
 
     const imageProviderEnabled = config.imageProvider === 'openai-responses' || Boolean(apiKey);
@@ -400,7 +766,7 @@ export class MediaProvider {
     const startedAt = Date.now();
     const config = await this.modelConfig.readView();
     const model = input.params.videoModel || config.videoModel;
-    const apiKey = await this.modelConfig.getVideoApiKey() || process.env.CONTENT_STUDIO_VIDEO_API_KEY || process.env.VIDEO_API_KEY;
+    const apiKey = await this.modelConfig.getVideoApiKey?.() || process.env.CONTENT_STUDIO_VIDEO_API_KEY || process.env.VIDEO_API_KEY;
     const endpoint = resolveGenericEndpoint(process.env.CONTENT_STUDIO_VIDEO_ENDPOINT || config.videoApiEndpoint);
 
     if (!apiKey && config.videoApiKeyStatus === 'requires-reauthorization') {
@@ -426,6 +792,16 @@ export class MediaProvider {
         message,
         assetRefs: [],
       };
+    }
+
+    if (this.appServer) {
+      return this.generateVideoWithAppServer(input, options, {
+        startedAt,
+        model,
+        apiKey,
+        endpoint,
+        provider: config.videoProvider,
+      });
     }
 
     if (config.videoProvider === 'generic-http' && apiKey && endpoint) {

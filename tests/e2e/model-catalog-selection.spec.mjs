@@ -115,6 +115,8 @@ test('远程模型目录分流到文字、图片、视频模型池并支持切�
     await expect(page.locator('.settings-modal')).toBeVisible();
     await page.locator('.settings-nav button').filter({ hasText: '模型' }).click();
     await expect(page.locator('.model-config-hero')).toContainText('文字生成');
+    await expect(page.locator('.model-runtime-strip')).toContainText('Lime App Server');
+    await expect(page.locator('.model-runtime-strip')).toContainText('content.text.generate');
     await expect(page.locator('.model-config-section')).toHaveCount(1);
     await expect(page.locator('.model-config-section')).toContainText('文字生成');
     await expect(page.locator('.model-config-section')).not.toContainText('图片生成');
@@ -139,6 +141,7 @@ test('远程模型目录分流到文字、图片、视频模型池并支持切�
 
     await page.locator('.model-list-item').filter({ hasText: '图片生成' }).click();
     await expect(page.locator('.model-config-hero')).toContainText('图片生成');
+    await expect(page.locator('.model-runtime-strip')).toContainText('content.image.generate');
     await expect(page.locator('.model-list-item').filter({ hasText: '图片生成' })).toHaveClass(/active/);
     await expect(page.locator('.model-config-section')).toHaveCount(1);
     await expect(page.locator('.model-config-section')).toContainText('图片生成');
@@ -150,6 +153,8 @@ test('远程模型目录分流到文字、图片、视频模型池并支持切�
 
     await page.locator('.model-list-item').filter({ hasText: '视频生成' }).click();
     await expect(page.locator('.model-config-hero')).toContainText('视频理解 / 生成');
+    await expect(page.locator('.model-runtime-strip')).toContainText('content.video.generate');
+    await expect(page.locator('.model-runtime-strip')).toContainText('content.video.analyze');
     await expect(page.locator('.model-list-item').filter({ hasText: '视频生成' })).toHaveClass(/active/);
     await expect(page.locator('.model-config-section')).toHaveCount(1);
     await expect(page.locator('.model-config-section')).toContainText('视频理解 / 生成');

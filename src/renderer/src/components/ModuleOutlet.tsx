@@ -179,10 +179,21 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         mediaResult={app.mediaResult}
         authState={app.authState}
         logs={app.logs}
+        agentPromptSessions={app.agentPromptSessions}
+        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+        textModel={app.params.textModel}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
         onRemoveProductImageRef={app.removeProductImageRef}
         onRemoveReferenceImageRef={app.removeReferenceImageRef}
+        onSelectAgentSession={app.setActiveAgentPromptSessionId}
+        onStartAgentSession={(input) =>
+          app.runAction(() => app.startAgentPromptSession(input), '正在开始图片提示词协作')
+        }
+        onContinueAgentSession={(input) =>
+          app.runAction(() => app.continueAgentPromptSession(input), '正在继续图片提示词协作')
+        }
+        onResolveAgentAction={resolveAgentAction}
         onUsePromptInImage={app.useShowcasePromptInImage}
         onStartPartialRetouch={app.startShowcasePartialRetouch}
         onClearResult={app.clearMediaResult}
@@ -202,6 +213,9 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         mediaResult={app.mediaResult}
         authState={app.authState}
         logs={app.logs}
+        agentPromptSessions={app.agentPromptSessions}
+        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
+        textModel={app.params.textModel}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectVideo={() => app.runAction(() => app.selectAssetFiles('video'))}
         onSelectAudio={() => app.runAction(() => app.selectAssetFiles('audio'))}
@@ -209,6 +223,14 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onRemoveProductImageRef={app.removeProductImageRef}
         onRemoveVideoAssetRef={app.removeVideoAssetRef}
         onRemoveAudioAssetRef={app.removeAudioAssetRef}
+        onSelectAgentSession={app.setActiveAgentPromptSessionId}
+        onStartAgentSession={(input) =>
+          app.runAction(() => app.startAgentPromptSession(input), '正在开始视频提示词协作')
+        }
+        onContinueAgentSession={(input) =>
+          app.runAction(() => app.continueAgentPromptSession(input), '正在继续视频提示词协作')
+        }
+        onResolveAgentAction={resolveAgentAction}
         onUsePromptInVideo={app.useShowcasePromptInVideo}
         onStartPartialRetouch={(input) => {
           app.startShowcasePartialRetouch(input);

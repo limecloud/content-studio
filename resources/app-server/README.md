@@ -82,4 +82,10 @@ npm run app-server:backend:live
 
 `app-server:backend:live` 只用于受控发布环境。它不允许 `CONTENT_STUDIO_APP_SERVER_BACKEND_ECHO=1`，也不会进入默认 CI；缺少真实 provider key 时会明确失败。
 
-`backend/content-backend.mjs` 是 packaged external backend。它读取 App Server stdin JSON `{ kind, request }`，输出 `{ events }`，并按 `CONTENT_STUDIO_TEXT_*` / 通用 LLM 环境变量调用真实 HTTP 文本模型生成 Markdown artifact。未配置文本模型时返回 `turn.failed`，不会伪造成功。`CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND` 只用于显式覆盖默认 backend。
+`backend/content-backend.mjs` 是 packaged external backend。它读取 App Server stdin JSON `{ kind, request }`，输出 `{ events }`，并按 capability 调用真实生成服务：
+
+- `content.draft.generate` / `content.text.generate`：按 `CONTENT_STUDIO_TEXT_*` / 通用 LLM 环境变量调用真实 HTTP 文本模型，支持 Markdown 和 JSON artifact；未配置文本模型时返回 `turn.failed`。
+- `content.image.generate`：按 `CONTENT_STUDIO_IMAGE_*` 调用真实图片生成服务，输出图片 artifactRefs；未配置时返回 blocked 契约，不生成占位素材。
+- `content.video.generate`：按 `CONTENT_STUDIO_VIDEO_*` 调用 Generic HTTP 视频服务，输出视频 artifactRefs、provider job artifact 或 blocked 队列文件；未配置时只保存可追溯队列请求。
+
+所有能力都不会伪造成功。`CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND` 只用于显式覆盖默认 backend。

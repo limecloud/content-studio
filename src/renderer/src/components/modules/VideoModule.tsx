@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { AgentTimeline } from '@limecloud/agent-runtime-ui';
 import type {
   GenerationLogEntry,
   MediaGenerationResult,
@@ -786,6 +787,72 @@ export function VideoModule({
   const selectedScriptReviewNote = selectedScriptItem
     ? scriptFeedbackDrafts[selectedScriptItem.log.id] ?? selectedScriptItem.log.review?.note ?? ''
     : '';
+  const scriptAgentMessages = useMemo(() => {
+    const templateLabel = videoBreakdown
+      ? `${videoBreakdown.contentTitle || '当前爆款模板'} / ${hookLabel(videoBreakdown.hook?.hookType?.value)} / ${narrativeLabel(videoBreakdown.narrative?.framework?.value)}`
+      : '未选择爆款模板';
+    const brief = [
+      `产品：${videoProductName || '未填写'}`,
+      `模板：${templateLabel}`,
+      `场景：${videoSceneBackground || '未填写'}`,
+      `字幕：${videoSubtitleMode}`,
+      `语音：${videoVoiceStyle || '未填写'}`,
+      `镜头：${videoShotCount} 个 / ${videoDurationSeconds} 秒`,
+      `素材：${imageMaterialRefs.length} 张图片`,
+      videoCustomRequirement ? `改写要求：${videoCustomRequirement}` : '',
+    ].filter(Boolean).join('\n');
+    const messages = [{
+      id: 'video-script-brief',
+      role: 'user',
+      content: brief,
+      createdAt: new Date(0).toISOString(),
+    }];
+    if (videoScript) {
+      messages.push({
+        id: `video-script-result:${videoScript.logId}`,
+        role: 'assistant',
+        content: [
+          `已生成 ${storyboardShots.length} 个镜头，质量评分 ${scriptTotalScore(videoScript).toFixed(1)}/10。`,
+          '',
+          videoScript.title,
+          '',
+          videoScript.script,
+        ].join('\n'),
+        createdAt: new Date().toISOString(),
+      });
+    }
+    return messages;
+  }, [imageMaterialRefs.length, storyboardShots.length, videoBreakdown, videoCustomRequirement, videoDurationSeconds, videoProductName, videoSceneBackground, videoScript, videoShotCount, videoSubtitleMode, videoVoiceStyle]);
+  const handoffAgentMessages = useMemo(() => {
+    const brief = [
+      `脚本：${videoScript?.title || '未生成'}`,
+      `素材：${imageMaterialRefs.length + videoAssetRefs.length} 个`,
+      `角色参考图：${characterPromptItems.length} 个`,
+      `场景背景图：${scenePromptItems.length} 个`,
+      `外部生成段落：${productionSegments.length || videoScript?.storyboard.length || 0} 段`,
+      `审核项：${productionReviewItems.length} 项`,
+    ].join('\n');
+    const messages = [{
+      id: 'video-handoff-brief',
+      role: 'user',
+      content: brief,
+      createdAt: new Date(0).toISOString(),
+    }];
+    if (videoScript) {
+      messages.push({
+        id: `video-handoff-result:${videoScript.logId}`,
+        role: 'assistant',
+        content: [
+          '已整理视频 Prompt 交接包。',
+          '',
+          `下一步复制 ${productionSegments.length || videoScript.storyboard.length} 段镜头 Prompt 到外部视频平台，生成后手动导入成品视频。`,
+          productionDeliveryItems.map((item) => `- ${item.title}：${item.detail}`).join('\n'),
+        ].join('\n'),
+        createdAt: new Date().toISOString(),
+      });
+    }
+    return messages;
+  }, [characterPromptItems.length, imageMaterialRefs.length, productionDeliveryItems, productionReviewItems.length, productionSegments.length, scenePromptItems.length, videoAssetRefs.length, videoScript]);
 
   const filteredFeatures = featureItems.filter(({ log, breakdown }) => {
     const query = featureSearch.trim().toLowerCase();
@@ -1352,6 +1419,52 @@ export function VideoModule({
             <button className="primary wide" disabled={busy || !workspaceReady} onClick={onGenerateVideoScript}>生成分镜脚本</button>
           </article>
 
+          <article className="video-card video-script-agent-card">
+            <div className="video-card-title">
+              <div>
+                <h4>脚本协作</h4>
+                <p>把模板、商品、素材和分镜约束整理成可执行的生成任务。</p>
+              </div>
+              <span className={`status-pill ${busy ? 'warning' : videoScript ? 'ready' : 'idle'}`}>
+                {busy ? '生成中' : videoScript ? '已产出' : '待开始'}
+              </span>
+            </div>
+            <div className="video-script-agent-strip">
+              <div>
+                <span>模板</span>
+                <strong>{videoBreakdown ? '已关联' : '未选择'}</strong>
+              </div>
+              <div>
+                <span>素材</span>
+                <strong>{imageMaterialRefs.length}</strong>
+              </div>
+              <div>
+                <span>镜头</span>
+                <strong>{storyboardShots.length || videoShotCount}</strong>
+              </div>
+              <div>
+                <span>评分</span>
+                <strong>{videoScript ? scriptTotalScore(videoScript).toFixed(1) : '-'}</strong>
+              </div>
+            </div>
+            <div className="video-script-agent-thread" aria-label="视频脚本协作记录">
+              <AgentTimeline
+                messages={scriptAgentMessages}
+                runningLabel={busy ? '正在整理商品脚本、镜头和生产 Prompt。' : undefined}
+                messageMeta={() => null}
+                messageTitle={(message) => message.role === 'assistant' ? '脚本结果' : '任务简报'}
+                messagePreview={(message) => message.content}
+              />
+            </div>
+            <div className="video-script-agent-next-action">
+              <strong>{videoScript ? '下一步：质检脚本或进入 Prompt 交接' : '下一步：生成分镜脚本'}</strong>
+              <p>{videoScript ? '复核质量评分、镜头 Prompt 和禁用表达，再把素材清单交接给外部生成平台。' : '先确认左侧模板、商品信息和素材，再生成可追溯的新视频脚本。'}</p>
+              <button className="primary small" disabled={busy || !workspaceReady} onClick={onGenerateVideoScript}>
+                {videoScript ? '重新生成脚本' : '按当前参数生成'}
+              </button>
+            </div>
+          </article>
+
           <article className="video-card video-script-card">
             <div className="video-script-toolbar">
               <h4>新视频脚本</h4>
@@ -1676,6 +1789,15 @@ export function VideoModule({
                 <h4>内容生产交接</h4>
                 <p>角色图、场景图、镜头视频、审核预览和合成导出在此转为 Prompt 清单；第三方任务由用户在外部平台执行。</p>
               </div>
+            </div>
+            <div className="video-handoff-agent-panel" aria-label="视频 Prompt 交接协作记录">
+              <AgentTimeline
+                messages={handoffAgentMessages}
+                runningLabel={busy ? '正在整理视频 Prompt 交接资料。' : undefined}
+                messageMeta={() => null}
+                messageTitle={(message) => message.role === 'assistant' ? '交接包' : '任务简报'}
+                messagePreview={(message) => message.content}
+              />
             </div>
             {videoScript ? (
               <div className="video-production-checklist">

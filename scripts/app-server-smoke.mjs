@@ -38,8 +38,15 @@ try {
   if (!result.ok) {
     throw new Error(result.error || 'app-server smoke failed');
   }
-  if (!result.capabilityIds?.includes('content.draft.generate')) {
-    throw new Error(`content.draft.generate missing: ${result.capabilityIds?.join(',') ?? 'none'}`);
+  const requiredCapabilityIds = [
+    'content.draft.generate',
+    'content.text.generate',
+    'content.image.generate',
+    'content.video.generate',
+  ];
+  const missingCapabilityIds = requiredCapabilityIds.filter((capabilityId) => !result.capabilityIds?.includes(capabilityId));
+  if (missingCapabilityIds.length) {
+    throw new Error(`app-server capabilities missing: ${missingCapabilityIds.join(',')} from ${result.capabilityIds?.join(',') ?? 'none'}`);
   }
   if (!result.eventTypes?.includes('message.delta') || !result.eventTypes.includes('artifact.snapshot')) {
     throw new Error(`runtime events missing: ${result.eventTypes?.join(',') ?? 'none'}`);

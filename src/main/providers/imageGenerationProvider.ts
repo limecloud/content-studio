@@ -104,7 +104,7 @@ function formatOptionalRows(title: string, rows?: string[]): string {
   return `${title}：\n${normalized.map((row, index) => `${index + 1}. ${row}`).join("\n")}`;
 }
 
-function buildImagePrompt(input: ImageGenerationRequest): string {
+export function buildImagePrompt(input: ImageGenerationRequest): string {
   const citationText = input.citations.length
     ? input.citations
         .map(

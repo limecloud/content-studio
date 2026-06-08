@@ -1123,6 +1123,9 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     await clickButton(page, '文章生成');
     await expectCommandCenter(page, '.article-module-workbench > .module-command-center', 'compact');
     await expect(page.locator('.article-module-workbench > .v2-feature-hero')).toHaveCount(0);
+    await expect(page.locator('.article-agent-canvas')).toBeVisible();
+    await expect(page.locator('.article-agent-thread .agent-turn.user')).toContainText('平台：公众号');
+    await expect(page.locator('.article-agent-stage-list')).toContainText('生成草稿');
     await expect(page.getByRole('heading', { name: '正文 / 发布检查' })).toBeVisible();
     await clickButton(page, '成型知识库');
     await expect(page.locator('.knowledge-tab-bar button').filter({ hasText: /^知识库/ })).toHaveAttribute('aria-selected', 'true');
@@ -1234,7 +1237,11 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
     await expect(page.locator('.ai-feature-grid')).toContainText('多人场景展示');
     await expect(page.locator('.ai-feature-grid')).toContainText('批量产品展示');
     await page.locator('.ai-prompt-assistant-fab').click();
-    await expect(page.getByRole('dialog', { name: '提示词助手' })).toBeVisible();
+    const imageAssistantDialog = page.getByRole('dialog', { name: '提示词助手' });
+    await expect(imageAssistantDialog).toBeVisible();
+    await expect(imageAssistantDialog.locator('.agent-session-claw-shell')).toBeVisible();
+    await expect(imageAssistantDialog.locator('.agent-claw-chat')).toBeVisible();
+    await expect(imageAssistantDialog.locator('.agent-claw-sidecar')).toBeVisible();
     await expectOverlayCoversSidebar(page, '.ai-assistant-overlay');
     await page.getByLabel('关闭提示词助手').click();
     await expect(page.locator('.ai-assistant-overlay')).toHaveCount(0);
@@ -1838,11 +1845,12 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       const videoAssistantDialog = page.getByRole('dialog', { name: '提示词助手' });
       await expect(videoAssistantDialog).toBeVisible();
       await expectOverlayCoversSidebar(page, '.ai-assistant-overlay');
-      await videoAssistantDialog.getByRole('button', { name: '开始生成' }).click();
-      await expect(videoAssistantDialog.locator('textarea').nth(1)).toContainText('补充生成约束');
-      await videoAssistantDialog.getByRole('button', { name: '提示词模板' }).click();
-      await videoAssistantDialog.locator('.ai-assistant-toolbar button.primary').click();
-      await expect(videoAssistantDialog.locator('.ai-assistant-template-list')).not.toContainText('暂无模板');
+      await expect(videoAssistantDialog.locator('.agent-session-claw-shell')).toBeVisible();
+      await expect(videoAssistantDialog.locator('.agent-claw-chat')).toBeVisible();
+      await expect(videoAssistantDialog.locator('.agent-claw-sidecar')).toBeVisible();
+      await videoAssistantDialog.getByRole('button', { name: '本地扩写' }).click();
+      await expect(videoAssistantDialog.locator('.agent-claw-draft-editor textarea').nth(1)).toHaveValue(/补充生成约束/);
+      await videoAssistantDialog.getByRole('button', { name: '保存模板' }).click();
       await videoAssistantDialog.getByRole('button', { name: '确定' }).click();
       await expect(videoPromptTextarea).toContainText('补充生成约束');
       await expect.poll(
@@ -5308,18 +5316,24 @@ test('文章生成通过本地文字 Provider mock 生成正文并记录成功�
 
     const articleLayout = await page.evaluate(() => {
       const workbench = document.querySelector('.article-workbench');
-      const stage = document.querySelector('.stage');
+      const canvas = document.querySelector('.article-agent-canvas');
+      const thread = document.querySelector('.article-agent-thread');
+      const stageList = document.querySelector('.article-agent-stage-list');
       const rendered = document.querySelector('.article-rendered');
-      if (!workbench || !stage || !rendered) return { ok: false };
+      if (!workbench || !canvas || !thread || !stageList || !rendered) return { ok: false };
       return {
         ok: true,
         workbenchHeight: Math.round(workbench.getBoundingClientRect().height),
-        stageHeight: Math.round(stage.getBoundingClientRect().height),
+        canvasHeight: Math.round(canvas.getBoundingClientRect().height),
+        threadHeight: Math.round(thread.getBoundingClientRect().height),
+        stageListHeight: Math.round(stageList.getBoundingClientRect().height),
         renderedHeight: Math.round(rendered.getBoundingClientRect().height),
       };
     });
     expect(articleLayout.ok, JSON.stringify(articleLayout)).toBe(true);
     expect(articleLayout.workbenchHeight, JSON.stringify(articleLayout)).toBeGreaterThan(620);
+    expect(articleLayout.canvasHeight, JSON.stringify(articleLayout)).toBeGreaterThan(420);
+    expect(articleLayout.threadHeight, JSON.stringify(articleLayout)).toBeGreaterThan(220);
     expect(articleLayout.renderedHeight, JSON.stringify(articleLayout)).toBeGreaterThan(360);
     await clickButton(page, 'Markdown');
     await expect(page.locator('.article-preview pre')).toContainText('#');
@@ -5406,7 +5420,11 @@ test('爆款视频拆解五阶段工作台使用真实 blocked 分支，不伪�
 
     await clickVideoStageTab(page, '脚本改写');
     await expect(page.getByRole('heading', { name: '脚本改写参数' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '脚本协作' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '新视频脚本' })).toBeVisible();
+    await expect(page.locator('.video-script-agent-card')).toBeVisible();
+    await expect(page.locator('.video-script-agent-thread .agent-turn.user')).toContainText('产品：新产品');
+    await expect(page.locator('.video-script-agent-strip')).toContainText('镜头');
     await expect(page.locator('.video-product-card input').first()).toHaveValue('新产品');
     await expect(page.locator('.video-upload-callout')).toContainText('上传产品图');
     await clickVideoAction(page, '选择图片');
@@ -5989,6 +6007,9 @@ test('视频脚本历史可保存反馈并进入 Prompt 交接', async ({}, test
     await expect(page.locator('.video-storyboard-list .tiny').first()).toContainText('已复制');
     await page.locator('.video-card-actions button').filter({ hasText: '用于 Prompt 交接' }).click();
     await clickVideoStageTab(page, 'Prompt 交接');
+    await expect(page.locator('.video-handoff-agent-panel')).toContainText('任务简报');
+    await expect(page.locator('.video-handoff-agent-panel')).toContainText('脚本：植物清洁喷雾厨房去油脚本');
+    await expect(page.locator('.video-handoff-agent-panel')).toContainText('交接包');
     await expect(page.locator('.video-production-checklist')).toContainText('角色参考图');
     await expect(page.locator('.video-production-checklist')).toContainText('逐镜头复制，不创建外部任务');
     await expect(page.locator('.video-production-assets')).toContainText('角色参考图 Prompt');

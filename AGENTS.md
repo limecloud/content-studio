@@ -101,6 +101,7 @@
 - OEM 发布流程：`docs/aiprompts/oem-release.md`。
 - 仓库级 skills 索引：`.codex/skills/README.md`。
 - 涉及桌面端原型、UI/UX 评审、工作台页面设计或截图改造时，先使用 `.codex/skills/bugu-product-design-cheatsheet/`，并按业务 UI 契约执行。
+- 用户提到 Content Studio / 布谷AI 版本发布、更新版本号、发布说明、发布前验证、打包、commit、tag、push 或 GitHub Release 时，先使用 `.codex/skills/content-studio-release-workflow/`，按通用发版链路处理。
 - 用户提到 `bugu` / `seenx` 发布、上线、promote、stable、latest、官网旧版本、下载卡片旧、R2、`download-manifest`，或在发布上下文里只说“继续 / 是”时，先使用 `.codex/skills/content-studio-oem-release/`，按 OEM 分发链路处理。
 - OEM 分发真实写入必须先按高风险操作格式确认；确认前只允许 dry run、只读 API 查询、日志读取和 Playwright 页面验证。
 

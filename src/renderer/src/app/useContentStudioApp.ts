@@ -4352,6 +4352,10 @@ export function useContentStudioApp() {
   async function generateVideo(context?: ActionContext): Promise<void> {
     const workspace = requireWorkspace();
     requireModelKeyReadable("video");
+    const nextDurationSeconds =
+      Number.isFinite(videoDurationSeconds) && videoDurationSeconds >= 5
+        ? Math.min(300, Math.round(videoDurationSeconds))
+        : 18;
     const submission = await submitMediaGeneration({
       kind: "video",
       input: {
@@ -4369,7 +4373,7 @@ export function useContentStudioApp() {
         params: {
           videoModel: params.videoModel,
           aspectRatio: params.aspectRatio,
-          durationSeconds: videoDurationSeconds,
+          durationSeconds: nextDurationSeconds,
         },
       },
     });

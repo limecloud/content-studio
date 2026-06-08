@@ -190,7 +190,34 @@ function providerEventClass(event: AppServerRuntimeEvent): TextProviderRuntimeEv
   if (event.type === 'turn.completed') return 'model.completed';
   if (isFailedRuntimeEvent(event)) return 'model.failed';
   if (event.type === 'message.delta') return 'model.delta';
+  if (event.type === 'artifact.snapshot') return 'artifact.changed';
+  if (event.type === 'action.required') return 'action.required';
+  if (event.type === 'action.resolved') return 'action.resolved';
+  if (event.type === 'evidence.changed') return 'evidence.changed';
+  if (event.type.startsWith('tool.')) return event.type === 'tool.failed' ? 'tool.failed' : event.type === 'tool.result' ? 'tool.result' : 'tool.started';
   return 'run.status';
+}
+
+function providerEventKind(event: AppServerRuntimeEvent): TextProviderRuntimeEvent['kind'] {
+  if (event.type === 'artifact.snapshot') return 'draft';
+  if (event.type === 'action.required' || event.type === 'action.resolved') return 'action';
+  if (event.type === 'evidence.changed') return 'evidence';
+  if (event.type.startsWith('tool.')) return 'tool';
+  return 'model';
+}
+
+function providerEventStatus(event: AppServerRuntimeEvent): TextProviderRuntimeEvent['status'] {
+  if (event.type === 'action.required') return 'pending';
+  if (isFailedRuntimeEvent(event)) return 'failed';
+  return 'completed';
+}
+
+function providerEventPhase(event: AppServerRuntimeEvent): TextProviderRuntimeEvent['phase'] {
+  if (event.type === 'action.required') return 'action_required';
+  if (event.type === 'message.delta') return 'streaming';
+  if (isFailedRuntimeEvent(event)) return 'failed';
+  if (event.type.startsWith('tool.')) return 'tool_running';
+  return 'completed';
 }
 
 function providerEventsFromResult(result: AppServerPromptTurnResult, model: string): TextProviderRuntimeEvent[] {
@@ -211,9 +238,9 @@ function providerEventsFromResult(result: AppServerPromptTurnResult, model: stri
     },
     ...result.events.map((event): TextProviderRuntimeEvent => ({
       eventClass: providerEventClass(event),
-      kind: 'model',
-      status: isFailedRuntimeEvent(event) ? 'failed' : 'completed',
-      phase: event.type === 'message.delta' ? 'streaming' : isFailedRuntimeEvent(event) ? 'failed' : 'completed',
+      kind: providerEventKind(event),
+      status: providerEventStatus(event),
+      phase: providerEventPhase(event),
       title: `Lime Agent Server ${event.type}`,
       detail: textFromPayload(event.payload) || event.type,
       model,

@@ -77,9 +77,30 @@ function formatDateTime(value?: string) {
 function updateStatusText(updateState: AutoUpdateState) {
   if (updateState.status === 'checking') return '正在检查更新...';
   if (updateState.status === 'update-available') return `发现新版本 ${formatVersion(updateState.latestVersion)}`;
+  if (updateState.status === 'downloading') return `正在下载 ${formatVersion(updateState.latestVersion)}...`;
+  if (updateState.status === 'downloaded') return '更新已下载，重启后安装';
   if (updateState.status === 'up-to-date') return '当前已是最新版本';
   if (updateState.status === 'error') return updateState.error || '检查更新失败';
   return '开启后，正式安装包启动时会自动检查更新。';
+}
+
+function updateEngineText(updateState: AutoUpdateState) {
+  if (updateState.updateEngine === 'electron-updater') return 'electron-updater';
+  if (updateState.updateEngine === 'manifest') return '发布清单';
+  return updateState.sourceLabel || '未检查';
+}
+
+function updateActionText(updateState: AutoUpdateState) {
+  if (updateState.updateEngine === 'electron-updater') {
+    if (updateState.status === 'downloaded') return '安装并重启';
+    if (updateState.status === 'downloading') return '下载中...';
+    return '下载并安装';
+  }
+  return updateState.asset ? '下载当前设备版本' : '打开发布页';
+}
+
+function isUpdateActionDisabled(updateState: AutoUpdateState) {
+  return updateState.status === 'checking' || updateState.status === 'downloading';
 }
 
 function keyStatusTone(status: ModelSecretStatus | undefined, hasKey: boolean | undefined, optional = false): 'ready' | 'missing' | 'muted' | 'reauthorize' {
@@ -216,10 +237,44 @@ export function SettingsDialog({
       ? '图片生成'
       : '视频理解 / 生成';
   const activeModelPaneDescription = activeModelPane === 'text'
-    ? '配置文案、提示词、脚本和 Agent 协作使用的文字模型。'
+    ? '配置 content.text.generate 的上游文字协议、模型池和授权。'
     : activeModelPane === 'image'
-      ? '配置图片生成页可选择的图片模型池。'
-      : '配置视频理解和视频生成使用的模型；未配置时保持待配置队列。';
+      ? '配置 content.image.generate 的上游图片协议、模型池和授权。'
+      : '配置 content.video.generate 的上游视频服务；视频拆解理解能力后续迁移到 content.video.analyze。';
+  const modelRuntimeRoutes = [
+    {
+      id: 'text',
+      label: '文字',
+      capability: 'content.text.generate',
+      status: '已接入',
+      tone: 'current',
+      active: activeModelPane === 'text',
+    },
+    {
+      id: 'image',
+      label: '图片',
+      capability: 'content.image.generate',
+      status: '已接入',
+      tone: 'current',
+      active: activeModelPane === 'image',
+    },
+    {
+      id: 'video',
+      label: '视频',
+      capability: 'content.video.generate',
+      status: '已接入',
+      tone: 'current',
+      active: activeModelPane === 'video',
+    },
+    {
+      id: 'video-analyze',
+      label: '视频理解',
+      capability: 'content.video.analyze',
+      status: '待迁移',
+      tone: 'pending',
+      active: false,
+    },
+  ];
 
   function toggleCatalogExpanded(kind: ModelCatalogPresetKind): void {
     setExpandedCatalogs((current) => ({ ...current, [kind]: !current[kind] }));
@@ -542,7 +597,7 @@ export function SettingsDialog({
               <aside className="model-sidebar">
                 <div className="model-sidebar-header">
                   <h2>模型</h2>
-                  <p>只配置真实可调用的文字、图片、视频生成服务；Key 保存在主进程，前端只显示配置状态。</p>
+                  <p>应用内生成统一由 Lime App Server 执行；这里维护各能力的上游连接和模型池。Key 保存在主进程。</p>
                 </div>
                 <div className="model-list-header">
                   <div>
@@ -591,11 +646,30 @@ export function SettingsDialog({
                 <div className="model-config-shell">
                   <div className="model-config-hero">
                     <div>
-                      <p className="eyebrow">生成服务设置</p>
+                      <p className="eyebrow">Lime App Server 生成服务设置</p>
                       <h3>{activeModelPaneTitle}</h3>
                       <p>{activeModelPaneDescription}</p>
                     </div>
                     <button className="primary" onClick={onSaveModelConfig}>保存配置</button>
+                  </div>
+
+                  <div className="model-runtime-strip" aria-label="Lime App Server 能力路由">
+                    <div className="model-runtime-head">
+                      <span>执行层</span>
+                      <strong>Lime App Server</strong>
+                    </div>
+                    <div className="model-runtime-list">
+                      {modelRuntimeRoutes.map((route) => (
+                        <div
+                          key={route.id}
+                          className={`model-runtime-card ${route.tone} ${route.active ? 'active' : ''}`}
+                        >
+                          <span>{route.label}</span>
+                          <code>{route.capability}</code>
+                          <em>{route.status}</em>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="model-connection-summary">
@@ -621,8 +695,8 @@ export function SettingsDialog({
                   <section className="model-config-section">
                     <header>
                       <div>
-                        <strong>文字生成</strong>
-                        <p>用于提示词包、场景库、文章和脚本。</p>
+                        <strong>文字生成上游</strong>
+                        <p>保存后由 Lime App Server 调用 content.text.generate，用于提示词包、场景库、文章和脚本。</p>
                       </div>
                     </header>
                     <div className="model-field-grid">
@@ -713,8 +787,8 @@ export function SettingsDialog({
                   <section className="model-config-section">
                     <header>
                       <div>
-                        <strong>图片生成</strong>
-                        <p>独立维护图片模型池，图片生成页会从这里选择本次使用的模型。</p>
+                        <strong>图片生成上游</strong>
+                        <p>保存后由 Lime App Server 调用 content.image.generate，图片生成页会从这里选择本次使用的模型。</p>
                       </div>
                       <span className="model-section-count">{imageModelNames.length || 1} 个可选模型</span>
                     </header>
@@ -823,7 +897,7 @@ export function SettingsDialog({
                     <header>
                       <div>
                         <strong>视频理解 / 生成（可选）</strong>
-                        <p>默认走 OpenAI 兼容视频理解网关：视频模型做视觉拆镜，文字模型做结构分类。</p>
+                        <p>视频生成由 content.video.generate 调用；视频拆解理解暂沿用当前视频理解连接，未配置时保持待配置队列。</p>
                       </div>
                     </header>
                     <div className="model-field-grid">
@@ -982,25 +1056,41 @@ export function SettingsDialog({
                 <p className="about-copyright">© 2026 {brandName}. All rights reserved.</p>
               </div>
 
-              <div className={`update-status-card ${updateState.status === 'update-available' ? 'has-update' : ''}`}>
+              <div className={`update-status-card ${updateState.hasUpdate ? 'has-update' : ''}`}>
                 <div className="update-status-main">
                   <span className="update-dot"></span>
                   <div>
                     <strong>{updateStatusText(updateState)}</strong>
                     <p>
-                      {updateState.status === 'update-available'
+                      {updateState.hasUpdate
                         ? `当前 ${formatVersion(updateState.currentVersion)}，可更新到 ${formatVersion(updateState.latestVersion)}。`
                         : `上次检查：${formatDateTime(updateState.checkedAt || updateState.lastAutoCheckAt)}`}
                     </p>
                   </div>
+                </div>
+                <div className="update-meta-grid">
+                  <span>更新引擎：{updateEngineText(updateState)}</span>
+                  <span>更新源：{updateState.sourceLabel || updateState.manifestUrl || '未检查'}</span>
+                  {updateState.asset ? (
+                    <span>
+                      当前设备包：{updateState.asset.label}
+                      {formatSize(updateState.asset.size) ? ` · ${formatSize(updateState.asset.size)}` : ''}
+                    </span>
+                  ) : null}
+                  {updateState.downloadedFile ? <span>已下载：{updateState.downloadedFile}</span> : null}
+                  {updateState.status === 'downloading' ? (
+                    <div className="update-progress" aria-label="更新下载进度">
+                      <span style={{ width: `${Math.round(updateState.downloadProgress ?? 0)}%` }}></span>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="update-actions">
                   <button className="ghost small" onClick={onCheckForUpdates} disabled={updateState.status === 'checking'}>
                     {updateState.status === 'checking' ? '检查中...' : '检查更新'}
                   </button>
                   {updateState.hasUpdate ? (
-                    <button className="primary small" onClick={onOpenUpdateDownload}>
-                      {updateState.asset ? '下载当前设备版本' : '打开发布页'}
+                    <button className="primary small" onClick={onOpenUpdateDownload} disabled={isUpdateActionDisabled(updateState)}>
+                      {updateActionText(updateState)}
                     </button>
                   ) : null}
                   <button className="ghost small" onClick={onOpenUpdateReleaseNotes}>查看更新日志</button>

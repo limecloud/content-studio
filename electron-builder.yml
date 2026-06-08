@@ -12,6 +12,9 @@ extraResources:
     to: app-server
     filter:
       - '**/*'
+publish:
+  provider: generic
+  url: https://downloads.bugu.run/desktop/content-studio/bugu/
 fileAssociations:
   - ext: skill
     name: Bugu AI Skill Package

@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "布谷AI内容工厂桌面应用，用于知识库、提示词、图片、视频和文章生产。",
   "type": "module",
   "main": "out/main/index.js",
@@ -13,6 +13,12 @@
     "build": "tsc --noEmit && electron-vite build",
     "start": "electron-vite preview",
     "dist": "npm run build && electron-builder --config electron-builder.yml",
+    "forge:package": "npm run build && electron-forge package",
+    "forge:make": "npm run build && electron-forge make",
+    "forge:make:mac": "npm run build && electron-forge make --platform darwin",
+    "forge:make:win": "npm run build && electron-forge make --platform win32",
+    "forge:make:linux": "npm run build && electron-forge make --platform linux",
+    "forge:publish": "npm run build && electron-forge publish",
     "oem:prepare": "node scripts/prepare-oem-build.mjs",
     "oem:clean": "node scripts/clean-oem-build.mjs",
     "oem:assert": "node scripts/assert-oem-artifact-scope.mjs",
@@ -48,7 +54,10 @@
     "verify:local": "npm run typecheck && npm run content:v1:verify-readiness && npm run build && npm run verify:v2 && npm run test:functional && npm run smoke:electron && npm run test:e2e"
   },
   "dependencies": {
+    "@limecloud/agent-runtime-projection": "^0.1.0",
+    "@limecloud/agent-runtime-ui": "^0.1.0",
     "@types/yauzl": "^2.10.3",
+    "electron-updater": "^6.8.9",
     "fast-xml-parser": "^5.8.0",
     "gray-matter": "^4.0.3",
     "react": "^19.2.3",
@@ -56,6 +65,13 @@
     "yauzl": "^3.3.0"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-deb": "^7.11.2",
+    "@electron-forge/maker-dmg": "^7.11.2",
+    "@electron-forge/maker-rpm": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.2",
     "@playwright/test": "1.60.0",
     "@types/node": "^25.0.8",
     "@types/react": "^19.2.7",

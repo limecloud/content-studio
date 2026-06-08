@@ -53,12 +53,12 @@ interface AppServerCapabilityListResponse {
 }
 
 interface AppServerArtifactReadResponse {
-  artifacts: Array<{ artifactRef: string; title?: string; kind?: string; path?: string }>;
+  artifacts: AppServerTurnArtifact[];
 }
 
 interface AppServerEvidenceExportResponse {
   events: AppServerRuntimeEvent[];
-  artifacts: Array<{ artifactRef: string; title?: string; kind?: string; path?: string }>;
+  artifacts: AppServerTurnArtifact[];
 }
 
 export interface AppServerTurnArtifact {
@@ -83,7 +83,20 @@ export interface AppServerPromptTurnInput {
   backendEnv?: NodeJS.ProcessEnv;
 }
 
-export interface AppServerPromptTurnResult {
+export interface AppServerCapabilityTurnInput {
+  workspacePath: string;
+  capabilityId: string;
+  input: Record<string, unknown>;
+  permissionMode?: PermissionMode;
+  selectedSkillSlugs?: string[];
+  metadata?: Record<string, unknown>;
+  businessObjectRef?: AppServerBusinessObjectRef;
+  timeoutMs?: number;
+  backendEnv?: NodeJS.ProcessEnv;
+  sessionIdPrefix?: string;
+}
+
+export interface AppServerCapabilityTurnResult {
   sessionId: string;
   turnId: string;
   events: AppServerRuntimeEvent[];
@@ -91,6 +104,8 @@ export interface AppServerPromptTurnResult {
   evidenceEvents: AppServerRuntimeEvent[];
   evidenceArtifacts: AppServerTurnArtifact[];
 }
+
+export interface AppServerPromptTurnResult extends AppServerCapabilityTurnResult {}
 
 interface RunningAgentTask {
   sidecar?: AppServerJsonRpcClient;
@@ -333,7 +348,9 @@ export class AppServerSidecarService {
         binaryPath,
         capabilityIds,
         eventTypes: events.map((event) => event.type),
-        artifactRefs: artifacts.result.artifacts.map((artifact) => artifact.artifactRef),
+        artifactRefs: artifacts.result.artifacts
+          .map((artifact) => artifact.artifactRef)
+          .filter((artifactRef): artifactRef is string => Boolean(artifactRef)),
         evidenceEventCount: evidence.result.events.length,
         evidenceArtifactCount: evidence.result.artifacts.length,
       };
@@ -360,6 +377,23 @@ export class AppServerSidecarService {
   }
 
   async runPromptTurn(input: AppServerPromptTurnInput): Promise<AppServerPromptTurnResult> {
+    return this.runCapabilityTurn({
+      workspacePath: input.workspacePath,
+      capabilityId: input.capabilityId ?? DEFAULT_AGENT_RUNTIME_CAPABILITY_ID,
+      input: {
+        text: input.prompt,
+      },
+      permissionMode: input.permissionMode,
+      selectedSkillSlugs: input.selectedSkillSlugs,
+      metadata: input.metadata,
+      businessObjectRef: input.businessObjectRef,
+      timeoutMs: input.timeoutMs,
+      backendEnv: input.backendEnv,
+      sessionIdPrefix: 'content_studio_prompt',
+    });
+  }
+
+  async runCapabilityTurn(input: AppServerCapabilityTurnInput): Promise<AppServerCapabilityTurnResult> {
     const binaryPath = this.resolveBinaryPath();
     if (!binaryPath) {
       throw new Error(missingAppServerMessage());
@@ -370,7 +404,7 @@ export class AppServerSidecarService {
     }
 
     const timeoutMs = input.timeoutMs ?? resolveAgentTimeoutMs();
-    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-prompt-'));
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-capability-'));
     const policyPath = join(tempDir, 'content-studio.policy.json');
     let sidecar: AppServerJsonRpcClient | undefined;
     try {
@@ -386,7 +420,8 @@ export class AppServerSidecarService {
       }
       sidecar.notify('initialized');
 
-      const sessionId = `content_studio_prompt_${randomUUID()}`;
+      const sessionPrefix = input.sessionIdPrefix?.trim() || 'content_studio_capability';
+      const sessionId = `${sessionPrefix}_${randomUUID()}`;
       const turnId = `turn_${randomUUID()}`;
       await sidecar.request<AppServerSessionStartResponse>('agentSession/start', {
         sessionId,
@@ -398,12 +433,10 @@ export class AppServerSidecarService {
       const turn = await sidecar.request<AppServerTurnStartResponse>('agentSession/turn/start', {
         sessionId,
         turnId,
-        input: {
-          text: input.prompt,
-        },
+        input: input.input,
         runtimeOptions: {
           stream: true,
-          capabilityId: input.capabilityId ?? DEFAULT_AGENT_RUNTIME_CAPABILITY_ID,
+          capabilityId: input.capabilityId,
           metadata: {
             selectedSkillSlugs: input.selectedSkillSlugs ?? [],
             permissionMode: input.permissionMode ?? 'ask',
@@ -716,6 +749,26 @@ function mapRuntimeEvent(taskId: string, event: AppServerRuntimeEvent): AgentEve
   if (isFailedRuntimeEvent(event)) {
     return { type: 'error', taskId, message: textFromRuntimePayload(event.payload) || 'App Server turn failed' };
   }
+  if (event.type === 'action.required' || event.type === 'action.resolved') {
+    return {
+      type: 'action',
+      taskId,
+      actionId: stringPayloadValue(event.payload, 'actionId'),
+      actionKind: stringPayloadValue(event.payload, 'actionKind'),
+      targetModule: stringPayloadValue(event.payload, 'targetModule'),
+      message: textFromRuntimePayload(event.payload) || event.type,
+      raw: event.payload,
+    };
+  }
+  if (event.type === 'evidence.changed') {
+    return {
+      type: 'evidence',
+      taskId,
+      evidenceRefs: stringArrayPayloadValue(event.payload, 'evidenceRefs'),
+      summary: textFromRuntimePayload(event.payload) || event.type,
+      raw: event.payload,
+    };
+  }
   if (event.type.includes('tool')) {
     return { type: 'tool', taskId, name: event.type, input: event.payload };
   }
@@ -726,6 +779,20 @@ function mapRuntimeEvent(taskId: string, event: AppServerRuntimeEvent): AgentEve
     return { type: 'status', taskId, message: 'App Server turn canceled' };
   }
   return { type: 'status', taskId, message: event.type };
+}
+
+function stringPayloadValue(payload: unknown, field: string): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as Record<string, unknown>)[field];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function stringArrayPayloadValue(payload: unknown, field: string): string[] | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as Record<string, unknown>)[field];
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  return items.length ? items : undefined;
 }
 
 function resolveAgentTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
@@ -893,6 +960,36 @@ async function writePolicy(policyPath: string): Promise<void> {
       {
         id: 'content.draft.generate',
         title: 'Generate Draft',
+        methods: ['agentSession/turn/start'],
+        appIds: ['content-studio'],
+      },
+      {
+        id: 'content.text.generate',
+        title: 'Generate Text',
+        methods: ['agentSession/turn/start'],
+        appIds: ['content-studio'],
+      },
+      {
+        id: 'content.article.generate',
+        title: 'Generate Article',
+        methods: ['agentSession/turn/start'],
+        appIds: ['content-studio'],
+      },
+      {
+        id: 'content.prompt.generate',
+        title: 'Generate Prompt',
+        methods: ['agentSession/turn/start'],
+        appIds: ['content-studio'],
+      },
+      {
+        id: 'content.image.generate',
+        title: 'Generate Image',
+        methods: ['agentSession/turn/start'],
+        appIds: ['content-studio'],
+      },
+      {
+        id: 'content.video.generate',
+        title: 'Generate Video',
         methods: ['agentSession/turn/start'],
         appIds: ['content-studio'],
       },

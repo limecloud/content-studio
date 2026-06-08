@@ -1,5 +1,32 @@
 # Release Notes
 
+## v0.20.0 - 2026-06-08
+
+### Lime App Server 生成能力收敛
+
+- `TextGenerationService`、图片生成和视频生成主链接入 `AppServerSidecarService`，统一通过 Lime App Server capability turn 承载文字、JSON、图片和视频生成事实。
+- `resources/app-server/backend/content-backend.mjs` 扩展 `content.text.generate`、`content.image.generate`、`content.video.generate` 能力；未配置真实图片或视频生成服务时只返回 blocked / 队列 artifact，不生成占位素材或伪造成果。
+- App Server runtime events 继续投影 artifact、evidence、tool 和 action 事实，Prompt Agent 会话保留可恢复的人审动作与证据引用。
+
+### Agent 工作台与内容生产体验
+
+- Agent 会话面板接入 `@limecloud/agent-runtime-ui`，区分对话流、运行事实、产物、证据和待处理动作，并新增 Claw 工作台布局变体。
+- AI 生图、AI 视频和文章模块补齐 Agent 协作入口，提示词助手可携带当前功能、素材、参数和历史结果继续协作，不再只依赖本地假说明。
+- 图片 / 视频工作台的右侧事实面板、历史、素材引用和 blocked 恢复路径进一步统一，普通用户可以从当前业务对象直接看到缺什么、下一步做什么和交付物在哪里。
+
+### 自动更新、打包与发版流程
+
+- 新增 Electron Forge 打包配置与脚本，保留 electron-builder 分发链路，并补充自动更新服务对 R2 latest feed、下载进度、安装动作和功能测试替身的支持。
+- `electron-builder.yml` 显式声明 generic publish feed，自动更新和 OEM 分发使用同一下载根路径。
+- 新增 `content-studio-release-workflow` 仓库 skill，区分通用版本发布与 bugu / seenx OEM 分发，避免把版本号 / release note / tag 流程和 R2 latest 推送混在一起。
+
+### 验证
+
+- `npm run verify:local`
+- `npm run app-server:backend:test`
+- `npm run smoke:app-server`
+- `npm run dist:mac` 已本地产出 `release/布谷AI-0.20.0-arm64-mac.zip` 和 blockmap；DMG 子步骤受 `dmg-builder` 下载链路阻塞，完整 DMG 产物交由 GitHub Release workflow 构建验证。
+
 ## v0.19.0 - 2026-06-06
 
 ### Lime App Server Agent Runtime

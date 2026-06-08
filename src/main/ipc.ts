@@ -377,8 +377,8 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const skillSelection = new SkillSelectionStore();
   const knowledgeBases = new KnowledgeBaseStore();
   const logs = new GenerationLogStore();
-  const textGeneration = new TextGenerationService(modelConfig);
   const appServer = new AppServerSidecarService();
+  const textGeneration = new TextGenerationService(modelConfig, appServer);
   const promptAgent = new AppServerPromptAgentService(appServer, modelConfig);
   const imageSkills = new ImageSkillGenerationService(textGeneration);
   const inputSources = new InputSourceStore();
@@ -429,7 +429,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const referenceReverse = new ReferenceReverseService(logs, inputSources, promptDrafts, modelConfig);
   const articles = new ArticleGenerationService(logs, textGeneration);
   const videoWorkflow = new VideoWorkflowService(logs, textGeneration, modelConfig);
-  const media = new MediaProvider(modelConfig, logs);
+  const media = new MediaProvider(modelConfig, logs, appServer);
   const imageProductionTasks = new ImageProductionTaskStore();
   const contentMaterialFeedback = new ContentMaterialFeedbackService(
     contentKnowledgeMapStore,

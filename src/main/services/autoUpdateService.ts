@@ -1,6 +1,9 @@
 import { app, shell } from 'electron';
+import { EventEmitter } from 'node:events';
+import { createRequire } from 'node:module';
 import { mkdir } from 'node:fs/promises';
 import type { BrowserWindow } from 'electron';
+import type { UpdateInfo } from 'electron-updater';
 import type { AutoUpdateAsset, AutoUpdateState, UpdateActionResult, UpdateCheckOptions } from '../../shared/types';
 import { getOemRuntimeConfig } from './oemRuntimeConfig';
 import { SettingsStore } from './settingsStore';
@@ -8,6 +11,42 @@ import { SettingsStore } from './settingsStore';
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const STARTUP_CHECK_DELAY_MS = 5000;
 const REQUEST_TIMEOUT_MS = 15000;
+const require = createRequire(import.meta.url);
+type ElectronAutoUpdater = typeof import('electron-updater')['autoUpdater'];
+
+function createFunctionalTestAutoUpdater(): ElectronAutoUpdater {
+  const emitter = new EventEmitter();
+  return {
+    autoDownload: false,
+    autoInstallOnAppQuit: false,
+    forceDevUpdateConfig: false,
+    logger: null,
+    on: (...args: Parameters<EventEmitter['on']>) => {
+      emitter.on(...args);
+      return emitter;
+    },
+    once: (...args: Parameters<EventEmitter['once']>) => {
+      emitter.once(...args);
+      return emitter;
+    },
+    off: (...args: Parameters<EventEmitter['off']>) => {
+      emitter.off(...args);
+      return emitter;
+    },
+    removeAllListeners: (...args: Parameters<EventEmitter['removeAllListeners']>) => {
+      emitter.removeAllListeners(...args);
+      return emitter;
+    },
+    setFeedURL: () => undefined,
+    checkForUpdates: async () => ({ updateInfo: { version: '0.0.0-test' } }),
+    downloadUpdate: async () => [],
+    quitAndInstall: () => undefined,
+  } as unknown as ElectronAutoUpdater;
+}
+
+const { autoUpdater } = process.env.CONTENT_STUDIO_FUNCTIONAL_TEST_BUNDLE === '1'
+  ? { autoUpdater: createFunctionalTestAutoUpdater() }
+  : require('electron-updater') as typeof import('electron-updater');
 
 interface RemoteDownloadAsset {
   platform?: string;
@@ -104,6 +143,13 @@ function getLatestManifestUrl(): string {
     || `${getRuntimeDownloadBaseUrl()}/desktop/content-studio/${encodeURIComponent(brandId)}/${currentR2PlatformKey()}/latest.json`;
 }
 
+function getElectronUpdaterFeedUrl(): string {
+  const envUrl = safeHttpUrl(process.env.CONTENT_STUDIO_ELECTRON_UPDATE_URL);
+  if (envUrl) return envUrl.replace(/\/?$/, '/');
+  const brandId = getRuntimeBrandId();
+  return `${getRuntimeDownloadBaseUrl()}/desktop/content-studio/${encodeURIComponent(brandId)}/${currentR2PlatformKey()}/`;
+}
+
 function getGitHubReleaseApiUrl(): string {
   return process.env.CONTENT_STUDIO_GITHUB_RELEASE_API_URL
     || 'https://api.github.com/repos/limecloud/content-studio/releases/latest';
@@ -175,6 +221,10 @@ function safeDownloadUrl(value: unknown): string | undefined {
 function sourceErrorMessage(label: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return `${label}: ${message}`;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function kindFromFileName(fileName: string): string {
@@ -249,6 +299,35 @@ function kindPreference(): string[] {
   if (process.platform === 'win32') return ['nsis', 'exe'];
   if (process.platform === 'linux') return ['appimage'];
   return [];
+}
+
+function kindFromUpdaterFileName(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.exe')) return 'nsis';
+  if (lower.endsWith('.dmg')) return 'dmg';
+  if (lower.endsWith('.zip')) return 'zip';
+  if (lower.endsWith('.appimage')) return 'appimage';
+  if (lower.endsWith('.deb')) return 'deb';
+  if (lower.endsWith('.rpm')) return 'rpm';
+  return 'package';
+}
+
+function assetFromUpdateInfo(info: UpdateInfo): AutoUpdateAsset | undefined {
+  const file = info.files?.[0];
+  const rawFileName = normalizeText(file?.url || info.path);
+  if (!rawFileName) return undefined;
+  const fileName = rawFileName.split('/').pop() || rawFileName;
+  const url = safeHttpUrl(rawFileName) || new URL(rawFileName, getElectronUpdaterFeedUrl()).toString();
+  return {
+    platform: currentPlatformKey(),
+    kind: kindFromUpdaterFileName(fileName),
+    label: fileName,
+    fileName,
+    url,
+    sha256: normalizeText(file?.sha512 || info.sha512) || undefined,
+    size: file?.size,
+    primary: true,
+  };
 }
 
 function toAsset(asset: RemoteDownloadAsset, options: { allowGitHubDownloads?: boolean } = {}): AutoUpdateAsset | null {
@@ -398,11 +477,15 @@ export class AutoUpdateService {
   private checkPromise: Promise<AutoUpdateState> | null = null;
   private started = false;
   private interval: NodeJS.Timeout | null = null;
+  private updaterConfigured = false;
+  private updaterDownloadPromise: Promise<string[]> | null = null;
 
   constructor(
     private readonly settings: SettingsStore,
     private readonly mainWindow: BrowserWindow,
-  ) {}
+  ) {
+    this.configureElectronUpdater();
+  }
 
   async getState(): Promise<AutoUpdateState> {
     await this.refreshSettingsState();
@@ -441,6 +524,16 @@ export class AutoUpdateService {
   }
 
   async openDownload(): Promise<UpdateActionResult> {
+    if (this.state.updateEngine === 'electron-updater') {
+      if (this.state.status === 'downloaded') {
+        autoUpdater.quitAndInstall(false, true);
+        return { ok: true };
+      }
+      if (this.state.status !== 'update-available') {
+        return { ok: false, error: '当前没有可下载的更新。' };
+      }
+      return this.downloadElectronUpdate();
+    }
     if (!this.state.downloadUrl) {
       return { ok: false, error: '当前更新清单缺少当前设备的下载链接。' };
     }
@@ -478,6 +571,10 @@ export class AutoUpdateService {
     return app.isPackaged || process.env.CONTENT_STUDIO_ENABLE_DEV_UPDATE_CHECK === '1';
   }
 
+  private shouldUseElectronUpdater(): boolean {
+    return app.isPackaged || process.env.CONTENT_STUDIO_ENABLE_DEV_UPDATE_CHECK === '1';
+  }
+
   private async checkIfDue(force = false): Promise<void> {
     await this.refreshSettingsState();
     if (!this.state.enabled) return;
@@ -499,47 +596,27 @@ export class AutoUpdateService {
     };
     this.emit();
 
+    const errors: string[] = [];
+    if (this.shouldUseElectronUpdater()) {
+      try {
+        return await this.runElectronUpdaterCheck(checkedAt);
+      } catch (error) {
+        errors.push(sourceErrorMessage('electron-updater', error));
+      }
+    }
+
     try {
-      const source = await loadLatestSource();
-      const latestVersion = normalizeVersion(source.payload.version);
-      if (!latestVersion) throw new Error('更新清单缺少版本号。');
-
-      const assets = (source.payload.assets ?? [])
-        .map((asset) => toAsset(asset, { allowGitHubDownloads: source.allowGitHubDownloads }))
-        .filter((asset): asset is AutoUpdateAsset => Boolean(asset));
-      const platformAsset = selectCurrentAsset(assets);
-      const releaseUrl = source.allowGitHubDownloads ? safeHttpUrl : safeDownloadUrl;
-      const releaseNotesUrl = releaseUrl(source.payload.releaseNotesUrl)
-        || releaseUrl(source.payload.releasePageUrl)
-        || safeHttpUrl(source.manifestUrl);
-      const hasUpdate = isNewerVersion(latestVersion, app.getVersion());
-      const downloadUrl = platformAsset?.url
-        || (assets.length === 0 ? releaseUrl(source.payload.packageUrl) : undefined);
-
-      await this.settings.setLastUpdateCheckAt(checkedAt);
-      this.state = {
-        enabled: this.state.enabled,
-        status: hasUpdate ? 'update-available' : 'up-to-date',
-        currentVersion: app.getVersion(),
-        latestVersion,
-        hasUpdate,
-        checkedAt,
-        lastAutoCheckAt: checkedAt,
-        publishedAt: source.payload.publishedAt || source.payload.updatedAt,
-        channel: source.payload.channel,
-        sourceLabel: source.sourceLabel,
-        manifestUrl: source.manifestUrl,
-        releaseNotesUrl,
-        downloadUrl,
-        asset: platformAsset,
-      };
+      return await this.runManifestCheck(checkedAt);
     } catch (error) {
       this.state = {
         ...this.state,
         status: 'error',
         hasUpdate: false,
         checkedAt,
-        error: error instanceof Error ? error.message : String(error),
+        updateEngine: undefined,
+        downloadProgress: undefined,
+        downloadedFile: undefined,
+        error: [...errors, sourceErrorMessage('manifest', error)].join('；'),
       };
       if (!manual) {
         await this.settings.setLastUpdateCheckAt(checkedAt);
@@ -548,6 +625,222 @@ export class AutoUpdateService {
 
     this.emit();
     return this.snapshot();
+  }
+
+  private configureElectronUpdater(): void {
+    if (this.updaterConfigured) return;
+    this.updaterConfigured = true;
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = false;
+    autoUpdater.logger = null;
+
+    autoUpdater.on('checking-for-update', () => {
+      this.state = {
+        ...this.state,
+        updateEngine: 'electron-updater',
+        status: 'checking',
+        currentVersion: app.getVersion(),
+        error: undefined,
+      };
+      this.emit();
+    });
+    autoUpdater.on('update-available', (info) => {
+      this.state = {
+        ...this.state,
+        updateEngine: 'electron-updater',
+        status: 'update-available',
+        latestVersion: normalizeVersion(info.version),
+        hasUpdate: true,
+        publishedAt: info.releaseDate,
+        sourceLabel: 'electron-updater',
+        manifestUrl: getElectronUpdaterFeedUrl(),
+        asset: assetFromUpdateInfo(info),
+        downloadProgress: undefined,
+        downloadedFile: undefined,
+        error: undefined,
+      };
+      this.emit();
+    });
+    autoUpdater.on('update-not-available', (info) => {
+      this.state = {
+        ...this.state,
+        updateEngine: 'electron-updater',
+        status: 'up-to-date',
+        latestVersion: normalizeVersion(info.version),
+        hasUpdate: false,
+        publishedAt: info.releaseDate,
+        sourceLabel: 'electron-updater',
+        manifestUrl: getElectronUpdaterFeedUrl(),
+        downloadProgress: undefined,
+        downloadedFile: undefined,
+        error: undefined,
+      };
+      this.emit();
+    });
+    autoUpdater.on('download-progress', (info) => {
+      this.state = {
+        ...this.state,
+        updateEngine: 'electron-updater',
+        status: 'downloading',
+        hasUpdate: true,
+        downloadProgress: Math.max(0, Math.min(100, info.percent)),
+        error: undefined,
+      };
+      this.emit();
+    });
+    autoUpdater.on('update-downloaded', (event) => {
+      this.state = {
+        ...this.state,
+        updateEngine: 'electron-updater',
+        status: 'downloaded',
+        latestVersion: normalizeVersion(event.version),
+        hasUpdate: true,
+        publishedAt: event.releaseDate,
+        sourceLabel: 'electron-updater',
+        manifestUrl: getElectronUpdaterFeedUrl(),
+        downloadedFile: event.downloadedFile,
+        downloadProgress: 100,
+        error: undefined,
+      };
+      this.emit();
+    });
+    autoUpdater.on('error', (error) => {
+      this.updaterDownloadPromise = null;
+      if (this.state.status === 'checking') return;
+      this.state = {
+        ...this.state,
+        updateEngine: 'electron-updater',
+        status: 'error',
+        hasUpdate: false,
+        error: errorMessage(error),
+      };
+      this.emit();
+    });
+  }
+
+  private configureElectronUpdaterFeed(): void {
+    autoUpdater.forceDevUpdateConfig = !app.isPackaged && process.env.CONTENT_STUDIO_ENABLE_DEV_UPDATE_CHECK === '1';
+    autoUpdater.setFeedURL({
+      provider: 'generic',
+      url: getElectronUpdaterFeedUrl(),
+      channel: normalizeText(process.env.CONTENT_STUDIO_ELECTRON_UPDATE_CHANNEL) || 'latest',
+    });
+  }
+
+  private async runElectronUpdaterCheck(checkedAt: string): Promise<AutoUpdateState> {
+    this.configureElectronUpdaterFeed();
+    const result = await autoUpdater.checkForUpdates();
+    if (!result) throw new Error('当前运行环境未启用 electron-updater。');
+
+    const info = result.updateInfo;
+    await this.settings.setLastUpdateCheckAt(checkedAt);
+    this.state = {
+      ...this.state,
+      enabled: this.state.enabled,
+      status: result.isUpdateAvailable ? 'update-available' : 'up-to-date',
+      currentVersion: app.getVersion(),
+      latestVersion: normalizeVersion(info.version),
+      hasUpdate: result.isUpdateAvailable,
+      updateEngine: 'electron-updater',
+      checkedAt,
+      lastAutoCheckAt: checkedAt,
+      publishedAt: info.releaseDate,
+      sourceLabel: 'electron-updater',
+      manifestUrl: getElectronUpdaterFeedUrl(),
+      asset: result.isUpdateAvailable ? assetFromUpdateInfo(info) : undefined,
+      downloadUrl: undefined,
+      downloadProgress: undefined,
+      downloadedFile: undefined,
+      error: undefined,
+    };
+    this.emit();
+    return this.snapshot();
+  }
+
+  private async runManifestCheck(checkedAt: string): Promise<AutoUpdateState> {
+    const source = await loadLatestSource();
+    const latestVersion = normalizeVersion(source.payload.version);
+    if (!latestVersion) throw new Error('更新清单缺少版本号。');
+
+    const assets = (source.payload.assets ?? [])
+      .map((asset) => toAsset(asset, { allowGitHubDownloads: source.allowGitHubDownloads }))
+      .filter((asset): asset is AutoUpdateAsset => Boolean(asset));
+    const platformAsset = selectCurrentAsset(assets);
+    const releaseUrl = source.allowGitHubDownloads ? safeHttpUrl : safeDownloadUrl;
+    const releaseNotesUrl = releaseUrl(source.payload.releaseNotesUrl)
+      || releaseUrl(source.payload.releasePageUrl)
+      || safeHttpUrl(source.manifestUrl);
+    const hasUpdate = isNewerVersion(latestVersion, app.getVersion());
+    const downloadUrl = platformAsset?.url
+      || (assets.length === 0 ? releaseUrl(source.payload.packageUrl) : undefined);
+
+    await this.settings.setLastUpdateCheckAt(checkedAt);
+    this.state = {
+      enabled: this.state.enabled,
+      status: hasUpdate ? 'update-available' : 'up-to-date',
+      currentVersion: app.getVersion(),
+      latestVersion,
+      hasUpdate,
+      updateEngine: 'manifest',
+      checkedAt,
+      lastAutoCheckAt: checkedAt,
+      publishedAt: source.payload.publishedAt || source.payload.updatedAt,
+      channel: source.payload.channel,
+      sourceLabel: source.sourceLabel,
+      manifestUrl: source.manifestUrl,
+      releaseNotesUrl,
+      downloadUrl,
+      asset: platformAsset,
+      downloadProgress: undefined,
+      downloadedFile: undefined,
+      error: undefined,
+    };
+    this.emit();
+    return this.snapshot();
+  }
+
+  private async downloadElectronUpdate(): Promise<UpdateActionResult> {
+    if (this.updaterDownloadPromise) return { ok: true };
+    this.state = {
+      ...this.state,
+      updateEngine: 'electron-updater',
+      status: 'downloading',
+      hasUpdate: true,
+      downloadProgress: 0,
+      error: undefined,
+    };
+    this.emit();
+
+    this.updaterDownloadPromise = autoUpdater.downloadUpdate()
+      .finally(() => {
+        this.updaterDownloadPromise = null;
+      });
+
+    try {
+      const files = await this.updaterDownloadPromise;
+      const downloadedFile = files[0] || this.state.downloadedFile;
+      this.state = {
+        ...this.state,
+        updateEngine: 'electron-updater',
+        status: 'downloaded',
+        hasUpdate: true,
+        downloadedFile,
+        downloadProgress: 100,
+        error: undefined,
+      };
+      this.emit();
+      return { ok: true };
+    } catch (error) {
+      this.state = {
+        ...this.state,
+        updateEngine: 'electron-updater',
+        status: 'error',
+        hasUpdate: false,
+        error: errorMessage(error),
+      };
+      this.emit();
+      return { ok: false, error: errorMessage(error) };
+    }
   }
 
   private async openExternalUrl(value: string | undefined): Promise<UpdateActionResult> {

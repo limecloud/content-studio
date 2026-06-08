@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
+  AgentPromptSession,
   BuguAuthState,
   GenerationLogEntry,
   MediaGenerationResult,
@@ -8,10 +9,12 @@ import type {
   OemPublicMaterial,
   OemPublicSiteConfig,
   OemSiteConfigRequest,
+  PromptDraftPurpose,
 } from "../../../../shared/types";
 import { statusLabel } from "../../app/formatters";
 import rawDressingkitImageShared from "../../data/dressingkit-ai-image-shared.json";
 import rawDressingkitMaterials from "../../data/dressingkit-materials.json";
+import { AgentSessionPanel, type AgentActionResolver, type AgentExecutionStep } from "../agent/AgentSessionPanel";
 import { DetailDialog } from "../DetailDialog";
 
 type ShowcaseCategoryId = "marketing" | "product-design" | "production";
@@ -25,6 +28,7 @@ type PromptListKind = "all" | "default" | "saved";
 type PromptListFormMode = "create" | "edit" | null;
 
 const PROMPT_TEMPLATE_STORAGE_KEY = "buguai:dressingkit-image-prompt-templates";
+const IMAGE_SHOWCASE_AGENT_SOURCE = "AI 图片展示提示词助手";
 
 interface ImageShowcaseModuleProps {
   busy: boolean;
@@ -37,10 +41,27 @@ interface ImageShowcaseModuleProps {
   mediaResult: MediaGenerationResult | null;
   authState: BuguAuthState | null;
   logs: GenerationLogEntry[];
+  agentPromptSessions: AgentPromptSession[];
+  activeAgentPromptSessionId: string;
+  textModel?: string;
   onSelectProductImages: () => void;
   onSelectReferenceImages: () => void;
   onRemoveProductImageRef: (ref: string) => void;
   onRemoveReferenceImageRef: (ref: string) => void;
+  onSelectAgentSession: (sessionId: string) => void;
+  onStartAgentSession: (input: {
+    title?: string;
+    purpose: PromptDraftPurpose;
+    userIntent: string;
+    inputSourceIds: string[];
+    textModel?: string;
+  }) => void;
+  onContinueAgentSession: (input: {
+    sessionId: string;
+    message: string;
+    textModel?: string;
+  }) => void;
+  onResolveAgentAction?: AgentActionResolver;
   onUsePromptInImage: (input: ShowcaseImageHandoff) => void;
   onStartPartialRetouch: (input: ShowcaseImageHandoff & { outputRefs: string[]; sourceLogId?: string; sourceTitle?: string }) => void;
   onClearResult: () => void;
@@ -161,6 +182,14 @@ interface HistoryEntry {
   logId?: string;
   source?: "local" | "global";
 }
+
+const AGENT_SESSION_STATUS_LABELS: Record<AgentPromptSession["status"], string> = {
+  active: "协作中",
+  "waiting-user": "待补充",
+  "draft-created": "已生成草稿",
+  blocked: "待配置",
+  closed: "已关闭",
+};
 
 type ShowcaseUploadRole = "product" | "reference";
 
@@ -1863,10 +1892,17 @@ export function ImageShowcaseModule({
   mediaResult,
   authState,
   logs,
+  agentPromptSessions,
+  activeAgentPromptSessionId,
+  textModel,
   onSelectProductImages,
   onSelectReferenceImages,
   onRemoveProductImageRef,
   onRemoveReferenceImageRef,
+  onSelectAgentSession,
+  onStartAgentSession,
+  onContinueAgentSession,
+  onResolveAgentAction,
   onUsePromptInImage,
   onStartPartialRetouch,
   onClearResult,
@@ -1913,6 +1949,7 @@ export function ImageShowcaseModule({
   const [assistantTab, setAssistantTab] = useState<PromptAssistantTab>("text");
   const [assistantInput, setAssistantInput] = useState("");
   const [assistantResult, setAssistantResult] = useState("");
+  const [assistantAgentMessage, setAssistantAgentMessage] = useState("请结合当前功能、素材和参数，继续收紧提示词并指出素材不足的风险。");
   const [assistantTemplatesOpen, setAssistantTemplatesOpen] = useState(false);
   const [templateDraftTitle, setTemplateDraftTitle] = useState("");
   const [editingTemplateId, setEditingTemplateId] = useState("");
@@ -2164,6 +2201,44 @@ export function ImageShowcaseModule({
     () => mergeHistoryEntries(historyEntries, logs),
     [historyEntries, logs],
   );
+  const relatedAgentSessions = useMemo(
+    () => agentPromptSessions.filter((session) =>
+      session.purpose === "image" &&
+      (session.userIntent.includes(IMAGE_SHOWCASE_AGENT_SOURCE) || session.title.includes("图片提示词助手")),
+    ),
+    [agentPromptSessions],
+  );
+  const activeAgentSession =
+    relatedAgentSessions.find((session) => session.id === activeAgentPromptSessionId) ??
+    relatedAgentSessions.find((session) => session.title.includes(activeFeature.title)) ??
+    relatedAgentSessions[0];
+  const canRunPromptAssistantAgent = workspaceReady && !busy && assistantAgentMessage.trim().length > 0;
+  const promptAssistantAgentSteps: AgentExecutionStep[] = [
+    {
+      key: "context",
+      title: "读取素材",
+      detail: assistantImageRefs.length ? `${assistantImageRefs.length} 张图片` : "未上传图片",
+      state: assistantImageRefs.length ? "done" : "idle",
+    },
+    {
+      key: "feature",
+      title: "确认功能",
+      detail: `${activeFeature.title} · ${VIEWPOINT_LABELS[activeViewpoint]}`,
+      state: activeFeature ? "done" : "blocked",
+    },
+    {
+      key: "dialog",
+      title: "协作打磨",
+      detail: activeAgentSession ? `${activeAgentSession.messages.length} 条消息` : "待开始",
+      state: busy && activeDialog === "prompt-assistant" ? "active" : activeAgentSession ? "done" : "idle",
+    },
+    {
+      key: "result",
+      title: "确认提示词",
+      detail: assistantResult.trim() ? "已有可编辑结果" : "待确认",
+      state: assistantResult.trim() ? "active" : "idle",
+    },
+  ];
 
   useEffect(() => {
     onClearResult();
@@ -2550,6 +2625,179 @@ export function ImageShowcaseModule({
       });
     }
     setActiveDialog(null);
+  }
+
+  function buildPromptAssistantAgentIntent(message: string): string {
+    const draftPrompt = (assistantResult || assistantInput || activePrompt).trim();
+    const imageRefs = assistantImageRefs.length
+      ? assistantImageRefs.map((ref, index) => `- 图${index + 1}：${ref}`).join("\n")
+      : "- 未上传图片";
+    return [
+      `来源页面：${IMAGE_SHOWCASE_AGENT_SOURCE}`,
+      `任务：围绕「${activeFeature.title}」打磨可交付图片提示词。`,
+      "",
+      "用户本轮要求：",
+      message.trim(),
+      "",
+      "当前业务上下文：",
+      `- 行业：${selectedIndustry}`,
+      `- 视角：${VIEWPOINT_LABELS[activeViewpoint]}`,
+      `- 输出数量：${imageCount}`,
+      `- 比例：${ratio}`,
+      `- 质量：${quality}`,
+      showThresholdControl ? `- 阈值：${threshold}` : "",
+      showColorPicker ? `- 目标颜色：${colorValue}` : "",
+      selectedCase ? `- 参考案例：${selectedCase.title} / ${selectedCase.industry}` : "",
+      "",
+      "当前素材引用：",
+      imageRefs,
+      "",
+      "当前提示词草稿：",
+      draftPrompt || "暂无提示词草稿。",
+      "",
+      "输出要求：如果素材不足，先明确需要补充的图片或角度；如果可以生成，输出完整中文提示词，并保留主体、材质、构图、光线、背景和商业用途边界。",
+    ].filter(Boolean).join("\n");
+  }
+
+  function startPromptAssistantAgent(): void {
+    if (!canRunPromptAssistantAgent) return;
+    onStartAgentSession({
+      title: `图片提示词助手 · ${activeFeature.title}`,
+      purpose: "image",
+      userIntent: buildPromptAssistantAgentIntent(assistantAgentMessage),
+      inputSourceIds: [],
+      textModel,
+    });
+  }
+
+  function continuePromptAssistantAgent(): void {
+    if (!activeAgentSession || !canRunPromptAssistantAgent) return;
+    onContinueAgentSession({
+      sessionId: activeAgentSession.id,
+      message: [
+        assistantAgentMessage.trim(),
+        "",
+        "当前页面上下文仍以以下提示词和素材为准：",
+        (assistantResult || assistantInput || activePrompt).trim() || "暂无提示词草稿。",
+        "",
+        `素材数量：${assistantImageRefs.length} 张；功能：${activeFeature.title}；视角：${VIEWPOINT_LABELS[activeViewpoint]}。`,
+      ].join("\n"),
+      textModel,
+    });
+  }
+
+  function renderPromptAssistantAgentPanel(): ReactNode {
+    const artifactPrompt = (assistantResult || assistantInput || activePrompt).trim();
+    const context = (
+      <>
+        <div className="agent-turn-head">
+          <strong>{activeFeature.title}</strong>
+          <small>{assistantImageRefs.length} 张图片 / {VIEWPOINT_LABELS[activeViewpoint]} / {ratio}</small>
+        </div>
+        <div className="prompt-agent-context-note">
+          {selectedCase ? `参考案例：${selectedCase.title}` : "未绑定参考案例"} · {textModel ? `模型：${textModel}` : "使用全局文字模型"}
+        </div>
+      </>
+    );
+    const artifact = artifactPrompt ? (
+      <>
+        <div className="agent-turn-head">
+          <strong>当前提示词</strong>
+          <small>{assistantResult.trim() ? "助手结果" : "页面草稿"}</small>
+        </div>
+        <div className="agent-claw-draft-editor">
+          <label>
+            <span>输入提示词</span>
+            <textarea
+              value={assistantInput}
+              onChange={(event) => setAssistantInput(event.target.value)}
+              placeholder="请输入要扩写或优化的提示词。"
+            />
+          </label>
+          <label>
+            <span>生成结果</span>
+            <textarea
+              value={assistantResult}
+              onChange={(event) => setAssistantResult(event.target.value)}
+              placeholder="开始协作或本地扩写后，这里会出现可编辑结果。"
+            />
+          </label>
+        </div>
+        <details className="agent-turn-details">
+          <summary>查看提示词内容</summary>
+          <pre>{artifactPrompt}</pre>
+        </details>
+      </>
+    ) : null;
+    const footer = (
+      <>
+        <label className="prompt-session-adjustment">
+          <span>{activeAgentSession ? "继续调整" : "这次任务"}</span>
+          <textarea
+            value={assistantAgentMessage}
+            onChange={(event) => setAssistantAgentMessage(event.target.value)}
+          />
+        </label>
+        <div className="scene-agent-turn-actions">
+          <button
+            type="button"
+            className="primary small"
+            disabled={!canRunPromptAssistantAgent}
+            onClick={activeAgentSession ? continuePromptAssistantAgent : startPromptAssistantAgent}
+          >
+            {activeAgentSession ? "继续协作" : "开始协作"}
+          </button>
+          <button type="button" className="ghost small" onClick={generateAssistantPrompt} disabled={busy}>
+            本地扩写
+          </button>
+          <button type="button" className="ghost small" onClick={openPromptListDialog}>
+            模板列表
+          </button>
+          <button
+            type="button"
+            className="ghost small"
+            onClick={() => savePromptTemplate(
+              assistantResult || assistantInput || activePrompt,
+              templateDraftTitle,
+              editingTemplateId,
+              assistantImageRefs.length ? assistantImageRefs : undefined,
+            )}
+            disabled={!artifactPrompt}
+          >
+            保存模板
+          </button>
+          <button type="button" className="ghost small" onClick={confirmAssistantPrompt} disabled={!artifactPrompt}>
+            应用提示词
+          </button>
+        </div>
+      </>
+    );
+    return (
+      <div className="ai-assistant-agent-panel">
+        <AgentSessionPanel
+          variant="claw"
+          eyebrow="提示词助手"
+          title={activeAgentSession?.title ?? `图片提示词协作 · ${activeFeature.title}`}
+          session={activeAgentSession}
+          sessions={relatedAgentSessions}
+          statusLabel={activeAgentSession ? AGENT_SESSION_STATUS_LABELS[activeAgentSession.status] : "待开始"}
+          steps={activeAgentSession || busy ? promptAssistantAgentSteps : []}
+          runningLabel={busy && activeDialog === "prompt-assistant" ? "正在处理图片提示词。" : undefined}
+          transcriptLabel={activeFeature.title}
+          context={context}
+          artifact={artifact}
+          footer={footer}
+          empty={(
+            <>
+              <strong>当前提示词尚未进入协作</strong>
+              <span>开始协作后，会在这里记录多轮消息、执行事实和生成草稿。</span>
+            </>
+          )}
+          onSelectSession={onSelectAgentSession}
+          onResolveAction={onResolveAgentAction}
+        />
+      </div>
+    );
   }
 
   function applyPromptTemplate(viewpoint: Viewpoint): void {
@@ -3064,7 +3312,7 @@ export function ImageShowcaseModule({
         {activeDialog === "prompt-assistant" ? (
           <div className="ai-assistant-overlay" role="presentation" onClick={() => setActiveDialog(null)}>
             <section
-              className={assistantTemplatesOpen ? "ai-assistant-dialog has-templates" : "ai-assistant-dialog"}
+              className={assistantTemplatesOpen ? "ai-assistant-dialog agent-first has-templates" : "ai-assistant-dialog agent-first"}
               role="dialog"
               aria-modal="true"
               aria-label="提示词助手"
@@ -3241,6 +3489,7 @@ export function ImageShowcaseModule({
                   </aside>
                 ) : null}
               </div>
+              {renderPromptAssistantAgentPanel()}
               <footer className="ai-assistant-footer">
                 <button type="button" onClick={() => setActiveDialog(null)}>取消</button>
                 <button type="button" className="primary" onClick={confirmAssistantPrompt}>确定</button>
@@ -3997,7 +4246,7 @@ export function ImageShowcaseModule({
       {activeDialog === "prompt-assistant" ? (
         <div className="ai-assistant-overlay" role="presentation" onClick={() => setActiveDialog(null)}>
           <section
-            className={assistantTemplatesOpen ? "ai-assistant-dialog has-templates" : "ai-assistant-dialog"}
+            className={assistantTemplatesOpen ? "ai-assistant-dialog agent-first has-templates" : "ai-assistant-dialog agent-first"}
             role="dialog"
             aria-modal="true"
             aria-label="提示词助手"
@@ -4174,6 +4423,7 @@ export function ImageShowcaseModule({
                 </aside>
               ) : null}
             </div>
+            {renderPromptAssistantAgentPanel()}
             <footer className="ai-assistant-footer">
               <button type="button" onClick={() => setActiveDialog(null)}>取消</button>
               <button type="button" className="primary" onClick={confirmAssistantPrompt}>确定</button>

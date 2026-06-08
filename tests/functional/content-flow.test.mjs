@@ -219,14 +219,36 @@ async function appServerSidecarAvailable() {
 async function writeFakeAppServerBinary(targetPath, events) {
   await writeFile(targetPath, `#!/usr/bin/env node
 import { createInterface } from 'node:readline';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const capturePath = process.env.FAKE_APP_SERVER_CAPTURE_PATH;
 if (!capturePath) {
   throw new Error('missing fake app-server capture path');
 }
-const turnEvents = ${JSON.stringify(events)};
-const captures = { initialize: null, sessionStart: null, turnStart: null };
+const configuredEvents = ${JSON.stringify(events)};
+const eventsByCapability = Array.isArray(configuredEvents) ? { default: configuredEvents } : configuredEvents;
+function readPreviousCaptures() {
+  if (!existsSync(capturePath)) return {};
+  try {
+    return JSON.parse(readFileSync(capturePath, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+const previousCaptures = readPreviousCaptures();
+const captures = {
+  initialize: null,
+  sessionStart: null,
+  turnStart: null,
+  sessionStarts: Array.isArray(previousCaptures.sessionStarts) ? previousCaptures.sessionStarts : [],
+  turnStarts: Array.isArray(previousCaptures.turnStarts) ? previousCaptures.turnStarts : [],
+};
+let lastTurnEvents = [];
+let lastTurnArtifacts = [];
+
+function eventsForCapability(capabilityId) {
+  return eventsByCapability[capabilityId] || eventsByCapability.default || [];
+}
 
 function writeCapture() {
   writeFileSync(capturePath, JSON.stringify(captures, null, 2));
@@ -254,6 +276,7 @@ lines.on('line', (line) => {
   if (request.method === 'initialized') return;
   if (request.method === 'agentSession/start') {
     captures.sessionStart = request.params;
+    captures.sessionStarts.push(request.params);
     writeCapture();
     respond({
       id: request.id,
@@ -271,6 +294,11 @@ lines.on('line', (line) => {
   }
   if (request.method === 'agentSession/turn/start') {
     captures.turnStart = request.params;
+    captures.turnStarts.push(request.params);
+    lastTurnEvents = eventsForCapability(request.params?.runtimeOptions?.capabilityId);
+    lastTurnArtifacts = lastTurnEvents
+      .filter((event) => event?.type === 'artifact.snapshot' && event.payload)
+      .map((event) => event.payload);
     writeCapture();
     respond({
       id: request.id,
@@ -282,13 +310,21 @@ lines.on('line', (line) => {
         },
       },
     });
-    for (const event of turnEvents) {
+    for (const event of lastTurnEvents) {
       respond({ method: 'agentSession/event', params: { event } });
     }
     return;
   }
   if (request.method === 'agentSession/turn/cancel') {
     respond({ id: request.id, result: {} });
+    return;
+  }
+  if (request.method === 'artifact/read') {
+    respond({ id: request.id, result: { artifacts: lastTurnArtifacts } });
+    return;
+  }
+  if (request.method === 'evidence/export') {
+    respond({ id: request.id, result: { events: lastTurnEvents, artifacts: lastTurnArtifacts } });
     return;
   }
   respond({ id: request.id, result: {} });
@@ -782,6 +818,22 @@ test('App Server JSON-RPC client sends business object refs and treats backend f
     try {
       await writeFakeAppServerBinary(appServerPath, [
         { type: 'tool.started', payload: { toolName: 'content.fetch' } },
+        {
+          type: 'action.required',
+          payload: {
+            actionId: 'action-json-rpc-1',
+            actionKind: 'add-input-source',
+            targetModule: 'knowledge-inputs',
+            message: '需要补充输入源',
+          },
+        },
+        {
+          type: 'evidence.changed',
+          payload: {
+            evidenceRefs: ['evidence-json-rpc-1'],
+            summary: '已记录运行证据',
+          },
+        },
         { type: 'tool.failed', payload: { message: 'backend tool failed for test' } },
       ]);
 
@@ -811,6 +863,18 @@ test('App Server JSON-RPC client sends business object refs and treats backend f
 
         assert.ok(taskId);
         assert.ok(events.some((event) => event.type === 'tool' && event.name === 'tool.started'));
+        assert.ok(events.some((event) =>
+          event.type === 'action' &&
+          event.actionId === 'action-json-rpc-1' &&
+          event.actionKind === 'add-input-source' &&
+          event.targetModule === 'knowledge-inputs' &&
+          /补充输入源/.test(event.message)
+        ));
+        assert.ok(events.some((event) =>
+          event.type === 'evidence' &&
+          event.evidenceRefs?.includes('evidence-json-rpc-1') &&
+          event.summary === '已记录运行证据'
+        ));
         assert.ok(events.some((event) =>
           event.type === 'error' && /backend tool failed for test/.test(event.message)
         ));
@@ -8128,6 +8192,73 @@ test('对话会话首轮和续写都只记录 Lime Agent Server runtime 事实',
   });
 });
 
+test('对话会话会把 App Server artifact snapshot 收口成本地 Prompt 草稿产物', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const text = new FakeTextGenerationService();
+    const promptAgent = new FakeAppServerPromptAgentService();
+    const originalGeneratePromptDraft = promptAgent.generatePromptDraft.bind(promptAgent);
+    promptAgent.generatePromptDraft = async (input) => {
+      const result = await originalGeneratePromptDraft(input);
+      return {
+        ...result,
+        providerEvents: [
+          ...(result.providerEvents ?? []),
+          {
+            eventClass: 'artifact.changed',
+            kind: 'draft',
+            status: 'completed',
+            phase: 'completed',
+            title: 'Lime Agent Server artifact.snapshot',
+            detail: '上游 Prompt artifact 快照',
+            model: result.model,
+            payload: {
+              runtime: 'lime-agent-server',
+              eventType: 'artifact.snapshot',
+              artifactRef: 'app-server:prompt-draft:snapshot',
+            },
+          },
+        ],
+      };
+    };
+    const inputSources = new InputSourceStore();
+    const promptDrafts = new PromptDraftStore(inputSources, text);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent);
+
+    const source = await inputSources.register({
+      workspacePath,
+      kind: 'manual-note',
+      purpose: 'brand-kb',
+      title: '便携条包知识库',
+      text: '产品事实：便携条包。场景：早餐后、办公室抽屉。合规：不承诺治疗。',
+      tags: ['brand-kb'],
+    });
+
+    const started = await sessions.start({
+      workspacePath,
+      title: '便携条包 Prompt 会话',
+      purpose: 'image',
+      userIntent: '生成小红书真实生活场景图片 Prompt。',
+      inputSourceIds: [source.id],
+      textModel: 'gpt-compatible',
+    });
+
+    const artifactEvents = started.session.executionEvents?.filter((event) => event.eventClass === 'artifact.changed') ?? [];
+    assert.equal(artifactEvents.length, 1);
+    assert.equal(artifactEvents[0].owner, 'artifact');
+    assert.deepEqual(artifactEvents[0].artifactRefs, [`prompt-draft:${started.draft.id}`]);
+
+    const readModel = projectAgentRuntimeReadModel(started.session);
+    const visibleArtifactEvents = readModel.visibleEvents.filter((event) => event.source.eventClass === 'artifact.changed');
+    assert.equal(visibleArtifactEvents.length, 1);
+    assert.deepEqual(readModel.artifactRefs, [`prompt-draft:${started.draft.id}`]);
+
+    const providerEvents = started.session.executionEvents
+      ?.find((event) => event.eventClass === 'model.completed')
+      ?.payload?.providerEvents;
+    assert.equal(providerEvents?.some((event) => event.eventClass === 'artifact.changed'), true);
+  });
+});
+
 test('Lime Agent Server 不可用时保留 runtime 失败事实并要求配置模型', async () => {
   await withWorkspace(async (workspacePath) => {
     const text = new FakeTextGenerationService();
@@ -12575,6 +12706,90 @@ test('文字模型支持 Anthropic 兼容 HTTP 网关生成 JSON', async () => {
   });
 });
 
+test('文字模型运行时通过 Lime App Server capability 生成 JSON', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-text-app-server-'));
+    const appServerPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+    const capturePath = join(tempDir, 'capture.json');
+    try {
+      await writeFakeAppServerBinary(appServerPath, [
+        {
+          type: 'message.delta',
+          payload: {
+            text: '{"ok":true,"name":"App Server JSON"}',
+            model: 'app-server-text-model',
+          },
+        },
+        {
+          type: 'artifact.snapshot',
+          payload: {
+            artifactId: 'text-json-artifact',
+            artifactRef: 'text-json-artifact',
+            title: 'Text JSON Artifact',
+            kind: 'json',
+            content: '{"ok":true,"name":"App Server JSON"}',
+            model: 'app-server-text-model',
+          },
+        },
+        {
+          type: 'turn.completed',
+          payload: {
+            summary: '文字 JSON 已生成',
+            model: 'app-server-text-model',
+          },
+        },
+      ]);
+
+      const modelConfig = {
+        async readView() {
+          return {
+            textProtocol: 'openai-chat',
+            textApiEndpoint: 'http://127.0.0.1:65535',
+            textModel: 'app-server-text-model',
+          };
+        },
+        async getTextApiKey() { return 'app-server-text-key'; },
+      };
+
+      await withEnv({
+        APP_SERVER_RESOURCES_DIR: undefined,
+        CONTENT_STUDIO_RESOURCES_DIR: undefined,
+        APP_SERVER_BIN: appServerPath,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        FAKE_APP_SERVER_CAPTURE_PATH: capturePath,
+      }, async () => {
+        const appServer = new AppServerSidecarService();
+        const text = new TextGenerationService(modelConfig, appServer);
+        const result = await text.generateJson({
+          workspacePath,
+          systemPrompt: '只输出 JSON。',
+          prompt: '{"task":"app_server_text"}',
+          schema: { type: 'object', required: ['ok', 'name'], properties: { ok: { type: 'boolean' }, name: { type: 'string' } } },
+        });
+
+        assert.deepEqual(result.value, { ok: true, name: 'App Server JSON' });
+        assert.equal(result.model, 'app-server-text-model');
+        assert.equal(result.protocol, 'openai-chat');
+        assert.equal(result.providerEvents?.some((event) => event.payload?.runtime === 'lime-agent-server'), true);
+        assert.equal(result.providerEvents?.some((event) => event.payload?.capabilityId === 'content.text.generate'), true);
+
+        const captured = JSON.parse(await readFile(capturePath, 'utf8'));
+        assert.equal(captured.turnStart.runtimeOptions.capabilityId, 'content.text.generate');
+        assert.equal(captured.turnStart.input.text, '{"task":"app_server_text"}');
+        assert.equal(captured.turnStart.input.systemPrompt, '只输出 JSON。');
+        assert.equal(captured.turnStart.input.responseKind, 'json');
+        assert.deepEqual(captured.turnStart.runtimeOptions.metadata.selectedSkillSlugs, []);
+        assert.equal(captured.turnStart.runtimeOptions.metadata.operation, 'generateJson');
+        assert.equal(captured.turnStart.runtimeOptions.metadata.textModel, 'app-server-text-model');
+        assert.equal(captured.turnStart.runtimeOptions.metadata.textProtocol, 'openai-chat');
+        assert.equal(captured.sessionStart.businessObjectRef.kind, 'textGeneration');
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
 test('文字模型支持 OpenAI Chat Completions 兼容协议生成 JSON', async () => {
   await withWorkspace(async (workspacePath) => {
     let capturedRequest;
@@ -12771,6 +12986,179 @@ test('媒体 Provider 可以调用真实 HTTP 适配器并沉淀图片/视频产
       assert.equal(videoLog.output.costEstimate.estimatedCost, 15);
     } finally {
       await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test('媒体 Provider 运行时通过 Lime App Server capability 生成图片和视频', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-media-app-server-'));
+    const appServerPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+    const capturePath = join(tempDir, 'capture.json');
+    const imageAssetPath = join(workspacePath, 'app-server-image.png');
+    const videoAssetPath = join(workspacePath, 'app-server-video.mp4');
+    try {
+      await writeFile(imageAssetPath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
+      await writeFile(videoAssetPath, TEST_VIDEO);
+      await writeFakeAppServerBinary(appServerPath, {
+        'content.image.generate': [
+          {
+            type: 'message.delta',
+            payload: {
+              status: 'succeeded',
+              message: 'App Server 图片生成完成',
+              assetRefs: [imageAssetPath],
+              capabilityId: 'content.image.generate',
+              model: 'app-server-image-model',
+            },
+          },
+          {
+            type: 'artifact.snapshot',
+            payload: {
+              artifactId: 'app-server-image-result',
+              artifactRef: 'app-server-image-result',
+              title: 'Image Result',
+              kind: 'json',
+              status: 'succeeded',
+              message: 'App Server 图片生成完成',
+              assetRefs: [imageAssetPath],
+              capabilityId: 'content.image.generate',
+              model: 'app-server-image-model',
+            },
+          },
+          {
+            type: 'turn.completed',
+            payload: {
+              status: 'succeeded',
+              summary: 'App Server 图片生成完成',
+              assetRefs: [imageAssetPath],
+              capabilityId: 'content.image.generate',
+              model: 'app-server-image-model',
+            },
+          },
+        ],
+        'content.video.generate': [
+          {
+            type: 'message.delta',
+            payload: {
+              status: 'succeeded',
+              message: 'App Server 视频生成完成',
+              assetRefs: [videoAssetPath],
+              billing: { currency: 'CNY', durationSeconds: 8, unit: 'second', unitPrice: 2, estimatedCost: 16, source: 'provider-response' },
+              capabilityId: 'content.video.generate',
+              model: 'app-server-video-model',
+            },
+          },
+          {
+            type: 'artifact.snapshot',
+            payload: {
+              artifactId: 'app-server-video-result',
+              artifactRef: 'app-server-video-result',
+              title: 'Video Result',
+              kind: 'json',
+              status: 'succeeded',
+              message: 'App Server 视频生成完成',
+              assetRefs: [videoAssetPath],
+              billing: { currency: 'CNY', durationSeconds: 8, unit: 'second', unitPrice: 2, estimatedCost: 16, source: 'provider-response' },
+              capabilityId: 'content.video.generate',
+              model: 'app-server-video-model',
+            },
+          },
+          {
+            type: 'turn.completed',
+            payload: {
+              status: 'succeeded',
+              summary: 'App Server 视频生成完成',
+              assetRefs: [videoAssetPath],
+              billing: { currency: 'CNY', durationSeconds: 8, unit: 'second', unitPrice: 2, estimatedCost: 16, source: 'provider-response' },
+              capabilityId: 'content.video.generate',
+              model: 'app-server-video-model',
+            },
+          },
+        ],
+      });
+
+      const logs = new GenerationLogStore();
+      const modelConfig = {
+        async readView() {
+          return {
+            imageProvider: 'openai-responses',
+            imageProtocol: 'openai-responses',
+            imageApiEndpoint: 'http://127.0.0.1:65535',
+            imageOuterModel: 'app-server-image-outer-model',
+            imageApiKeyStatus: 'available',
+            imageModels: ['app-server-image-model'],
+            videoProvider: 'generic-http',
+            videoApiEndpoint: 'http://127.0.0.1:65535/video',
+            videoApiKeyStatus: 'available',
+            videoModel: 'app-server-video-model',
+          };
+        },
+        async getImageApiKey() { return 'app-server-image-key'; },
+        async getVideoApiKey() { return 'app-server-video-key'; },
+      };
+
+      await withEnv({
+        APP_SERVER_RESOURCES_DIR: undefined,
+        CONTENT_STUDIO_RESOURCES_DIR: undefined,
+        APP_SERVER_BIN: appServerPath,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        FAKE_APP_SERVER_CAPTURE_PATH: capturePath,
+      }, async () => {
+        const provider = new MediaProvider(modelConfig, logs, new AppServerSidecarService());
+        const image = await provider.generateImage({
+          workspacePath,
+          productImageRefs: [],
+          referenceImageRefs: [],
+          prompt: '通过 App Server 生成图片',
+          promptMode: 'preset',
+          generationMode: 'smart',
+          template: '场景图',
+          watermark: false,
+          citations: [citation],
+          selectedSkillSlugs: ['ecommerce-image-prompt'],
+          params: { textModel: 'fake', imageModel: 'app-server-image-model', videoModel: 'app-server-video-model', runMode: 'single', count: 1, aspectRatio: '4:5', resolution: '1k', quality: 'low' },
+        });
+        const video = await provider.generateVideo({
+          workspacePath,
+          imageAssetRefs: image.assetRefs,
+          videoAssetRefs: [],
+          prompt: '通过 App Server 生成视频',
+          script: '测试脚本',
+          citations: [citation],
+          selectedSkillSlugs: ['video-script-writer'],
+          params: { videoModel: 'app-server-video-model', aspectRatio: '4:5', durationSeconds: 8 },
+        });
+
+        assert.equal(image.status, 'succeeded');
+        assert.deepEqual(image.assetRefs, [imageAssetPath]);
+        assert.equal(video.status, 'succeeded');
+        assert.deepEqual(video.assetRefs, [videoAssetPath]);
+        assert.equal(video.billing.estimatedCost, 16);
+
+        const storedLogs = await logs.list(workspacePath);
+        const imageLog = storedLogs.find((entry) => entry.kind === 'image');
+        const videoLog = storedLogs.find((entry) => entry.kind === 'video');
+        assert.equal(imageLog.output.runtime, 'lime-agent-server');
+        assert.equal(imageLog.output.capabilityId, 'content.image.generate');
+        assert.equal(videoLog.output.runtime, 'lime-agent-server');
+        assert.equal(videoLog.output.capabilityId, 'content.video.generate');
+
+        const captured = JSON.parse(await readFile(capturePath, 'utf8'));
+        assert.deepEqual(
+          captured.turnStarts.map((turnStart) => turnStart.runtimeOptions.capabilityId),
+          ['content.image.generate', 'content.video.generate'],
+        );
+        assert.match(captured.turnStarts[0].input.text, /图片生成器/);
+        assert.match(captured.turnStarts[0].input.text, /核心提示词：通过 App Server 生成图片/);
+        assert.equal(captured.turnStarts[0].input.request.prompt, '通过 App Server 生成图片');
+        assert.match(captured.turnStarts[0].input.compiledImagePrompt, /图片生成器/);
+        assert.match(captured.turnStarts[0].input.compiledImagePrompt, /核心提示词：通过 App Server 生成图片/);
+        assert.equal(captured.turnStarts[1].input.text, '通过 App Server 生成视频');
+        assert.equal(captured.turnStarts[1].input.request.params.durationSeconds, 8);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
     }
   });
 });

@@ -283,6 +283,77 @@ function snapshotUpdatedEvent(input: {
   });
 }
 
+function payloadRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function payloadString(payload: Record<string, unknown>, rawPayload: Record<string, unknown>, field: string): string | undefined {
+  const value = payload[field] ?? rawPayload[field];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function payloadStringArray(payload: Record<string, unknown>, rawPayload: Record<string, unknown>, field: string): string[] {
+  const value = payload[field] ?? rawPayload[field];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function providerRuntimeFactExecutionEvents(input: {
+  now: string;
+  providerEvents?: TextProviderRuntimeEvent[];
+  common: {
+    threadId: string;
+    turnId: string;
+    taskId: string;
+    runId: string;
+  };
+  stepPrefix: string;
+}): AgentPromptExecutionEvent[] {
+  return (input.providerEvents ?? [])
+    .filter((event) => (
+      event.eventClass === 'action.required' ||
+      event.eventClass === 'action.resolved' ||
+      event.eventClass === 'evidence.changed' ||
+      event.eventClass?.startsWith('tool.')
+    ))
+    .map((event, index) => {
+      const payload = payloadRecord(event.payload);
+      const rawPayload = payloadRecord(payload.rawPayload);
+      const actionId =
+        payloadString(payload, rawPayload, 'actionId') ??
+        (event.eventClass === 'action.required' || event.eventClass === 'action.resolved'
+          ? `action:${input.common.threadId}:app-server:${index}`
+          : undefined);
+      const artifactRef =
+        payloadString(payload, rawPayload, 'artifactRef') ??
+        payloadString(payload, rawPayload, 'artifactId') ??
+        payloadString(payload, rawPayload, 'path');
+      const evidenceRefs = payloadStringArray(payload, rawPayload, 'evidenceRefs');
+      const evidenceRef = payloadString(payload, rawPayload, 'evidenceRef') ?? payloadString(payload, rawPayload, 'evidenceId');
+      return executionEvent({
+        kind: event.kind,
+        status: event.status,
+        eventClass: event.eventClass,
+        owner: event.kind === 'draft' ? 'artifact' : event.kind === 'evidence' ? 'evidence' : 'runtime',
+        phase: event.phase,
+        title: event.title.replace(/^Lime Agent Server\s+/, 'App Server '),
+        detail: event.detail,
+        model: event.model,
+        actionId,
+        artifactRefs: artifactRef ? [artifactRef] : undefined,
+        evidenceRefs: evidenceRefs.length ? evidenceRefs : evidenceRef ? [evidenceRef] : undefined,
+        stepId: `${input.stepPrefix}:${event.eventClass}:${index}`,
+        payload: {
+          ...payload,
+          actionKind: payloadString(payload, rawPayload, 'actionKind'),
+          targetModule: payloadString(payload, rawPayload, 'targetModule'),
+        },
+        createdAt: input.now,
+        ...input.common,
+      });
+    });
+}
+
 function buildStartExecutionEvents(input: {
   now: string;
   selectedSources: InputSourceRecord[];
@@ -538,6 +609,12 @@ function buildStartExecutionEvents(input: {
       createdAt: input.now,
       ...common,
     }),
+    ...providerRuntimeFactExecutionEvents({
+      now: input.now,
+      providerEvents: input.providerEvents,
+      common,
+      stepPrefix: 'app-server:generate-draft',
+    }),
     executionEvent({
       kind: 'draft',
       status: modelStatus === 'blocked' ? 'blocked' : 'completed',
@@ -782,6 +859,12 @@ function buildContinueExecutionEvents(input: {
       },
       createdAt: input.now,
       ...common,
+    }),
+    ...providerRuntimeFactExecutionEvents({
+      now: input.now,
+      providerEvents: input.generated.providerEvents,
+      common,
+      stepPrefix: 'app-server:refine-draft',
     }),
     executionEvent({
       kind: 'draft',

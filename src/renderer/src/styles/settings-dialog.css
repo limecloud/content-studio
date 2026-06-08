@@ -285,6 +285,7 @@
 }
 .tag-green { background: #ECFDF5; color: #10B981; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-style: normal; }
 .tag-orange { background: #FFF7ED; color: #F59E0B; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-style: normal; }
+.tag-muted { background: #F3F4F6; color: #6B7280; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-style: normal; }
 .add-model-btn {
   text-align: left;
   padding: 12px;
@@ -333,6 +334,81 @@
   max-width: 500px;
   color: var(--text-secondary);
   font-size: 12px;
+}
+.model-runtime-strip {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  padding: 12px;
+}
+.model-runtime-head {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  border-right: 1px solid var(--line);
+  padding-right: 12px;
+}
+.model-runtime-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.model-runtime-head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+.model-runtime-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.model-runtime-card {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  padding: 8px 9px;
+  min-width: 0;
+}
+.model-runtime-card.active {
+  border-color: color-mix(in srgb, var(--cyan) 32%, var(--line));
+  background: color-mix(in srgb, var(--cyan) 8%, #ffffff);
+}
+.model-runtime-card span {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+.model-runtime-card code {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  color: #334155;
+  font-family: inherit;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-runtime-card em {
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+.model-runtime-card.current em {
+  background: #ecfdf5;
+  color: #047857;
+}
+.model-runtime-card.pending em {
+  background: #fffbeb;
+  color: #92400e;
 }
 .model-connection-summary {
   display: flex;

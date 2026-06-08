@@ -305,6 +305,20 @@
   color: var(--text-secondary);
   font-size: 12px;
 }
+.update-progress {
+  overflow: hidden;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(57, 87, 69, 0.12);
+}
+.update-progress span {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+  background: #395745;
+  transition: width 0.2s ease;
+}
 .update-actions {
   display: flex;
   justify-content: center;

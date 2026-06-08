@@ -1,4 +1,5 @@
 import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { AgentTimeline } from '@limecloud/agent-runtime-ui';
 import type { ArticleGenerationRequest, ArticleGenerationResult, PlatformDraftRecord } from '../../../../shared/types';
 import { ARTICLE_LENGTH_OPTIONS, ARTICLE_TYPE_OPTIONS } from '../../app/constants';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
@@ -35,6 +36,10 @@ interface ArticleModuleProps {
 }
 
 type ArticlePreviewMode = 'rendered' | 'markdown';
+
+function optionLabel<TValue extends string>(options: Array<{ value: TValue; label: string }>, value: TValue): string {
+  return options.find((option) => option.value === value)?.label ?? value;
+}
 
 function renderInlineMarkdown(text: string): ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
@@ -119,10 +124,44 @@ export function ArticleModule({
   const [draftQuery, setDraftQuery] = useState('');
   const [draftPlatformFilter, setDraftPlatformFilter] = useState('all');
   const isPlatformDraftExport = Boolean(articleExportPath?.replace(/\\/g, '/').includes('/platform-drafts/'));
+  const articleTypeLabel = optionLabel(ARTICLE_TYPE_OPTIONS, articleType);
+  const articleLengthLabel = optionLabel(ARTICLE_LENGTH_OPTIONS, articleLength);
   const renderedArticle = useMemo(
     () => (articleResult ? renderMarkdown(articleResult.markdown) : []),
     [articleResult],
   );
+  const agentMessages = useMemo(() => {
+    const brief = [
+      `平台：${articlePlatform || '未填写'}`,
+      `文章类型：${articleTypeLabel}`,
+      `目标读者：${articleAudience || '未填写'}`,
+      `主题：${articleTopic || '未填写'}`,
+      `口吻：${articleTone || '未填写'}`,
+      `篇幅：${articleLengthLabel}`,
+      articleRequirement ? `补充要求：${articleRequirement}` : '',
+    ].filter(Boolean).join('\n');
+    const messages = [{
+      id: 'article-brief',
+      role: 'user',
+      content: brief,
+      createdAt: new Date(0).toISOString(),
+    }];
+    if (articleResult) {
+      messages.push({
+        id: `article-result:${articleResult.logId}`,
+        role: 'assistant',
+        content: [
+          `已生成 ${articleResult.titleCandidates.length} 个标题候选、${articleResult.outline.length} 条大纲和 ${articleResult.publishCheck.length} 条发布检查。`,
+          '',
+          articleResult.summary,
+          '',
+          articleResult.titleCandidates.map((title, index) => `${index + 1}. ${title}`).join('\n'),
+        ].join('\n'),
+        createdAt: new Date().toISOString(),
+      });
+    }
+    return messages;
+  }, [articleAudience, articleLengthLabel, articlePlatform, articleRequirement, articleResult, articleTone, articleTopic, articleTypeLabel]);
   const platformDraftOptions = useMemo(
     () => Array.from(new Set(platformDrafts.map((draft) => draft.platform).filter(Boolean))).slice(0, 8),
     [platformDrafts],
@@ -163,14 +202,25 @@ export function ArticleModule({
         )}
       />
 
-      <div className="module-grid two-col article-workbench">
-        <article className="panel article-editor-panel">
+      <div className="article-workbench article-agent-workspace">
+        <article className="panel article-editor-panel article-agent-context-panel">
           <div className="panel-title">
             <div>
-              <p className="eyebrow">文案输入</p>
-              <h3>文章生成</h3>
+              <p className="eyebrow">当前任务</p>
+              <h3>{articleTopic || '文章生成'}</h3>
             </div>
-            <span className="status-pill">公众号 / 小红书</span>
+            <span className="status-pill">{articleResult ? '待复核' : '待生成'}</span>
+          </div>
+          <div className="article-agent-object-card">
+            <span>{articleTypeLabel}</span>
+            <strong>{articlePlatform || '未设置平台'}</strong>
+            <p>{articleAudience || '先填写目标读者，让正文有明确对象。'}</p>
+          </div>
+          <div className="article-agent-stage-list" aria-label="文章生成阶段">
+            <span className="done">设定主题</span>
+            <span className={articleResult ? 'done' : 'active'}>生成草稿</span>
+            <span className={articleResult ? 'active' : 'idle'}>复核发布</span>
+            <span className={articleExportPath ? 'done' : 'idle'}>导出交付</span>
           </div>
           <div className="form-grid">
             <label>
@@ -198,6 +248,53 @@ export function ArticleModule({
           <textarea value={articleRequirement} onChange={(event) => setArticleRequirement(event.target.value)} />
           <button className="primary wide" disabled={busy || !workspaceReady} onClick={onGenerateArticle}>生成大纲 / 正文 / 发布检查</button>
         </article>
+
+        <article className="panel article-agent-canvas">
+          <div className="panel-title">
+            <div>
+              <p className="eyebrow">写作协作</p>
+              <h3>文章生成 Agent</h3>
+            </div>
+            <span className={`status-pill ${busy ? 'warning' : articleResult ? 'ready' : 'idle'}`}>
+              {busy ? '生成中' : articleResult ? '已产出' : '待开始'}
+            </span>
+          </div>
+          <div className="article-agent-run-strip">
+            <div>
+              <span>输入</span>
+              <strong>{[articlePlatform, articleAudience, articleTopic, articleTone].filter(Boolean).length}/4</strong>
+            </div>
+            <div>
+              <span>标题</span>
+              <strong>{articleResult?.titleCandidates.length ?? 0}</strong>
+            </div>
+            <div>
+              <span>大纲</span>
+              <strong>{articleResult?.outline.length ?? 0}</strong>
+            </div>
+            <div>
+              <span>检查</span>
+              <strong>{articleResult?.publishCheck.length ?? 0}</strong>
+            </div>
+          </div>
+          <div className="article-agent-thread" aria-label="文章生成协作记录">
+            <AgentTimeline
+              messages={agentMessages}
+              runningLabel={busy ? '正在整理标题候选、正文草稿和发布检查。' : undefined}
+              messageMeta={() => null}
+              messageTitle={(message) => message.role === 'assistant' ? '写作助手' : '任务简报'}
+              messagePreview={(message) => message.content}
+            />
+          </div>
+          <div className="article-agent-next-action">
+            <strong>{articleResult ? '下一步：复核正文并导出交付' : '下一步：生成首版正文草稿'}</strong>
+            <p>{articleResult ? '先检查标题、事实边界和平台格式，再导出 Markdown 或平台草稿包。' : 'Agent 会根据左侧任务上下文生成标题候选、大纲、正文和发布检查。'}</p>
+            <button className="primary" disabled={busy || !workspaceReady} onClick={onGenerateArticle}>
+              {articleResult ? '重新生成草稿' : '开始写作'}
+            </button>
+          </div>
+        </article>
+
         <article className="panel article-preview">
           <div className="panel-title">
             <div><p className="eyebrow">正文草稿</p><h3>正文 / 发布检查</h3></div>

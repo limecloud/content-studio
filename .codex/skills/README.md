@@ -7,6 +7,7 @@
 
 - `bugu-product-design-cheatsheet`：基于 PRD、用户故事、用户用例和业务 UI 契约生成布谷AI桌面端产品原型，默认阻断功能罗列式 UI。
 - `content-studio-design-language`：统一布谷AI内容工厂桌面工作台的布局、控件密度和视觉语言，覆盖左侧参数栏、顶部能力带、案例网格、右侧历史抽屉等模式。
+- `content-studio-release-workflow`：准备并执行 Content Studio 通用版本发布流程，覆盖版本号、`RELEASE_NOTES.md`、发布前验证、桌面包构建、commit / tag / push 确认。
 - `content-studio-oem-release`：发布或修复 bugu / seenx OEM 桌面包分发链路，覆盖控制面 latest、Cloudflare R2、全局 download-manifest 和官网验证。
 
 ## 入口关系
@@ -17,6 +18,7 @@
 - OEM 发布事实源：看 `docs/aiprompts/oem-release.md` 和 `oem/README.md`
 - 高频 UI / 原型入口：看 `.codex/skills/bugu-product-design-cheatsheet/`
 - 统一工作台设计语言：看 `.codex/skills/content-studio-design-language/`
+- 通用版本发布入口：看 `.codex/skills/content-studio-release-workflow/`
 - 高频发布执行入口：看 `.codex/skills/content-studio-oem-release/`
 
 ## 维护规则

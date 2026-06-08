@@ -212,7 +212,7 @@ export interface SaveSettingsInput {
   autoUpdateEnabled?: boolean;
 }
 
-export type AutoUpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error';
+export type AutoUpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'downloading' | 'downloaded' | 'error';
 
 export interface AutoUpdateAsset {
   platform: string;
@@ -231,6 +231,9 @@ export interface AutoUpdateState {
   currentVersion: string;
   latestVersion?: string;
   hasUpdate: boolean;
+  updateEngine?: 'electron-updater' | 'manifest';
+  downloadProgress?: number;
+  downloadedFile?: string;
   checkedAt?: string;
   lastAutoCheckAt?: string;
   publishedAt?: string;
@@ -2742,6 +2745,8 @@ export type AgentEvent =
   | { type: 'status'; taskId: string; message: string }
   | { type: 'assistant'; taskId: string; text: string }
   | { type: 'tool'; taskId: string; name: string; input?: unknown }
+  | { type: 'action'; taskId: string; actionId?: string; actionKind?: string; targetModule?: string; message: string; raw?: unknown }
+  | { type: 'evidence'; taskId: string; evidenceRefs?: string[]; summary?: string; raw?: unknown }
   | { type: 'result'; taskId: string; summary?: string; raw?: unknown }
   | { type: 'error'; taskId: string; message: string }
   | { type: 'done'; taskId: string };
