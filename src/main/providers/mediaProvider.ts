@@ -20,7 +20,18 @@ function nowSlug(): string {
 }
 
 function sanitizeProviderError(value: string): string {
-  return value.replace(/sk-[A-Za-z0-9_-]+/g, 'sk-***').replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer ***');
+  return value
+    .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-***')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer ***')
+    .replace(/Lime App Server/gi, '生成服务')
+    .replace(/Lime Agent Server/gi, '生成服务')
+    .replace(/App Server/gi, '生成服务')
+    .replace(/backend/gi, '生成服务')
+    .replace(/capability/gi, '能力')
+    .replace(/session/gi, '任务')
+    .replace(/artifact/gi, '交付物')
+    .replace(/API/gi, '生成服务')
+    .replace(/接口/g, '连接');
 }
 
 function protocolOverride(value: string | undefined, fallback: ImageGenerationProtocol): ImageGenerationProtocol {
@@ -33,6 +44,14 @@ function envImageApiKey(protocol: ImageGenerationProtocol): string | undefined {
   if (genericKey) return genericKey;
   if (protocol === 'gemini-generate-content') return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   return process.env.OPENAI_API_KEY;
+}
+
+function resolvePlatformModel(requestedModel: string | undefined, configuredModel: string, models: string[] | undefined): string {
+  const availableModels = models ?? [];
+  const requested = requestedModel?.trim();
+  if (requested && availableModels.includes(requested)) return requested;
+  if (configuredModel && availableModels.includes(configuredModel)) return configuredModel;
+  return availableModels[0] || '';
 }
 
 function collectStringFields(payload: unknown, fieldNames: string[]): string[] {
@@ -416,6 +435,8 @@ export class MediaProvider {
       provider: string;
       endpoint: string;
       outerModel: string;
+      platformManaged: boolean;
+      providerPreference?: string;
     },
   ): Promise<MediaGenerationResult> {
     try {
@@ -451,13 +472,18 @@ export class MediaProvider {
             promptMode: input.promptMode,
           },
         },
-        backendEnv: {
-          CONTENT_STUDIO_IMAGE_PROTOCOL: runtime.protocol,
-          CONTENT_STUDIO_IMAGE_MODEL: runtime.model,
-          CONTENT_STUDIO_IMAGE_OUTER_MODEL: runtime.outerModel,
-          CONTENT_STUDIO_IMAGE_BASE_URL: runtime.endpoint,
-          CONTENT_STUDIO_IMAGE_API_KEY: runtime.apiKey ?? '',
-        },
+        backendEnv: runtime.platformManaged
+          ? undefined
+          : {
+            CONTENT_STUDIO_IMAGE_PROTOCOL: runtime.protocol,
+            CONTENT_STUDIO_IMAGE_MODEL: runtime.model,
+            CONTENT_STUDIO_IMAGE_OUTER_MODEL: runtime.outerModel,
+            CONTENT_STUDIO_IMAGE_BASE_URL: runtime.endpoint,
+            CONTENT_STUDIO_IMAGE_API_KEY: runtime.apiKey ?? '',
+          },
+        providerPreference: runtime.providerPreference,
+        modelPreference: runtime.model,
+        backendMode: runtime.platformManaged ? 'runtime' : undefined,
       });
       const payload = mediaResultPayload(result, 'Lime App Server 未返回图片生成结果。');
       const log = await this.persistLog(input.workspacePath, options?.logId, {
@@ -531,6 +557,8 @@ export class MediaProvider {
       apiKey?: string;
       endpoint: string;
       provider: string;
+      platformManaged: boolean;
+      providerPreference?: string;
     },
   ): Promise<MediaGenerationResult> {
     const fallbackMeta = videoGenerationMeta(input, runtime.model, runtime.provider);
@@ -562,13 +590,18 @@ export class MediaProvider {
             durationSeconds: input.params.durationSeconds,
           },
         },
-        backendEnv: {
-          CONTENT_STUDIO_VIDEO_MODEL: runtime.model,
-          CONTENT_STUDIO_VIDEO_PROVIDER: runtime.provider,
-          CONTENT_STUDIO_VIDEO_ENDPOINT: runtime.endpoint,
-          CONTENT_STUDIO_VIDEO_API_KEY: runtime.apiKey ?? '',
-          VIDEO_API_KEY: runtime.apiKey ?? '',
-        },
+        backendEnv: runtime.platformManaged
+          ? undefined
+          : {
+            CONTENT_STUDIO_VIDEO_MODEL: runtime.model,
+            CONTENT_STUDIO_VIDEO_PROVIDER: runtime.provider,
+            CONTENT_STUDIO_VIDEO_ENDPOINT: runtime.endpoint,
+            CONTENT_STUDIO_VIDEO_API_KEY: runtime.apiKey ?? '',
+            VIDEO_API_KEY: runtime.apiKey ?? '',
+          },
+        providerPreference: runtime.providerPreference,
+        modelPreference: runtime.model,
+        backendMode: runtime.platformManaged ? 'runtime' : undefined,
       });
       const payload = mediaResultPayload(result, 'Lime App Server 未返回视频生成结果。');
       const costEstimate = payload.billing ?? fallbackMeta.costEstimate;
@@ -636,9 +669,39 @@ export class MediaProvider {
   async generateImage(input: ImageGenerationRequest, options?: { logId?: string }): Promise<MediaGenerationResult> {
     const startedAt = Date.now();
     const config = await this.modelConfig.readView();
-    const model = input.params.imageModel || config.imageModels[0];
-    const protocol = protocolOverride(process.env.CONTENT_STUDIO_IMAGE_PROTOCOL, config.imageProtocol);
-    const apiKey = await this.modelConfig.getImageApiKey?.() || envImageApiKey(protocol);
+    const platformManaged = Boolean(config.platformManaged);
+    const model = platformManaged
+      ? resolvePlatformModel(input.params.imageModel, config.imageOuterModel, config.imageModels)
+      : input.params.imageModel || config.imageModels[0];
+    const protocol = platformManaged ? config.imageProtocol : protocolOverride(process.env.CONTENT_STUDIO_IMAGE_PROTOCOL, config.imageProtocol);
+    const apiKey = platformManaged ? undefined : await this.modelConfig.getImageApiKey?.() || envImageApiKey(protocol);
+
+    if (platformManaged && !model) {
+      const message = '平台图片模型未配置：请在平台模型设置中为图片 Provider 添加显式模型 ID 后再生成。';
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
+        workspacePath: input.workspacePath,
+        kind: 'image',
+        status: 'blocked',
+        title: '图片生成需要配置模型',
+        summary: message,
+        model: 'blocked:image-model',
+        workflowRunId: input.workflowRunId,
+        reworkSource: input.reworkSource,
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        output: { assetRefs: [] },
+        error: 'PLATFORM_IMAGE_MODEL_NOT_CONFIGURED',
+        durationMs: Date.now() - startedAt,
+      });
+      return {
+        logId: log.id,
+        status: 'blocked',
+        message,
+        assetRefs: [],
+      };
+    }
 
     if (!apiKey && config.imageApiKeyStatus === 'requires-reauthorization') {
       const message = '图片 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存图片 API Key 后再生成。';
@@ -674,8 +737,10 @@ export class MediaProvider {
         protocol,
         apiKey,
         provider: config.imageProvider,
-        endpoint: process.env.CONTENT_STUDIO_IMAGE_BASE_URL || config.imageApiEndpoint,
+        endpoint: platformManaged ? config.imageApiEndpoint : process.env.CONTENT_STUDIO_IMAGE_BASE_URL || config.imageApiEndpoint,
         outerModel: config.imageOuterModel,
+        platformManaged,
+        providerPreference: config.imageProviderPreference,
       });
     }
 
@@ -765,9 +830,39 @@ export class MediaProvider {
   async generateVideo(input: VideoGenerationRequest, options?: { logId?: string }): Promise<MediaGenerationResult> {
     const startedAt = Date.now();
     const config = await this.modelConfig.readView();
-    const model = input.params.videoModel || config.videoModel;
-    const apiKey = await this.modelConfig.getVideoApiKey?.() || process.env.CONTENT_STUDIO_VIDEO_API_KEY || process.env.VIDEO_API_KEY;
-    const endpoint = resolveGenericEndpoint(process.env.CONTENT_STUDIO_VIDEO_ENDPOINT || config.videoApiEndpoint);
+    const platformManaged = Boolean(config.platformManaged);
+    const model = platformManaged
+      ? resolvePlatformModel(input.params.videoModel, config.videoModel, config.videoModels)
+      : input.params.videoModel || config.videoModel;
+    const apiKey = platformManaged
+      ? undefined
+      : await this.modelConfig.getVideoApiKey?.() || process.env.CONTENT_STUDIO_VIDEO_API_KEY || process.env.VIDEO_API_KEY;
+    const endpoint = resolveGenericEndpoint(platformManaged ? config.videoApiEndpoint : process.env.CONTENT_STUDIO_VIDEO_ENDPOINT || config.videoApiEndpoint);
+
+    if (platformManaged && !model) {
+      const message = '平台视频模型未配置：请在平台模型设置中为视频 Provider 添加显式模型 ID 后再生成。';
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
+        workspacePath: input.workspacePath,
+        kind: 'video',
+        status: 'blocked',
+        title: '视频生成需要配置模型',
+        summary: message,
+        model: 'blocked:video-model',
+        promptPackId: input.promptPackId,
+        sceneCardIds: input.sceneCardIds,
+        citations: input.citations,
+        input,
+        output: { assetRefs: [] },
+        error: 'PLATFORM_VIDEO_MODEL_NOT_CONFIGURED',
+        durationMs: Date.now() - startedAt,
+      });
+      return {
+        logId: log.id,
+        status: 'blocked',
+        message,
+        assetRefs: [],
+      };
+    }
 
     if (!apiKey && config.videoApiKeyStatus === 'requires-reauthorization') {
       const message = '视频 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存视频 API Key 后再生成。';
@@ -801,6 +896,8 @@ export class MediaProvider {
         apiKey,
         endpoint,
         provider: config.videoProvider,
+        platformManaged,
+        providerPreference: config.videoProviderPreference,
       });
     }
 

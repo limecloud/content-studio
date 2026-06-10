@@ -155,6 +155,7 @@ function scriptFromLog(log: GenerationLogEntry): VideoScriptGenerationResult | n
   const output = log.output;
   return {
     logId: log.id,
+    status: output.status,
     title: output.title,
     script: output.script,
     storyboard: output.storyboard,
@@ -162,7 +163,12 @@ function scriptFromLog(log: GenerationLogEntry): VideoScriptGenerationResult | n
     resourceFramework: output.resourceFramework,
     evaluation: output.evaluation,
     publishCheck: output.publishCheck ?? [],
+    error: output.error,
   };
+}
+
+function isScriptReady(script: VideoScriptGenerationResult | null | undefined): boolean {
+  return Boolean(script && script.status !== 'blocked' && script.status !== 'failed' && script.storyboard.length > 0);
 }
 
 function inputString(log: GenerationLogEntry, key: string): string {
@@ -746,31 +752,33 @@ export function VideoModule({
     log.id,
     breakdown.contentTitle || log.title,
   ])), [featureItems]);
-  const storyboardShots = videoScript?.storyboard ?? [];
+  const scriptReady = isScriptReady(videoScript);
+  const readyScript = scriptReady ? videoScript : null;
+  const storyboardShots = readyScript ? readyScript.storyboard : [];
   const productionSegments = useMemo(
-    () => buildProductionSegments(storyboardShots, videoScript?.resourceFramework),
-    [storyboardShots, videoScript?.resourceFramework],
+    () => buildProductionSegments(storyboardShots, readyScript?.resourceFramework),
+    [readyScript, storyboardShots],
   );
   const characterPromptItems = useMemo(
-    () => buildCharacterPromptItems(videoScript?.resourceFramework),
-    [videoScript?.resourceFramework],
+    () => buildCharacterPromptItems(readyScript?.resourceFramework),
+    [readyScript],
   );
   const scenePromptItems = useMemo(
-    () => buildScenePromptItems(videoScript?.resourceFramework),
-    [videoScript?.resourceFramework],
+    () => buildScenePromptItems(readyScript?.resourceFramework),
+    [readyScript],
   );
   const productionReviewItems = useMemo(
-    () => buildVideoProductionReviewItems(videoScript),
-    [videoScript],
+    () => buildVideoProductionReviewItems(readyScript),
+    [readyScript],
   );
   const productionDeliveryItems = useMemo(
     () => buildVideoProductionDeliveryItems({
       characterPromptCount: characterPromptItems.length,
       scenePromptCount: scenePromptItems.length,
       segmentCount: productionSegments.length,
-      hasScript: Boolean(videoScript),
+      hasScript: scriptReady,
     }),
-    [characterPromptItems.length, scenePromptItems.length, productionSegments.length, videoScript],
+    [characterPromptItems.length, scenePromptItems.length, productionSegments.length, scriptReady],
   );
   const hasVideoMaterial = imageMaterialRefs.length > 0 || videoAssetRefs.length > 0;
   const breakdownHookElements = videoBreakdown?.hook?.elements ?? [];
@@ -782,7 +790,7 @@ export function VideoModule({
     ?? featureItems.find((item) => item.breakdown.logId === videoBreakdown?.logId)
     ?? featureItems[0];
   const selectedScriptItem = scriptItems.find((item) => item.log.id === selectedScriptLogId) ?? scriptItems[0];
-  const currentScriptQualityRows = scriptQualityRows(videoScript);
+  const currentScriptQualityRows = readyScript ? scriptQualityRows(readyScript) : [];
   const currentBreakdownReferenceScore = resolvedReferenceScore(videoBreakdown);
   const selectedScriptReviewNote = selectedScriptItem
     ? scriptFeedbackDrafts[selectedScriptItem.log.id] ?? selectedScriptItem.log.review?.note ?? ''
@@ -807,29 +815,40 @@ export function VideoModule({
       content: brief,
       createdAt: new Date(0).toISOString(),
     }];
-    if (videoScript) {
+    if (readyScript) {
       messages.push({
-        id: `video-script-result:${videoScript.logId}`,
+        id: `video-script-result:${readyScript.logId}`,
         role: 'assistant',
         content: [
-          `已生成 ${storyboardShots.length} 个镜头，质量评分 ${scriptTotalScore(videoScript).toFixed(1)}/10。`,
+          `已生成 ${storyboardShots.length} 个镜头，质量评分 ${scriptTotalScore(readyScript).toFixed(1)}/10。`,
           '',
+          readyScript.title,
+          '',
+          readyScript.script,
+        ].join('\n'),
+        createdAt: new Date().toISOString(),
+      });
+    } else if (videoScript) {
+      messages.push({
+        id: `video-script-blocked:${videoScript.logId}`,
+        role: 'assistant',
+        content: [
           videoScript.title,
           '',
-          videoScript.script,
+          videoScript.script || videoScript.error || '文字模型未配置，未生成本地模板。',
         ].join('\n'),
         createdAt: new Date().toISOString(),
       });
     }
     return messages;
-  }, [imageMaterialRefs.length, storyboardShots.length, videoBreakdown, videoCustomRequirement, videoDurationSeconds, videoProductName, videoSceneBackground, videoScript, videoShotCount, videoSubtitleMode, videoVoiceStyle]);
+  }, [imageMaterialRefs.length, readyScript, storyboardShots.length, videoBreakdown, videoCustomRequirement, videoDurationSeconds, videoProductName, videoSceneBackground, videoScript, videoShotCount, videoSubtitleMode, videoVoiceStyle]);
   const handoffAgentMessages = useMemo(() => {
     const brief = [
-      `脚本：${videoScript?.title || '未生成'}`,
+      `脚本：${readyScript ? readyScript.title : '未生成'}`,
       `素材：${imageMaterialRefs.length + videoAssetRefs.length} 个`,
       `角色参考图：${characterPromptItems.length} 个`,
       `场景背景图：${scenePromptItems.length} 个`,
-      `外部生成段落：${productionSegments.length || videoScript?.storyboard.length || 0} 段`,
+      `外部生成段落：${readyScript ? productionSegments.length || readyScript.storyboard.length : 0} 段`,
       `审核项：${productionReviewItems.length} 项`,
     ].join('\n');
     const messages = [{
@@ -838,21 +857,21 @@ export function VideoModule({
       content: brief,
       createdAt: new Date(0).toISOString(),
     }];
-    if (videoScript) {
+    if (readyScript) {
       messages.push({
-        id: `video-handoff-result:${videoScript.logId}`,
+        id: `video-handoff-result:${readyScript.logId}`,
         role: 'assistant',
         content: [
           '已整理视频 Prompt 交接包。',
           '',
-          `下一步复制 ${productionSegments.length || videoScript.storyboard.length} 段镜头 Prompt 到外部视频平台，生成后手动导入成品视频。`,
+          `下一步复制 ${productionSegments.length || readyScript.storyboard.length} 段镜头 Prompt 到外部视频平台，生成后手动导入成品视频。`,
           productionDeliveryItems.map((item) => `- ${item.title}：${item.detail}`).join('\n'),
         ].join('\n'),
         createdAt: new Date().toISOString(),
       });
     }
     return messages;
-  }, [characterPromptItems.length, imageMaterialRefs.length, productionDeliveryItems, productionReviewItems.length, productionSegments.length, scenePromptItems.length, videoAssetRefs.length, videoScript]);
+  }, [characterPromptItems.length, imageMaterialRefs.length, productionDeliveryItems, productionReviewItems.length, productionSegments.length, readyScript, scenePromptItems.length, videoAssetRefs.length]);
 
   const filteredFeatures = featureItems.filter(({ log, breakdown }) => {
     const query = featureSearch.trim().toLowerCase();
@@ -982,7 +1001,7 @@ export function VideoModule({
             <div className="video-card-title">
               <div>
                 <h4>参考视频导入</h4>
-                <p>仅处理用户有权使用的参考视频；真实拆解由后端视频理解服务完成。</p>
+                <p>仅处理用户有权使用的参考视频；真实拆解由视频理解服务完成。</p>
               </div>
               <span>{sourceCount} 个来源</span>
             </div>
@@ -1425,8 +1444,8 @@ export function VideoModule({
                 <h4>脚本协作</h4>
                 <p>把模板、商品、素材和分镜约束整理成可执行的生成任务。</p>
               </div>
-              <span className={`status-pill ${busy ? 'warning' : videoScript ? 'ready' : 'idle'}`}>
-                {busy ? '生成中' : videoScript ? '已产出' : '待开始'}
+              <span className={`status-pill ${busy ? 'warning' : scriptReady ? 'ready' : videoScript ? 'blocked' : 'idle'}`}>
+                {busy ? '生成中' : scriptReady ? '已产出' : videoScript ? '待配置' : '待开始'}
               </span>
             </div>
             <div className="video-script-agent-strip">
@@ -1444,7 +1463,7 @@ export function VideoModule({
               </div>
               <div>
                 <span>评分</span>
-                <strong>{videoScript ? scriptTotalScore(videoScript).toFixed(1) : '-'}</strong>
+                <strong>{scriptReady ? scriptTotalScore(videoScript).toFixed(1) : '-'}</strong>
               </div>
             </div>
             <div className="video-script-agent-thread" aria-label="视频脚本协作记录">
@@ -1457,10 +1476,10 @@ export function VideoModule({
               />
             </div>
             <div className="video-script-agent-next-action">
-              <strong>{videoScript ? '下一步：质检脚本或进入 Prompt 交接' : '下一步：生成分镜脚本'}</strong>
-              <p>{videoScript ? '复核质量评分、镜头 Prompt 和禁用表达，再把素材清单交接给外部生成平台。' : '先确认左侧模板、商品信息和素材，再生成可追溯的新视频脚本。'}</p>
+              <strong>{scriptReady ? '下一步：质检脚本或进入 Prompt 交接' : videoScript ? '下一步：配置文字模型后重试' : '下一步：生成分镜脚本'}</strong>
+              <p>{scriptReady ? '复核质量评分、镜头 Prompt 和禁用表达，再把素材清单交接给外部生成平台。' : videoScript ? '当前未生成本地模板；请进入模型设置补齐文字模型后重新生成。' : '先确认左侧模板、商品信息和素材，再生成可追溯的新视频脚本。'}</p>
               <button className="primary small" disabled={busy || !workspaceReady} onClick={onGenerateVideoScript}>
-                {videoScript ? '重新生成脚本' : '按当前参数生成'}
+                {scriptReady || videoScript ? '重新生成脚本' : '按当前参数生成'}
               </button>
             </div>
           </article>
@@ -1479,16 +1498,16 @@ export function VideoModule({
             <div className="video-script-preview">
               <article>
                 <strong>{videoScript?.title || '新视频脚本内容'}</strong>
-                <span>{videoScript ? '已生成' : '待生成'}</span>
+                <span>{scriptReady ? '已生成' : videoScript ? '未完成' : '待生成'}</span>
                 <p>{videoScript?.script || '等待生成新视频脚本'}</p>
               </article>
               {currentScriptQualityRows.length ? (
                 <div className="video-eval-panel">
                   <div className="video-eval-title">
-                    <strong>脚本质量检查 · {scriptQualitySourceLabel(videoScript)}</strong>
-                    <span>{scriptTotalScore(videoScript).toFixed(1)}/10</span>
-                    {videoScript ? (
-                      <button className="ghost tiny" disabled={busy} onClick={() => void onEvaluateVideoScript(videoScript)}>AI 质检</button>
+                    <strong>脚本质量检查 · {scriptQualitySourceLabel(readyScript)}</strong>
+                    <span>{scriptTotalScore(readyScript).toFixed(1)}/10</span>
+                    {readyScript ? (
+                      <button className="ghost tiny" disabled={busy} onClick={() => void onEvaluateVideoScript(readyScript)}>AI 质检</button>
                     ) : null}
                   </div>
                   {currentScriptQualityRows.map((row) => (
@@ -1505,14 +1524,14 @@ export function VideoModule({
                   ) : null}
                 </div>
               ) : null}
-              {videoScript?.resourceFramework ? (
+              {readyScript?.resourceFramework ? (
                 <div className="video-script-framework">
                   <strong>新脚本资源框架</strong>
                   <div>
-                    {videoScript.resourceFramework.characters.map((character) => (
+                    {readyScript.resourceFramework.characters.map((character) => (
                       <span key={`script-character-${character.name}`}>角色：{character.name} · {character.shotCount} 镜</span>
                     ))}
-                    {videoScript.resourceFramework.scenes.map((scene) => (
+                    {readyScript.resourceFramework.scenes.map((scene) => (
                       <span key={`script-scene-${scene.name}`}>场景：{scene.name} · {scene.shotCount} 镜{scene.sceneImagePrompt ? ' · 含场景图 Prompt' : ''}</span>
                     ))}
                   </div>
@@ -1533,11 +1552,11 @@ export function VideoModule({
                         >
                           {copiedShotKey === `${videoScript?.logId ?? 'current-script'}-${shot.shot}` ? '已复制' : '复制 Prompt'}
                         </button>
-                        {videoScript ? (
+                        {readyScript ? (
                           <button
                             className="ghost tiny"
                             disabled={busy}
-                            onClick={() => void onRewriteVideoScriptShot(videoScript, index)}
+                            onClick={() => void onRewriteVideoScriptShot(readyScript, index)}
                           >
                             AI 重写
                           </button>
@@ -1799,13 +1818,13 @@ export function VideoModule({
                 messagePreview={(message) => message.content}
               />
             </div>
-            {videoScript ? (
+            {readyScript ? (
               <div className="video-production-checklist">
                 {[
-                  { title: '角色参考图', count: videoScript.resourceFramework?.characters.length ?? 0, status: '复制角色图 Prompt 到外部平台' },
-                  { title: '场景背景图', count: videoScript.resourceFramework?.scenes.length ?? 0, status: '复制场景图 Prompt 到外部平台' },
-                  { title: '镜头视频 Prompt', count: productionSegments.length || videoScript.storyboard.length, status: '逐镜头复制，不创建外部任务；可按 5/10 秒段落合并' },
-                  { title: '审核预览', count: videoScript.publishCheck.length, status: '按发布检查逐项复核' },
+                  { title: '角色参考图', count: readyScript.resourceFramework?.characters.length ?? 0, status: '复制角色图 Prompt 到外部平台' },
+                  { title: '场景背景图', count: readyScript.resourceFramework?.scenes.length ?? 0, status: '复制场景图 Prompt 到外部平台' },
+                  { title: '镜头视频 Prompt', count: productionSegments.length || readyScript.storyboard.length, status: '逐镜头复制，不创建外部任务；可按 5/10 秒段落合并' },
+                  { title: '审核预览', count: readyScript.publishCheck.length, status: '按发布检查逐项复核' },
                   { title: '合成导出', count: 1, status: '成品视频手动导入并关联 Prompt' },
                 ].map((item) => (
                   <span key={item.title}><strong>{item.title}</strong>{item.count} 项<small>{item.status}</small></span>
@@ -1948,7 +1967,7 @@ export function VideoModule({
             </div>
             <pre>{suggestedVideoPrompt}</pre>
             {videoBreakdown ? <div className="script-block"><strong>拆解片段</strong>{videoBreakdown.segments.map((segment) => <p key={segment.timeRange}>{segment.timeRange} · {segment.hook} · {segment.reusablePoint}</p>)}</div> : null}
-            {videoScript ? <div className="script-block"><strong>分镜脚本</strong><p>{videoScript.title}</p><pre>{videoScript.script}</pre></div> : null}
+            {readyScript ? <div className="script-block"><strong>分镜脚本</strong><p>{readyScript.title}</p><pre>{readyScript.script}</pre></div> : null}
             <div className="video-handoff-actions">
               <button className="primary wide" disabled={busy || !workspaceReady} onClick={onOpenVideoPromptHandoff}>打开视频 Prompt 交接</button>
               <button className="ghost wide" disabled={busy || !workspaceReady} onClick={onOpenVideoImport}>导入成品视频</button>

@@ -13,6 +13,7 @@
 ## 按场景导航
 
 - `business-ux-contract.md` - 桌面端业务型 UI 契约、反功能平铺门禁和原型生成提示词。
+- `platform-host-runtime.md` - Content Studio 通过 `lime-desktop-platform` 调 Lime App Server runtime provider store 的真实联调流程。
 - `oem-release.md` - bugu / seenx 桌面包发布、R2 latest、download-manifest、官网仍显示旧版本的处理流程。
 - `../roadmap/v2/README.md` - v2 内容工厂主线路线图。
 - `../roadmap/ontology/README.md` - Ontology / 品牌内容操作地图路线图。

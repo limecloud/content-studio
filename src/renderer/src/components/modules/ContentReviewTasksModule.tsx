@@ -433,7 +433,7 @@ export function ContentReviewTasksModule({
           <strong>恢复路径</strong>
           <p>
             {task.suggestedAction === 'approve'
-              ? '证据和风险可接受，可通过后交接到 Prompt 工作台或场景卡。'
+              ? '证据和风险可接受，可通过后生成 Prompt 草稿或场景卡。'
               : task.suggestedAction === 'request-evidence'
                 ? '先补用户原声、产品资料、测试数据或客服记录，再重新审核。'
                 : task.suggestedAction === 'request-material'
@@ -519,8 +519,8 @@ export function ContentReviewTasksModule({
             ) : null}
           </div>
           {contentProductionHandoff.status === 'created' ? (
-            <button className="primary small" onClick={() => onSelectModule('assets-prompt-workbench')}>
-              打开 Prompt 工作台
+            <button className="primary small" onClick={() => onSelectModule('agents')}>
+              打开 agents
             </button>
           ) : null}
         </div>
@@ -592,7 +592,7 @@ export function ContentReviewTasksModule({
             <button className="ghost small" disabled={busy} onClick={() => onSubmitContentReviewDecision(task.id, 'request-material')}>补素材</button>
             <button className="ghost small" disabled={busy} onClick={() => onSubmitContentReviewDecision(task.id, 'mark-forbidden')}>标记禁用</button>
             <button className="ghost small" disabled={busy} onClick={() => onSubmitContentReviewDecision(task.id, 'downgrade-to-needs-verification')}>降级待确认</button>
-            <button className="ghost small" disabled={busy || task.status !== 'approved'} onClick={() => onCreateContentProductionHandoff(task.id)}>交给 Prompt 工作台</button>
+            <button className="ghost small" disabled={busy || task.status !== 'approved'} onClick={() => onCreateContentProductionHandoff(task.id)}>生成 Prompt 草稿</button>
           </>
         ) : (
           <>

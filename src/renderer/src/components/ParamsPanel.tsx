@@ -3,6 +3,7 @@ import type {
   GenerationLogEntry,
   GlobalGenerationParams,
   KnowledgeCitation,
+  ModelConfigView,
   SkillSelectionView,
   TextGenerationProtocol,
 } from '../../../shared/types';
@@ -15,6 +16,7 @@ interface ParamsPanelProps {
   textModels: string[];
   imageModels: string[];
   videoModels: string[];
+  modelConfig: ModelConfigView | null;
   citations: KnowledgeCitation[];
   logs: GenerationLogEntry[];
   skillSelection: SkillSelectionView | null;
@@ -32,6 +34,7 @@ export function ParamsPanel({
   textModels,
   imageModels,
   videoModels,
+  modelConfig,
   citations,
   logs,
   skillSelection,
@@ -46,35 +49,44 @@ export function ParamsPanel({
     () =>
       Array.from(
         new Set(
-          [params.textModel, ...textModels]
+          textModels
             .map((model) => model.trim())
             .filter(Boolean),
         ),
       ),
-    [params.textModel, textModels],
+    [textModels],
   );
+  const modelSourceLabel = modelConfig?.platformManaged
+    ? '平台模型设置'
+    : '本地独立配置';
+  const modelSourceDescription = modelConfig?.platformManaged
+    ? `来自 ${modelConfig.platformHost?.endpoint ?? '平台设置中心'}`
+    : modelConfig?.platformReadiness?.reasons[0]?.message ?? '未连接平台宿主。';
   const imageModelOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          [params.imageModel, ...imageModels]
+          imageModels
             .map((model) => model.trim())
             .filter(Boolean),
         ),
       ),
-    [imageModels, params.imageModel],
+    [imageModels],
   );
   const videoModelOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          [params.videoModel, ...videoModels]
+          videoModels
             .map((model) => model.trim())
             .filter(Boolean),
         ),
       ),
-    [params.videoModel, videoModels],
+    [videoModels],
   );
+  const selectedTextModel = textModelOptions.includes(params.textModel) ? params.textModel : textModelOptions[0] ?? '';
+  const selectedImageModel = imageModelOptions.includes(params.imageModel) ? params.imageModel : imageModelOptions[0] ?? '';
+  const selectedVideoModel = videoModelOptions.includes(params.videoModel) ? params.videoModel : videoModelOptions[0] ?? '';
   const collapseButton = (
     <button
       className="params-panel-collapse-btn"
@@ -125,6 +137,10 @@ export function ParamsPanel({
                 设置
               </button>
             </div>
+            <div className={modelConfig?.platformManaged ? 'model-source-banner ready' : 'model-source-banner blocked'}>
+              <strong>{modelSourceLabel}</strong>
+              <span>{modelSourceDescription}</span>
+            </div>
             <label>
               <span>文字协议</span>
               <input readOnly value={textProtocolLabel(textProtocol)} />
@@ -132,7 +148,8 @@ export function ParamsPanel({
             <label>
               <span>文字模型</span>
               <select
-                value={params.textModel}
+                value={selectedTextModel}
+                disabled={!textModelOptions.length}
                 onChange={(event) =>
                   setParams((current) => ({
                     ...current,
@@ -140,6 +157,7 @@ export function ParamsPanel({
                   }))
                 }
               >
+                {textModelOptions.length ? null : <option value="">未配置文字模型</option>}
                 {textModelOptions.map((model) => (
                   <option key={model} value={model}>
                     {model}
@@ -150,7 +168,8 @@ export function ParamsPanel({
             <label>
               <span>图片模型</span>
               <select
-                value={params.imageModel}
+                value={selectedImageModel}
+                disabled={!imageModelOptions.length}
                 onChange={(event) =>
                   setParams((current) => ({
                     ...current,
@@ -158,6 +177,7 @@ export function ParamsPanel({
                   }))
                 }
               >
+                {imageModelOptions.length ? null : <option value="">未配置图片模型</option>}
                 {imageModelOptions.map((model) => (
                   <option key={model} value={model}>
                     {model}
@@ -168,7 +188,8 @@ export function ParamsPanel({
             <label>
               <span>视频模型</span>
               <select
-                value={params.videoModel}
+                value={selectedVideoModel}
+                disabled={!videoModelOptions.length}
                 onChange={(event) =>
                   setParams((current) => ({
                     ...current,
@@ -176,6 +197,7 @@ export function ParamsPanel({
                   }))
                 }
               >
+                {videoModelOptions.length ? null : <option value="">未配置视频模型</option>}
                 {videoModelOptions.map((model) => (
                   <option key={model} value={model}>
                     {model}

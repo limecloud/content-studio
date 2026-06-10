@@ -26,6 +26,22 @@ try {
     target: 'node20',
     format: 'esm',
     logLevel: 'silent',
+    plugins: [{
+      name: 'electron-smoke-shim',
+      setup(build) {
+        build.onResolve({ filter: /^electron$/ }, () => ({ path: 'electron-smoke-shim', namespace: 'content-studio-smoke' }));
+        build.onLoad({ filter: /.*/, namespace: 'content-studio-smoke' }, () => ({
+          loader: 'js',
+          contents: `
+            import { join } from 'node:path';
+            import { tmpdir } from 'node:os';
+            export const app = {
+              getPath: (name) => name === 'userData' ? join(tmpdir(), 'content-studio-smoke-user-data') : tmpdir(),
+            };
+          `,
+        }));
+      },
+    }],
   });
 
   const { AppServerSidecarService } = await import(pathToFileURL(bundlePath).href);

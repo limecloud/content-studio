@@ -545,7 +545,22 @@ function envImageApiKey(protocol: ImageGenerationProtocol): string | undefined {
   return process.env.OPENAI_API_KEY;
 }
 
+function platformVisionModel(config: ModelConfigView): string {
+  const models = config.imageModels ?? [];
+  if (config.imageOuterModel && models.includes(config.imageOuterModel)) return config.imageOuterModel;
+  return models[0] ?? '';
+}
+
 function resolveProviderConfig(config: ModelConfigView | undefined, apiKey: string | undefined): ReferenceReverseProviderConfig {
+  if (config?.platformManaged) {
+    return {
+      endpoint: config.imageApiEndpoint ?? '',
+      apiKey: undefined,
+      model: platformVisionModel(config),
+      protocol: config.imageProtocol ?? 'openai-responses',
+      source: 'model-config',
+    };
+  }
   const envEndpoint = (process.env.CONTENT_STUDIO_VISION_ENDPOINT || process.env.CONTENT_STUDIO_IMAGE_UNDERSTANDING_ENDPOINT || '').trim();
   const envApiKey = process.env.CONTENT_STUDIO_VISION_API_KEY || process.env.CONTENT_STUDIO_IMAGE_UNDERSTANDING_API_KEY;
   const envModel = process.env.CONTENT_STUDIO_VISION_MODEL;
@@ -553,7 +568,7 @@ function resolveProviderConfig(config: ModelConfigView | undefined, apiKey: stri
     return {
       endpoint: envEndpoint,
       apiKey: envApiKey || apiKey,
-      model: envModel || config?.imageOuterModel || config?.imageModels?.[0] || config?.textModel || 'vision-provider',
+      model: envModel || config?.imageOuterModel || config?.imageModels?.[0] || config?.textModel || '',
       protocol: 'generic-json',
       source: 'env',
     };
@@ -562,20 +577,26 @@ function resolveProviderConfig(config: ModelConfigView | undefined, apiKey: stri
   return {
     endpoint: config?.imageApiEndpoint ?? '',
     apiKey: apiKey || envImageApiKey(protocol),
-    model: config?.imageOuterModel || config?.imageModels?.[0] || config?.textModel || 'vision-provider',
+    model: config?.imageOuterModel || config?.imageModels?.[0] || config?.textModel || '',
     protocol,
     source: 'model-config',
   };
 }
 
 function visionConfigBlockedMessage(config: ModelConfigView | undefined, provider: ReferenceReverseProviderConfig): { message: string; error: string } | null {
+  if (config?.platformManaged) {
+    return {
+      message: '素材拆解暂未接入平台 lime.agent 视觉理解 runtime。平台托管模式下不会读取 Product App 本地或环境变量 API Key，请到平台模型设置确认 Provider 后再通过已接入的 Agent 工作台执行。',
+      error: 'VISION_PLATFORM_AGENT_RUNTIME_REQUIRED',
+    };
+  }
   if (config?.imageApiKeyStatus === 'requires-reauthorization' && !provider.apiKey) {
     return {
       message: '素材拆解需要可看图的图片/多模态模型：图片 API Key 已保存但当前系统无法解密，请在设置 - 模型中重新保存图片 API Key 后重试。',
       error: 'VISION_API_KEY_REAUTH_REQUIRED',
     };
   }
-  if (!provider.endpoint.trim() || (provider.source === 'model-config' && !provider.apiKey)) {
+  if (!provider.endpoint.trim() || !provider.model.trim() || (provider.source === 'model-config' && !provider.apiKey)) {
     return {
       message: '素材拆解需要可看图的图片/多模态模型：请在设置 - 模型中保存图片 API Key、端点和模型后重试。',
       error: 'VISION_PROVIDER_NOT_CONFIGURED',
@@ -614,7 +635,10 @@ export class ReferenceReverseService {
     const productLogPayload = await sourcePayload(productSources);
 
     const config = await this.modelConfig?.readView();
-    const providerConfig = resolveProviderConfig(config, await this.modelConfig?.getImageApiKey());
+    const providerConfig = resolveProviderConfig(
+      config,
+      config?.platformManaged ? undefined : await this.modelConfig?.getImageApiKey(),
+    );
     const model = providerConfig.model;
     const blocked = visionConfigBlockedMessage(config, providerConfig);
 

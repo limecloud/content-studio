@@ -2,6 +2,5 @@
 @import './styles/shell.css';
 @import './styles/modules.css';
 @import './styles/agent-session.css';
-@import './styles/settings-dialog.css';
 @import './styles/themes.css';
-@import './styles/settings-panels.css';
+@import './styles/platform-settings-extension.css';

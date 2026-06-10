@@ -23,9 +23,20 @@ export default defineConfig({
     root: resolve(__dirname, 'src/renderer'),
     plugins: [react()],
     resolve: {
-      alias: {
-        '@renderer': resolve(__dirname, 'src/renderer/src'),
-      },
+      alias: [
+        { find: '@renderer', replacement: resolve(__dirname, 'src/renderer/src') },
+        { find: 'react/jsx-runtime', replacement: resolve(__dirname, 'node_modules/react/jsx-runtime.js') },
+        { find: 'react/jsx-dev-runtime', replacement: resolve(__dirname, 'node_modules/react/jsx-dev-runtime.js') },
+        { find: 'react', replacement: resolve(__dirname, 'node_modules/react/index.js') },
+        {
+          find: '@limecloud/desktop-platform-contracts',
+          replacement: resolve(__dirname, '../lime-desktop-platform/packages/contracts/dist/index.js'),
+        },
+        {
+          find: '@limecloud/desktop-platform-react',
+          replacement: resolve(__dirname, '../lime-desktop-platform/packages/react/dist/index.js'),
+        },
+      ],
     },
   },
 });

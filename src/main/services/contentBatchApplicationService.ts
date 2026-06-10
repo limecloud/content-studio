@@ -118,7 +118,7 @@ function promptDraftArtifact(draft: PromptDraft): ContentBatchArtifactRef {
       ? 'image-green-screen'
       : draft.purpose === 'image'
         ? 'image'
-        : 'assets-prompt-workbench';
+        : 'agents';
   return artifact('prompt-draft', draft.id, `${draft.title} · ${promptDraftStatusLabel(draft.status)}`, undefined, targetModule);
 }
 
@@ -135,7 +135,7 @@ function targetModuleForLog(kind: GenerationLogEntry['kind']): string {
   if (kind === 'image') return 'image';
   if (kind === 'video' || kind === 'video-script' || kind === 'video-breakdown') return 'video';
   if (kind === 'scene-card') return 'knowledge-scenes';
-  if (kind === 'prompt-pack' || kind === 'reference-reverse') return 'assets-prompt-workbench';
+  if (kind === 'prompt-pack' || kind === 'reference-reverse') return 'agents';
   return 'article';
 }
 
@@ -421,8 +421,8 @@ function gatesForStage(input: {
   }
 
   if (stageId === 'matrix' && !matrixHandoffArtifacts({ knowledgeMap, reviewTasks, logs, promptDrafts }).length) {
-    gates.push(gate(stageId, 'needs-input', '缺矩阵交接', '还没有把卖点、证据、场景和素材排成 Prompt、场景卡和补资源任务。', '打开 Prompt 工作台处理矩阵交接。'));
-    recoveryTasks.push(recoveryTask(stageId, '生成矩阵交接', '把内容知识地图转成 Prompt 草稿、场景卡和补资源任务。', '打开 Prompt 工作台处理矩阵交接。', 'assets-prompt-workbench', now));
+    gates.push(gate(stageId, 'needs-input', '缺矩阵交接', '还没有把卖点、证据、场景和素材排成 Prompt、场景卡和补资源任务。', '打开 agents 处理矩阵交接。'));
+    recoveryTasks.push(recoveryTask(stageId, '生成矩阵交接', '把内容知识地图转成 Prompt 草稿、场景卡和补资源任务。', '打开 agents 处理矩阵交接。', 'agents', now));
   }
 
   const manufacturingDrafts = promptDrafts.filter((draft) => promptDraftMatchesStage(draft, 'manufacturing'));
@@ -492,7 +492,7 @@ function gatesForStage(input: {
 
   if (stageId === 'optimization' && !hasRunReviewEvidence({ logs, promptDrafts, assetReviews })) {
     gates.push(gate(stageId, 'needs-review', '缺运行复盘', '还没有运行记录或复盘结论，无法判断哪些产物已交接、哪些需要补资源。', '写入运行复盘。'));
-    recoveryTasks.push(recoveryTask(stageId, '写入运行复盘', '复盘交接结果、拦截原因、素材回写和下一轮补充信号。', '打开运行历史复盘。', 'assets-history', now));
+    recoveryTasks.push(recoveryTask(stageId, '写入运行复盘', '复盘交接结果、拦截原因、素材回写和下一轮补充信号。', '打开素材库复盘。', 'assets', now));
   }
 
   const uncoveredApprovedAssets = approvedAssetsMissingCoverage(knowledgeMap, assetReviews);
@@ -579,7 +579,7 @@ function outputRefsForStage(input: {
       ...runReviewArtifacts({ logs, promptDrafts, assetReviews }).map((ref) => ({
         ...ref,
         kind: ref.kind === 'input-source' ? 'run-review' : ref.kind,
-        targetModule: 'assets-history',
+        targetModule: 'assets',
       })),
     ].slice(0, 8);
   }

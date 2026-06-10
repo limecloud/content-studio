@@ -299,6 +299,10 @@ function isManagedProjectSkill(skill: LoadedSkill): boolean {
   return skill.source === 'project' && /[/\\]\.bugu[/\\]skills[/\\]/.test(skill.path);
 }
 
+function isReadonlyPackageSkill(skill: LoadedSkill): boolean {
+  return skill.source === 'user-compat' && skill.path.toLowerCase().endsWith('.skill');
+}
+
 function SkillDocument({ content }: { content?: string }) {
   const blocks = parseSkillMarkdown(skillMarkdownBody(content));
   return (
@@ -483,6 +487,7 @@ export function SkillsModule({
   const selectedSkill = detailSkill ?? activeSkill ?? filteredSkills[0] ?? skills[0];
   const selectedKey = selectedSkill ? skillKey(selectedSkill) : '';
   const managedSelected = selectedSkill ? isManagedProjectSkill(selectedSkill) : false;
+  const readonlyPackageSelected = selectedSkill ? isReadonlyPackageSkill(selectedSkill) : false;
   const selectedEnabled = selectedSkill ? enabledSkillKeys.has(skillKey(selectedSkill)) : false;
   const selectedCopied = selectedSkill ? copiedSkillKey === skillKey(selectedSkill) : false;
   const personalSkills = filteredSkills.filter((skill) => !isBuiltinSkill(skill));
@@ -672,12 +677,13 @@ export function SkillsModule({
               <strong>{skill.metadata.name}</strong>
               <small>{skill.slug}</small>
             </div>
-            <span className="skill-source-pill">{sourceLabel(skill.source)}</span>
+            <span className="skill-source-pill">{isReadonlyPackageSkill(skill) ? '只读包' : sourceLabel(skill.source)}</span>
           </div>
           <p>{skill.metadata.description}</p>
           <div className="skill-card-meta">
             <span>{skill.valid ? '有效' : '无效'}</span>
             <span>{enabled ? '已启用' : '未启用'}</span>
+            {isReadonlyPackageSkill(skill) ? <span>本地包</span> : null}
             {skill.error ? <span className="skill-error-pill">错误</span> : null}
           </div>
           {skill.error ? <em>{skill.error}</em> : null}
@@ -908,7 +914,7 @@ export function SkillsModule({
                         Replace
                       </button>
                       <hr />
-                      <button type="button" onClick={() => {
+                      <button type="button" disabled={readonlyPackageSelected} onClick={() => {
                         onOpenSkillFolder(selectedSkill);
                         setSkillMenuOpen(false);
                       }}>
@@ -938,7 +944,7 @@ export function SkillsModule({
                 <span>Version</span>
                 <strong>{selectedSkill.metadata.version ?? '1.0'}</strong>
                 <span>Source</span>
-                <strong>{sourceLabel(selectedSkill.source)}</strong>
+                <strong>{readonlyPackageSelected ? '只读包' : sourceLabel(selectedSkill.source)}</strong>
                 <span>Status</span>
                 <strong>{selectedSkill.valid ? '有效' : '无效'}</strong>
               </div>

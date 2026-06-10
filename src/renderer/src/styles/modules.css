@@ -1,6 +1,7 @@
 @import './modules-common.css';
 @import './modules-skills-knowledge.css';
 @import './modules-command.css';
+@import './agents-workbench.css';
 @import './modules-workflow-prompt.css';
 @import './modules-scene-video-flow.css';
 @import './modules-video-workbench.css';

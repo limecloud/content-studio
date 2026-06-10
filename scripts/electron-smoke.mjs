@@ -45,6 +45,26 @@ function wait(ms) {
   return new Promise((resolveWait) => setTimeout(resolveWait, ms));
 }
 
+async function waitForChildExit(childProcess, timeoutMs = 3000) {
+  if (childProcess.exitCode !== null || childProcess.signalCode) return;
+  await Promise.race([
+    new Promise((resolveWait) => childProcess.once('exit', resolveWait)),
+    wait(timeoutMs),
+  ]);
+}
+
+async function removeDirWithRetry(path) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      rmSync(path, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 5) throw error;
+      await wait(250 * (attempt + 1));
+    }
+  }
+}
+
 async function fetchJson(url) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url} -> ${response.status}`);
@@ -238,9 +258,9 @@ try {
       citations,
       selectedSkillSlugs: [],
       params: {
-        textModel: 'gpt-4o-mini',
-        imageModel: 'gpt-image-2',
-        videoModel: 'veo-3.1',
+        textModel: '',
+        imageModel: '',
+        videoModel: '',
         runMode: 'single',
         count: 1,
         aspectRatio: '4:5',
@@ -258,7 +278,7 @@ try {
         promptPackId: undefined,
         citations,
         selectedSkillSlugs: [],
-        params: { textModel: 'gpt-4o-mini' },
+        params: { textModel: '' },
       });
     } catch (error) {
       breakdownError = error instanceof Error ? error.message : String(error);
@@ -273,7 +293,7 @@ try {
       sceneCardIds: [],
       citations,
       selectedSkillSlugs: [],
-      params: { videoModel: 'veo-3.1', aspectRatio: '4:5', durationSeconds: 12 },
+      params: { videoModel: '', aspectRatio: '4:5', durationSeconds: 12 },
     });
     const logs = await window.contentStudio.listGenerationLogs(workspacePath);
     return {
@@ -293,9 +313,21 @@ try {
     };
   })()`, true);
   const clickFlowState = await evaluate(cdp, `(async () => {
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+	  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const expandAllNavGroups = async () => {
+      const toggles = Array.from(document.querySelectorAll('.nav-group-toggle[aria-expanded="false"], .agent-nav-root[aria-expanded="false"]'));
+      for (const toggle of toggles) {
+        toggle.click();
+        await wait(80);
+      }
+    };
     const clickButton = async (label) => {
-      const scopes = [document.querySelector('.settings-modal'), document.querySelector('.detail-dialog-card'), document].filter(Boolean);
+      await expandAllNavGroups();
+      const scopes = [
+        document.querySelector('.lime-settings-dialog'),
+        document.querySelector('.detail-dialog-card'),
+        document,
+      ].filter(Boolean);
       const button = scopes.flatMap((scope) => Array.from(scope.querySelectorAll('button'))).find((item) => {
         const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
         return accessibleText.includes(label) && !item.disabled;
@@ -305,16 +337,36 @@ try {
       await wait(80);
       return true;
     };
+    const clickNavButton = async (labels) => {
+      await expandAllNavGroups();
+      const candidates = Array.isArray(labels) ? labels : [labels];
+      const nav = document.querySelector('.nav-stack');
+      if (!nav) return false;
+      const button = Array.from(nav.querySelectorAll('button.nav-item, button.agent-nav-action, button.agent-project-row, button.agent-conversation-row')).find((item) => {
+        const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
+        const normalizedText = accessibleText.toLowerCase();
+        return candidates.some((label) => normalizedText.includes(String(label).toLowerCase())) && !item.disabled;
+      });
+      if (!button) return false;
+      button.click();
+      await wait(120);
+      return true;
+    };
     const clickSettingsButton = async (label) => {
-      const modal = document.querySelector('.settings-modal');
+      const modal = document.querySelector('.lime-settings-dialog');
       if (!modal) return false;
-      const button = Array.from(modal.querySelectorAll('button')).find((item) => {
+      const navItems = Array.from(modal.querySelectorAll('.lime-settings-nav-item'));
+      const navButton = navItems.find((item) => {
+        const navLabel = item.querySelector('.lime-settings-nav-label')?.textContent?.trim() || '';
+        return (navLabel === label || navLabel.includes(label) || label.includes(navLabel)) && !item.disabled;
+      });
+      const button = navButton ?? Array.from(modal.querySelectorAll('button')).find((item) => {
         const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
         return accessibleText.includes(label) && !item.disabled;
       });
       if (!button) return false;
       button.click();
-      await wait(80);
+      await wait(120);
       return true;
     };
     const clickAnyButton = async (labels) => {
@@ -323,12 +375,32 @@ try {
       }
       return false;
     };
+    const clickAppSettingsButton = async () => {
+      const button = document.querySelector('.content-studio-platform-account-entry .lime-account-entry-settings')
+        || document.querySelector('.sidebar .lime-account-entry-settings')
+        || Array.from(document.querySelectorAll('.sidebar button')).find((item) => {
+          const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
+          return accessibleText.includes('设置') && !item.disabled;
+        });
+      if (!button || button.disabled) return false;
+      button.click();
+      await wait(120);
+      return true;
+    };
     const checks = [];
-    checks.push({ action: 'click video nav', clicked: await clickAnyButton(['视频生成', '视频引擎']), hasText: document.body.innerText.includes('视频复刻引擎') || document.body.innerText.includes('视频生成') });
-    checks.push({ action: 'click article nav', clicked: await clickButton('文章生成'), hasText: document.body.innerText.includes('文章生成') && document.body.innerText.includes('正文 / 发布检查') });
-    checks.push({ action: 'click knowledge nav', clicked: await clickButton('成型知识库'), hasText: document.body.innerText.includes('知识库') && document.body.innerText.includes('引用检索') && document.body.innerText.includes('提示词包') && document.body.innerText.includes('场景卡') });
-    checks.push({ action: 'click assets nav', clicked: await clickAnyButton(['素材库', '素材库 / 历史']), hasText: document.body.innerText.includes('素材库') });
-    checks.push({ action: 'click skills nav', clicked: await clickAnyButton(['skills 管理', '能力管理', 'Skills 管理']), hasText: (document.body.innerText.includes('Skills') || document.body.innerText.includes('skills 管理') || document.body.innerText.includes('SKILLS 库') || document.body.innerText.includes('内容生成能力') || document.body.innerText.includes('高级能力库')) && (document.body.innerText.includes('Built-in skills') || document.body.innerText.includes('已启用')) });
+    checks.push({ action: 'click video nav', clicked: await clickNavButton(['视频生成', '视频引擎']), hasText: document.body.innerText.includes('视频复刻引擎') || document.body.innerText.includes('视频生成') });
+    checks.push({
+      action: 'click agents nav',
+      clicked: await clickNavButton(['新对话', '对话', '项目', 'agents']),
+      hasText: Boolean(document.querySelector('.agents-entry'))
+        && Boolean(document.querySelector('.agents-composer-frame textarea[aria-label="agents 输入"]'))
+        && Boolean(document.querySelector('.agents-entry-board'))
+        && document.body.innerText.includes('文章生成')
+        && document.body.innerText.includes('脚本生成'),
+    });
+    checks.push({ action: 'click knowledge nav', clicked: await clickNavButton('成型知识库'), hasText: document.body.innerText.includes('知识库') && document.body.innerText.includes('引用检索') && document.body.innerText.includes('提示词包') && document.body.innerText.includes('场景卡') });
+    checks.push({ action: 'click assets nav', clicked: await clickNavButton(['素材库', '素材库 / 历史']), hasText: document.body.innerText.includes('素材库') });
+    checks.push({ action: 'click skills nav', clicked: await clickNavButton(['skills 管理', '能力管理', 'Skills 管理']), hasText: (document.body.innerText.includes('Skills') || document.body.innerText.includes('skills 管理') || document.body.innerText.includes('SKILLS 库') || document.body.innerText.includes('内容生成能力') || document.body.innerText.includes('高级能力库')) && (document.body.innerText.includes('Built-in skills') || document.body.innerText.includes('已启用')) });
     checks.push({
       action: 'show skill document viewer',
       clicked: true,
@@ -340,19 +412,30 @@ try {
         && Boolean(document.querySelector('.skill-file-content'))
         && document.body.innerText.includes('Slash command + auto'),
     });
-    checks.push({ action: 'open settings', clicked: await clickButton('设置'), hasText: document.body.innerText.includes('设置') && document.body.innerText.includes('通用') });
+    checks.push({ action: 'open settings', clicked: await clickAppSettingsButton(), hasText: Boolean(document.querySelector('.lime-settings-dialog')) && document.body.innerText.includes('内容工厂') });
     checks.push({
       action: 'click model settings',
       clicked: await clickSettingsButton('模型'),
-      hasText: document.body.innerText.includes('生成服务设置')
-        && document.body.innerText.includes('文字生成')
-        && document.body.innerText.includes('图片生成')
-        && document.body.innerText.includes('视频生成'),
+      hasText: Boolean(document.querySelector('.lime-model-settings'))
+        && !document.body.innerText.includes('Content Studio 文案生成')
+        && !document.body.innerText.includes('Content Studio 图片生成')
+        && !document.body.innerText.includes('Content Studio 视频生成')
+        && (
+          document.body.innerText.includes('Platform OpenAI')
+          || document.body.innerText.includes('未连接平台设置')
+          || document.body.innerText.includes('尚未配置 Provider')
+          || document.body.innerText.includes('添加自定义 Provider')
+        )
+        && (
+          document.body.innerText.includes('打开完整模型设置')
+          || document.body.innerText.includes('打开模型设置')
+          || document.body.innerText.includes('检查连接')
+        ),
     });
     checks.push({
       action: 'close settings',
-      clicked: await clickButton('完成'),
-      hasText: !document.body.innerText.includes('生成服务设置'),
+      clicked: await clickButton('关闭设置'),
+      hasText: !document.querySelector('.lime-settings-dialog'),
     });
     return {
       checks,
@@ -361,8 +444,8 @@ try {
     };
   })()`, true);
   const uiWorkflowState = await evaluate(cdp, `(async () => {
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const bodyText = () => document.body.innerText;
+	    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+	    const bodyText = () => document.body.innerText;
     const waitFor = async (label, predicate, timeoutMs = 8000) => {
       const started = Date.now();
       let lastText = '';
@@ -373,9 +456,21 @@ try {
       }
       throw new Error('UI workflow timeout: ' + label + '\\n' + lastText.slice(0, 1200));
     };
-    const clickButton = async (label) => {
-      const findButton = () => {
-        const scopes = [document.querySelector('.settings-modal'), document.querySelector('.detail-dialog-card'), document].filter(Boolean);
+	    const expandAllNavGroups = async () => {
+	      const toggles = Array.from(document.querySelectorAll('.nav-group-toggle[aria-expanded="false"], .agent-nav-root[aria-expanded="false"]'));
+	      for (const toggle of toggles) {
+	        toggle.click();
+	        await wait(80);
+	      }
+	    };
+	    const clickButton = async (label) => {
+	      await expandAllNavGroups();
+	      const findButton = () => {
+	        const scopes = [
+	          document.querySelector('.lime-settings-dialog'),
+          document.querySelector('.detail-dialog-card'),
+          document,
+        ].filter(Boolean);
         return scopes.flatMap((scope) => Array.from(scope.querySelectorAll('button'))).find((item) => {
           const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
           return accessibleText.includes(label) && !item.disabled;
@@ -384,6 +479,24 @@ try {
       await waitFor('button ' + label, () => Boolean(findButton()), 12000);
       const button = findButton();
       if (!button) throw new Error('按钮不可点击：' + label);
+      button.click();
+      await wait(120);
+    };
+    const clickNavButton = async (labels) => {
+      await expandAllNavGroups();
+      const candidates = Array.isArray(labels) ? labels : [labels];
+      const findButton = () => {
+        const nav = document.querySelector('.nav-stack');
+        if (!nav) return null;
+        return Array.from(nav.querySelectorAll('button.nav-item, button.agent-nav-action, button.agent-project-row, button.agent-conversation-row')).find((item) => {
+          const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
+          const normalizedText = accessibleText.toLowerCase();
+          return candidates.some((label) => normalizedText.includes(String(label).toLowerCase())) && !item.disabled;
+        });
+      };
+      await waitFor('nav button ' + candidates.join(' / '), () => Boolean(findButton()), 12000);
+      const button = findButton();
+      if (!button) throw new Error('导航不可点击：' + candidates.join(' / '));
       button.click();
       await wait(120);
     };
@@ -430,17 +543,32 @@ try {
       }
       throw new Error('按钮不可点击：' + lastLabel);
     };
+    const setAgentsInput = async (value) => {
+      const textarea = document.querySelector('.agents-composer-frame textarea[aria-label="agents 输入"]');
+      if (!textarea) throw new Error('agents 输入框不存在');
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(textarea, value);
+      textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
+      await wait(120);
+    };
     const checks = [];
 
     await waitFor('default workspace ready', () => !bodyText().includes('尚未选择工作区') && !bodyText().includes('请先选择工作区'));
     checks.push({ step: 'default workspace ready', ok: true });
 
+    await clickNavButton(['新对话', 'agents']);
     await clickButton('文章生成');
-    await clickButton('生成大纲 / 正文 / 发布检查');
-    await waitFor('article blocked', () => bodyText().includes('文字模型未配置'));
+    await setAgentsInput('请基于当前知识库和素材生成一篇 smoke 测试文章正文。');
+    await clickButton('开始协作');
+    await waitFor('article blocked', () => (
+      bodyText().includes('文章生成协作')
+      && bodyText().includes('生成服务待配置')
+      && bodyText().includes('需要配置文字模型')
+      && bodyText().includes('打开模型设置')
+    ));
     checks.push({ step: 'article blocked without provider', ok: true });
 
-    await clickAnyButton(['图片生成', '图片引擎']);
+    await clickNavButton(['图片生成', '图片引擎']);
     await clickButton('启动渲染引擎');
     await waitFor('image submitted or blocked', () => (
       bodyText().includes('后台生成队列')
@@ -450,7 +578,7 @@ try {
     ));
     checks.push({ step: 'image blocked without provider', ok: true });
 
-    await clickAnyButton(['视频生成', '视频引擎']);
+    await clickNavButton(['视频生成', '视频引擎']);
     await clickActionButton('智能拆解');
     await waitFor('video breakdown blocked', () => bodyText().includes('请先选择本地视频') || bodyText().includes('真实视频理解模型未配置'));
     checks.push({ step: 'video breakdown blocked without provider', ok: true });
@@ -468,11 +596,11 @@ try {
     ));
     checks.push({ step: 'video queue blocked', ok: true });
 
-    await clickAnyButton(['素材库', '素材库 / 历史']);
+    await clickNavButton(['素材库', '素材库 / 历史']);
     await waitFor('asset library hydrated', () => bodyText().includes('素材库') && bodyText().includes('还没有可展示的成功图片或视频素材'));
     checks.push({ step: 'asset library hides failed and blocked logs', ok: true });
 
-    await clickAnyButton(['skills 管理', '能力管理', 'Skills 管理']);
+    await clickNavButton(['skills 管理', '能力管理', 'Skills 管理']);
     await waitFor('skills usable', () => (bodyText().includes('Skills') || bodyText().includes('skills 管理') || bodyText().includes('SKILLS 库') || bodyText().includes('内容生成能力') || bodyText().includes('高级能力库')) && (bodyText().includes('Built-in skills') || bodyText().includes('已启用')) && bodyText().includes('Slash command + auto') && document.querySelector('[data-skill-drop-target="true"]') && document.querySelector('.skills-drop-target-button') && !bodyText().includes('选择工作区后可启用') && !bodyText().includes('选择 workspace 后可启用'));
     checks.push({ step: 'skills usable', ok: true });
 
@@ -532,7 +660,12 @@ try {
     throw new Error(`Renderer runtime exception: ${cdp.exceptions.join('; ')}`);
   }
   if (failedChecks.length) {
-    throw new Error(`GUI smoke 检查失败：${failedChecks.join(', ')}\nclickFlow failed: ${JSON.stringify(clickFlowState.failed)}`);
+    throw new Error([
+      `GUI smoke 检查失败：${failedChecks.join(', ')}`,
+      `clickFlow failed: ${JSON.stringify(clickFlowState.failed)}`,
+      `clickFlow checks: ${JSON.stringify(clickFlowState.checks)}`,
+      `clickFlow finalText: ${clickFlowState.finalText}`,
+    ].join('\n'));
   }
 
   console.log(JSON.stringify({ ok: true, target: { title: target.title, url: target.url }, rendererState, bridgeState, coreFlowState, clickFlowState, uiWorkflowState, scrollState }, null, 2));
@@ -542,8 +675,11 @@ try {
 } finally {
   cdp?.close();
   child.kill('SIGTERM');
-  await wait(500);
-  if (!child.killed) child.kill('SIGKILL');
-  rmSync(userDataDir, { recursive: true, force: true });
-  rmSync(workspaceDir, { recursive: true, force: true });
+  await waitForChildExit(child);
+  if (child.exitCode === null && !child.signalCode) {
+    child.kill('SIGKILL');
+    await waitForChildExit(child);
+  }
+  await removeDirWithRetry(userDataDir);
+  await removeDirWithRetry(workspaceDir);
 }

@@ -1297,10 +1297,17 @@ label span,
   font-weight: 500;
 }
 .app-error-banner {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  z-index: 2200;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px;
   gap: 12px;
   align-items: center;
+  width: min(760px, calc(100vw - 48px));
+  box-shadow: 0 14px 36px rgba(153, 27, 27, 0.14);
+  transform: translateX(-50%);
 }
 .app-error-message {
   min-width: 0;

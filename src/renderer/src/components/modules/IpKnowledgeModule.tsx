@@ -257,7 +257,7 @@ export function IpKnowledgeModule({
       </article>
       <article>
         <span>交付去向</span>
-        <strong>{'场景延伸库 -> Prompt 工作台'}</strong>
+        <strong>{'场景延伸库 -> agents'}</strong>
         <small>口播、私域、产品化和咨询回复引用同一 IP 版本</small>
       </article>
     </div>
@@ -501,7 +501,7 @@ export function IpKnowledgeModule({
                 生成场景延伸库
               </button>
               <button className="ghost small" disabled={!workspaceReady || busy} onClick={onOpenPromptWorkbench}>
-                {generatedScenarioCount ? '查看场景延伸库' : '进入 Prompt 工作台'}
+                {generatedScenarioCount ? '查看场景延伸库' : '进入 agents'}
               </button>
             </ActionGroup>
           </>

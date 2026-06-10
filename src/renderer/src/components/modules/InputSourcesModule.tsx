@@ -414,13 +414,13 @@ function ProductBriefStructurePanel({
         <div className="empty-state">还没有产品资料。登记时选择“产品资料”，或导入 SKU / 卖点表后，这里会自动整理变量表。</div>
       )}
       <div className="workflow-actions left">
-        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('assets-prompt-workbench')}>
-          去 Prompt 工作台
+        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('agents')}>
+          去 agents
         </button>
         <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('material-breakdown')}>
           去拆解素材
         </button>
-        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('image')}>
+        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('agents')}>
           去图片生成
         </button>
       </div>
@@ -527,8 +527,8 @@ function FeedbackInsightPanel({
         <button className="ghost small" disabled={!workspaceReady || !insight.clusters.length} onClick={() => onSelectModule('article-title')}>
           去标题生成
         </button>
-        <button className="ghost small" disabled={!workspaceReady || !insight.clusters.length} onClick={() => onSelectModule('assets-prompt-workbench')}>
-          去 Prompt 工作台
+        <button className="ghost small" disabled={!workspaceReady || !insight.clusters.length} onClick={() => onSelectModule('agents')}>
+          去 agents
         </button>
         <button className="ghost small" disabled={!workspaceReady || !insight.clusters.length} onClick={() => onSelectModule('knowledge-scenes')}>
           去场景库
@@ -559,7 +559,7 @@ export function InputSourcesModule({
   const [title, setTitle] = useState('手动输入源');
   const [text, setText] = useState('');
   const [tags, setTags] = useState('用户意图, Prompt');
-  const [agentMessage, setAgentMessage] = useState('请基于当前输入源，判断哪些资料适合进品牌知识库、IP 知识库、产品变量表、评论痛点矩阵或 Prompt 工作台，并列出缺口。');
+  const [agentMessage, setAgentMessage] = useState('请基于当前输入源，判断哪些资料适合进品牌知识库、IP 知识库、产品变量表、评论痛点矩阵或 agents 协作，并列出缺口。');
   const productBrief = useMemo(() => structureProductBriefSources(inputSources), [inputSources]);
   const feedbackInsight = useMemo(() => clusterUserFeedbackSources(inputSources), [inputSources]);
   const stats = useMemo(
@@ -753,7 +753,7 @@ export function InputSourcesModule({
             </article>
           ))}
           {inputSources.length === 0 ? (
-            <div className="empty-state">还没有输入源。先登记 DOCX、参考图、参考视频、SKU 或用户意图，再分流到知识库、内容制造和 Prompt 工作台。</div>
+            <div className="empty-state">还没有输入源。先登记 DOCX、参考图、参考视频、SKU 或用户意图，再分流到知识库、内容制造和 agents。</div>
           ) : null}
         </div>
       </section>
@@ -792,10 +792,10 @@ export function InputSourcesModule({
         <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('knowledge-brand')}>
           去品牌知识库
         </button>
-        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('assets-prompt-workbench')}>
-          去 Prompt 工作台
+        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('agents')}>
+          去 agents
         </button>
-        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('image')}>
+        <button className="ghost small" disabled={!workspaceReady} onClick={() => onSelectModule('agents')}>
           去图片生成
         </button>
       </ActionGroup>

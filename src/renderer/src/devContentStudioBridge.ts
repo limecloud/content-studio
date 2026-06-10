@@ -1,3 +1,7 @@
+import {
+  APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
+  APP_SERVER_PROTOCOL_VERSION,
+} from "../../shared/types";
 import type {
   AgentPromptExecutionEvent,
   AgentPromptSession,
@@ -24,6 +28,7 @@ import type {
   MediaGenerationResult,
   ModelCatalogView,
   ModelConfigView,
+  PlatformSettingsProjection,
   PromptDraft,
   SaveSettingsInput,
   SceneCard,
@@ -68,6 +73,7 @@ const authState: BuguAuthState = {
 
 const settings: AppSettingsView = {
   workspacePath: DEV_WORKSPACE_PATH,
+  recentWorkspacePaths: [DEV_WORKSPACE_PATH],
   hasAnthropicApiKey: false,
   apiKeyStorage: "none",
   autoUpdateEnabled: false,
@@ -82,37 +88,66 @@ const updateState: AutoUpdateState = {
 
 const modelConfig: ModelConfigView = {
   apiEndpoint: "",
-  hasApiKey: true,
+  hasApiKey: false,
   safeStorageAvailable: false,
   textProvider: "http-text-generation",
   textProtocol: "openai-chat",
   textApiEndpoint: "",
-  hasTextApiKey: true,
-  textApiKeyStatus: "available",
-  textModel: "gpt-4o-mini",
-  textModels: ["gpt-4o-mini"],
-  imageProvider: "openai-responses",
+  hasTextApiKey: false,
+  textApiKeyStatus: "missing",
+  textModel: "",
+  textModels: [],
+  imageProvider: "disabled",
   imageProtocol: "openai-responses",
   imageApiEndpoint: "",
-  imageOuterModel: "gpt-image-2",
-  hasImageApiKey: true,
-  imageApiKeyStatus: "available",
-  imageModels: ["gpt-image-2"],
-  videoProvider: "video-understanding-openai-compatible",
+  imageOuterModel: "",
+  hasImageApiKey: false,
+  imageApiKeyStatus: "missing",
+  imageModels: [],
+  videoProvider: "disabled",
   videoApiEndpoint: "",
-  hasVideoApiKey: true,
-  videoApiKeyStatus: "available",
-  videoModel: "gemini-2.5-flash",
-  videoModels: ["gemini-2.5-flash", "gpt-4o", "veo-3.1"],
+  hasVideoApiKey: false,
+  videoApiKeyStatus: "missing",
+  videoModel: "",
+  videoModels: [],
   updatedAt: new Date().toISOString(),
 };
 
 const modelCatalog: ModelCatalogView = {
-  textModels: ["gpt-4o-mini"],
-  imageModels: ["gpt-image-2"],
-  videoModels: ["gemini-2.5-flash", "gpt-4o", "veo-3.1"],
+  textModels: [],
+  imageModels: [],
+  videoModels: [],
   source: "offline-seed",
   updatedAt: new Date().toISOString(),
+};
+
+let devPlatformSettings: PlatformSettingsProjection = {
+  version: "0",
+  updatedAt: new Date(0).toISOString(),
+  locale: "zh-CN",
+  theme: "light",
+  appearance: {
+    colorTheme: "emerald",
+    fontScale: 1,
+    serifEnabled: false,
+  },
+  workspacePath: DEV_WORKSPACE_PATH,
+  proxy: {
+    enabled: false,
+    url: "",
+  },
+  developerMode: false,
+  general: {
+    notificationsEnabled: true,
+    reduceMotion: false,
+    syncLocalAgentHistory: false,
+    quickWindowShortcutEnabled: true,
+    commandWhitelistEnabled: false,
+    permissionMode: "auto-approve",
+    thinkingMode: "auto",
+    showToolCalls: true,
+    expandToolCallsByDefault: false,
+  },
 };
 
 const devInputSources: ContentStudioApi extends { listInputSources(workspacePath: string): Promise<infer T> } ? T : never = [];
@@ -383,7 +418,7 @@ function contentKnowledgeMap(input: BuildContentKnowledgeMapInput): ContentKnowl
     teamSync: {
       backend: "bugu",
       status: "local-only",
-      message: "浏览器开发模式未连接 Bugu 业务后端，当前仅为本机草稿。",
+      message: "浏览器开发模式未连接 Bugu 业务服务，当前仅为本机草稿。",
     },
     sourceInputSourceIds: devInputSources.map((source) => source.id),
     brandKnowledgeBaseIds: [],
@@ -402,7 +437,7 @@ function contentKnowledgeMap(input: BuildContentKnowledgeMapInput): ContentKnowl
     painPoints: source ? [{
       id: `browser-dev-row-pain-${Date.now()}`,
       title: "浏览器开发痛点组合",
-      summary: "用于预览审核后交接到 Prompt 工作台。",
+      summary: "用于预览审核后生成 Prompt 草稿。",
       tags: ["痛点", "浏览器开发"],
       sourceRefs: [sourceRef],
       evidenceRefs: [evidenceId],
@@ -550,7 +585,7 @@ function contentBatch(input: BuildContentBatchInput): ContentBatchRecord {
         status: "needs-input" as const,
         title: "缺矩阵交接",
         message: "还没有把卖点、证据、场景和素材排成 Prompt、场景卡和补资源任务。",
-        recoveryAction: "打开 Prompt 工作台或场景库处理矩阵交接。",
+        recoveryAction: "打开 agents 或场景库处理矩阵交接。",
       };
     }
     if (stageId === "manufacturing" && !manufacturingDrafts.length) {
@@ -602,7 +637,7 @@ function contentBatch(input: BuildContentBatchInput): ContentBatchRecord {
           : stageId === "modeling"
             ? "knowledge-map"
             : stageId === "matrix"
-              ? "assets-prompt-workbench"
+              ? "agents"
               : "knowledge-inputs";
       const recoveryTasks = gate.status === "passed" ? [] : [{
         id: `${batchId}:${stageId}:recovery`,
@@ -638,13 +673,13 @@ function contentBatch(input: BuildContentBatchInput): ContentBatchRecord {
             kind: "matrix-handoff",
             id: `${map.id}:matrix`,
             summary: `${map.title} · ${map.sellingPoints.length + map.painPoints.length + map.scenarios.length} 个事实行可交接`,
-            targetModule: "assets-prompt-workbench",
+            targetModule: "agents",
           }] : []),
           ...(stageId === "manufacturing" ? manufacturingDrafts.slice(0, 6).map((draft) => ({
             kind: "prompt-draft",
             id: draft.id,
             summary: `${draft.title} · ${draft.status}`,
-            targetModule: draft.purpose === "video" ? "video-prompt" : draft.purpose === "green-screen" ? "image-green-screen" : "image",
+            targetModule: draft.purpose === "video" ? "video-prompt" : draft.purpose === "green-screen" ? "image-green-screen" : "agents",
           })) : []),
         ],
         gateResults: [{
@@ -660,7 +695,7 @@ function contentBatch(input: BuildContentBatchInput): ContentBatchRecord {
           kind: "prompt-draft",
           id: draft.id,
           summary: `${draft.title} · ${draft.status}`,
-          targetModule: draft.purpose === "video" ? "video-prompt" : draft.purpose === "green-screen" ? "image-green-screen" : "image",
+          targetModule: draft.purpose === "video" ? "video-prompt" : draft.purpose === "green-screen" ? "image-green-screen" : "agents",
         })) : [],
         updatedAt: now,
       };
@@ -1237,6 +1272,25 @@ export function createDevBridge(): ContentStudioApi {
     getModelConfig: async () => modelConfig,
     saveModelConfig: async () => modelConfig,
     getModelCatalog: async () => modelCatalog,
+    getPlatformSettings: async () => devPlatformSettings,
+    savePlatformSettings: async (input: PlatformSettingsProjection) => {
+      devPlatformSettings = {
+        ...input,
+        version: String(Number(input.version || "0") + 1),
+        updatedAt: new Date().toISOString(),
+      };
+      return devPlatformSettings;
+    },
+    getPlatformHostStatus: async () => ({
+      available: false,
+      mode: "standalone",
+      error: "浏览器开发模式未连接平台设置中心。",
+    }),
+    openPlatformModelSettings: async () => ({
+      ok: false,
+      target: "model-settings",
+      message: "浏览器开发模式未连接 lime-desktop-platform。",
+    }),
 
     scanSkills: async () => [],
     installBuiltinSkill: async () => [],
@@ -1611,7 +1665,7 @@ export function createDevBridge(): ContentStudioApi {
               status: "passed" as const,
               message: `${row.evidenceRefs.length} 条证据可追溯。`,
             }],
-            nextStep: "在 Prompt 工作台确认草稿，或在场景库继续拆成图片、视频和生产任务。",
+            nextStep: "在 agents 确认草稿，或在场景库继续拆成图片、视频和生产任务。",
             createdAt: new Date().toISOString(),
           }],
           createdAt: new Date().toISOString(),
@@ -1705,13 +1759,13 @@ export function createDevBridge(): ContentStudioApi {
         : devContentKnowledgeReleases.find((item) => item.status === "published" && (!map || item.contentKnowledgeMapId === map.id));
       const readyRows = map ? [...map.sellingPoints, ...map.painPoints, ...map.scenarios].filter((row) => row.status === "ready").slice(0, 12) : [];
       if (!map) throw new Error("请先生成内容知识地图。");
-      if (!release || release.status !== "published") throw new Error("请先发布当前内容知识地图的团队知识包版本，再交给 Prompt 工作台。");
+      if (!release || release.status !== "published") throw new Error("请先发布当前内容知识地图的团队知识包版本，再生成 Prompt 草稿。");
       if (!readyRows.length) throw new Error("当前没有可复用组合，请先完成审核或补证据。");
       return createDraft({
         workspacePath: input.workspacePath,
         purpose: "image",
         userIntent: [
-          `# ${map.title} / Prompt 工作台交接`,
+          `# ${map.title} / Prompt 草稿交接`,
           "",
           `团队知识包：${release.title} ${release.version}`,
           "",
@@ -2271,6 +2325,20 @@ export function createDevBridge(): ContentStudioApi {
 
     runTask: async () => ({ taskId: `browser-dev-task-${Date.now()}` }),
     cancelTask: async () => true,
+    getAppServerHealth: async () => ({
+      available: false,
+      protocolVersion: APP_SERVER_PROTOCOL_VERSION,
+      source: "missing",
+      bridgeProfile: APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
+      message: "浏览器开发模式不启动 App Server sidecar。",
+    }),
+    runAppServerSmoke: async () => ({
+      ok: false,
+      protocolVersion: APP_SERVER_PROTOCOL_VERSION,
+      source: "missing",
+      bridgeProfile: APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
+      error: "浏览器开发模式不启动 App Server sidecar。",
+    }),
     onAgentEvent: () => () => undefined,
   };
 

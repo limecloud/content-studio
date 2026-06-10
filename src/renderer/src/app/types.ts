@@ -1,7 +1,10 @@
 import type { GlobalGenerationParams, ImageGenerationProtocol, TextGenerationProtocol } from '../../../shared/types';
+import type { PlatformSettingsPageKey } from '@limecloud/desktop-platform-react';
 import type { Dispatch, SetStateAction } from 'react';
 
-export type CoreModuleKey = 'image' | 'image-showcase' | 'video' | 'video-showcase' | 'article' | 'knowledge' | 'assets' | 'skills';
+export type AgentModuleKey = 'agents';
+
+export type CoreModuleKey = AgentModuleKey | 'image' | 'image-production' | 'image-showcase' | 'video' | 'video-showcase' | 'article' | 'knowledge' | 'assets' | 'skills';
 
 export type BusinessModuleKey = 'content-batch';
 
@@ -24,11 +27,10 @@ export type V2ModuleKey =
   | 'knowledge-brand'
   | 'knowledge-scenes'
   | 'knowledge-ip'
-  | 'knowledge-inputs'
-  | 'assets-prompt-workbench'
-  | 'assets-history';
+  | 'knowledge-inputs';
 
-export type ModuleKey = CoreModuleKey | BusinessModuleKey | V2ModuleKey;
+export type DeprecatedModuleKey = 'assets-prompt-workbench' | 'assets-history';
+export type ModuleKey = CoreModuleKey | BusinessModuleKey | V2ModuleKey | DeprecatedModuleKey;
 export type NavItem = { key?: ModuleKey; label: string; disabled?: boolean; advanced?: boolean };
 
 export type ModelDraft = {
@@ -61,7 +63,7 @@ export type ColorTheme =
   | 'arts'
   | 'luxury';
 
-export type SettingsTab = 'general' | 'theme' | 'model' | 'account' | 'about';
+export type SettingsPageKey = PlatformSettingsPageKey;
 export type ModelSettingView = 'provider_list' | 'edit_text_http' | 'edit_deepseek' | 'edit_custom';
 export type ProviderTab = 'recommended' | 'domestic' | 'aggregate' | 'overseas' | 'local';
 

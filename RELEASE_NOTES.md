@@ -1,5 +1,31 @@
 # Release Notes
 
+## v0.21.0 - 2026-06-11
+
+### Lime Desktop Platform Runtime 接入
+
+- `AI agents` 工作台 Prompt Agent 主链接入 `lime-desktop-platform` runtime bridge，平台宿主下优先通过 `lime.agent` capability 调用 App Server runtime，不再读取或传递 Content Studio 本地模型 API Key。
+- 新增 `PlatformHostBridgeClient`、平台设置投影和模型设置迁移链路；旧本地文字 / 图片 / 视频 Provider 配置只作为一次性迁移 source，迁移成功后清除本地 key，平台宿主失败时 fail closed。
+- App Server runtime sidecar 增加 `--data-dir`、provider store 预检和敏感环境变量清理，Prompt Agent 只提交 provider / model preference，由 App Server provider store 解析凭证。
+
+### Agents 工作台与 AgentUI Facts
+
+- 新增 `agents` 工作台界面，围绕新对话、项目、历史对话、素材输入、模型选择和运行事实组织协作，不再把 Agent 能力散落到普通模块说明区。
+- Agent runtime events 接入共享 `@limecloud/agent-runtime-ui` / projection：工具结果、证据、Human-in-the-loop action、artifact 和 runtime status 进入专用事实面板，不再塞进普通助手正文。
+- 修正平台 runtime event 映射顺序，`tool.failed` 保持 Tool UI fact，不再被误归类为 `model.failed`；人工动作可写回并跳转到模型设置或输入源补齐路径。
+- AI 生图和 AI 视频模块不再触发应用侧栏整体自动折叠；窄屏仍按响应式规则收起，一级导航分组继续由当前模块和用户操作控制。
+
+### 平台设置、导航与发布门禁
+
+- 设置入口迁移到 `@limecloud/desktop-platform-react` 公共设置页，模型配置、账号入口、外观字号和平台 Host 状态统一从平台投影消费。
+- App Server release resources 准备脚本支持 `app-resource://` artifact，并对同平台 sidecar 执行 runtime provider store gate，阻断不支持 `--data-dir` / `modelProvider/list` 的旧 binary 进入发布资源。
+- 新增 `npm run verify:lime-agent`、`npm run app-server:runtime:live`、`npm run platform-host:runtime:live`，并把 Prompt Agent key/env 回流、公开平台模型保存入口和第二套 runtime / SDK 回流检查串入 `verify:local`。
+
+### 验证
+
+- `npm run verify:local`
+- `npm run app-server:runtime:live` / `npm run platform-host:runtime:live` 作为真实 Provider / 平台宿主 live gate；无真实 runtime bridge、provider store 或显式 provider/model preference 时必须 fail closed。
+
 ## v0.20.0 - 2026-06-08
 
 ### Lime App Server 生成能力收敛

@@ -158,7 +158,7 @@ function defaultHandoffMode(purpose: PromptDraftPurpose): ScenePromptHandoffMode
 }
 
 function internalDestinationLabel(purpose: PromptDraftPurpose): string {
-  if (purpose === 'video') return '打开视频 Prompt 工作台';
+  if (purpose === 'video') return '打开视频 Prompt';
   if (purpose === 'article') return '发送到文章生成';
   if (purpose === 'green-screen') return '打开绿幕文案图';
   return '发送到图片生成';
@@ -817,8 +817,8 @@ export function ScenePromptModule({
             绿幕文案图
           </button>
         ) : null}
-        <button type="button" className="ghost small" onClick={() => onSelectModule('assets-prompt-workbench')}>
-          Prompt 工作台
+        <button type="button" className="ghost small" onClick={() => onSelectModule('agents')}>
+          agents
         </button>
       </div>
       {relatedDrafts.length ? (

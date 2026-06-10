@@ -478,6 +478,12 @@ function mergeWithSharedDressingkitVideoSite(site: OemPublicSiteConfig | null | 
   };
 }
 
+function publicVideoAssetFallbackMessage(hasFallback: boolean): string {
+  return hasFallback
+    ? "公共视频案例暂时不可用，已切换到内置视频案例。"
+    : "公共视频案例暂时不可用，请稍后刷新。";
+}
+
 function roleFromAsset(ref: string, asset?: OemPublicAsset): VideoShowcaseAssetRole {
   const roleText = `${asset?.group || ""} ${asset?.role || ""}`.toLowerCase();
   if (roleText.includes("output") || roleText.includes("输出")) return "output";
@@ -1806,8 +1812,8 @@ export function VideoShowcaseModule({
         appendHistory({
           title: videoCases.length ? "已加载 AI 视频案例清单" : "AI 视频案例清单为空",
           detail: videoCases.length
-            ? `${videoCases.length} 组案例 · ${assets.length} 个资产 · 后端增量 ${remoteCases.length}/${remoteAssets.length}`
-            : "后端没有返回 ai-video-showcase 共享案例。",
+            ? `${videoCases.length} 组案例 · ${assets.length} 个资产 · 公共增量 ${remoteCases.length}/${remoteAssets.length}`
+            : "公共视频案例暂无可展示内容。",
           tone: videoCases.length ? "ready" : "warning",
         });
       })
@@ -1821,11 +1827,9 @@ export function VideoShowcaseModule({
         setBackendAssets(assets);
         setFeatureUiConfig(readFeatureUiConfig(mergedSite));
         setBackendStatus(videoCases.length ? "ready" : "error");
-        setBackendMessage(
-          `后端读取失败，已使用内置通用 AI 视频素材。${error instanceof Error ? error.message : "读取公共配置时发生未知错误。"}`,
-        );
+        setBackendMessage(publicVideoAssetFallbackMessage(Boolean(videoCases.length)));
         appendHistory({
-          title: "已启用内置通用 AI 视频案例清单",
+          title: "已切换内置视频案例清单",
           detail: `${videoCases.length} 组案例 · ${assets.length} 个资产`,
           tone: videoCases.length ? "ready" : "blocked",
         });
@@ -1849,6 +1853,13 @@ export function VideoShowcaseModule({
   );
   const totalAssetCount = backendCards.reduce((total, item) => total + item.assets.length, 0);
   const featureCaseCount = backendCards.filter((item) => item.featureId === activeFeatureId).length;
+  const backendSummary = backendStatus === "ready"
+    ? `${backendMessage ? "内置视频案例" : "公共视频案例"} ${backendCards.length} 组 · ${totalAssetCount} 个资产 · 当前功能 ${featureCaseCount} 组`
+    : backendStatus === "loading"
+      ? "正在读取公共视频案例"
+      : backendStatus === "error"
+        ? "公共视频案例暂时不可用"
+        : "公共视频案例待导入";
   const featureLabel = activeFeature.title;
   const activeImageRefs = exampleImageRefs ?? productImageRefs;
   const activeVideoRefs = exampleVideoRefs ?? videoAssetRefs;
@@ -3069,13 +3080,7 @@ export function VideoShowcaseModule({
                   <h2>{featureLabel}</h2>
                 </div>
                 <p>
-                  {backendStatus === "ready"
-                    ? `后端素材 ${backendCards.length} 组 · ${totalAssetCount} 个资产 · 当前功能 ${featureCaseCount} 组`
-                    : backendStatus === "loading"
-                      ? "正在加载后端素材"
-                      : backendStatus === "error"
-                        ? backendMessage
-                        : "后端素材为空"}
+                  {backendSummary}
                 </p>
               </div>
 

@@ -71,6 +71,19 @@ function startVisionServer() {
   });
 }
 
+async function clickNavItem(page, label) {
+  const collapsedGroupToggles = page.locator('.nav-group-toggle[aria-expanded="false"], .agent-nav-root[aria-expanded="false"]');
+  while (await collapsedGroupToggles.count()) {
+    await collapsedGroupToggles.first().click();
+  }
+  const escapedLabel = label.replace(/"/g, '\\"');
+  const navItem = page.locator(
+    `.nav-stack button.nav-item[aria-label="${escapedLabel}"], .nav-stack button.nav-item[title="${escapedLabel}"]`,
+  ).first();
+  await expect(navItem, `导航项应存在：${label}`).toBeVisible();
+  await navItem.click();
+}
+
 test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   test.setTimeout(120_000);
   if (!existsSync(mainEntry)) throw new Error('请先 npm run build');
@@ -118,7 +131,7 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   ).toBe(true);
 
   // Step 1: 直接导航到拆解素材
-  await page.locator('nav button').filter({ hasText: '✂️' }).click();
+  await clickNavItem(page, '拆解素材');
   await expect(page.locator('.ai-breakdown-shell')).toBeVisible({ timeout: 5000 });
 
   // 验证空态

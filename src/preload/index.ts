@@ -110,6 +110,10 @@ const api: ContentStudioApi = {
   getModelConfig: () => ipcRenderer.invoke('modelConfig:get'),
   saveModelConfig: (input: SaveModelConfigInput) => ipcRenderer.invoke('modelConfig:save', input),
   getModelCatalog: () => ipcRenderer.invoke('modelConfig:catalog'),
+  getPlatformSettings: () => ipcRenderer.invoke('platformHost:getPlatformSettings'),
+  savePlatformSettings: (settings) => ipcRenderer.invoke('platformHost:savePlatformSettings', settings),
+  getPlatformHostStatus: () => ipcRenderer.invoke('platformHost:status'),
+  openPlatformModelSettings: () => ipcRenderer.invoke('platformHost:openModelSettings'),
 
   scanSkills: (workspacePath?: string) => ipcRenderer.invoke('skills:scan', workspacePath),
   installBuiltinSkill: (slug: string, workspacePath: string) => ipcRenderer.invoke('skills:installBuiltin', slug, workspacePath),

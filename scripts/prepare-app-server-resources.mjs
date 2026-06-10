@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { chmod, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { createInterface } from 'node:readline';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const PROTOCOL_VERSION = 'appserver.v0';
 const DEFAULT_MANIFEST_NAME = 'app-server.release.json';
+const RUNTIME_PROVIDER_STORE_CHECK_TIMEOUT_MS = 10_000;
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function parseArgs(argv) {
@@ -42,6 +46,10 @@ function normalizeSha256(value) {
 
 function isHttpUrl(value) {
   return /^https?:\/\//i.test(String(value || ''));
+}
+
+function isAppResourceUrl(value) {
+  return /^app-resource:\/\//i.test(String(value || ''));
 }
 
 async function sha256File(filePath) {
@@ -94,6 +102,16 @@ function resolveArtifactSource(artifactUrl, manifestSource) {
   if (artifactUrl.startsWith('file://')) return fileURLToPath(artifactUrl);
   if (isHttpUrl(artifactUrl)) return artifactUrl;
   if (isAbsolute(artifactUrl)) return artifactUrl;
+  if (isAppResourceUrl(artifactUrl)) {
+    if (isHttpUrl(manifestSource)) {
+      throw new Error('app-resource artifact URLs require a local app-server release manifest');
+    }
+    const url = new URL(artifactUrl);
+    const relativePath = [url.hostname, decodeURIComponent(url.pathname).replace(/^\/+/, '')]
+      .filter(Boolean)
+      .join('/');
+    return resolve(dirname(manifestSource), relativePath);
+  }
   if (isHttpUrl(manifestSource)) return new URL(artifactUrl, manifestSource).toString();
   return resolve(dirname(manifestSource), artifactUrl);
 }
@@ -173,6 +191,13 @@ async function prepareAppServerResources(options) {
   if (!platform.startsWith('win32')) {
     await chmod(tempPath, 0o755);
   }
+  let runtimeProviderStore;
+  try {
+    runtimeProviderStore = await validateRuntimeProviderStoreSupport(tempPath, platform, options);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
   await rm(binaryPath, { force: true });
   await rename(tempPath, binaryPath);
   await writeFile(join(resourcesDir, DEFAULT_MANIFEST_NAME), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -185,6 +210,7 @@ async function prepareAppServerResources(options) {
     binaryPath,
     sha256: actualSha256,
     bytes: installed.size,
+    runtimeProviderStore,
   };
 }
 
@@ -212,6 +238,10 @@ function resolveCliOptions(args, env = process.env) {
     platform: firstPresent(args.platform, env.APP_SERVER_RELEASE_PLATFORM),
     binary: firstPresent(args.binary, env.APP_SERVER_RELEASE_BINARY),
     version: firstPresent(args.version, env.APP_SERVER_RELEASE_VERSION, env.LIME_APP_SERVER_REF),
+    skipRuntimeProviderStoreCheck: firstPresent(
+      args['skip-runtime-provider-store-check'],
+      env.CONTENT_STUDIO_SKIP_APP_SERVER_RUNTIME_PROVIDER_STORE_CHECK,
+    ) === '1',
   };
 }
 
@@ -238,7 +268,8 @@ Release CI environment:
   APP_SERVER_RELEASE_VERSION=1.59.0
 
 Notes:
-  - artifact.url may be http(s), file://, absolute path, or relative to the manifest file.
+  - artifact.url may be http(s), file://, absolute path, app-resource://, or relative to the manifest file.
+  - app-resource:// URLs are resolved relative to the local manifest directory, matching Lime dist-electron resources.
   - remote manifest URLs may use relative artifact URLs.
   - --binary overrides artifact.url but still verifies the selected artifact sha256.`);
 }
@@ -258,6 +289,7 @@ async function main() {
       `manifest=${result.manifestPath}`,
       `sha256=${result.sha256}`,
       `bytes=${result.bytes}`,
+      `runtimeProviderStore=${result.runtimeProviderStore}`,
     ].join(' '),
   );
 }
@@ -279,3 +311,159 @@ export {
   sha256File,
   sidecarBinaryName,
 };
+
+async function validateRuntimeProviderStoreSupport(binaryPath, targetPlatform, options) {
+  if (options.skipRuntimeProviderStoreCheck) {
+    return 'skipped-explicit';
+  }
+  if (targetPlatform !== platformKey()) {
+    return 'skipped-cross-platform';
+  }
+
+  const help = await runProcessForText(binaryPath, ['--help'], RUNTIME_PROVIDER_STORE_CHECK_TIMEOUT_MS);
+  if (!help.includes('--data-dir')) {
+    throw new Error('app-server release artifact does not support --data-dir; runtime provider store App Server is required.');
+  }
+
+  const dataDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-prepare-provider-store-'));
+  try {
+    const probe = await runProviderStoreProbe(binaryPath, dataDir, RUNTIME_PROVIDER_STORE_CHECK_TIMEOUT_MS);
+    const providerList = probe.responses.find((response) => response.method === 'modelProvider/list');
+    if (!providerList || providerList.error) {
+      throw new Error(`app-server release artifact does not expose provider store modelProvider/list: ${providerList?.error || 'missing response'}`);
+    }
+    return 'validated';
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+}
+
+async function runProcessForText(command, args, timeoutMs) {
+  return await new Promise((resolveText, rejectText) => {
+    const child = spawn(command, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: minimalProcessEnv(),
+    });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      rejectText(new Error(`app-server runtime provider store check timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      rejectText(error);
+    });
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolveText(`${stdout}\n${stderr}`);
+        return;
+      }
+      rejectText(new Error(`app-server runtime provider store check failed: code=${code ?? 'null'} stderr=${stderr.trim()}`));
+    });
+  });
+}
+
+async function runProviderStoreProbe(binaryPath, dataDir, timeoutMs) {
+  return await new Promise((resolveProbe, rejectProbe) => {
+    const child = spawn(binaryPath, ['--stdio', '--backend', 'unavailable', '--data-dir', dataDir], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...minimalProcessEnv(),
+        APP_SERVER_BACKEND_MODE: 'unavailable',
+      },
+    });
+    const requests = [
+      {
+        method: 'initialize',
+        params: {
+          clientInfo: { name: 'content-studio-app-server-prepare', version: '0.0.0' },
+          capabilities: { experimentalApi: false, optOutNotificationMethods: [] },
+        },
+      },
+      { method: 'initialized', notification: true, params: {} },
+      { method: 'modelProvider/list', params: {} },
+    ];
+    const responses = [];
+    const pending = new Map();
+    let nextId = 1;
+    let stderr = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      finish(new Error(`app-server provider store probe timed out after ${timeoutMs}ms stderr=${stderr.trim()}`));
+    }, timeoutMs);
+
+    function finish(error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill('SIGTERM');
+      if (error) {
+        rejectProbe(error);
+        return;
+      }
+      resolveProbe({ responses });
+    }
+
+    function sendNext() {
+      while (requests.length) {
+        const request = requests.shift();
+        if (request.notification) {
+          child.stdin.write(`${JSON.stringify({ method: request.method, params: request.params ?? {} })}\n`);
+          continue;
+        }
+        const id = nextId++;
+        pending.set(id, request.method);
+        child.stdin.write(`${JSON.stringify({ id, method: request.method, params: request.params ?? {} })}\n`);
+        return;
+      }
+      if (pending.size === 0) finish();
+    }
+
+    const lines = createInterface({ input: child.stdout });
+    lines.on('line', (line) => {
+      if (!line.trim()) return;
+      let message;
+      try {
+        message = JSON.parse(line);
+      } catch (error) {
+        finish(new Error(`app-server provider store probe returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`));
+        return;
+      }
+      if (typeof message.id === 'number' && pending.has(message.id)) {
+        const method = pending.get(message.id);
+        pending.delete(message.id);
+        responses.push({
+          method,
+          result: message.result,
+          error: message.error?.message,
+        });
+        sendNext();
+      }
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr = `${stderr}${chunk.toString()}`.slice(-2000);
+    });
+    child.once('error', finish);
+    child.once('exit', (code, signal) => {
+      if (settled) return;
+      finish(new Error(`app-server provider store probe exited early: code=${code ?? 'null'} signal=${signal ?? 'null'} stderr=${stderr.trim()}`));
+    });
+    sendNext();
+  });
+}
+
+function minimalProcessEnv() {
+  return {
+    PATH: process.env.PATH || '',
+    HOME: process.env.HOME || '',
+    TMPDIR: process.env.TMPDIR || tmpdir(),
+  };
+}

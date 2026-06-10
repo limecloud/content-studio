@@ -6,6 +6,12 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { app as electronApp } from 'electron';
+import {
+  APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
+  APP_SERVER_AGENT_SESSION_METHODS,
+  APP_SERVER_PROTOCOL_VERSION,
+} from '../../shared/types';
 import type {
   AgentEvent,
   AppServerBusinessObjectRef,
@@ -16,59 +22,28 @@ import type {
   PermissionMode,
   RunTaskInput,
 } from '../../shared/types';
+import {
+  ContentStudioAgentRuntimeSessionGateway,
+  runContentStudioAgentRuntimeTurn,
+  type AppServerRequestResult,
+  type AppServerAgentRuntimeTurnResult,
+  type AppServerSessionStartResponse,
+  type AppServerTurnArtifact,
+  type AppServerTurnStartResponse,
+  type AppServerArtifactReadResponse,
+  type AppServerEvidenceExportResponse,
+} from './appServerAgentRuntimeGateway';
 
-const APP_SERVER_PROTOCOL_VERSION = 'appserver.v0';
 const DEFAULT_RPC_TIMEOUT_MS = 5000;
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000;
 const AGENT_NOTIFICATION_POLL_MS = 1000;
 const DEFAULT_AGENT_RUNTIME_CAPABILITY_ID = 'content.draft.generate';
+const RUNTIME_PROVIDER_STORE_PROBE_TIMEOUT_MS = 10_000;
 
 type AgentEventSink = (event: AgentEvent) => void;
 
-interface AppServerRequestResult<T> {
-  result: T;
-  notifications: AppServerJsonRpcMessage[];
-}
-
-interface AppServerSessionStartResponse {
-  session: {
-    sessionId: string;
-    threadId: string;
-    appId: string;
-    workspaceId?: string;
-    status: string;
-  };
-}
-
-interface AppServerTurnStartResponse {
-  turn: {
-    turnId: string;
-    sessionId: string;
-    status: string;
-  };
-}
-
 interface AppServerCapabilityListResponse {
   capabilities: Array<{ id: string; title: string; methods: string[] }>;
-}
-
-interface AppServerArtifactReadResponse {
-  artifacts: AppServerTurnArtifact[];
-}
-
-interface AppServerEvidenceExportResponse {
-  events: AppServerRuntimeEvent[];
-  artifacts: AppServerTurnArtifact[];
-}
-
-export interface AppServerTurnArtifact {
-  artifactRef?: string;
-  artifactId?: string;
-  title?: string;
-  kind?: string;
-  path?: string;
-  content?: string;
-  payload?: unknown;
 }
 
 export interface AppServerPromptTurnInput {
@@ -78,6 +53,8 @@ export interface AppServerPromptTurnInput {
   selectedSkillSlugs?: string[];
   metadata?: Record<string, unknown>;
   capabilityId?: string;
+  providerPreference?: string;
+  modelPreference?: string;
   businessObjectRef?: AppServerBusinessObjectRef;
   timeoutMs?: number;
   backendEnv?: NodeJS.ProcessEnv;
@@ -93,19 +70,15 @@ export interface AppServerCapabilityTurnInput {
   businessObjectRef?: AppServerBusinessObjectRef;
   timeoutMs?: number;
   backendEnv?: NodeJS.ProcessEnv;
+  providerPreference?: string;
+  modelPreference?: string;
+  backendMode?: 'external' | 'runtime';
   sessionIdPrefix?: string;
 }
 
-export interface AppServerCapabilityTurnResult {
-  sessionId: string;
-  turnId: string;
-  events: AppServerRuntimeEvent[];
-  artifacts: AppServerTurnArtifact[];
-  evidenceEvents: AppServerRuntimeEvent[];
-  evidenceArtifacts: AppServerTurnArtifact[];
-}
-
-export interface AppServerPromptTurnResult extends AppServerCapabilityTurnResult {}
+export type AppServerCapabilityTurnResult = AppServerAgentRuntimeTurnResult;
+export type { AppServerTurnArtifact };
+export interface AppServerPromptTurnResult extends AppServerAgentRuntimeTurnResult {}
 
 interface RunningAgentTask {
   sidecar?: AppServerJsonRpcClient;
@@ -122,6 +95,7 @@ class AppServerJsonRpcClient {
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly lines: ReadlineInterface;
   private readonly buffered: AppServerJsonRpcMessage[] = [];
+  private stderrBuffer = '';
   private exited = false;
   private pendingRead?: {
     resolve: (message: AppServerJsonRpcMessage) => void;
@@ -136,6 +110,9 @@ class AppServerJsonRpcClient {
     });
     this.lines = createInterface({ input: this.child.stdout });
     this.lines.on('line', (line) => this.acceptLine(line));
+    this.child.stderr.on('data', (chunk) => {
+      this.stderrBuffer = `${this.stderrBuffer}${String(chunk)}`.slice(-4000);
+    });
     this.child.stdin.on('error', (error) => {
       this.exited = true;
       this.rejectPending(error);
@@ -143,7 +120,11 @@ class AppServerJsonRpcClient {
     this.child.once('error', (error) => this.rejectPending(error));
     this.child.once('exit', (code, signal) => {
       this.exited = true;
-      this.rejectPending(new Error(`app-server exited before response: code=${code ?? 'null'} signal=${signal ?? 'null'}`));
+      const stderr = this.stderrBuffer.trim();
+      this.rejectPending(new Error([
+        `app-server exited before response: code=${code ?? 'null'} signal=${signal ?? 'null'}`,
+        stderr ? `stderr=${stderr}` : '',
+      ].filter(Boolean).join(' ')));
     });
   }
 
@@ -238,6 +219,7 @@ export class AppServerSidecarService {
         available: false,
         protocolVersion: APP_SERVER_PROTOCOL_VERSION,
         source: 'missing',
+        bridgeProfile: APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
         message: missingAppServerMessage(),
       };
     }
@@ -246,6 +228,7 @@ export class AppServerSidecarService {
       protocolVersion: APP_SERVER_PROTOCOL_VERSION,
       binaryPath,
       source: this.binarySource(binaryPath),
+      bridgeProfile: APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
       message: 'app-server sidecar 已可启动。',
     };
   }
@@ -257,6 +240,7 @@ export class AppServerSidecarService {
         ok: false,
         protocolVersion: APP_SERVER_PROTOCOL_VERSION,
         source: 'missing',
+        bridgeProfile: APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
         error: missingAppServerMessage(),
       };
     }
@@ -284,21 +268,21 @@ export class AppServerSidecarService {
         policyPath,
       ], appServerSidecarEnv());
 
-      const initialize = await sidecar.request<{ serverInfo?: { protocolVersion?: string } }>('initialize', {
+      const initialize = await sidecar.request<{ serverInfo?: { protocolVersion?: string } }>(APP_SERVER_AGENT_SESSION_METHODS.initialize, {
         clientInfo: appServerClientInfo(),
         capabilities: appServerClientCapabilities(),
       });
       const protocolVersion = initialize.result.serverInfo?.protocolVersion ?? APP_SERVER_PROTOCOL_VERSION;
-      sidecar.notify('initialized');
+      sidecar.notify(APP_SERVER_AGENT_SESSION_METHODS.initialized);
 
-      const capabilities = await sidecar.request<AppServerCapabilityListResponse>('capability/list', {
+      const capabilities = await sidecar.request<AppServerCapabilityListResponse>(APP_SERVER_AGENT_SESSION_METHODS.listCapabilities, {
         appId: 'content-studio',
         workspaceId: 'content-studio-smoke',
       });
       const capabilityIds = capabilities.result.capabilities.map((capability) => capability.id);
       const sessionId = `content_studio_${randomUUID()}`;
       const turnId = `turn_${randomUUID()}`;
-      await sidecar.request<AppServerSessionStartResponse>('agentSession/start', {
+      await sidecar.request<AppServerSessionStartResponse>(APP_SERVER_AGENT_SESSION_METHODS.startSession, {
         sessionId,
         threadId: `thread_${randomUUID()}`,
         appId: 'content-studio',
@@ -309,7 +293,7 @@ export class AppServerSidecarService {
           title: 'Content Studio App Server smoke',
         },
       });
-      const turn = await sidecar.request<AppServerTurnStartResponse>('agentSession/turn/start', {
+      const turn = await sidecar.request<AppServerTurnStartResponse>(APP_SERVER_AGENT_SESSION_METHODS.startTurn, {
         sessionId,
         turnId,
         input: {
@@ -330,11 +314,11 @@ export class AppServerSidecarService {
         if (isRuntimeEvent(event)) events.push(event);
       }
 
-      const artifacts = await sidecar.request<AppServerArtifactReadResponse>('artifact/read', {
+      const artifacts = await sidecar.request<AppServerArtifactReadResponse>(APP_SERVER_AGENT_SESSION_METHODS.readArtifact, {
         sessionId,
         turnId,
       });
-      const evidence = await sidecar.request<AppServerEvidenceExportResponse>('evidence/export', {
+      const evidence = await sidecar.request<AppServerEvidenceExportResponse>(APP_SERVER_AGENT_SESSION_METHODS.exportEvidence, {
         sessionId,
         turnId,
         includeEvents: true,
@@ -345,6 +329,7 @@ export class AppServerSidecarService {
         ok: true,
         protocolVersion,
         source: this.binarySource(binaryPath),
+        bridgeProfile: APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
         binaryPath,
         capabilityIds,
         eventTypes: events.map((event) => event.type),
@@ -359,6 +344,7 @@ export class AppServerSidecarService {
         ok: false,
         protocolVersion: APP_SERVER_PROTOCOL_VERSION,
         source: this.binarySource(binaryPath),
+        bridgeProfile: APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
         binaryPath,
         error: error instanceof Error ? error.message : String(error),
       };
@@ -389,6 +375,9 @@ export class AppServerSidecarService {
       businessObjectRef: input.businessObjectRef,
       timeoutMs: input.timeoutMs,
       backendEnv: input.backendEnv,
+      providerPreference: input.providerPreference,
+      modelPreference: input.modelPreference,
+      backendMode: 'runtime',
       sessionIdPrefix: 'content_studio_prompt',
     });
   }
@@ -398,9 +387,13 @@ export class AppServerSidecarService {
     if (!binaryPath) {
       throw new Error(missingAppServerMessage());
     }
-    const backend = this.resolveAgentBackend();
-    if (!backend) {
+    const backendMode = input.backendMode ?? 'external';
+    const backend = backendMode === 'external' ? this.resolveAgentBackend() : null;
+    if (backendMode === 'external' && !backend) {
       throw new Error('未配置 App Server external backend。设置 CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND，或随包携带 resources/app-server/backend/content-backend.mjs。');
+    }
+    if (backendMode === 'runtime') {
+      await assertRuntimeProviderStoreSupport(binaryPath);
     }
 
     const timeoutMs = input.timeoutMs ?? resolveAgentTimeoutMs();
@@ -409,8 +402,15 @@ export class AppServerSidecarService {
     let sidecar: AppServerJsonRpcClient | undefined;
     try {
       await writePolicy(policyPath);
-      sidecar = this.createSidecar(binaryPath, policyPath, backend, timeoutMs, input.backendEnv);
-      const initialize = await sidecar.request<{ serverInfo?: { protocolVersion?: string } }>('initialize', {
+      sidecar = this.createSidecar({
+        binaryPath,
+        policyPath,
+        backend,
+        backendMode,
+        backendTimeoutMs: timeoutMs,
+        backendEnv: input.backendEnv,
+      });
+      const initialize = await sidecar.request<{ serverInfo?: { protocolVersion?: string } }>(APP_SERVER_AGENT_SESSION_METHODS.initialize, {
         clientInfo: appServerClientInfo(),
         capabilities: appServerClientCapabilities(),
       });
@@ -418,47 +418,13 @@ export class AppServerSidecarService {
       if (protocolVersion !== APP_SERVER_PROTOCOL_VERSION) {
         throw new Error(`unsupported app-server protocol: ${protocolVersion}`);
       }
-      sidecar.notify('initialized');
+      sidecar.notify(APP_SERVER_AGENT_SESSION_METHODS.initialized);
 
-      const sessionPrefix = input.sessionIdPrefix?.trim() || 'content_studio_capability';
-      const sessionId = `${sessionPrefix}_${randomUUID()}`;
-      const turnId = `turn_${randomUUID()}`;
-      await sidecar.request<AppServerSessionStartResponse>('agentSession/start', {
-        sessionId,
-        threadId: `thread_${randomUUID()}`,
-        appId: 'content-studio',
-        workspaceId: input.workspacePath,
-        businessObjectRef: input.businessObjectRef,
-      });
-      const turn = await sidecar.request<AppServerTurnStartResponse>('agentSession/turn/start', {
-        sessionId,
-        turnId,
-        input: input.input,
-        runtimeOptions: {
-          stream: true,
-          capabilityId: input.capabilityId,
-          metadata: {
-            selectedSkillSlugs: input.selectedSkillSlugs ?? [],
-            permissionMode: input.permissionMode ?? 'ask',
-            ...(input.metadata ?? {}),
-          },
-        },
-        queueIfBusy: true,
-        skipPreSubmitResume: true,
-      }, timeoutMs);
-
-      const events = turn.notifications.map(notificationEvent).filter(isRuntimeEvent);
-      await drainRuntimeEvents(sidecar, events, timeoutMs);
-      const artifacts = await readArtifacts(sidecar, sessionId, turnId, events);
-      const evidence = await exportEvidence(sidecar, sessionId, turnId);
-      return {
-        sessionId,
-        turnId,
-        events,
-        artifacts,
-        evidenceEvents: evidence.events,
-        evidenceArtifacts: evidence.artifacts,
-      };
+      return await runContentStudioAgentRuntimeTurn(
+        new ContentStudioAgentRuntimeSessionGateway(sidecar, timeoutMs),
+        input,
+        timeoutMs,
+      );
     } finally {
       sidecar?.close();
       await rm(tempDir, { recursive: true, force: true });
@@ -470,7 +436,7 @@ export class AppServerSidecarService {
     if (!task) return false;
     task.closed = true;
     if (task.sidecar?.canWrite() && task.sessionId && task.turnId) {
-      void task.sidecar.request('agentSession/turn/cancel', {
+      void task.sidecar.request(APP_SERVER_AGENT_SESSION_METHODS.cancelTurn, {
         sessionId: task.sessionId,
         turnId: task.turnId,
       }, DEFAULT_RPC_TIMEOUT_MS).catch(() => undefined);
@@ -499,10 +465,16 @@ export class AppServerSidecarService {
       task.tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-agent-'));
       const policyPath = join(task.tempDir, 'content-studio.policy.json');
       await writePolicy(policyPath);
-      task.sidecar = this.createSidecar(binaryPath, policyPath, backend, agentTimeoutMs);
+      task.sidecar = this.createSidecar({
+        binaryPath,
+        policyPath,
+        backend,
+        backendMode: 'external',
+        backendTimeoutMs: agentTimeoutMs,
+      });
       sink({ type: 'status', taskId, message: '正在通过 App Server 启动内容生产任务...' });
 
-      const initialize = await task.sidecar.request<{ serverInfo?: { protocolVersion?: string } }>('initialize', {
+      const initialize = await task.sidecar.request<{ serverInfo?: { protocolVersion?: string } }>(APP_SERVER_AGENT_SESSION_METHODS.initialize, {
         clientInfo: appServerClientInfo(),
         capabilities: appServerClientCapabilities(),
       });
@@ -510,11 +482,11 @@ export class AppServerSidecarService {
       if (protocolVersion !== APP_SERVER_PROTOCOL_VERSION) {
         throw new Error(`unsupported app-server protocol: ${protocolVersion}`);
       }
-      task.sidecar.notify('initialized');
+      task.sidecar.notify(APP_SERVER_AGENT_SESSION_METHODS.initialized);
 
       task.sessionId = `content_studio_${taskId}`;
       task.turnId = `turn_${taskId}`;
-      await task.sidecar.request<AppServerSessionStartResponse>('agentSession/start', {
+      await task.sidecar.request<AppServerSessionStartResponse>(APP_SERVER_AGENT_SESSION_METHODS.startSession, {
         sessionId: task.sessionId,
         threadId: `thread_${taskId}`,
         appId: 'content-studio',
@@ -528,7 +500,7 @@ export class AppServerSidecarService {
           },
         },
       });
-      const turn = await task.sidecar.request<AppServerTurnStartResponse>('agentSession/turn/start', {
+      const turn = await task.sidecar.request<AppServerTurnStartResponse>(APP_SERVER_AGENT_SESSION_METHODS.startTurn, {
         sessionId: task.sessionId,
         turnId: task.turnId,
         input: {
@@ -609,29 +581,44 @@ export class AppServerSidecarService {
     if (mapped) sink(mapped);
   }
 
-  private createSidecar(
-    binaryPath: string,
-    policyPath: string,
-    backend: { command: string; args: string[] },
-    backendTimeoutMs = DEFAULT_RPC_TIMEOUT_MS,
-    backendEnv?: NodeJS.ProcessEnv,
-  ): AppServerJsonRpcClient {
+  private createSidecar(input: {
+    binaryPath: string;
+    policyPath: string;
+    backend?: { command: string; args: string[] } | null;
+    backendMode: 'external' | 'runtime';
+    backendTimeoutMs?: number;
+    backendEnv?: NodeJS.ProcessEnv;
+  }): AppServerJsonRpcClient {
+    const backendTimeoutMs = input.backendTimeoutMs ?? DEFAULT_RPC_TIMEOUT_MS;
     const args = [
       '--stdio',
       '--backend',
-      'external',
-      '--backend-command',
-      backend.command,
-      ...backend.args.flatMap((arg) => ['--backend-arg', arg]),
-      '--backend-timeout-ms',
-      String(backendTimeoutMs),
+      input.backendMode,
+      ...(input.backendMode === 'external' && input.backend
+        ? [
+          '--backend-command',
+          input.backend.command,
+          ...input.backend.args.flatMap((arg) => ['--backend-arg', arg]),
+          '--backend-timeout-ms',
+          String(backendTimeoutMs),
+        ]
+        : []),
       '--app-policy',
-      policyPath,
+      input.policyPath,
+      ...(input.backendMode === 'runtime' ? appServerExtraArgs() : []),
     ];
-    return new AppServerJsonRpcClient(binaryPath, args, {
+    return new AppServerJsonRpcClient(input.binaryPath, args, this.createSidecarEnv(input.backendMode, input.backendEnv));
+  }
+
+  private createSidecarEnv(
+    backendMode: 'external' | 'runtime',
+    backendEnv?: NodeJS.ProcessEnv,
+  ): NodeJS.ProcessEnv {
+    const env = {
       ...appServerSidecarEnv(),
       ...(backendEnv ?? {}),
-    });
+    };
+    return backendMode === 'runtime' ? sanitizeRuntimeSidecarEnv(env) : env;
   }
 
   private resolveBinaryPath(): string | null {
@@ -710,6 +697,71 @@ function parseBackendArgs(raw: string | undefined): string[] {
   return raw.split('\n').map((item) => item.trim()).filter(Boolean);
 }
 
+async function assertRuntimeProviderStoreSupport(binaryPath: string): Promise<void> {
+  const help = await runAppServerHelp(binaryPath, RUNTIME_PROVIDER_STORE_PROBE_TIMEOUT_MS);
+  if (!help.includes('--data-dir')) {
+    throw new Error('App Server runtime provider store requires an app-server binary with --data-dir support.');
+  }
+
+  const dataDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-runtime-provider-store-'));
+  let sidecar: AppServerJsonRpcClient | undefined;
+  try {
+    sidecar = new AppServerJsonRpcClient(binaryPath, [
+      '--stdio',
+      '--backend',
+      'unavailable',
+      '--data-dir',
+      dataDir,
+    ], sanitizeRuntimeSidecarEnv(appServerSidecarEnv()));
+    await sidecar.request(APP_SERVER_AGENT_SESSION_METHODS.initialize, {
+      clientInfo: appServerClientInfo(),
+      capabilities: appServerClientCapabilities(),
+    }, RUNTIME_PROVIDER_STORE_PROBE_TIMEOUT_MS);
+    sidecar.notify(APP_SERVER_AGENT_SESSION_METHODS.initialized);
+    await sidecar.request('modelProvider/list', {}, RUNTIME_PROVIDER_STORE_PROBE_TIMEOUT_MS);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/--data-dir/.test(message)) throw error;
+    throw new Error(`App Server runtime provider store is unavailable: ${message}`);
+  } finally {
+    sidecar?.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+}
+
+async function runAppServerHelp(binaryPath: string, timeoutMs: number): Promise<string> {
+  return await new Promise((resolveHelp, rejectHelp) => {
+    const child = spawn(binaryPath, ['--help'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: sanitizeRuntimeSidecarEnv(appServerSidecarEnv()),
+    });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      rejectHelp(new Error(`app-server --help timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      rejectHelp(error);
+    });
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolveHelp(`${stdout}\n${stderr}`);
+        return;
+      }
+      rejectHelp(new Error(`app-server --help failed: code=${code ?? 'null'} stderr=${stderr.trim()}`));
+    });
+  });
+}
+
 function allowAppServerBinaryOverride(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE === '1';
 }
@@ -719,6 +771,56 @@ function appServerSidecarEnv(): NodeJS.ProcessEnv {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1',
   };
+}
+
+function sanitizeRuntimeSidecarEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const next = { ...env };
+  for (const key of Object.keys(next)) {
+    if (isRuntimeSecretEnvKey(key)) delete next[key];
+  }
+  return next;
+}
+
+function isRuntimeSecretEnvKey(key: string): boolean {
+  const normalized = key.toUpperCase();
+  if (normalized === 'AUTHORIZATION' || normalized === 'COOKIE' || normalized === 'LIME_RUNTIME_BRIDGE') return true;
+  if (/(^|_)(API_KEY|APIKEY|KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|CREDENTIALS|AUTHORIZATION|COOKIE)(_|$)/i.test(key)) return true;
+  return false;
+}
+
+function appServerExtraArgs(): string[] {
+  const args = parseAppServerArgs(process.env.APP_SERVER_ARGS);
+  return hasDataDirArg(args) ? args : [...args, '--data-dir', resolveDefaultAppServerDataDir()];
+}
+
+function hasDataDirArg(args: string[]): boolean {
+  return args.some((arg) => arg === '--data-dir' || arg.startsWith('--data-dir='));
+}
+
+function resolveDefaultAppServerDataDir(): string {
+  const override = process.env.CONTENT_STUDIO_APP_SERVER_DATA_DIR?.trim() || process.env.APP_SERVER_DATA_DIR?.trim();
+  if (override) return override;
+  try {
+    const getPath = (electronApp as unknown as { getPath?: (name: string) => string } | undefined)?.getPath;
+    const userDataPath = typeof getPath === 'function' ? getPath('userData') : '';
+    if (userDataPath?.trim()) return join(userDataPath, 'app-server');
+  } catch {
+    // Node-only smoke/test environments do not expose Electron app.
+  }
+  return join(tmpdir(), 'content-studio-app-server');
+}
+
+function parseAppServerArgs(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+      return parsed;
+    }
+  } catch {
+    // Fall through to whitespace-separated args.
+  }
+  return raw.split(/\s+/).map((item) => item.trim()).filter(Boolean);
 }
 
 function repoResourceCandidates(...parts: string[]): string[] {
@@ -830,115 +932,6 @@ function notificationEvent(message: AppServerJsonRpcMessage): unknown {
   return params && typeof params === 'object' ? (params as { event?: unknown }).event : undefined;
 }
 
-async function drainRuntimeEvents(
-  sidecar: AppServerJsonRpcClient,
-  events: AppServerRuntimeEvent[],
-  timeoutMs: number,
-): Promise<void> {
-  const expiresAt = Date.now() + timeoutMs;
-  for (;;) {
-    const terminalEvent = events.find((event) => (
-      event.type === 'turn.completed' ||
-      isFailedRuntimeEvent(event) ||
-      event.type === 'turn.canceled'
-    ));
-    if (terminalEvent?.type === 'turn.completed') return;
-    if (terminalEvent && isFailedRuntimeEvent(terminalEvent)) {
-      throw new Error(textFromRuntimePayload(terminalEvent.payload) || 'App Server turn failed');
-    }
-    if (terminalEvent?.type === 'turn.canceled') {
-      throw new Error('App Server turn canceled');
-    }
-
-    const remainingMs = expiresAt - Date.now();
-    if (remainingMs <= 0) throw new Error(`app-server prompt turn timed out after ${timeoutMs}ms`);
-    try {
-      const message = await sidecar.nextMessage(Math.min(AGENT_NOTIFICATION_POLL_MS, remainingMs));
-      const event = notificationEvent(message);
-      if (isRuntimeEvent(event)) events.push(event);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (/timed out/.test(message)) continue;
-      throw error;
-    }
-  }
-}
-
-async function readArtifacts(
-  sidecar: AppServerJsonRpcClient,
-  sessionId: string,
-  turnId: string,
-  events: AppServerRuntimeEvent[],
-): Promise<AppServerTurnArtifact[]> {
-  const snapshots = events
-    .filter((event) => event.type === 'artifact.snapshot')
-    .map((event) => normalizeArtifact(event.payload))
-    .filter((artifact): artifact is AppServerTurnArtifact => Boolean(artifact));
-  const response = await sidecar.request<AppServerArtifactReadResponse>('artifact/read', {
-    sessionId,
-    turnId,
-  });
-  return uniqueArtifacts([
-    ...snapshots,
-    ...response.result.artifacts.map((artifact) => normalizeArtifact(artifact)).filter((artifact): artifact is AppServerTurnArtifact => Boolean(artifact)),
-  ]);
-}
-
-async function exportEvidence(
-  sidecar: AppServerJsonRpcClient,
-  sessionId: string,
-  turnId: string,
-): Promise<{ events: AppServerRuntimeEvent[]; artifacts: AppServerTurnArtifact[] }> {
-  const response = await sidecar.request<AppServerEvidenceExportResponse>('evidence/export', {
-    sessionId,
-    turnId,
-    includeEvents: true,
-    includeArtifacts: true,
-  });
-  return {
-    events: response.result.events,
-    artifacts: uniqueArtifacts(response.result.artifacts
-      .map((artifact) => normalizeArtifact(artifact))
-      .filter((artifact): artifact is AppServerTurnArtifact => Boolean(artifact))),
-  };
-}
-
-function normalizeArtifact(value: unknown): AppServerTurnArtifact | null {
-  if (!value || typeof value !== 'object') return null;
-  const record = value as Record<string, unknown>;
-  const artifactRef = stringValue(record.artifactRef) ?? stringValue(record.ref) ?? stringValue(record.artifactId);
-  const artifactId = stringValue(record.artifactId) ?? stringValue(record.id);
-  const title = stringValue(record.title);
-  const kind = stringValue(record.kind);
-  const path = stringValue(record.path);
-  const content = stringValue(record.content) ?? stringValue(record.markdown) ?? stringValue(record.text);
-  if (!artifactRef && !artifactId && !title && !path && !content) return null;
-  return {
-    artifactRef,
-    artifactId,
-    title,
-    kind,
-    path,
-    content,
-    payload: value,
-  };
-}
-
-function uniqueArtifacts(artifacts: AppServerTurnArtifact[]): AppServerTurnArtifact[] {
-  const seen = new Set<string>();
-  return artifacts.filter((artifact) => {
-    const key = artifact.artifactRef ?? artifact.artifactId ?? artifact.path ?? artifact.title ?? '';
-    if (!key) return true;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
 function appServerClientInfo(): { name: string; title: string; version: string } {
   return {
     name: 'content_studio',
@@ -960,37 +953,37 @@ async function writePolicy(policyPath: string): Promise<void> {
       {
         id: 'content.draft.generate',
         title: 'Generate Draft',
-        methods: ['agentSession/turn/start'],
+        methods: [APP_SERVER_AGENT_SESSION_METHODS.startTurn],
         appIds: ['content-studio'],
       },
       {
         id: 'content.text.generate',
         title: 'Generate Text',
-        methods: ['agentSession/turn/start'],
+        methods: [APP_SERVER_AGENT_SESSION_METHODS.startTurn],
         appIds: ['content-studio'],
       },
       {
         id: 'content.article.generate',
         title: 'Generate Article',
-        methods: ['agentSession/turn/start'],
+        methods: [APP_SERVER_AGENT_SESSION_METHODS.startTurn],
         appIds: ['content-studio'],
       },
       {
         id: 'content.prompt.generate',
         title: 'Generate Prompt',
-        methods: ['agentSession/turn/start'],
+        methods: [APP_SERVER_AGENT_SESSION_METHODS.startTurn],
         appIds: ['content-studio'],
       },
       {
         id: 'content.image.generate',
         title: 'Generate Image',
-        methods: ['agentSession/turn/start'],
+        methods: [APP_SERVER_AGENT_SESSION_METHODS.startTurn],
         appIds: ['content-studio'],
       },
       {
         id: 'content.video.generate',
         title: 'Generate Video',
-        methods: ['agentSession/turn/start'],
+        methods: [APP_SERVER_AGENT_SESSION_METHODS.startTurn],
         appIds: ['content-studio'],
       },
     ],

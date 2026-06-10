@@ -353,10 +353,10 @@ function compactLabels(labels: string[]): string {
 }
 
 export function PromptWorkbenchModule({
-  featureKey = 'assets-prompt-workbench',
-  initialPurpose = 'image',
-  initialTitle = '图片 Prompt 草稿',
-  initialUserIntent = '根据产品资料和参考图，生成自然真实的小红书种草图 Prompt。',
+  featureKey = 'video-creative',
+  initialPurpose = 'video',
+  initialTitle = '创意视频 Prompt 草稿',
+  initialUserIntent = '基于品牌 / IP 资产生成 15 秒创意视频方向和可复制视频 Prompt。',
   workspaceReady,
   busy,
   currentActionLabel,

@@ -845,6 +845,12 @@ function mergeWithSharedDressingkitSite(site: OemPublicSiteConfig | null | undef
   };
 }
 
+function publicAssetFallbackMessage(hasFallback: boolean): string {
+  return hasFallback
+    ? "公共素材暂时不可用，已切换到内置案例。"
+    : "公共素材暂时不可用，请稍后刷新。";
+}
+
 function tagValue(tags: string[] | undefined, prefix: string): string {
   const tag = (tags || []).find((item) => item.startsWith(prefix));
   return tag ? tag.slice(prefix.length).trim() : "";
@@ -939,7 +945,7 @@ function buildBackendCards(cases: OemPublicCase[], assets: OemPublicAsset[]): Ba
       title: item.title,
       industry: item.industry || "未分类",
       featureId: featureIdFromCase(item),
-      summary: item.summary || "OEM 后端案例素材",
+      summary: item.summary || "公共案例素材",
       prompt: item.prompt,
       inputUrl: inputUrls[0],
       outputUrl: outputUrls[0] || inputUrls[0],
@@ -2063,8 +2069,8 @@ export function ImageShowcaseModule({
         appendHistory({
           title: cases.length || materials.length || assets.length ? "已加载 OEM 案例清单" : "OEM 素材清单为空",
           detail: cases.length || materials.length || assets.length
-            ? `${cases.length} 组案例 · ${materials.length} 组参考素材 · ${assets.length} 张素材 · 后端增量 ${remoteCases.length}/${remoteMaterials.length}/${remoteAssets.length}`
-            : "后端没有返回可展示的案例和素材。",
+            ? `${cases.length} 组案例 · ${materials.length} 组参考素材 · ${assets.length} 张素材 · 公共增量 ${remoteCases.length}/${remoteMaterials.length}/${remoteAssets.length}`
+            : "公共素材暂无可展示的案例和素材。",
           tone: cases.length || materials.length || assets.length ? "ready" : "warning",
         });
       })
@@ -2079,11 +2085,9 @@ export function ImageShowcaseModule({
         setBackendAssets(assets);
         setFeatureUiConfig(readFeatureUiConfig(mergedSite));
         setBackendStatus(cases.length || materials.length || assets.length ? "ready" : "error");
-        setBackendMessage(
-          `后端读取失败，已使用内置通用素材。${error instanceof Error ? error.message : "读取公共配置时发生未知错误。"}`,
-        );
+        setBackendMessage(publicAssetFallbackMessage(Boolean(cases.length || materials.length || assets.length)));
         appendHistory({
-          title: "已启用内置通用案例清单",
+          title: "已切换内置案例清单",
           detail: `${cases.length} 组案例 · ${materials.length} 组参考素材 · ${assets.length} 张素材`,
           tone: cases.length || materials.length || assets.length ? "ready" : "blocked",
         });
@@ -2099,6 +2103,13 @@ export function ImageShowcaseModule({
     () => imageAssetsForCards(backendCards, backendAssets),
     [backendAssets, backendCards],
   );
+  const backendSummary = backendStatus === "ready"
+    ? `${backendMessage ? "内置案例" : "公共素材"} ${backendCards.length} 组 · ${backendImageAssets.length} 张资产`
+    : backendStatus === "empty"
+      ? "公共素材待导入"
+      : backendStatus === "error"
+        ? "公共素材暂时不可用"
+        : "正在读取公共素材";
   const libraryMaterials = useMemo(
     () => DRESSINGKIT_MATERIALS.map((item) => ({
       ...item,
@@ -3892,13 +3903,7 @@ export function ImageShowcaseModule({
               <div>
                 <h2>优秀案例</h2>
                 <p>
-                  {backendStatus === "ready"
-                    ? `后端素材 ${backendCards.length} 组 · ${backendImageAssets.length} 张资产`
-                    : backendStatus === "empty"
-                      ? "后端素材待导入"
-                      : backendStatus === "error"
-                        ? "后端素材读取失败"
-                        : "正在读取后端素材"}
+                  {backendSummary}
                   {selectedFeatureCaseCount ? ` · 当前功能 ${selectedFeatureCaseCount} 组` : ""}
                 </p>
                 {backendMessage ? <p className="ai-muted">{backendMessage}</p> : null}

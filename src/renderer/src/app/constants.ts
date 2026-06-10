@@ -11,9 +11,9 @@ export { IMAGE_TEMPLATE_CONFIGS, IMAGE_TEMPLATE_OPTIONS } from '../../../shared/
 import type { ColorTheme, NavItem } from './types';
 
 export const DEFAULT_PARAMS: GlobalGenerationParams = {
-  textModel: 'gpt-4o-mini',
-  imageModel: 'gpt-image-2',
-  videoModel: 'veo-3.1',
+  textModel: '',
+  imageModel: '',
+  videoModel: '',
   runMode: 'single',
   count: 1,
   aspectRatio: '4:5',
@@ -23,9 +23,16 @@ export const DEFAULT_PARAMS: GlobalGenerationParams = {
 
 export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
   {
+    title: 'agents',
+    items: [
+      { key: 'agents', label: '新对话' },
+      { key: 'skills', label: 'skills 管理' },
+    ],
+  },
+  {
     title: '图片',
     items: [
-      { key: 'image', label: '图片生成' },
+      { key: 'image-production', label: '图片生成' },
       { key: 'image-showcase', label: 'AI 生图' },
       { key: 'material-breakdown', label: '拆解素材' },
       { key: 'image-scene-prompts', label: '场景提示词' },
@@ -39,18 +46,10 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     items: [
       { key: 'video', label: '视频生成' },
       { key: 'video-showcase', label: 'AI 视频' },
-      { key: 'video-script', label: '视频脚本' },
       { key: 'video-prompt', label: '视频 Prompt' },
+      { key: 'video-script', label: '视频脚本' },
       { key: 'video-import', label: '成品视频导入' },
       { key: 'video-mix-export', label: '混剪包导出' },
-    ],
-  },
-  {
-    title: '文案',
-    items: [
-      { key: 'article', label: '文章生成' },
-      { key: 'article-title', label: '标题生成' },
-      { key: 'article-script', label: '脚本生成' },
     ],
   },
   {
@@ -70,14 +69,6 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: '资产',
     items: [
       { key: 'assets', label: '素材库' },
-      { key: 'assets-prompt-workbench', label: 'Prompt 工作台' },
-      { key: 'assets-history', label: '运行历史' },
-    ],
-  },
-  {
-    title: '管理',
-    items: [
-      { key: 'skills', label: 'skills 管理' },
     ],
   },
 ];

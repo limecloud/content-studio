@@ -503,6 +503,11 @@ function sanitizeProviderError(value: string): string {
 }
 
 function textModelForVideoClassification(config: ModelConfigView | undefined, input: VideoBreakdownRequest): string {
+  if (config?.platformManaged) {
+    const textModels = config.textModels ?? [];
+    if (config.textModel && textModels.includes(config.textModel)) return config.textModel;
+    return textModels[0] ?? '';
+  }
   return process.env.CONTENT_STUDIO_VIDEO_CLASSIFICATION_MODEL
     || process.env.LLM_MODEL
     || (/^gpt-|^o\d|^deepseek|^qwen|^glm/i.test(input.params.textModel) ? input.params.textModel : '')
@@ -510,7 +515,8 @@ function textModelForVideoClassification(config: ModelConfigView | undefined, in
     || 'gpt-4o';
 }
 
-function videoApiKeyFor(storedApiKey: string | undefined): string {
+function videoApiKeyFor(storedApiKey: string | undefined, platformManaged = false): string {
+  if (platformManaged) return '';
   return firstNonEmpty(
     storedApiKey,
     process.env.CONTENT_STUDIO_VIDEO_API_KEY,
@@ -520,6 +526,7 @@ function videoApiKeyFor(storedApiKey: string | undefined): string {
 }
 
 function videoEndpointFor(config: ModelConfigView | undefined): string {
+  if (config?.platformManaged) return firstNonEmpty(config.videoApiEndpoint);
   return firstNonEmpty(
     process.env.CONTENT_STUDIO_VIDEO_UNDERSTANDING_ENDPOINT,
     process.env.CONTENT_STUDIO_VIDEO_ENDPOINT,
@@ -529,12 +536,16 @@ function videoEndpointFor(config: ModelConfigView | undefined): string {
 }
 
 function visualModelForVideoUnderstanding(config: ModelConfigView | undefined): string {
+  if (config?.platformManaged) {
+    const videoModels = config.videoModels ?? [];
+    if (config.videoModel && videoModels.includes(config.videoModel)) return config.videoModel;
+    return videoModels[0] ?? '';
+  }
   return firstNonEmpty(
     process.env.CONTENT_STUDIO_VIDEO_MODEL,
     process.env.VISUAL_MODEL,
     process.env.GEMINI_MODEL,
     config?.videoModel,
-    'gemini-2.5-flash',
   );
 }
 
@@ -550,6 +561,7 @@ function hasRuntimeVideoConfig(): boolean {
 }
 
 function videoProviderFor(config: ModelConfigView | undefined, apiKey: string, endpoint: string): ModelConfigView['videoProvider'] {
+  if (config?.platformManaged) return 'disabled';
   if (config?.videoProvider === 'generic-http') return 'generic-http';
   if (config?.videoProvider === 'video-understanding-openai-compatible') return 'video-understanding-openai-compatible';
   if (apiKey && endpoint && hasRuntimeVideoConfig()) return 'video-understanding-openai-compatible';
@@ -1242,7 +1254,8 @@ export class VideoWorkflowService {
     const startedAt = Date.now();
     const dimensions = input.dimensions.length ? input.dimensions : DEFAULT_DIMENSIONS;
     const config = await this.modelConfig?.readView();
-    const apiKey = videoApiKeyFor(await this.modelConfig?.getVideoApiKey());
+    const platformManaged = Boolean(config?.platformManaged);
+    const apiKey = videoApiKeyFor(platformManaged ? undefined : await this.modelConfig?.getVideoApiKey(), platformManaged);
     const endpoint = videoEndpointFor(config);
     const videoProvider = videoProviderFor(config, apiKey, endpoint);
     const videoModel = visualModelForVideoUnderstanding(config);
@@ -1349,7 +1362,7 @@ export class VideoWorkflowService {
       status: 'blocked',
       title: '视频拆解未完成',
       summary: message,
-      model: videoModel || input.params.textModel,
+      model: videoModel,
       promptPackId: input.promptPackId,
       citations: input.citations,
       artifactRefs: breakdownArtifactRefs(input),
@@ -1464,21 +1477,44 @@ export class VideoWorkflowService {
       return { logId: log.id, ...result };
     } catch (error) {
       const status = error instanceof TextProviderBlockedError ? 'blocked' : 'failed';
-      await this.persistLog(input.workspacePath, options?.logId, {
+      const summary = status === 'blocked' ? '文字模型未配置，未生成本地模板。' : '文字模型调用失败，未生成视频脚本。';
+      const message = error instanceof Error ? error.message : String(error);
+      const log = await this.persistLog(input.workspacePath, options?.logId, {
         workspacePath: input.workspacePath,
         kind: 'video-script',
         status,
         title: `${input.productName || '新产品'}脚本生成未完成`,
-        summary: status === 'blocked' ? '文字模型未配置，未生成本地模板。' : '文字模型调用失败，未生成视频脚本。',
+        summary,
         model: input.params.textModel,
         promptPackId: input.promptPackId,
         sceneCardIds: input.sceneCardIds,
         citations: input.citations,
         artifactRefs: scriptArtifactRefs(input),
         input,
-        error: error instanceof Error ? error.message : String(error),
+        output: {
+          status,
+          title: `${input.productName || '新产品'}脚本生成未完成`,
+          script: summary,
+          storyboard: [],
+          videoPrompt: '',
+          publishCheck: [{ level: status === 'blocked' ? 'warning' : 'risk', message: summary }],
+          error: message,
+        } satisfies Omit<VideoScriptGenerationResult, 'logId'>,
+        error: message,
         durationMs: Date.now() - startedAt,
       });
+      if (status === 'blocked') {
+        return {
+          logId: log.id,
+          status,
+          title: `${input.productName || '新产品'}脚本生成未完成`,
+          script: summary,
+          storyboard: [],
+          videoPrompt: '',
+          publishCheck: [{ level: 'warning', message: summary }],
+          error: message,
+        };
+      }
       throw error;
     }
   }

@@ -945,10 +945,10 @@ export function ontologyV2HarnessCases(): OntologyV2HarnessCase[] {
             outputRefs: [artifact('asset-review', 'review-1', '素材已通过并入库', 'assets')],
           },
           optimization: {
-            outputRefs: [artifact('action-record', 'action-1', '投放调优动作已记录', 'assets-history')],
+            outputRefs: [artifact('action-record', 'action-1', '投放调优动作已记录', 'assets')],
           },
           feedback: {
-            outputRefs: [artifact('prompt-draft', 'success-prompt-1', '成功素材 Prompt 已沉淀', 'assets-prompt-workbench')],
+            outputRefs: [artifact('prompt-draft', 'success-prompt-1', '成功素材 Prompt 已沉淀', 'agents')],
           },
         },
       }),
@@ -1025,7 +1025,7 @@ export function ontologyV2HarnessCases(): OntologyV2HarnessCase[] {
               title: '预算提升人工确认',
               message: '自动加预算超过阈值，必须由运营确认。',
               recoveryAction: '打开运行复盘并记录人工确认。',
-              targetModule: 'assets-history',
+              targetModule: 'assets',
               createdAt: '2026-06-01T00:00:00.000Z',
             }],
           },

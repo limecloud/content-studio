@@ -91,7 +91,9 @@ import type {
 import { buildContentSyncConflictMergeDraft } from "../../../shared/contentSyncConflictMerge";
 import { stripInternalTraceLinesFromPrompt } from "../../../shared/promptTraceText";
 import { isAgentInputSourceRecoverySession } from "../components/agent/agentRuntimeProjection";
+import { cleanAgentAssetRefs, planAgentAssetInputSourceRegistrations } from "./agentAssetInputSources";
 import { DEFAULT_PARAMS, VIDEO_DIMENSIONS } from "./constants";
+import { platformColorThemeToContentStudio } from "./platformAppearance";
 import {
   citationFromResult,
   citationFromInputSource,
@@ -121,7 +123,7 @@ import type {
   ModelSettingView,
   ModuleKey,
   ProviderTab,
-  SettingsTab,
+  SettingsPageKey,
 } from "./types";
 
 class ActionCancelledError extends Error {
@@ -155,10 +157,23 @@ function modelFromOptions(
   return normalized[0] ?? currentModel;
 }
 
+function platformModelFromOptions(
+  currentModel: string,
+  models: string[],
+): string {
+  const normalized = uniqueModelNames(models);
+  if (currentModel && normalized.includes(currentModel)) return currentModel;
+  return normalized[0] ?? "";
+}
+
 function uniqueModelNames(models: string[]): string[] {
   return Array.from(
     new Set(models.map((model) => model.trim()).filter(Boolean)),
   );
+}
+
+function compactModelNames(models: Array<string | undefined>): string[] {
+  return uniqueModelNames(models.filter((model): model is string => Boolean(model)));
 }
 
 function paramsForImageGeneration(
@@ -181,6 +196,8 @@ type PromptDraftCreateRequest = {
   purpose: PromptDraftPurpose;
   userIntent: string;
   inputSourceIds: string[];
+  productImageRefs?: string[];
+  referenceImageRefs?: string[];
   teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
   sceneCardIds?: string[];
   selectedSkills?: SkillRef[];
@@ -267,12 +284,7 @@ type MediaGenerationSubmission =
   | { type: "task"; task: GenerationTaskRecord }
   | { type: "fallback"; result: MediaGenerationResult };
 
-function cleanPathList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    .map((item) => item.trim());
-}
+const cleanPathList = cleanAgentAssetRefs;
 
 function imageLogStage(log: GenerationLogEntry): ImageGenerationRequest["generationStage"] | undefined {
   const input = imageRequestFromLog(log);
@@ -345,6 +357,20 @@ function isMissingGenerationTaskHandler(error: unknown): boolean {
     message.includes("No handler registered for 'generationTasks:submit'") ||
     message.includes('No handler registered for "generationTasks:submit"')
   );
+}
+
+function userFacingActionError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    /platformHost:openModelSettings/i.test(message) ||
+    /未检测到 lime-desktop-platform runtime bridge/i.test(message)
+  ) {
+    return "当前窗口未连接平台设置中心，请从平台客户端打开内容工厂后再进入完整模型设置。";
+  }
+  if (/Error invoking remote method/i.test(message)) {
+    return "当前操作未能连接到桌面服务，请稍后重试或重新打开应用。";
+  }
+  return message || "当前任务处理失败，请稍后重试。";
 }
 
 function videoCostEstimateFromOutput(output: Record<string, unknown>): VideoCostEstimate | undefined {
@@ -435,9 +461,14 @@ function promptPurposeForIpScenario(scene: string): PromptDraftPurpose {
 
 function promptWorkbenchModuleForPurpose(purpose: PromptDraftPurpose): ModuleKey {
   if (purpose === "video") return "video-creative";
-  if (purpose === "article") return "article-script";
   if (purpose === "green-screen") return "image-green-screen";
-  return "assets-prompt-workbench";
+  return "agents";
+}
+
+function activeModuleForUserPath(module: ModuleKey): ModuleKey {
+  if (module === "assets-prompt-workbench") return "agents";
+  if (module === "assets-history") return "assets";
+  return module;
 }
 
 function videoSubtitleModeLabel(value: string): string {
@@ -559,26 +590,20 @@ export function useContentStudioApp() {
     "light",
   );
   const [colorTheme, setColorTheme] = useState<ColorTheme>("emerald");
+  const [fontScale, setFontScale] = useState(1);
+  const [serifEnabled, setSerifEnabled] = useState(false);
   const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">(
     "light",
   );
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  const [settingsPage, setSettingsPage] = useState<SettingsPageKey>("general");
   const [modelSettingView, setModelSettingView] =
     useState<ModelSettingView>("edit_text_http");
   const [providerTab, setProviderTab] = useState<ProviderTab>("recommended");
   const [responsesApiActive, setResponsesApiActive] = useState(false);
 
-  // 通用设置 Switch States
-  const [menubarShow, setMenubarShow] = useState(true);
-  const [autoStart, setAutoStart] = useState(true);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [reduceAnimation, setReduceAnimation] = useState(false);
-  const [syncLocalAssetHistory, setSyncLocalAssetHistory] = useState(false);
-  const [shortcutActive, setShortcutActive] = useState(true);
-  const [commandWhitelist, setCommandWhitelist] = useState(false);
-
-  const [activeModule, setActiveModule] = useState<ModuleKey>("image-showcase");
+  const [activeModule, setActiveModuleState] = useState<ModuleKey>("agents");
+  const setActiveModule = (module: ModuleKey) => setActiveModuleState(activeModuleForUserPath(module));
   const [settings, setSettings] = useState<AppSettingsView | null>(null);
   const [authState, setAuthState] = useState<BuguAuthState | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
@@ -953,31 +978,52 @@ export function useContentStudioApp() {
     activePromptPack?.videoPromptFragments.join("\n") ||
     "根据知识库和场景卡生成短视频镜头提示词。";
   const textModelOptions = useMemo(
-    () =>
-      uniqueModelNames([
-        params.textModel,
+    () => {
+      if (modelConfig?.platformManaged) {
+        return uniqueModelNames([
+          ...modelConfig.textModels,
+          ...(modelCatalog?.source === "lime-desktop-platform" ? modelCatalog.textModels : []),
+        ]);
+      }
+      return compactModelNames([
+        modelConfig?.textModel,
         ...(modelConfig?.textModels ?? []),
-        ...(modelCatalog?.textModels ?? []),
-      ]),
-    [modelCatalog?.textModels, modelConfig?.textModels, params.textModel],
+        ...(modelCatalog?.source === "lime-desktop-platform" ? [] : modelCatalog?.textModels ?? []),
+      ]);
+    },
+    [modelCatalog?.source, modelCatalog?.textModels, modelConfig?.platformManaged, modelConfig?.textModel, modelConfig?.textModels],
   );
   const imageModelOptions = useMemo(
-    () =>
-      uniqueModelNames([
-        params.imageModel,
+    () => {
+      if (modelConfig?.platformManaged) {
+        return uniqueModelNames([
+          ...modelConfig.imageModels,
+          ...(modelCatalog?.source === "lime-desktop-platform" ? modelCatalog.imageModels : []),
+        ]);
+      }
+      return compactModelNames([
+        modelConfig?.imageOuterModel,
         ...(modelConfig?.imageModels ?? []),
-        ...(modelCatalog?.imageModels ?? []),
-      ]),
-    [modelCatalog?.imageModels, modelConfig?.imageModels, params.imageModel],
+        ...(modelCatalog?.source === "lime-desktop-platform" ? [] : modelCatalog?.imageModels ?? []),
+      ]);
+    },
+    [modelCatalog?.imageModels, modelCatalog?.source, modelConfig?.imageModels, modelConfig?.imageOuterModel, modelConfig?.platformManaged],
   );
   const videoModelOptions = useMemo(
-    () =>
-      uniqueModelNames([
-        params.videoModel,
+    () => {
+      if (modelConfig?.platformManaged) {
+        return uniqueModelNames([
+          ...modelConfig.videoModels,
+          ...(modelCatalog?.source === "lime-desktop-platform" ? modelCatalog.videoModels : []),
+        ]);
+      }
+      return compactModelNames([
+        modelConfig?.videoModel,
         ...(modelConfig?.videoModels ?? []),
-        ...(modelCatalog?.videoModels ?? []),
-      ]),
-    [modelCatalog?.videoModels, modelConfig?.videoModels, params.videoModel],
+        ...(modelCatalog?.source === "lime-desktop-platform" ? [] : modelCatalog?.videoModels ?? []),
+      ]);
+    },
+    [modelCatalog?.source, modelCatalog?.videoModels, modelConfig?.platformManaged, modelConfig?.videoModel, modelConfig?.videoModels],
   );
 
   async function refresh(nextWorkspace?: string): Promise<void> {
@@ -986,7 +1032,10 @@ export function useContentStudioApp() {
       window.contentStudio.getModelConfig(),
       window.contentStudio.getModelCatalog(),
     ]);
-    const workspace = nextWorkspace ?? nextSettings.workspacePath;
+    const platformSnapshot = nextModelConfig.platformManaged
+      ? nextModelConfig.platformHost?.snapshot
+      : undefined;
+    const workspace = nextWorkspace ?? platformSnapshot?.workspacePath ?? nextSettings.workspacePath;
     const [nextSkills, nextKnowledgeBases, nextSearchResults] =
       await Promise.all([
         window.contentStudio.scanSkills(workspace),
@@ -999,7 +1048,21 @@ export function useContentStudioApp() {
           tag: knowledgeTagFilter,
         }),
       ]);
-    setSettings(nextSettings);
+    setSettings(
+      platformSnapshot?.workspacePath
+        ? { ...nextSettings, workspacePath: platformSnapshot.workspacePath }
+        : nextSettings,
+    );
+    if (platformSnapshot?.theme) {
+      setThemeMode(platformSnapshot.theme);
+    }
+    if (platformSnapshot?.appearance?.colorTheme) {
+      setColorTheme(platformColorThemeToContentStudio(platformSnapshot.appearance.colorTheme));
+    }
+    if (platformSnapshot?.appearance) {
+      setFontScale(platformSnapshot.appearance.fontScale);
+      setSerifEnabled(platformSnapshot.appearance.serifEnabled);
+    }
     setModelConfig(nextModelConfig);
     setModelCatalog(nextModelCatalog);
     setSkills(nextSkills);
@@ -1018,17 +1081,29 @@ export function useContentStudioApp() {
     setContentMaterialCoverage(null);
     setContentReviewTasks([]);
     setSearchResults(nextSearchResults);
+    const nextTextModels = uniqueModelNames([
+      ...nextModelConfig.textModels,
+      ...(nextModelCatalog.source === "lime-desktop-platform" ? nextModelCatalog.textModels : []),
+    ]);
+    const nextImageModels = uniqueModelNames([
+      ...nextModelConfig.imageModels,
+      ...(nextModelCatalog.source === "lime-desktop-platform" ? nextModelCatalog.imageModels : []),
+    ]);
+    const nextVideoModels = uniqueModelNames([
+      ...nextModelConfig.videoModels,
+      ...(nextModelCatalog.source === "lime-desktop-platform" ? nextModelCatalog.videoModels : []),
+    ]);
     setParams((current) => ({
       ...current,
-      textModel: modelFromOptions(current.textModel, [
-        nextModelConfig.textModel,
-        ...nextModelConfig.textModels,
-      ]),
-      imageModel: imageModelFromConfig(current.imageModel, nextModelConfig.imageModels),
-      videoModel: modelFromOptions(current.videoModel, [
-        nextModelConfig.videoModel,
-        ...nextModelConfig.videoModels,
-      ]),
+      textModel: nextModelConfig.platformManaged
+        ? platformModelFromOptions(current.textModel, nextTextModels)
+        : modelFromOptions(current.textModel, nextTextModels),
+      imageModel: nextModelConfig.platformManaged
+        ? platformModelFromOptions(current.imageModel, nextImageModels)
+        : imageModelFromConfig(current.imageModel, nextImageModels),
+      videoModel: nextModelConfig.platformManaged
+        ? platformModelFromOptions(current.videoModel, nextVideoModels)
+        : modelFromOptions(current.videoModel, nextVideoModels),
     }));
 
     if (!workspace) {
@@ -1142,7 +1217,11 @@ export function useContentStudioApp() {
     setMixPackages(nextMixPackages);
     setPlatformDrafts(nextPlatformDrafts);
     setActivePromptDraftId((current) => current || nextPromptDrafts[0]?.id || "");
-    setActiveAgentPromptSessionId((current) => current || nextAgentPromptSessions[0]?.id || "");
+    setActiveAgentPromptSessionId((current) =>
+      current && nextAgentPromptSessions.some((session) => session.id === current)
+        ? current
+        : "",
+    );
     setActiveBrandKnowledgeBaseId((current) => current || nextBrandKnowledgeBases[0]?.id || "");
     setActiveIpKnowledgeBaseId((current) => current || nextIpKnowledgeBases[0]?.id || "");
     setActiveContentKnowledgeMapId((current) => current || nextContentKnowledgeMaps[0]?.id || "");
@@ -1303,10 +1382,10 @@ export function useContentStudioApp() {
     return () => media.removeEventListener("change", listener);
   }, [themeMode]);
 
-  function runAction(
-    action: (context: ActionContext) => Promise<void>,
+  function runAction<T = void>(
+    action: (context: ActionContext) => Promise<T>,
     label = "正在处理当前任务",
-  ): void {
+  ): Promise<T | undefined> {
     const runId = actionRunIdRef.current + 1;
     actionRunIdRef.current = runId;
     cancelledRunIdsRef.current.delete(runId);
@@ -1320,12 +1399,11 @@ export function useContentStudioApp() {
     setBusy(true);
     setCurrentActionLabel(label);
     setError(null);
-    void action(context)
+    return action(context)
       .catch((nextError) => {
         if (nextError instanceof ActionCancelledError) return;
-        setError(
-          nextError instanceof Error ? nextError.message : String(nextError),
-        );
+        setError(userFacingActionError(nextError));
+        return undefined;
       })
       .finally(() => {
         cancelledRunIdsRef.current.delete(runId);
@@ -1402,10 +1480,10 @@ export function useContentStudioApp() {
           : modelConfig?.videoApiKeyStatus;
     if (status !== "requires-reauthorization") return;
     const label = kind === "text" ? "文字" : kind === "image" ? "图片" : "视频";
-    setSettingsTab("model");
+    setSettingsPage("model");
     setShowSettingsDialog(true);
     throw new Error(
-      `${label} API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存 ${label} API Key 后再继续。`,
+      `${label}访问凭据已保存，但当前系统无法解密。请在设置 - 模型中重新保存 ${label}访问凭据后再继续。`,
     );
   }
 
@@ -1417,7 +1495,7 @@ export function useContentStudioApp() {
       imageApiEndpoint: modelConfig?.imageApiEndpoint ?? "",
       imageApiKey: "",
       imageProtocol: modelConfig?.imageProtocol ?? "openai-responses",
-      imageOuterModel: modelConfig?.imageOuterModel ?? "gpt-5.5",
+      imageOuterModel: modelConfig?.imageOuterModel ?? "",
       textModel: modelConfig?.textModel ?? params.textModel,
       textModels: modelConfig?.textModels.join(", ") ?? params.textModel,
       imageModels: modelConfig?.imageModels.join(", ") ?? params.imageModel,
@@ -1432,14 +1510,39 @@ export function useContentStudioApp() {
   async function chooseWorkspace(): Promise<void> {
     const selected = await window.contentStudio.selectWorkspace();
     if (!selected) return;
+    await switchWorkspace(selected);
+  }
+
+  async function switchWorkspace(nextWorkspace: string): Promise<void> {
     const nextSettings = await window.contentStudio.saveSettings({
-      workspacePath: selected,
+      workspacePath: nextWorkspace,
     });
+    setActiveAgentPromptSessionId("");
+    setActivePromptDraftId("");
     setSettings(nextSettings);
-    await refresh(selected);
+    await refresh(nextWorkspace);
+  }
+
+  async function clearWorkspace(): Promise<void> {
+    const nextSettings = await window.contentStudio.saveSettings({
+      workspacePath: "",
+    });
+    setActiveAgentPromptSessionId("");
+    setActivePromptDraftId("");
+    setSettings(nextSettings);
+    setInputSources([]);
+    setPromptDrafts([]);
+    setAgentPromptSessions([]);
+    setSearchResults([]);
+    setLogs([]);
   }
 
   async function saveModelConfig(): Promise<void> {
+    if (modelConfig?.platformManaged) {
+      setSettingsPage("model");
+      setShowSettingsDialog(true);
+      throw new Error("模型设置已由平台设置中心统一管理，请在设置 - 模型中进入完整模型设置。");
+    }
     const next = await window.contentStudio.saveModelConfig({
       textApiEndpoint: modelDraft.apiEndpoint,
       textApiKey: modelDraft.apiKey || undefined,
@@ -1500,7 +1603,7 @@ export function useContentStudioApp() {
       textModel: current.textModel || catalog.textModels[0] || params.textModel,
       textModels: current.textModels || catalog.textModels.join(", "),
       imageModels: current.imageModels || catalog.imageModels.join(", "),
-      imageOuterModel: current.imageOuterModel || "gpt-5.5",
+      imageOuterModel: current.imageOuterModel,
       videoModel:
         current.videoModel || catalog.videoModels[0] || params.videoModel,
       videoModels: current.videoModels || catalog.videoModels.join(", "),
@@ -1533,7 +1636,7 @@ export function useContentStudioApp() {
   }
 
   function openUpdateSettings(): void {
-    setSettingsTab("about");
+    setSettingsPage("about");
     setShowSettingsDialog(true);
   }
 
@@ -1761,6 +1864,38 @@ export function useContentStudioApp() {
     }
   }
 
+  async function ensureAgentAssetInputSources(
+    workspace: string,
+    productRefs?: string[],
+    referenceRefs?: string[],
+  ): Promise<string[]> {
+    const plan = planAgentAssetInputSourceRegistrations({
+      productRefs,
+      referenceRefs,
+      knownSources: inputSources,
+      fileNameFromPath,
+    });
+    if (!plan.existingIds.length && !plan.registrations.length) return [];
+
+    const createdSources: InputSourceRecord[] = [];
+    const ids: string[] = [...plan.existingIds];
+    for (const registration of plan.registrations) {
+      const source = await window.contentStudio.registerInputSource({
+        workspacePath: workspace,
+        ...registration.input,
+      });
+      createdSources.push(source);
+      ids.push(source.id);
+    }
+    if (createdSources.length) {
+      setInputSources((current) => [
+        ...createdSources,
+        ...current.filter((source) => !createdSources.some((created) => created.id === source.id)),
+      ]);
+    }
+    return Array.from(new Set(ids));
+  }
+
   async function removeInputSource(sourceId: string): Promise<void> {
     const workspace = requireWorkspace();
     const removed = await window.contentStudio.removeInputSource(workspace, sourceId);
@@ -1810,14 +1945,15 @@ export function useContentStudioApp() {
     await refresh(workspace);
   }
 
-  async function startAgentPromptSession(input: PromptDraftCreateRequest): Promise<void> {
+  async function startAgentPromptSession(input: PromptDraftCreateRequest): Promise<AgentPromptSession> {
     const workspace = requireWorkspace();
+    const assetInputSourceIds = await ensureAgentAssetInputSources(workspace, input.productImageRefs, input.referenceImageRefs);
     const result = await window.contentStudio.startAgentPromptSession({
       workspacePath: workspace,
       title: input.title,
       purpose: input.purpose,
       userIntent: input.userIntent,
-      inputSourceIds: input.inputSourceIds,
+      inputSourceIds: Array.from(new Set([...input.inputSourceIds, ...assetInputSourceIds])),
       teamKnowledgeRelease: input.teamKnowledgeRelease,
       sceneCardIds: input.sceneCardIds,
       selectedSkills: input.selectedSkills,
@@ -1829,6 +1965,7 @@ export function useContentStudioApp() {
     setActivePromptDraftId(result.draft.id);
     setActiveAgentPromptSessionId(result.session.id);
     await refresh(workspace);
+    return result.session;
   }
 
   async function continueAgentPromptSession(input: {
@@ -2280,7 +2417,7 @@ export function useContentStudioApp() {
       return;
     }
     if (stageId === 'matrix') {
-      setActiveModule('assets-prompt-workbench');
+      setActiveModule('agents');
       return;
     }
     if (stageId === 'manufacturing') {
@@ -2309,7 +2446,7 @@ export function useContentStudioApp() {
         setActiveModule('knowledge-inputs');
         return;
       }
-      setActiveModule('assets-history');
+      setActiveModule('assets');
       return;
     }
     if (stageId === 'feedback') {
@@ -2331,10 +2468,10 @@ export function useContentStudioApp() {
           return;
         }
       }
-      setActiveModule(approvedAsset ? 'assets-prompt-workbench' : 'assets-history');
+      setActiveModule(approvedAsset ? 'agents' : 'assets');
       return;
     }
-    setActiveModule('assets-history');
+    setActiveModule('assets');
   }
 
   async function exportContentKnowledgePack(): Promise<void> {
@@ -2694,7 +2831,7 @@ export function useContentStudioApp() {
       ? promptWorkbenchModuleForPurpose(result.promptDraft.purpose)
       : result.sceneCard
         ? 'knowledge-scenes'
-        : 'assets-prompt-workbench';
+        : 'agents';
     await refresh(workspace);
     if (result.promptDraft) setActivePromptDraftId(result.promptDraft.id);
     if (result.sceneCard) {
@@ -2888,7 +3025,7 @@ export function useContentStudioApp() {
     setImageReferenceLabel("参考图");
     setImagePromptDraft(prompt);
     setImagePromptMode("free");
-    setActiveModule("image");
+    setActiveModule("image-production");
   }
 
   function useShowcasePromptInImage(input: ShowcaseImageHandoffInput): void {
@@ -2984,7 +3121,7 @@ export function useContentStudioApp() {
 
   function useReferenceReversePromptInImage(input: ShowcaseImageHandoffInput): void {
     useShowcasePromptInImage(input);
-    setActiveModule("image");
+    setActiveModule("image-production");
   }
 
   async function generateReferenceReverseImage(
@@ -3499,7 +3636,7 @@ export function useContentStudioApp() {
         setImagePromptDraft(nextPrompt);
         setImagePromptMode("free");
       }
-      setActiveModule("image");
+      setActiveModule("image-production");
       return;
     }
 
@@ -3918,7 +4055,7 @@ export function useContentStudioApp() {
   function openRunTrace(runId: string): void {
     const run = workflowRunById(runId);
     selectWorkflowRunContext(run);
-    setActiveModule("assets-history");
+    setActiveModule("assets");
   }
 
   function openTraceGenerationLog(logId: string): void {
@@ -3929,7 +4066,7 @@ export function useContentStudioApp() {
       if (run) selectWorkflowRunContext(run);
     }
     setHistoryFilter(log.kind);
-    setActiveModule("assets-history");
+    setActiveModule("assets");
   }
 
   function openTracePromptDraft(draftId: string): void {
@@ -4204,7 +4341,7 @@ export function useContentStudioApp() {
       );
     }
     if (typeof input.watermark === "boolean") setImageWatermark(input.watermark);
-    setActiveModule("image");
+    setActiveModule("image-production");
   }
 
   function routeAiImageCommand(input: string): string {
@@ -4220,7 +4357,7 @@ export function useContentStudioApp() {
     setImagePromptDraft(nextPrompt);
     setImagePromptMode("free");
     setImageWorkflowRunId("");
-    setActiveModule("image");
+    setActiveModule("image-production");
     return nextPrompt;
   }
 
@@ -4266,7 +4403,7 @@ export function useContentStudioApp() {
       );
       context?.throwIfCancelled();
       setMediaResult(result);
-      setActiveModule("image");
+      setActiveModule("image-production");
     } else if (log.kind === "video") {
       const result = await window.contentStudio.generateVideo(
         log.input as VideoGenerationRequest,
@@ -4303,7 +4440,7 @@ export function useContentStudioApp() {
       context?.throwIfCancelled();
       setSceneCards((current) => [...cards, ...current]);
       setSelectedSceneIds(cards.slice(0, 2).map((card) => card.id));
-      setActiveModule("image");
+      setActiveModule("image-production");
     } else {
       throw new Error(`暂不支持重试该历史类型：${log.kind}`);
     }
@@ -4937,31 +5074,21 @@ export function useContentStudioApp() {
     setThemeMode,
     colorTheme,
     setColorTheme,
+    fontScale,
+    setFontScale,
+    serifEnabled,
+    setSerifEnabled,
     effectiveTheme,
     showSettingsDialog,
     setShowSettingsDialog,
-    settingsTab,
-    setSettingsTab,
+    settingsPage,
+    setSettingsPage,
     modelSettingView,
     setModelSettingView,
     providerTab,
     setProviderTab,
     responsesApiActive,
     setResponsesApiActive,
-    menubarShow,
-    setMenubarShow,
-    autoStart,
-    setAutoStart,
-    notificationsEnabled,
-    setNotificationsEnabled,
-    reduceAnimation,
-    setReduceAnimation,
-    syncLocalAssetHistory,
-    setSyncLocalAssetHistory,
-    shortcutActive,
-    setShortcutActive,
-    commandWhitelist,
-    setCommandWhitelist,
     activeModule,
     setActiveModule,
     settings,
@@ -5143,6 +5270,8 @@ export function useContentStudioApp() {
     requireWorkspace,
     openModelDialog,
     chooseWorkspace,
+    switchWorkspace,
+    clearWorkspace,
     saveModelConfig,
     loadModelCatalog,
     checkForUpdates,

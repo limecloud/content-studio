@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "布谷AI内容工厂桌面应用，用于知识库、提示词、图片、视频和文章生产。",
   "type": "module",
   "main": "out/main/index.js",
@@ -41,6 +41,9 @@
     "app-server:prepare:test": "node --test scripts/prepare-app-server-resources.test.mjs",
     "app-server:backend:test": "node --test scripts/app-server-backend.test.mjs",
     "app-server:backend:live": "node scripts/app-server-backend-live-check.mjs",
+    "app-server:runtime:live": "node scripts/app-server-runtime-live-check.mjs",
+    "platform-host:runtime:live": "node scripts/platform-host-runtime-live-check.mjs",
+    "verify:lime-agent": "node scripts/lime-agent-boundary-audit.mjs",
     "verify:v2:providers": "node scripts/v2-provider-check.mjs",
     "verify:v2:providers:strict": "node scripts/v2-provider-check.mjs --strict",
     "verify:v2:acceptance": "node scripts/run-v2-business-acceptance.mjs",
@@ -51,7 +54,7 @@
     "test:functional": "node scripts/run-functional-tests.mjs",
     "test:e2e": "node scripts/run-playwright-e2e.mjs",
     "test:e2e:headed": "npm run test:e2e -- --headed",
-    "verify:local": "npm run typecheck && npm run content:v1:verify-readiness && npm run build && npm run verify:v2 && npm run test:functional && npm run smoke:electron && npm run test:e2e"
+    "verify:local": "npm run typecheck && npm run content:v1:verify-readiness && npm run build && npm run verify:v2 && npm run verify:lime-agent && npm run test:functional && npm run smoke:electron && npm run test:e2e"
   },
   "dependencies": {
     "@limecloud/agent-runtime-projection": "^0.1.0",

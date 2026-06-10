@@ -9,6 +9,32 @@ export type ImageGenerationProtocol = 'openai-responses' | 'openai-chat-data-uri
 export type ModelSecretStatus = 'missing' | 'available' | 'requires-reauthorization';
 export const TEXT_GENERATION_PROTOCOLS: readonly TextGenerationProtocol[] = ['anthropic-messages', 'openai-chat', 'gemini-generate-content'];
 export const IMAGE_GENERATION_PROTOCOLS: readonly ImageGenerationProtocol[] = ['openai-responses', 'openai-chat-data-uri', 'gemini-generate-content'];
+export const APP_SERVER_PROTOCOL_VERSION = 'appserver.v0';
+export const APP_SERVER_AGENT_SESSION_METHODS = {
+  initialize: 'initialize',
+  initialized: 'initialized',
+  startSession: 'agentSession/start',
+  readSession: 'agentSession/read',
+  startTurn: 'agentSession/turn/start',
+  cancelTurn: 'agentSession/turn/cancel',
+  respondAction: 'agentSession/action/respond',
+  listCapabilities: 'capability/list',
+  readArtifact: 'artifact/read',
+  exportEvidence: 'evidence/export',
+  events: 'agentSession/event',
+} as const;
+export const APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE = {
+  kind: 'app-server-json-rpc',
+  transport: 'host-mediated',
+  hostBoundary: 'desktop-host-ipc',
+  runtimeOwner: 'runtime-core',
+  protocolVersion: APP_SERVER_PROTOCOL_VERSION,
+  methods: APP_SERVER_AGENT_SESSION_METHODS,
+  events: {
+    notification: APP_SERVER_AGENT_SESSION_METHODS.events,
+    allowUiSynthesis: false,
+  },
+} as const;
 
 export function isTextGenerationProtocol(value: unknown): value is TextGenerationProtocol {
   return typeof value === 'string' && TEXT_GENERATION_PROTOCOLS.includes(value as TextGenerationProtocol);
@@ -38,6 +64,7 @@ export type KnowledgeSectionType =
 
 export interface AppSettingsView {
   workspacePath?: string;
+  recentWorkspacePaths: string[];
   hasAnthropicApiKey: boolean;
   apiKeyStorage: 'safeStorage' | 'plain' | 'none';
   autoUpdateEnabled: boolean;
@@ -259,6 +286,28 @@ export interface ModelConfigView {
   apiEndpoint: string;
   hasApiKey: boolean;
   safeStorageAvailable: boolean;
+  source?: 'content-studio-local' | 'lime-desktop-platform';
+  platformManaged?: boolean;
+  platformModelSettings?: PlatformModelSettings;
+  agentProviderPreference?: string;
+  imageProviderPreference?: string;
+  videoProviderPreference?: string;
+  platformHost?: {
+    appId: string;
+    entryKey: string;
+    endpoint: string;
+    modelSettingsVersion?: string;
+    snapshot?: PlatformHostSnapshot;
+  };
+  platformReadiness?: {
+    state: 'ready' | 'needs-setup' | 'blocked' | 'disabled';
+    reasons: Array<{
+      code: string;
+      message: string;
+      fixable: boolean;
+    }>;
+    setupActions: string[];
+  };
   textProvider: 'http-text-generation';
   textProtocol: TextGenerationProtocol;
   textApiEndpoint: string;
@@ -286,7 +335,7 @@ export interface ModelCatalogView {
   textModels: string[];
   imageModels: string[];
   videoModels: string[];
-  source: 'configured' | 'provider' | 'offline-seed';
+  source: 'configured' | 'provider' | 'offline-seed' | 'lime-desktop-platform';
   updatedAt: string;
 }
 
@@ -313,6 +362,231 @@ export interface SaveModelConfigInput {
   clearVideoApiKey?: boolean;
   videoModel?: string;
   videoModels?: string[];
+}
+
+export type PlatformModelProtocol = 'openai-compatible' | 'anthropic-compatible' | 'gemini-native' | 'local';
+export type PlatformModelCapabilityKind = 'text' | 'image' | 'video';
+
+export interface PlatformModelProviderConfig {
+  id: string;
+  displayName: string;
+  protocol: PlatformModelProtocol;
+  capabilityKinds: PlatformModelCapabilityKind[];
+  enabled: boolean;
+  apiKeyConfigured: boolean;
+  authType?: 'api-key' | 'oauth' | 'none';
+  baseUrl?: string;
+  useResponsesApi?: boolean;
+  models: string[];
+}
+
+export interface PlatformModelSettings {
+  version: string;
+  updatedAt: string;
+  defaultAgentProviderId?: string;
+  defaultTextModelId?: string;
+  defaultImageModelId?: string;
+  defaultVideoModelId?: string;
+  providers: PlatformModelProviderConfig[];
+}
+
+export interface PlatformHostSnapshot {
+  hostKind: 'electron' | 'tauri';
+  hostVersion: string;
+  appId: string;
+  entryKey: string;
+  locale: string;
+  theme: 'light' | 'dark' | 'system';
+  appearance?: PlatformAppearanceSettings;
+  workspacePath?: string;
+  modelSettingsVersion?: string;
+  oauthState?: 'unauthenticated' | 'authenticated' | 'expired';
+  tenantName?: string;
+  accountEmail?: string;
+  billingState?: 'unknown' | 'active' | 'needs-payment' | 'suspended';
+  oemState?: 'unbranded' | 'branded' | 'customized';
+}
+
+export type PlatformColorTheme =
+  | 'emerald'
+  | 'ocean'
+  | 'vintage'
+  | 'neon'
+  | 'lime'
+  | 'dusk'
+  | 'minimal'
+  | 'vibrant'
+  | 'nature'
+  | 'arts'
+  | 'luxury';
+
+export interface PlatformAppearanceSettings {
+  colorTheme: PlatformColorTheme;
+  fontScale: number;
+  serifEnabled: boolean;
+}
+
+export interface PlatformSettingsProjection {
+  version: string;
+  updatedAt: string;
+  locale: string;
+  theme: PlatformHostSnapshot['theme'];
+  appearance: PlatformAppearanceSettings;
+  workspacePath: string;
+  proxy: {
+    enabled: boolean;
+    url: string;
+  };
+  developerMode: boolean;
+  general: {
+    notificationsEnabled: boolean;
+    reduceMotion: boolean;
+    syncLocalAgentHistory: boolean;
+    quickWindowShortcutEnabled: boolean;
+    commandWhitelistEnabled: boolean;
+    permissionMode: 'auto-approve' | 'safe';
+    thinkingMode: 'auto' | 'off' | 'low' | 'medium' | 'high' | 'max';
+    showToolCalls: boolean;
+    expandToolCallsByDefault: boolean;
+  };
+}
+
+export interface PlatformRuntimeBridgeDescriptor {
+  protocol: 'lime.runtimeBridge';
+  version: 1;
+  endpoint: string;
+  token: string;
+  appId: string;
+  entryKey: string;
+  expiresAt: string;
+}
+
+export interface PlatformRuntimeBridgeDiscoveryDescriptor {
+  protocol: 'lime.runtimeBridge.discovery';
+  version: 1;
+  endpoint: string;
+  token: string;
+  hostKind: 'electron' | 'tauri';
+  hostVersion: string;
+  publishedAt: string;
+  expiresAt: string;
+}
+
+export interface PlatformReadinessReason {
+  code: string;
+  message: string;
+  fixable: boolean;
+}
+
+export interface PlatformReadinessResult {
+  state: 'ready' | 'needs-setup' | 'blocked' | 'disabled';
+  reasons: PlatformReadinessReason[];
+  setupActions: string[];
+}
+
+export type PlatformCapability =
+  | 'lime.cloudSession'
+  | 'lime.modelSettings'
+  | 'lime.branding'
+  | 'lime.billing'
+  | 'lime.appUpdates'
+  | 'lime.settings'
+  | 'lime.download'
+  | 'lime.permissions'
+  | 'lime.diagnostics'
+  | 'lime.storage'
+  | 'lime.agent'
+  | 'lime.agentExecution';
+
+export interface PlatformCapabilityInvokeInput {
+  appId: string;
+  entryKey: string;
+  capability: PlatformCapability;
+  operation: string;
+  input?: unknown;
+}
+
+export interface PlatformRuntimeEvent {
+  sessionId: string;
+  threadId?: string;
+  turnId?: string;
+  sequence?: number;
+  type: string;
+  method?: string;
+  payload?: unknown;
+}
+
+export interface PlatformAgentRuntimeResult {
+  ok: boolean;
+  state: 'ready' | 'needs-setup' | 'blocked' | 'started' | 'completed' | 'failed' | 'canceled';
+  sessionId?: string;
+  threadId?: string;
+  turnId?: string;
+  bridge?: 'app-server-json-rpc';
+  message?: string;
+  readiness?: PlatformReadinessResult;
+  request?: unknown;
+  runtimeContext?: unknown;
+  bridgeProfile?: unknown;
+  events?: PlatformRuntimeEvent[];
+  appServer?: {
+    session?: {
+      sessionId: string;
+      threadId?: string;
+      appId?: string;
+      workspaceId?: string;
+      status?: string;
+    };
+    turn?: {
+      turnId: string;
+      sessionId: string;
+      threadId?: string;
+      status?: string;
+    };
+  };
+}
+
+export interface PlatformCapabilityInvokeResult {
+  ok: boolean;
+  requestId: string;
+  output?: unknown;
+  error?: {
+    code: string;
+    message: string;
+    data?: unknown;
+  };
+  event?: unknown;
+}
+
+export interface PlatformNavigationIntent {
+  target:
+    | 'app-center'
+    | 'auth-settings'
+    | 'model-settings'
+    | 'branding-settings'
+    | 'billing-settings'
+    | 'updates'
+    | 'diagnostics'
+    | 'runtime';
+  appId?: string;
+  entryKey?: string;
+  reason?: string;
+}
+
+export interface PlatformNavigationResult {
+  ok: boolean;
+  target: PlatformNavigationIntent['target'];
+  message: string;
+  event?: unknown;
+}
+
+export interface PlatformHostBridgeStatus {
+  available: boolean;
+  mode: 'lime-desktop-platform' | 'standalone';
+  source?: 'env' | 'discovery';
+  snapshot?: PlatformHostSnapshot;
+  bridge?: Pick<PlatformRuntimeBridgeDescriptor, 'endpoint' | 'appId' | 'entryKey' | 'expiresAt'>;
+  error?: string;
 }
 
 export interface SkillMetadata {
@@ -1716,6 +1990,7 @@ export interface AgentPromptSession {
   inputSourceIds: string[];
   sceneCardIds?: string[];
   selectedSkills?: SkillRef[];
+  selectedSkillSlugs?: string[];
   promptDraftIds: string[];
   sourceSnapshots: AgentPromptSourceSnapshot[];
   messages: AgentPromptMessage[];
@@ -2676,6 +2951,7 @@ export interface VideoStoryboardShot {
 
 export interface VideoScriptGenerationResult {
   logId: string;
+  status?: Extract<GenerationStatus, 'succeeded' | 'failed' | 'blocked'>;
   title: string;
   script: string;
   storyboard: VideoStoryboardShot[];
@@ -2683,6 +2959,7 @@ export interface VideoScriptGenerationResult {
   resourceFramework?: VideoBreakdownResourceFramework;
   evaluation?: VideoScriptEvaluationResult;
   publishCheck: Array<{ level: 'info' | 'warning' | 'risk'; message: string }>;
+  error?: string;
 }
 
 export interface VideoScriptEvaluationRequest {
@@ -2769,6 +3046,21 @@ export interface AppServerJsonRpcMessage {
   error?: AppServerJsonRpcError;
 }
 
+export type AppServerJsonRpcMethod =
+  | 'initialize'
+  | 'initialized'
+  | 'agentSession/start'
+  | 'agentSession/read'
+  | 'agentSession/turn/start'
+  | 'agentSession/turn/cancel'
+  | 'agentSession/action/respond'
+  | 'capability/list'
+  | 'artifact/read'
+  | 'evidence/export'
+  | 'agentSession/event';
+
+export type AppServerAgentRuntimeBridgeProfile = typeof APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE;
+
 export interface AppServerRuntimeEvent {
   eventId?: string;
   sequence?: number;
@@ -2786,6 +3078,7 @@ export interface AppServerHealthCheckResult {
   available: boolean;
   protocolVersion: string;
   source: AppServerSidecarSource;
+  bridgeProfile: AppServerAgentRuntimeBridgeProfile;
   binaryPath?: string;
   message?: string;
 }
@@ -2794,6 +3087,7 @@ export interface AppServerSmokeResult {
   ok: boolean;
   protocolVersion: string;
   source: AppServerSidecarSource;
+  bridgeProfile: AppServerAgentRuntimeBridgeProfile;
   binaryPath?: string;
   capabilityIds?: string[];
   eventTypes?: string[];
@@ -2826,6 +3120,10 @@ export interface ContentStudioApi {
   getModelConfig(): Promise<ModelConfigView>;
   saveModelConfig(input: SaveModelConfigInput): Promise<ModelConfigView>;
   getModelCatalog(): Promise<ModelCatalogView>;
+  getPlatformSettings(): Promise<PlatformSettingsProjection>;
+  savePlatformSettings(settings: PlatformSettingsProjection): Promise<PlatformSettingsProjection>;
+  getPlatformHostStatus(): Promise<PlatformHostBridgeStatus>;
+  openPlatformModelSettings(): Promise<PlatformNavigationResult>;
 
   scanSkills(workspacePath?: string): Promise<LoadedSkill[]>;
   installBuiltinSkill(slug: string, workspacePath: string): Promise<LoadedSkill[]>;

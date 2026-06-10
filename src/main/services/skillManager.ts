@@ -4,7 +4,7 @@ import { createWriteStream } from 'node:fs';
 import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { Dirent, existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, delimiter as pathDelimiter, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { CreateSkillInput, InstallSkillPackageResult, LoadedSkill, SkillMetadata, SkillPackageFileNode, SkillPackagePreview, SkillRef, SkillSource } from '../../shared/types';
 import { getResourcesRoot } from './paths';
 
@@ -146,6 +146,91 @@ async function loadSkillsFromRoot(root: string, source: SkillSource): Promise<Lo
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
       .map((entry) => loadSkillFromDir(join(root, entry.name), source)),
   ).then((items) => items.filter((item): item is LoadedSkill => Boolean(item)));
+}
+
+async function loadSkillFromPackage(packagePath: string, source: SkillSource): Promise<LoadedSkill | null> {
+  try {
+    const entries = await listPackageEntries(packagePath);
+    const names = entries.map((item) => item.name);
+    const layout = resolvePackageLayout(names, packagePath);
+    const skillEntry = entries.find((item) => item.name === layout.skillPath && !item.isDirectory);
+    if (!skillEntry) return null;
+
+    const content = await withZip(packagePath, async (zipFile) => {
+      let selectedContent = '';
+      await new Promise<void>((resolveRead, rejectRead) => {
+        zipFile.readEntry();
+        zipFile.on('entry', async (entry) => {
+          try {
+            if (normalizeZipEntryName(entry.fileName) === layout.skillPath) {
+              selectedContent = (await readEntryBuffer(zipFile, entry)).toString('utf-8');
+              resolveRead();
+              return;
+            }
+            zipFile.readEntry();
+          } catch (error) {
+            rejectRead(error);
+          }
+        });
+        zipFile.on('end', resolveRead);
+        zipFile.on('error', rejectRead);
+      });
+      return selectedContent;
+    });
+
+    const parsed = parseSkill(content);
+    const files: SkillPackageFileNode[] = [];
+    for (const item of entries) {
+      const relativeName = packageRelativeName(item.name, layout);
+      if (!relativeName) continue;
+      appendTreeNode(files, relativeName, item.isDirectory ? 'directory' : 'file');
+    }
+
+    return {
+      slug: layout.slug,
+      source,
+      path: packagePath,
+      metadata: parsed?.metadata ?? { name: layout.slug, description: 'Invalid skill package' },
+      valid: Boolean(parsed),
+      content,
+      files: sortTree(files),
+      updatedAt: statSync(packagePath).mtime.toISOString(),
+      error: parsed ? undefined : 'SKILL.md 缺少 name 或 description frontmatter',
+    };
+  } catch (error) {
+    return {
+      slug: slugFromPackagePath(packagePath),
+      source,
+      path: packagePath,
+      metadata: { name: slugFromPackagePath(packagePath), description: 'Unreadable skill package' },
+      valid: false,
+      files: [],
+      updatedAt: existsSync(packagePath) ? statSync(packagePath).mtime.toISOString() : undefined,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function loadSkillPackagesFromRoot(root: string, source: SkillSource): Promise<LoadedSkill[]> {
+  if (!existsSync(root) || !statSync(root).isDirectory()) {
+    return [];
+  }
+  return Promise.all(
+    readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.skill'))
+      .map((entry) => loadSkillFromPackage(join(root, entry.name), source)),
+  ).then((items) => items.filter((item): item is LoadedSkill => Boolean(item)));
+}
+
+function localSkillPackageRoots(): string[] {
+  const envRoots = (process.env.CONTENT_STUDIO_EXTERNAL_SKILLS_DIRS || '')
+    .split(pathDelimiter)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return Array.from(new Set([
+    ...envRoots,
+    join(homedir(), 'Documents', 'other', 'skills'),
+  ]));
 }
 
 function getBuguSkillRoot(workspacePath: string): string {
@@ -356,7 +441,10 @@ export class SkillManager {
       );
     }
     const skills = (await Promise.all(roots.map((root) => loadSkillsFromRoot(root.path, root.source)))).flat();
-    return skills.sort((a, b) => `${a.source}:${a.slug}`.localeCompare(`${b.source}:${b.slug}`));
+    const packagedSkills = (await Promise.all(
+      localSkillPackageRoots().map((root) => loadSkillPackagesFromRoot(root, 'user-compat')),
+    )).flat();
+    return [...skills, ...packagedSkills].sort((a, b) => `${a.source}:${a.slug}`.localeCompare(`${b.source}:${b.slug}`));
   }
 
   async installBuiltin(slug: string, workspacePath: string): Promise<void> {
@@ -455,6 +543,9 @@ export class SkillManager {
     const loaded = (await this.scan(workspacePath)).find((item) => item.slug === skill.slug && item.source === skill.source);
     if (!loaded) {
       throw new Error('未找到该 skill。');
+    }
+    if (extname(loaded.path).toLowerCase() === '.skill') {
+      return this.readPackageFile(loaded.path, relativePath);
     }
     const normalizedRelativePath = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
     if (!normalizedRelativePath || normalizedRelativePath.includes('\0')) {

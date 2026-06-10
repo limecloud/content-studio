@@ -86,13 +86,14 @@ function createWindow(): BrowserWindow {
   rendererAcceptsSkillPackages = false;
   const hideWindowForTests = shouldHideWindowForTests();
   const appTitle = getOemRuntimeConfig().productName || '布谷AI';
+  const windowTitle = '';
   app.setName(appTitle);
   mainWindow = new BrowserWindow({
     width: 1320,
     height: 860,
     minWidth: 1080,
     minHeight: 720,
-    title: appTitle,
+    title: windowTitle,
     show: !hideWindowForTests,
     paintWhenInitiallyHidden: true,
     backgroundColor: '#060514',
@@ -108,7 +109,7 @@ function createWindow(): BrowserWindow {
   registerIpc(mainWindow);
   mainWindow.webContents.on('page-title-updated', (event) => {
     event.preventDefault();
-    mainWindow?.setTitle(appTitle);
+    mainWindow?.setTitle(windowTitle);
   });
   mainWindow.webContents.on('did-finish-load', flushPendingSkillPackages);
   mainWindow.on('closed', () => {

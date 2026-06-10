@@ -6,11 +6,12 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { chmod, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { extname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { ArticleGenerationService } from '../../src/main/services/articleGenerationService.ts';
 import { AgentPromptSessionStore } from '../../src/main/services/agentPromptSessionStore.ts';
+import { AppServerPromptAgentService } from '../../src/main/services/appServerPromptAgentService.ts';
 import { AppServerSidecarService } from '../../src/main/services/appServerSidecarService.ts';
 import { AssetReviewStore } from '../../src/main/services/assetReviewStore.ts';
 import { AutoUpdateService } from '../../src/main/services/autoUpdateService.ts';
@@ -32,6 +33,8 @@ import { ReferenceReverseService } from '../../src/main/services/referenceRevers
 import { SceneLibraryStore } from '../../src/main/services/sceneLibraryStore.ts';
 import { TextGenerationService, TextProviderBlockedError } from '../../src/main/services/textGenerationService.ts';
 import { VideoWorkflowService } from '../../src/main/services/videoWorkflowService.ts';
+import { ModelConfigStore } from '../../src/main/services/modelConfigStore.ts';
+import { PlatformHostBridgeClient } from '../../src/main/services/platformHostBridgeClient.ts';
 import { AgentKnowledgeContentExportService } from '../../src/main/services/agentKnowledgeContentExportService.ts';
 import { BuguContentWorkspaceSyncAdapter } from '../../src/main/services/buguContentWorkspaceSyncAdapter.ts';
 import { ContentKnowledgeMapApplicationService } from '../../src/main/services/contentKnowledgeMapApplicationService.ts';
@@ -71,6 +74,7 @@ import { buildContentSyncConflictMergeDraft } from '../../src/shared/contentSync
 import { planContentMatrixRows } from '../../src/shared/contentMatrixPlanning.ts';
 import { buildContentReviewTasksFromMap } from '../../src/main/services/contentReviewTaskBuilder.ts';
 import { buildAssetCoverageByReviewId } from '../../src/renderer/src/app/assetCoverage.ts';
+import { planAgentAssetInputSourceRegistrations } from '../../src/renderer/src/app/agentAssetInputSources.ts';
 import { createDevBridge } from '../../src/renderer/src/devContentStudioBridge.ts';
 import { extractGeneratedAssetRefsFromLog, extractLocalRefsFromLog } from '../../src/renderer/src/app/formatters.ts';
 import { projectAgentRuntimeReadModel } from '../../src/renderer/src/components/agent/agentRuntimeProjection.ts';
@@ -78,6 +82,7 @@ import { SkillManager } from '../../src/main/services/skillManager.ts';
 import { buildBusinessAcceptanceReport, loadWorkspaceAcceptanceInput } from '../../scripts/v2-business-acceptance.mjs';
 import { buildProviderCheckReport, hasProviderStrictFailure } from '../../scripts/v2-provider-check.mjs';
 import { buildV2UxCopyAudit } from '../../scripts/v2-ux-copy-audit.mjs';
+import { buildLimeAgentBoundaryAudit } from '../../scripts/lime-agent-boundary-audit.mjs';
 import { verifyContentKnowledgeReleaseOnline } from '../../scripts/verify-content-knowledge-release-online.mjs';
 import { verifyContentTeamSharingOnline } from '../../scripts/verify-content-team-sharing-online.mjs';
 import { verifyContentOntologyV1Online } from '../../scripts/verify-content-ontology-v1-online.mjs';
@@ -192,6 +197,193 @@ async function withEnv(overrides, run) {
   }
 }
 
+async function withPlatformRuntimeBridge(handler, run) {
+  const token = `platform-token-${Date.now()}`;
+  const requests = [];
+  const defaultAppearance = {
+    colorTheme: 'emerald',
+    fontScale: 1,
+    serifEnabled: false,
+  };
+  const snapshot = {
+    hostKind: 'electron',
+    hostVersion: '0.1.5-test',
+    appId: 'content-studio',
+    entryKey: 'workbench',
+    locale: 'zh-CN',
+    theme: 'system',
+    appearance: defaultAppearance,
+    workspacePath: 'platform-workspace',
+    modelSettingsVersion: '1',
+  };
+  const server = createServer(async (request, response) => {
+    if (request.method !== 'POST') {
+      response.writeHead(405, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ok: false, error: { message: 'method not allowed' } }));
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${token}`) {
+      response.writeHead(401, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ok: false, error: { message: 'unauthorized' } }));
+      return;
+    }
+    let raw = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      raw += chunk;
+    });
+    request.on('end', async () => {
+      const body = raw ? JSON.parse(raw) : {};
+      requests.push({ url: request.url, body });
+      try {
+        if (request.url === '/snapshot') {
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({ ok: true, snapshot }));
+          return;
+        }
+        const result = await handler({ url: request.url, body, snapshot });
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: true, result }));
+      } catch (error) {
+        response.writeHead(500, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({
+          ok: false,
+          error: { message: error instanceof Error ? error.message : String(error) },
+        }));
+      }
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const descriptor = {
+    protocol: 'lime.runtimeBridge',
+    version: 1,
+    endpoint: `http://127.0.0.1:${address.port}`,
+    token,
+    appId: 'content-studio',
+    entryKey: 'workbench',
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  };
+  try {
+    return await withEnv({
+      LIME_RUNTIME_BRIDGE: JSON.stringify(descriptor),
+      LIME_HOST_SNAPSHOT: JSON.stringify(snapshot),
+    }, () => run({ descriptor, snapshot, requests }));
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+async function withPlatformRuntimeBridgeDiscovery(handler, run) {
+  const discoveryToken = `platform-discovery-${Date.now()}`;
+  const runtimeToken = `platform-runtime-${Date.now()}`;
+  const requests = [];
+  const defaultAppearance = {
+    colorTheme: 'emerald',
+    fontScale: 1,
+    serifEnabled: false,
+  };
+  const snapshot = {
+    hostKind: 'electron',
+    hostVersion: '0.1.5-test',
+    appId: 'content-studio',
+    entryKey: 'default',
+    locale: 'zh-CN',
+    theme: 'system',
+    appearance: defaultAppearance,
+    workspacePath: 'platform-workspace',
+    modelSettingsVersion: '9',
+  };
+  const server = createServer(async (request, response) => {
+    if (request.method !== 'POST') {
+      response.writeHead(405, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ok: false, error: { message: 'method not allowed' } }));
+      return;
+    }
+    let raw = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      raw += chunk;
+    });
+    request.on('end', async () => {
+      const body = raw ? JSON.parse(raw) : {};
+      requests.push({ url: request.url, body });
+      try {
+        if (request.url === '/attach') {
+          const runtimeAddress = server.address();
+          assert.ok(runtimeAddress && typeof runtimeAddress !== 'string');
+          assert.equal(request.headers.authorization, `Bearer ${discoveryToken}`);
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({
+            ok: true,
+            result: {
+              protocol: 'lime.runtimeBridge',
+              version: 1,
+              endpoint: `http://127.0.0.1:${runtimeAddress.port}`,
+              token: runtimeToken,
+              appId: body.appId,
+              entryKey: body.entryKey,
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            },
+          }));
+          return;
+        }
+        if (request.headers.authorization !== `Bearer ${runtimeToken}`) {
+          response.writeHead(401, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({ ok: false, error: { message: 'unauthorized' } }));
+          return;
+        }
+        if (request.url === '/snapshot') {
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({ ok: true, snapshot }));
+          return;
+        }
+        const result = await handler({ url: request.url, body, snapshot });
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: true, result }));
+      } catch (error) {
+        response.writeHead(500, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({
+          ok: false,
+          error: { message: error instanceof Error ? error.message : String(error) },
+        }));
+      }
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const discoveryPath = join(await mkdtemp(join(tmpdir(), 'content-studio-platform-discovery-')), 'runtime-bridge-discovery.json');
+  const discovery = {
+    protocol: 'lime.runtimeBridge.discovery',
+    version: 1,
+    endpoint: `http://127.0.0.1:${address.port}`,
+    token: discoveryToken,
+    hostKind: 'electron',
+    hostVersion: '0.1.5-test',
+    publishedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  };
+  try {
+    await writeFile(discoveryPath, JSON.stringify(discovery), 'utf8');
+    return await withEnv({
+      LIME_RUNTIME_BRIDGE: undefined,
+      LIME_HOST_SNAPSHOT: undefined,
+      LIME_DESKTOP_PLATFORM_BRIDGE_DISCOVERY_PATH: discoveryPath,
+    }, () => run({ discovery, snapshot, requests }));
+  } finally {
+    await rm(dirname(discoveryPath), { recursive: true, force: true });
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
 async function collectAppServerAgentEvents(service, input) {
   const events = [];
   const taskId = await service.runAgent(input, (event) => events.push(event));
@@ -221,6 +413,12 @@ async function writeFakeAppServerBinary(targetPath, events) {
 import { createInterface } from 'node:readline';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
+const args = process.argv.slice(2);
+if (args.includes('--help') || args.includes('-h')) {
+  process.stdout.write('Usage: app-server [--stdio] [--backend external|runtime|mock|unavailable] [--data-dir path]\\n');
+  process.exit(0);
+}
+
 const capturePath = process.env.FAKE_APP_SERVER_CAPTURE_PATH;
 if (!capturePath) {
   throw new Error('missing fake app-server capture path');
@@ -237,6 +435,33 @@ function readPreviousCaptures() {
 }
 const previousCaptures = readPreviousCaptures();
 const captures = {
+  argv: process.argv.slice(2),
+  env: {
+    ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE || '',
+    CONTENT_STUDIO_TEXT_API_KEY: process.env.CONTENT_STUDIO_TEXT_API_KEY || '',
+    CONTENT_STUDIO_IMAGE_API_KEY: process.env.CONTENT_STUDIO_IMAGE_API_KEY || '',
+    IMAGE_API_KEY: process.env.IMAGE_API_KEY || '',
+    CONTENT_STUDIO_VIDEO_API_KEY: process.env.CONTENT_STUDIO_VIDEO_API_KEY || '',
+    VIDEO_API_KEY: process.env.VIDEO_API_KEY || '',
+    CONTENT_STUDIO_VISION_API_KEY: process.env.CONTENT_STUDIO_VISION_API_KEY || '',
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY || '',
+    LLM_API_KEY: process.env.LLM_API_KEY || '',
+    CONTENT_STUDIO_PRIVATE_TOKEN: process.env.CONTENT_STUDIO_PRIVATE_TOKEN || '',
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
+    AZURE_OPENAI_API_KEY: process.env.AZURE_OPENAI_API_KEY || '',
+    DASHSCOPE_API_KEY: process.env.DASHSCOPE_API_KEY || '',
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '',
+    GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
+    OPENAI_APIKEY: process.env.OPENAI_APIKEY || '',
+    SESSION_COOKIE: process.env.SESSION_COOKIE || '',
+    PROVIDER_SECRET: process.env.PROVIDER_SECRET || '',
+    AUTHORIZATION: process.env.AUTHORIZATION || '',
+    COOKIE: process.env.COOKIE || '',
+    LIME_RUNTIME_BRIDGE: process.env.LIME_RUNTIME_BRIDGE || '',
+  },
   initialize: null,
   sessionStart: null,
   turnStart: null,
@@ -274,6 +499,10 @@ lines.on('line', (line) => {
     return;
   }
   if (request.method === 'initialized') return;
+  if (request.method === 'modelProvider/list') {
+    respond({ id: request.id, result: { providers: [] } });
+    return;
+  }
   if (request.method === 'agentSession/start') {
     captures.sessionStart = request.params;
     captures.sessionStarts.push(request.params);
@@ -449,6 +678,79 @@ lines.on('line', (line) => {
         ],
         artifacts: [{ artifactRef: 'content-studio-draft-smoke', title: 'Packaged Smoke Draft', kind: 'markdown' }],
       },
+    });
+    return;
+  }
+  respond({ id: request.id, result: {} });
+});
+`, 'utf8');
+  await chmod(targetPath, 0o755);
+}
+
+async function writeFakeRuntimeLiveAppServerBinary(targetPath, options = {}) {
+  await writeFile(targetPath, `#!/usr/bin/env node
+import { createInterface } from 'node:readline';
+
+const supportsDataDir = ${JSON.stringify(options.supportsDataDir !== false)};
+const supportsProviderStore = ${JSON.stringify(options.supportsProviderStore !== false)};
+const args = process.argv.slice(2);
+if (args.includes('--help') || args.includes('-h')) {
+  process.stdout.write(supportsDataDir
+    ? 'Usage: app-server [--stdio] [--backend external|runtime|mock|unavailable] [--data-dir path]\\n'
+    : 'Usage: app-server [--stdio] [--backend external|mock|unavailable]\\n');
+  process.exit(0);
+}
+if (!supportsDataDir && args.some((arg) => arg === '--data-dir' || arg.startsWith('--data-dir='))) {
+  process.stderr.write('Error: unknown argument: --data-dir\\n');
+  process.exit(1);
+}
+
+function respond(message) {
+  process.stdout.write(JSON.stringify(message) + '\\n');
+}
+
+const lines = createInterface({ input: process.stdin });
+lines.on('line', (line) => {
+  if (!line.trim()) return;
+  const request = JSON.parse(line);
+  if (request.method === 'initialized') return;
+  if (request.method === 'initialize') {
+    respond({
+      id: request.id,
+      result: {
+        serverInfo: { name: 'fake-runtime-live-app-server', version: '0.0.0-test', protocolVersion: 'appserver.v0' },
+        capabilities: { agentSession: true },
+      },
+    });
+    return;
+  }
+  if (request.method === 'modelProvider/list') {
+    if (!supportsProviderStore) {
+      respond({ id: request.id, error: { code: -32601, message: 'method not found: modelProvider/list' } });
+      return;
+    }
+    respond({ id: request.id, result: { providers: [] } });
+    return;
+  }
+  if (request.method === 'agentSession/start') {
+    respond({
+      id: request.id,
+      result: {
+        session: {
+          sessionId: request.params.sessionId,
+          threadId: request.params.threadId,
+          appId: request.params.appId,
+          workspaceId: request.params.workspaceId,
+          status: 'idle',
+        },
+      },
+    });
+    return;
+  }
+  if (request.method === 'agentSession/turn/start') {
+    respond({
+      id: request.id,
+      error: { code: -32000, message: 'provider is not configured in provider store' },
     });
     return;
   }
@@ -2865,9 +3167,9 @@ test('Ontology v1 readiness gate 区分本地就绪和生产报告缺失', async
   assert.ok(localReadiness.checks.some((check) => (
     check.id === 'v1-user-facing-copy-gate'
     && check.status === 'passed'
-    && check.files === 3
+    && check.files === 4
     && check.rules >= 6
-    && check.message.includes('知识地图、审核台和 Prompt 工作台')
+    && check.message.includes('知识地图、审核台和 agents')
   )));
   assert.ok(localReadiness.checks.some((check) => check.id === 'team-knowledge-refresh-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'build-run-detail-gate' && check.status === 'passed'));
@@ -4332,7 +4634,7 @@ test('v1 本地事实源并发写入不会丢失审核和生产交接记录', as
         sourceRefs: [`input-source:source-concurrent-${index}`],
         promptDraftId: `prompt-concurrent-${index}`,
         checks: [],
-        nextStep: '进入 Prompt 工作台确认。',
+        nextStep: '进入 agents 确认。',
         createdAt: `${now}.${index}`,
       }],
       createdAt: `${now}.${index}`,
@@ -4491,7 +4793,7 @@ test('v1 本地事实源超过展示阈值仍保留生产审计历史', async ()
         sourceRefs: [`input-source:source-history-${index}`],
         promptDraftId: `prompt-history-${index}`,
         checks: [],
-        nextStep: '进入 Prompt 工作台确认。',
+        nextStep: '进入 agents 确认。',
         createdAt: at(index),
       }],
       createdAt: at(index),
@@ -5799,7 +6101,7 @@ test('生产交接会把团队知识包版本绑定到 Prompt 草稿', async () 
     assert.ok(result.record?.actionRecords[0].checks.some((check) => check.label === '审核结论' && check.status === 'passed'));
     assert.ok(result.record?.actionRecords[0].checks.some((check) => check.label === '团队知识包' && check.status === 'passed'));
     assert.match(result.record?.actionRecords[0].outputSummary ?? '', /Prompt 草稿/);
-    assert.match(result.record?.actionRecords[0].nextStep ?? '', /Prompt 工作台/);
+    assert.match(result.record?.actionRecords[0].nextStep ?? '', /agents/);
     assert.equal(result.record?.syncStatus, 'synced');
     assert.equal(result.record?.teamSync?.revision, 'handoff-action-rev-1');
     assert.equal(result.record?.actionRecords[0].syncStatus, 'synced');
@@ -7481,6 +7783,7 @@ test('更新检查在品牌 API 和静态清单 404 时回退到 GitHub Release'
     const settings = {
       async readView() {
         return {
+          recentWorkspacePaths: [],
           hasAnthropicApiKey: false,
           apiKeyStorage: 'none',
           autoUpdateEnabled: true,
@@ -7822,7 +8125,7 @@ test('对话可以记录首版草稿和多轮调整', async () => {
   });
 });
 
-test('Prompt 工作台手动草稿和协作会绑定团队知识包版本', async () => {
+test('Prompt 草稿和 agents 协作会绑定团队知识包版本', async () => {
   await withWorkspace(async (workspacePath) => {
     const text = new FakeTextGenerationService();
     const promptAgent = new FakeAppServerPromptAgentService();
@@ -8125,6 +8428,1461 @@ test('对话启动会把当前模型作为 Lime Agent Server metadata', async ()
   });
 });
 
+test('agents 工作台图片输入会先登记为真实输入源再进入对话事实', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const productPath = join(workspacePath, 'hero-product.png');
+    const referenceUrl = 'https://assets.example.test/reference.png';
+    await writeFile(productPath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
+    const additionalProductRefs = Array.from({ length: 9 }, (_, index) => join(workspacePath, `hero-product-${index + 2}.png`));
+    const referenceRefs = [
+      referenceUrl,
+      ...Array.from({ length: 5 }, (_, index) => `https://assets.example.test/reference-${index + 1}.png`),
+    ];
+    await Promise.all(additionalProductRefs.map((path) => writeFile(path, Buffer.from(ONE_PIXEL_PNG, 'base64'))));
+
+    const inputSources = new InputSourceStore();
+    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, new FakeAppServerPromptAgentService());
+    const existingProduct = await inputSources.register({
+      workspacePath,
+      kind: 'image',
+      purpose: 'task-input',
+      sensitivity: 'internal',
+      title: '已有产品图 / hero-product.png',
+      sourcePath: productPath,
+      summary: '已登记产品图。',
+      tags: ['agents', '产品图'],
+    });
+
+    const plan = planAgentAssetInputSourceRegistrations({
+      productRefs: [`local-asset://${encodeURI(productPath)}`, ...additionalProductRefs, 'data:image/png;base64,ignored'],
+      referenceRefs,
+      knownSources: await inputSources.list(workspacePath),
+      fileNameFromPath: (value) => value.split('/').filter(Boolean).at(-1) ?? value,
+    });
+
+    assert.deepEqual(plan.existingIds, [existingProduct.id]);
+    assert.equal(plan.registrations.length, 15);
+    assert.equal(plan.registrations.filter((item) => item.input.tags?.includes('产品图')).length, 9);
+    assert.equal(plan.registrations.filter((item) => item.input.tags?.includes('参考图')).length, 6);
+    assert.equal(plan.registrations.some((item) => item.input.sourceUrl === referenceUrl), true);
+    assert.equal(plan.registrations.every((item) => item.input.kind === 'image'), true);
+    assert.equal(plan.registrations.every((item) => item.input.purpose === 'task-input'), true);
+    assert.equal(plan.registrations.every((item) => item.input.sensitivity === 'internal'), true);
+    assert.equal(JSON.stringify(plan).includes('local-asset:'), false);
+
+    const registeredSources = [];
+    for (const registration of plan.registrations) {
+      registeredSources.push(await inputSources.register({
+        workspacePath,
+        ...registration.input,
+      }));
+    }
+    const referenceSource = registeredSources.find((source) => source.sourceUrl === referenceUrl);
+    assert.ok(referenceSource);
+    const started = await sessions.start({
+      workspacePath,
+      title: 'agents 工作台图片输入源对话',
+      purpose: 'image',
+      userIntent: '基于产品图和参考图生成真实生活场景图片 Prompt。',
+      inputSourceIds: [
+        existingProduct.id,
+        ...registeredSources.map((source) => source.id),
+        `local-asset://${encodeURI(productPath)}`,
+      ],
+    });
+
+    assert.equal(started.session.inputSourceIds.length, 16);
+    assert.equal(started.draft.inputSourceIds.length, 16);
+    assert.equal(started.session.sourceSnapshots.length, 16);
+    assert.equal(started.session.inputSourceIds.some((id) => id.startsWith('local-asset:')), false);
+    assert.equal(started.session.sourceSnapshots.some((source) => source.sourceId === existingProduct.id && source.kind === 'image'), true);
+    assert.equal(started.session.sourceSnapshots.some((source) => (
+      source.sourceId === referenceSource.id &&
+      source.kind === 'image' &&
+      source.status === 'blocked' &&
+      source.summary.includes('参考图')
+    )), true);
+    const persistedReferenceSource = (await inputSources.list(workspacePath)).find((source) => source.id === referenceSource.id);
+    assert.equal(persistedReferenceSource?.sourceUrl, referenceUrl);
+    assert.equal(started.session.messages[0].content.includes('输入源快照：'), true);
+    assert.equal(started.session.messages[0].content.includes('图片 / 待补齐'), true);
+  });
+});
+
+test('AI agents 工作台 Prompt Agent 走 App Server runtime provider store 且不传模型 Key', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-prompt-agent-runtime-'));
+    const appServerPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+    const capturePath = join(tempDir, 'capture.json');
+    const dataDir = join(tempDir, 'app-server-data');
+    try {
+      await writeFakeAppServerBinary(appServerPath, [
+        {
+          type: 'message.delta',
+          payload: {
+            text: '# App Server Prompt 草稿\n\n可追溯内容生产 Prompt。',
+            model: 'gpt-4.1-mini',
+          },
+        },
+        {
+          type: 'artifact.snapshot',
+          payload: {
+            artifactId: 'prompt-agent-artifact',
+            artifactRef: 'prompt-agent-artifact',
+            title: 'Prompt Agent Draft',
+            kind: 'markdown',
+            content: '# App Server Prompt 草稿\n\n可追溯内容生产 Prompt。',
+            model: 'gpt-4.1-mini',
+          },
+        },
+        {
+          type: 'turn.completed',
+          payload: {
+            summary: 'Prompt Agent 已完成',
+            model: 'gpt-4.1-mini',
+          },
+        },
+      ]);
+
+      const modelConfig = {
+        async readView() {
+          return {
+            textProvider: 'http-text-generation',
+            textProtocol: 'openai-chat',
+            textApiEndpoint: 'https://api.openai.example/v1',
+            textModel: 'gpt-4.1-mini',
+            textModels: ['gpt-4.1-mini'],
+          };
+        },
+        async getTextApiKey() {
+          throw new Error('Prompt Agent 不应读取 Product App 本地 text key');
+        },
+      };
+
+      await withEnv({
+        APP_SERVER_RESOURCES_DIR: undefined,
+        CONTENT_STUDIO_RESOURCES_DIR: undefined,
+        APP_SERVER_BIN: appServerPath,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        CONTENT_STUDIO_APP_SERVER_DATA_DIR: dataDir,
+        FAKE_APP_SERVER_CAPTURE_PATH: capturePath,
+        CONTENT_STUDIO_TEXT_API_KEY: 'product-app-text-key',
+        OPENAI_API_KEY: 'product-app-openai-key',
+        ANTHROPIC_API_KEY: 'product-app-anthropic-key',
+        GEMINI_API_KEY: 'product-app-gemini-key',
+        GOOGLE_API_KEY: 'product-app-google-key',
+        LLM_API_KEY: 'product-app-llm-key',
+        CONTENT_STUDIO_PRIVATE_TOKEN: 'product-app-token',
+        OPENROUTER_API_KEY: 'product-app-openrouter-key',
+        AZURE_OPENAI_API_KEY: 'product-app-azure-openai-key',
+        DASHSCOPE_API_KEY: 'product-app-dashscope-key',
+        DEEPSEEK_API_KEY: 'product-app-deepseek-key',
+        GOOGLE_APPLICATION_CREDENTIALS: '/tmp/product-app-google-credentials.json',
+        OPENAI_APIKEY: 'product-app-openai-apikey',
+        SESSION_COOKIE: 'product-app-session-cookie',
+        PROVIDER_SECRET: 'product-app-provider-secret',
+        AUTHORIZATION: 'Bearer product-app-authorization',
+        COOKIE: 'product-app-cookie',
+        LIME_RUNTIME_BRIDGE: JSON.stringify({
+          protocol: 'lime.runtimeBridge',
+          version: 1,
+          endpoint: 'http://127.0.0.1:1',
+          token: 'product-app-runtime-bridge-token',
+          appId: 'content-studio',
+          entryKey: 'workbench',
+          expiresAt: '2026-06-09T00:00:00.000Z',
+        }),
+      }, async () => {
+        const promptAgent = new AppServerPromptAgentService(new AppServerSidecarService(), modelConfig);
+        const result = await promptAgent.generatePromptDraft({
+          workspacePath,
+          title: 'AI agents 工作台 Prompt',
+          purpose: 'image',
+          userIntent: '生成小红书真实生活场景图片 Prompt。',
+          inputSourceIds: [],
+          sceneCardIds: [],
+          selectedSources: [],
+          skillContext: {
+            skillRefs: [],
+            selectedSkills: [],
+            promptText: '',
+            summaryText: '未选择 skill。',
+            sdkSkillNames: [],
+            additionalDirectories: [],
+          },
+          textModel: 'gpt-4.1-mini',
+        });
+
+        assert.equal(result.model, 'gpt-4.1-mini');
+        assert.match(result.content, /App Server Prompt 草稿/);
+
+        const captured = JSON.parse(await readFile(capturePath, 'utf8'));
+        assert.ok(captured.argv.includes('--backend'));
+        assert.equal(captured.argv[captured.argv.indexOf('--backend') + 1], 'runtime');
+        assert.equal(captured.argv.includes('--backend-command'), false);
+        assert.ok(captured.argv.includes('--data-dir'));
+        assert.equal(captured.argv[captured.argv.indexOf('--data-dir') + 1], dataDir);
+        assert.equal(captured.env.ELECTRON_RUN_AS_NODE, '1');
+        assert.equal(captured.env.CONTENT_STUDIO_TEXT_API_KEY, '');
+        assert.equal(captured.env.OPENAI_API_KEY, '');
+        assert.equal(captured.env.ANTHROPIC_API_KEY, '');
+        assert.equal(captured.env.GEMINI_API_KEY, '');
+        assert.equal(captured.env.GOOGLE_API_KEY, '');
+        assert.equal(captured.env.LLM_API_KEY, '');
+        assert.equal(captured.env.CONTENT_STUDIO_PRIVATE_TOKEN, '');
+        assert.equal(captured.env.OPENROUTER_API_KEY, '');
+        assert.equal(captured.env.AZURE_OPENAI_API_KEY, '');
+        assert.equal(captured.env.DASHSCOPE_API_KEY, '');
+        assert.equal(captured.env.DEEPSEEK_API_KEY, '');
+        assert.equal(captured.env.GOOGLE_APPLICATION_CREDENTIALS, '');
+        assert.equal(captured.env.OPENAI_APIKEY, '');
+        assert.equal(captured.env.SESSION_COOKIE, '');
+        assert.equal(captured.env.PROVIDER_SECRET, '');
+        assert.equal(captured.env.AUTHORIZATION, '');
+        assert.equal(captured.env.COOKIE, '');
+        assert.equal(captured.env.LIME_RUNTIME_BRIDGE, '');
+        assert.equal(captured.turnStart.runtimeOptions.capabilityId, 'content.draft.generate');
+        assert.equal(captured.turnStart.runtimeOptions.providerPreference, 'openai');
+        assert.equal(captured.turnStart.runtimeOptions.modelPreference, 'gpt-4.1-mini');
+        assert.equal(captured.turnStart.runtimeOptions.metadata.agentSurface, 'agents');
+        assert.equal(captured.turnStart.runtimeOptions.metadata.operation, 'draft');
+        assert.equal(captured.turnStart.runtimeOptions.metadata.textModel, 'gpt-4.1-mini');
+        assert.equal(captured.turnStart.runtimeOptions.metadata.textProtocol, 'openai-chat');
+        assert.equal(JSON.stringify(captured.turnStart).includes('apiKey'), false);
+        assert.equal(JSON.stringify(captured.turnStart).includes('API_KEY'), false);
+        assert.equal(JSON.stringify(captured.turnStart).includes('product-app-text-key'), false);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('AI agents runtime service 会阻断不支持 data-dir 的旧 App Server sidecar', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-prompt-agent-runtime-old-sidecar-'));
+    const appServerPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+    const dataDir = join(tempDir, 'app-server-data');
+    try {
+      await writeFakeRuntimeLiveAppServerBinary(appServerPath, { supportsDataDir: false });
+      await withEnv({
+        APP_SERVER_RESOURCES_DIR: undefined,
+        CONTENT_STUDIO_RESOURCES_DIR: undefined,
+        APP_SERVER_BIN: appServerPath,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        CONTENT_STUDIO_APP_SERVER_DATA_DIR: dataDir,
+      }, async () => {
+        const service = new AppServerSidecarService();
+        await assert.rejects(() => service.runPromptTurn({
+          workspacePath,
+          prompt: '验证旧 App Server 不应进入 agents runtime 主链。',
+          providerPreference: 'probe-provider',
+          modelPreference: 'probe-model',
+        }), /requires an app-server binary with --data-dir support/);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('AI agents runtime service 会阻断缺少 provider store 方法的 App Server sidecar', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-prompt-agent-runtime-no-provider-store-'));
+    const appServerPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+    const dataDir = join(tempDir, 'app-server-data');
+    try {
+      await writeFakeRuntimeLiveAppServerBinary(appServerPath, { supportsProviderStore: false });
+      await withEnv({
+        APP_SERVER_RESOURCES_DIR: undefined,
+        CONTENT_STUDIO_RESOURCES_DIR: undefined,
+        APP_SERVER_BIN: appServerPath,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        CONTENT_STUDIO_APP_SERVER_DATA_DIR: dataDir,
+      }, async () => {
+        const service = new AppServerSidecarService();
+        await assert.rejects(() => service.runPromptTurn({
+          workspacePath,
+          prompt: '验证缺少 provider store 的 App Server 不应进入 agents runtime 主链。',
+          providerPreference: 'probe-provider',
+          modelPreference: 'probe-model',
+        }), /runtime provider store is unavailable: method not found: modelProvider\/list/);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('平台宿主下模型设置从 Content Studio 本地迁移到 lime-desktop-platform provider store', async () => {
+  await withWorkspace(async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-platform-migration-'));
+    const shimUserDataDir = join(tmpdir(), 'content-studio-functional-user-data');
+    try {
+      await rm(shimUserDataDir, { recursive: true, force: true });
+      const savedSettings = [];
+      await withPlatformRuntimeBridge(async ({ url, body }) => {
+        assert.equal(url, '/capability/invoke');
+        if (body.capability === 'lime.modelSettings' && body.operation === 'model-settings/save') {
+          savedSettings.push(body.input.settings);
+          const settings = body.input.settings;
+          return {
+            ok: true,
+            requestId: 'save-model-settings',
+            output: {
+              ...settings,
+              version: '2',
+              updatedAt: '2026-06-09T00:00:00.000Z',
+              providers: settings.providers.map((provider) => ({
+                ...provider,
+                apiKey: undefined,
+                apiKeyConfigured: true,
+              })),
+            },
+            event: {},
+          };
+        }
+        if (body.capability === 'lime.modelSettings') {
+          return {
+            ok: true,
+            requestId: 'read-model-settings',
+            output: {
+              version: '2',
+              updatedAt: '2026-06-09T00:00:00.000Z',
+              defaultAgentProviderId: 'content-studio-text-openai',
+              defaultTextModelId: 'gpt-4.1-mini',
+              providers: [
+                {
+                  id: 'content-studio-text-openai',
+                  displayName: 'Content Studio 文字 openai-chat',
+                  protocol: 'openai-compatible',
+                  capabilityKinds: ['text'],
+                  enabled: true,
+                  apiKeyConfigured: true,
+                  authType: 'api-key',
+                  baseUrl: 'https://api.openai.example/v1',
+                  useResponsesApi: true,
+                  models: ['gpt-4.1-mini'],
+                  apiKey: 'sk-platform-read-secret',
+                },
+              ],
+            },
+            event: {},
+          };
+        }
+        throw new Error(`unexpected capability ${body.capability}`);
+      }, async () => {
+        await withEnv({}, async () => {
+          const localStore = new ModelConfigStore();
+          await localStore.save({
+            textApiEndpoint: 'https://api.openai.example/v1',
+            textProtocol: 'openai-chat',
+            textModel: 'gpt-4.1-mini',
+            textModels: ['gpt-4.1-mini'],
+            textApiKey: 'sk-content-studio-local',
+          });
+          assert.equal(savedSettings.length, 0);
+
+          const store = new ModelConfigStore(new PlatformHostBridgeClient());
+          const view = await store.readView();
+          assert.equal(savedSettings.length, 1);
+          assert.equal(savedSettings[0].providers[0].apiKey, 'sk-content-studio-local');
+          assert.equal(savedSettings[0].providers[0].id, 'content-studio-text-openai');
+          assert.equal(view.platformManaged, true);
+          assert.equal(view.source, 'lime-desktop-platform');
+          assert.equal(view.agentProviderPreference, 'content-studio-text-openai');
+          assert.equal(view.hasTextApiKey, true);
+          assert.equal(view.platformModelSettings?.providers[0]?.id, 'content-studio-text-openai');
+          assert.equal(view.platformModelSettings?.providers[0]?.apiKey, undefined);
+          assert.equal(JSON.stringify(view.platformModelSettings).includes('sk-content-studio-local'), false);
+          const persisted = await readFile(join(shimUserDataDir, 'model-config.json'), 'utf8');
+          assert.equal(persisted.includes('sk-content-studio-local'), false);
+          assert.equal(persisted.includes('textApiKey'), false);
+        });
+      });
+    } finally {
+      await rm(shimUserDataDir, { recursive: true, force: true });
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('平台宿主下普通模型保存不会从 Product App 传递模型访问凭据', async () => {
+  const shimUserDataDir = join(tmpdir(), 'content-studio-functional-user-data');
+  try {
+    await rm(shimUserDataDir, { recursive: true, force: true });
+    const requests = [];
+    await withPlatformRuntimeBridge(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      requests.push(body);
+      if (body.capability === 'lime.modelSettings' && body.operation === 'model-settings/read') {
+        return {
+          ok: true,
+          requestId: 'read-model-settings',
+          output: {
+            version: '3',
+            updatedAt: '2026-06-09T00:00:00.000Z',
+            defaultAgentProviderId: 'platform-openai',
+            defaultTextModelId: 'gpt-4.1-mini',
+            providers: [
+              {
+                id: 'platform-openai',
+                displayName: 'Platform OpenAI',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['text'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                baseUrl: 'https://api.openai.example/v1',
+                models: ['gpt-4.1-mini'],
+              },
+            ],
+          },
+          event: {},
+        };
+      }
+      if (body.capability === 'lime.modelSettings' && body.operation === 'model-settings/save') {
+        throw new Error('Product App 不应保存平台模型设置。');
+      }
+      throw new Error(`unexpected capability ${body.capability}:${body.operation}`);
+    }, async () => {
+      const store = new ModelConfigStore(new PlatformHostBridgeClient());
+      const view = await store.save({
+        textApiEndpoint: 'https://api.openai.example/v1',
+        textProtocol: 'openai-chat',
+        textModel: 'gpt-4.1-mini',
+        textModels: ['gpt-4.1-mini'],
+        textApiKey: 'sk-product-app-should-not-send',
+      });
+      assert.equal(view.platformManaged, true);
+      assert.equal(view.source, 'lime-desktop-platform');
+      assert.equal(JSON.stringify(requests).includes('sk-product-app-should-not-send'), false);
+      assert.equal(requests.some((request) => request.capability === 'lime.modelSettings' && request.operation === 'model-settings/save'), false);
+    });
+  } finally {
+    await rm(shimUserDataDir, { recursive: true, force: true });
+  }
+});
+
+test('直接启动 Content Studio 时通过 runtime bridge discovery 读取平台 Provider 设置', async () => {
+  const shimUserDataDir = join(tmpdir(), 'content-studio-functional-user-data');
+  try {
+    await rm(shimUserDataDir, { recursive: true, force: true });
+    await withPlatformRuntimeBridgeDiscovery(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      if (body.capability === 'lime.modelSettings') {
+        return {
+          ok: true,
+          requestId: 'discovered-model-settings',
+          output: {
+            version: '9',
+            updatedAt: '2026-06-09T00:00:00.000Z',
+            defaultAgentProviderId: 'platform-openai',
+            defaultTextModelId: 'gpt-4.1-mini',
+            providers: [
+              {
+                id: 'platform-openai',
+                displayName: 'Platform OpenAI',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['text'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                baseUrl: 'https://api.openai.example/v1',
+                models: ['gpt-4.1-mini', 'gpt-4.1'],
+              },
+            ],
+          },
+          event: {},
+        };
+      }
+      throw new Error(`unexpected capability ${body.capability}`);
+    }, async ({ requests }) => {
+      const platformHost = new PlatformHostBridgeClient();
+      const store = new ModelConfigStore(platformHost);
+      const view = await store.readView();
+
+      assert.equal(view.platformManaged, true);
+      assert.equal(view.source, 'lime-desktop-platform');
+      assert.equal(view.platformHost?.modelSettingsVersion, '9');
+      assert.equal(view.platformHost?.snapshot?.theme, 'system');
+      assert.equal(view.platformHost?.snapshot?.workspacePath, 'platform-workspace');
+      assert.equal(view.agentProviderPreference, 'platform-openai');
+      assert.deepEqual(view.textModels, ['gpt-4.1-mini', 'gpt-4.1']);
+      assert.equal(view.hasTextApiKey, true);
+      assert.equal(view.platformModelSettings?.providers[0]?.displayName, 'Platform OpenAI');
+      assert.equal(view.platformModelSettings?.providers[0]?.apiKey, undefined);
+      assert.equal(platformHost.status().source, 'discovery');
+      assert.ok(requests.some((request) => request.url === '/attach' && request.body.appId === 'content-studio'));
+      assert.ok(requests.some((request) => request.url === '/capability/invoke' && request.body.capability === 'lime.modelSettings'));
+    });
+  } finally {
+    await rm(shimUserDataDir, { recursive: true, force: true });
+  }
+});
+
+test('平台 Provider 有凭据但无显式模型时 Content Studio 不回落本地默认模型', async () => {
+  const shimUserDataDir = join(tmpdir(), 'content-studio-functional-user-data');
+  try {
+    await rm(shimUserDataDir, { recursive: true, force: true });
+    await withPlatformRuntimeBridge(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      if (body.capability === 'lime.modelSettings') {
+        return {
+          ok: true,
+          requestId: 'empty-model-settings',
+          output: {
+            version: 'empty-models',
+            updatedAt: '2026-06-09T00:00:00.000Z',
+            defaultAgentProviderId: 'platform-openai-empty',
+            defaultTextModelId: 'gpt-4o-mini',
+            defaultImageModelId: 'gpt-image-2',
+            defaultVideoModelId: 'gemini-2.5-flash',
+            providers: [
+              {
+                id: 'platform-openai-empty',
+                displayName: 'Platform OpenAI Empty',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['text', 'image', 'video'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                baseUrl: 'https://api.openai.example/v1',
+                models: [],
+                apiKey: 'sk-platform-read-secret',
+              },
+            ],
+          },
+          event: {},
+        };
+      }
+      throw new Error(`unexpected capability ${body.capability}`);
+    }, async () => {
+      const platformHost = new PlatformHostBridgeClient();
+      const store = new ModelConfigStore(platformHost);
+      const view = await store.readView();
+      const catalog = await store.readCatalog();
+
+      assert.equal(view.platformManaged, true);
+      assert.equal(view.hasTextApiKey, true);
+      assert.equal(view.textModel, '');
+      assert.deepEqual(view.textModels, []);
+      assert.equal(view.imageOuterModel, '');
+      assert.deepEqual(view.imageModels, []);
+      assert.equal(view.videoModel, '');
+      assert.deepEqual(view.videoModels, []);
+      assert.equal(view.platformReadiness?.state, 'needs-setup');
+      assert.equal(view.platformReadiness?.reasons[0]?.code, 'platform-text-model-missing');
+      assert.equal(view.platformModelSettings?.providers[0]?.apiKey, undefined);
+      assert.equal(view.platformModelSettings?.defaultTextModelId, undefined);
+      assert.equal(view.platformModelSettings?.defaultImageModelId, undefined);
+      assert.equal(view.platformModelSettings?.defaultVideoModelId, undefined);
+      assert.deepEqual(catalog.textModels, []);
+      assert.deepEqual(catalog.imageModels, []);
+      assert.deepEqual(catalog.videoModels, []);
+      assert.equal(JSON.stringify(view).includes('gpt-4o-mini'), false);
+      assert.equal(JSON.stringify(view).includes('gpt-image-2'), false);
+      assert.equal(JSON.stringify(view).includes('gemini-2.5-flash'), false);
+      assert.equal(view.textModels.includes('gpt-4o-mini'), false);
+      assert.equal(view.imageModels.includes('gpt-image-2'), false);
+      assert.equal(view.videoModels.includes('gemini-2.5-flash'), false);
+      assert.equal(JSON.stringify(view.platformModelSettings).includes('sk-platform-read-secret'), false);
+    });
+  } finally {
+    await rm(shimUserDataDir, { recursive: true, force: true });
+  }
+});
+
+test('平台 Provider 无显式文字模型时通用文字生成不会启动 App Server turn', async () => {
+  await withWorkspace(async (workspacePath) => {
+    let turnStarted = false;
+    const modelConfig = {
+      async readView() {
+        return {
+          platformManaged: true,
+          agentProviderPreference: 'platform-openai-empty',
+          textProtocol: 'openai-chat',
+          textApiEndpoint: 'https://api.openai.example/v1',
+          hasTextApiKey: true,
+          textApiKeyStatus: 'available',
+          textModel: '',
+          textModels: [],
+        };
+      },
+      async getTextApiKey() {
+        throw new Error('平台托管文字生成不应读取 Product App 本地 text key');
+      },
+    };
+    const appServer = {
+      async runCapabilityTurn() {
+        turnStarted = true;
+        throw new Error('不应启动 App Server turn');
+      },
+    };
+    const text = new TextGenerationService(modelConfig, appServer);
+
+    await assert.rejects(
+      () => text.generateJson({
+        workspacePath,
+        model: 'gpt-4o-mini',
+        systemPrompt: '只输出 JSON。',
+        prompt: '{"task":"platform_empty_model"}',
+        schema: { type: 'object' },
+      }),
+      /平台文字模型未配置/,
+    );
+    assert.equal(turnStarted, false);
+  });
+});
+
+test('平台 Provider 无显式文字模型时 Prompt Agent 不向平台 lime.agent 发送空模型', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const requests = [];
+    await withPlatformRuntimeBridge(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      requests.push(body);
+      if (body.capability === 'lime.modelSettings') {
+        return {
+          ok: true,
+          requestId: 'empty-model-settings',
+          output: {
+            version: 'empty-agent-models',
+            updatedAt: '2026-06-09T00:00:00.000Z',
+            defaultAgentProviderId: 'platform-openai-empty',
+            providers: [
+              {
+                id: 'platform-openai-empty',
+                displayName: 'Platform OpenAI Empty',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['text'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                baseUrl: 'https://api.openai.example/v1',
+                models: [],
+              },
+            ],
+          },
+          event: {},
+        };
+      }
+      if (body.capability === 'lime.agent') {
+        throw new Error('不应在无显式模型时调用 lime.agent');
+      }
+      throw new Error(`unexpected capability ${body.capability}`);
+    }, async () => {
+      const platformHost = new PlatformHostBridgeClient();
+      const modelConfig = new ModelConfigStore(platformHost);
+      const promptAgent = new AppServerPromptAgentService(new AppServerSidecarService(), modelConfig, platformHost);
+
+      await assert.rejects(
+        () => promptAgent.generatePromptDraft({
+          workspacePath,
+          title: '平台空模型 Prompt',
+          purpose: 'image',
+          userIntent: '生成小红书真实生活场景图片 Prompt。',
+          inputSourceIds: [],
+          sceneCardIds: [],
+          selectedSources: [],
+          skillContext: {
+            skillRefs: [],
+            selectedSkills: [],
+            promptText: '',
+            summaryText: '未选择 skill。',
+            sdkSkillNames: [],
+            additionalDirectories: [],
+          },
+          textModel: 'gpt-4o-mini',
+        }),
+        /平台文字模型未配置/,
+      );
+      assert.equal(requests.some((request) => request.capability === 'lime.agent'), false);
+    });
+  });
+});
+
+test('平台设置保存后刷新 runtime bridge Host Snapshot 并接管主题', async () => {
+  await withPlatformRuntimeBridge(async ({ url, body, snapshot }) => {
+    assert.equal(url, '/capability/invoke');
+    assert.equal(body.capability, 'lime.settings');
+    assert.equal(body.operation, 'platform-settings/save');
+    const nextSettings = {
+      version: '2',
+      updatedAt: '2026-06-09T00:00:00.000Z',
+      locale: body.input.settings.locale,
+      theme: body.input.settings.theme,
+      appearance: body.input.settings.appearance,
+      workspacePath: body.input.settings.workspacePath,
+      proxy: body.input.settings.proxy,
+      developerMode: body.input.settings.developerMode,
+    };
+    snapshot.theme = nextSettings.theme;
+    snapshot.appearance = nextSettings.appearance;
+    snapshot.workspacePath = nextSettings.workspacePath;
+    return {
+      ok: true,
+      requestId: 'save-platform-settings',
+      output: nextSettings,
+      event: {},
+    };
+  }, async ({ requests }) => {
+    const platformHost = new PlatformHostBridgeClient();
+    const saved = await platformHost.savePlatformSettings({
+      version: '1',
+      updatedAt: '2026-06-09T00:00:00.000Z',
+      locale: 'zh-CN',
+      theme: 'dark',
+      appearance: {
+        colorTheme: 'ocean',
+        fontScale: 1.1,
+        serifEnabled: true,
+      },
+      workspacePath: 'platform-workspace',
+      proxy: {
+        enabled: false,
+        url: '',
+      },
+      developerMode: false,
+    });
+
+    assert.equal(saved.theme, 'dark');
+    assert.equal(saved.appearance.colorTheme, 'ocean');
+    assert.equal(platformHost.status().snapshot?.theme, 'dark');
+    assert.equal(platformHost.status().snapshot?.appearance?.colorTheme, 'ocean');
+    assert.ok(requests.some((request) =>
+      request.url === '/capability/invoke' &&
+      request.body.capability === 'lime.settings' &&
+      request.body.operation === 'platform-settings/save',
+    ));
+    assert.ok(requests.some((request) => request.url === '/snapshot'));
+  });
+});
+
+test('平台宿主下 Prompt Agent 优先走 lime-desktop-platform lime.agent bridge', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const requests = [];
+    await withPlatformRuntimeBridge(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      requests.push(body);
+      if (body.capability === 'lime.modelSettings') {
+        return {
+          ok: true,
+          requestId: 'model-settings',
+          output: {
+            version: '7',
+            updatedAt: '2026-06-09T00:00:00.000Z',
+            defaultAgentProviderId: 'platform-openai',
+            defaultTextModelId: 'gpt-4.1-mini',
+            providers: [
+              {
+                id: 'platform-openai',
+                displayName: 'Platform OpenAI',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['text'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                baseUrl: 'https://api.openai.example/v1',
+                useResponsesApi: true,
+                models: ['gpt-4.1-mini'],
+              },
+            ],
+          },
+          event: {},
+        };
+      }
+      if (body.capability === 'lime.agent') {
+        return {
+          ok: true,
+          requestId: 'agent-turn',
+          output: {
+            ok: true,
+            state: 'started',
+            sessionId: 'platform-session',
+            threadId: 'platform-thread',
+            turnId: 'platform-turn',
+            bridge: 'app-server-json-rpc',
+            message: 'platform runtime started',
+            readiness: { state: 'ready', reasons: [], setupActions: [] },
+            runtimeContext: {
+              modelProfile: {
+                modelId: 'gpt-4.1-mini',
+              },
+            },
+            events: [
+              {
+                sessionId: 'platform-session',
+                threadId: 'platform-thread',
+                turnId: 'platform-turn',
+                sequence: 1,
+                type: 'message.delta',
+                payload: {
+                  text: '# 平台 Prompt 草稿\n\n来自 lime-desktop-platform Host Kit。',
+                  model: 'gpt-4.1-mini',
+                },
+              },
+              {
+                sessionId: 'platform-session',
+                threadId: 'platform-thread',
+                turnId: 'platform-turn',
+                sequence: 2,
+                type: 'tool.failed',
+                payload: {
+                  toolName: 'input-source.read',
+                  message: '平台工具需要人工补源',
+                  evidenceRefs: ['platform-evidence-input'],
+                },
+              },
+              {
+                sessionId: 'platform-session',
+                threadId: 'platform-thread',
+                turnId: 'platform-turn',
+                sequence: 3,
+                type: 'evidence.changed',
+                payload: {
+                  evidenceRef: 'platform-evidence-input',
+                  evidenceRefs: ['platform-evidence-input'],
+                  message: '平台来源证据已更新',
+                },
+              },
+              {
+                sessionId: 'platform-session',
+                threadId: 'platform-thread',
+                turnId: 'platform-turn',
+                sequence: 4,
+                type: 'action.required',
+                payload: {
+                  actionId: 'platform-action-add-input-source',
+                  actionKind: 'add-input-source',
+                  targetModule: 'knowledge-inputs',
+                  message: '需要补充输入源',
+                  evidenceRefs: ['platform-evidence-input'],
+                },
+              },
+              {
+                sessionId: 'platform-session',
+                threadId: 'platform-thread',
+                turnId: 'platform-turn',
+                sequence: 5,
+                type: 'artifact.snapshot',
+                payload: {
+                  artifactId: 'platform-artifact',
+                  artifactRef: 'platform-artifact',
+                  title: 'Platform Prompt Draft',
+                  kind: 'markdown',
+                  content: '# 平台 Prompt 草稿\n\n来自 lime-desktop-platform Host Kit。',
+                  model: 'gpt-4.1-mini',
+                },
+              },
+            ],
+            bridgeProfile: {},
+          },
+          event: {},
+        };
+      }
+      throw new Error(`unexpected capability ${body.capability}`);
+    }, async () => {
+      await withEnv({
+        APP_SERVER_BIN: undefined,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: undefined,
+        CONTENT_STUDIO_TEXT_API_KEY: 'product-app-text-key',
+        OPENAI_API_KEY: 'product-app-openai-key',
+        GOOGLE_APPLICATION_CREDENTIALS: '/tmp/product-app-google-credentials.json',
+        AUTHORIZATION: 'Bearer product-app-authorization',
+        COOKIE: 'product-app-cookie',
+      }, async () => {
+        const platformHost = new PlatformHostBridgeClient();
+        const modelConfig = new ModelConfigStore(platformHost);
+        const promptAgent = new AppServerPromptAgentService(new AppServerSidecarService(), modelConfig, platformHost);
+        const result = await promptAgent.generatePromptDraft({
+          workspacePath,
+          title: 'AI agents 工作台 Prompt',
+          purpose: 'image',
+          userIntent: '生成小红书真实生活场景图片 Prompt。',
+          inputSourceIds: [],
+          sceneCardIds: [],
+          selectedSources: [],
+          skillContext: {
+            skillRefs: [],
+            selectedSkills: [],
+            promptText: '',
+            summaryText: '未选择 skill。',
+            sdkSkillNames: [],
+            additionalDirectories: [],
+          },
+        });
+
+        assert.equal(result.model, 'gpt-4.1-mini');
+        assert.match(result.content, /平台 Prompt 草稿/);
+        assert.equal(result.providerEvents?.some((event) => (
+          event.eventClass === 'tool.failed' &&
+          event.kind === 'tool' &&
+          event.detail === '平台工具需要人工补源' &&
+          event.payload?.rawPayload?.evidenceRefs?.includes('platform-evidence-input')
+        )), true);
+        assert.equal(result.providerEvents?.some((event) => (
+          event.eventClass === 'evidence.changed' &&
+          event.kind === 'evidence' &&
+          event.payload?.rawPayload?.evidenceRef === 'platform-evidence-input'
+        )), true);
+        assert.equal(result.providerEvents?.some((event) => (
+          event.eventClass === 'action.required' &&
+          event.kind === 'action' &&
+          event.payload?.rawPayload?.actionId === 'platform-action-add-input-source' &&
+          event.payload?.rawPayload?.actionKind === 'add-input-source'
+        )), true);
+        assert.equal(result.providerEvents?.some((event) => (
+          event.eventClass === 'artifact.changed' &&
+          event.kind === 'draft' &&
+          event.payload?.rawPayload?.artifactRef === 'platform-artifact'
+        )), true);
+        assert.equal(result.providerEvents?.some((event) => (
+          event.eventClass === 'model.failed' &&
+          event.detail === '平台工具需要人工补源'
+        )), false);
+        const agentRequest = requests.find((item) => item.capability === 'lime.agent');
+        assert.ok(agentRequest);
+        assert.equal(agentRequest.input.runtimeOptions.modelId, 'gpt-4.1-mini');
+        assert.equal(agentRequest.input.runtimeOptions.modelPreference, 'gpt-4.1-mini');
+        assert.equal(agentRequest.input.runtimeOptions.providerPreference, 'platform-openai');
+        assert.equal(agentRequest.input.runtimeOptions.permissionMode, 'ask');
+        assert.equal(agentRequest.input.metadata.runtimeOwner, 'lime-desktop-platform');
+        const serializedAgentRequest = JSON.stringify(agentRequest);
+        assert.equal(serializedAgentRequest.includes('sk-platform-read-secret'), false);
+        assert.equal(serializedAgentRequest.includes('apiKey'), false);
+        assert.equal(serializedAgentRequest.includes('product-app-text-key'), false);
+        assert.equal(serializedAgentRequest.includes('product-app-openai-key'), false);
+        assert.equal(serializedAgentRequest.includes('product-app-google-credentials'), false);
+        assert.equal(serializedAgentRequest.includes('product-app-authorization'), false);
+        assert.equal(serializedAgentRequest.includes('product-app-cookie'), false);
+        assert.equal(serializedAgentRequest.includes('platform-token-'), false);
+        assert.equal(serializedAgentRequest.includes('LIME_RUNTIME_BRIDGE'), false);
+      });
+    });
+  });
+});
+
+test('平台宿主下 Prompt Agent 缺少运行事实时不生成成功草稿', async () => {
+  await withWorkspace(async (workspacePath) => {
+    await withPlatformRuntimeBridge(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      if (body.capability === 'lime.modelSettings') {
+        return {
+          ok: true,
+          requestId: 'model-settings',
+          output: {
+            version: '7',
+            updatedAt: '2026-06-09T00:00:00.000Z',
+            defaultAgentProviderId: 'platform-openai',
+            defaultTextModelId: 'gpt-4.1-mini',
+            providers: [
+              {
+                id: 'platform-openai',
+                displayName: 'Platform OpenAI',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['text'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                models: ['gpt-4.1-mini'],
+              },
+            ],
+          },
+          event: {},
+        };
+      }
+      if (body.capability === 'lime.agent') {
+        return {
+          ok: true,
+          requestId: 'agent-turn',
+          output: {
+            ok: true,
+            state: 'started',
+            message: 'platform runtime started without required facts',
+            readiness: { state: 'ready', reasons: [], setupActions: [] },
+            runtimeContext: { modelProfile: { modelId: 'gpt-4.1-mini' } },
+            events: [],
+          },
+          event: {},
+        };
+      }
+      throw new Error(`unexpected capability ${body.capability}`);
+    }, async () => {
+      const platformHost = new PlatformHostBridgeClient();
+      const modelConfig = new ModelConfigStore(platformHost);
+      const promptAgent = new AppServerPromptAgentService(new AppServerSidecarService(), modelConfig, platformHost);
+      const inputSources = new InputSourceStore();
+      const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+      const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent);
+      const started = await sessions.start({
+        workspacePath,
+        title: '平台事实缺失 Prompt',
+        purpose: 'image',
+        userIntent: '生成小红书真实生活场景图片 Prompt。',
+        inputSourceIds: [],
+      });
+
+      assert.equal(started.session.status, 'blocked');
+      assert.equal(started.draft.model, 'blocked:lime-agent-server');
+      assert.match(started.draft.versions[0].content, /Prompt 草稿未生成/);
+      const runtimeArtifactEvents = started.session.executionEvents?.filter((event) => (
+        event.eventClass === 'artifact.changed' &&
+        event.owner === 'artifact'
+      )) ?? [];
+      assert.equal(runtimeArtifactEvents.length, 0);
+    });
+  });
+});
+
+test('平台宿主下 Prompt Agent 只有消息流时不把消息当交付物', async () => {
+  await withWorkspace(async (workspacePath) => {
+    await withPlatformRuntimeBridge(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      if (body.capability === 'lime.modelSettings') {
+        return {
+          ok: true,
+          requestId: 'model-settings',
+          output: {
+            version: '7',
+            updatedAt: '2026-06-09T00:00:00.000Z',
+            defaultAgentProviderId: 'platform-openai',
+            defaultTextModelId: 'gpt-4.1-mini',
+            providers: [
+              {
+                id: 'platform-openai',
+                displayName: 'Platform OpenAI',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['text'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                models: ['gpt-4.1-mini'],
+              },
+            ],
+          },
+          event: {},
+        };
+      }
+      if (body.capability === 'lime.agent') {
+        return {
+          ok: true,
+          requestId: 'agent-turn',
+          output: {
+            ok: true,
+            state: 'started',
+            sessionId: 'message-only-session',
+            threadId: 'message-only-thread',
+            turnId: 'message-only-turn',
+            message: 'platform runtime streamed message only',
+            readiness: { state: 'ready', reasons: [], setupActions: [] },
+            runtimeContext: { modelProfile: { modelId: 'gpt-4.1-mini' } },
+            events: [
+              {
+                sessionId: 'message-only-session',
+                threadId: 'message-only-thread',
+                turnId: 'message-only-turn',
+                sequence: 1,
+                type: 'message.delta',
+                payload: {
+                  text: '# 不能作为交付物的普通消息',
+                  model: 'gpt-4.1-mini',
+                },
+              },
+            ],
+          },
+          event: {},
+        };
+      }
+      throw new Error(`unexpected capability ${body.capability}`);
+    }, async () => {
+      const platformHost = new PlatformHostBridgeClient();
+      const modelConfig = new ModelConfigStore(platformHost);
+      const promptAgent = new AppServerPromptAgentService(new AppServerSidecarService(), modelConfig, platformHost);
+      const inputSources = new InputSourceStore();
+      const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+      const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent);
+      const started = await sessions.start({
+        workspacePath,
+        title: '平台消息流 Prompt',
+        purpose: 'image',
+        userIntent: '生成小红书真实生活场景图片 Prompt。',
+        inputSourceIds: [],
+      });
+
+      assert.equal(started.session.status, 'blocked');
+      assert.equal(started.draft.model, 'blocked:lime-agent-server');
+      assert.doesNotMatch(started.draft.versions[0].content, /不能作为交付物的普通消息/);
+      const runtimeArtifactEvents = started.session.executionEvents?.filter((event) => (
+        event.eventClass === 'artifact.changed' &&
+        event.owner === 'artifact'
+      )) ?? [];
+      assert.equal(runtimeArtifactEvents.length, 0);
+    });
+  });
+});
+
+test('平台宿主下通用文字生成走 App Server provider store 且不传 Product App Key', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-platform-text-runtime-'));
+    const appServerPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+    const capturePath = join(tempDir, 'capture.json');
+    try {
+      await writeFakeAppServerBinary(appServerPath, [
+        {
+          type: 'message.delta',
+          payload: { text: '{"ok":true,"source":"provider-store"}', model: 'platform-text-model' },
+        },
+        {
+          type: 'artifact.snapshot',
+          payload: {
+            artifactId: 'platform-text-json',
+            artifactRef: 'platform-text-json',
+            title: 'Platform Text JSON',
+            kind: 'json',
+            content: '{"ok":true,"source":"provider-store"}',
+            model: 'platform-text-model',
+          },
+        },
+        {
+          type: 'turn.completed',
+          payload: { summary: 'done', model: 'platform-text-model' },
+        },
+      ]);
+
+      const modelConfig = {
+        async readView() {
+          return {
+            platformManaged: true,
+            agentProviderPreference: 'platform-openai',
+            textProtocol: 'openai-chat',
+            textApiEndpoint: 'https://api.openai.example/v1',
+            textModel: 'platform-text-model',
+            textModels: ['platform-text-model'],
+            textApiKeyStatus: 'available',
+          };
+        },
+        async getTextApiKey() {
+          throw new Error('平台托管文字生成不应读取 Product App 本地 text key');
+        },
+      };
+
+      await withEnv({
+        APP_SERVER_RESOURCES_DIR: undefined,
+        CONTENT_STUDIO_RESOURCES_DIR: undefined,
+        APP_SERVER_BIN: appServerPath,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        FAKE_APP_SERVER_CAPTURE_PATH: capturePath,
+        CONTENT_STUDIO_TEXT_API_KEY: 'product-app-text-key',
+        OPENAI_API_KEY: 'product-app-openai-key',
+        LLM_API_KEY: 'product-app-llm-key',
+        PROVIDER_SECRET: 'product-app-provider-secret',
+        LIME_RUNTIME_BRIDGE: JSON.stringify({
+          protocol: 'lime.runtimeBridge',
+          version: 1,
+          endpoint: 'http://127.0.0.1:1',
+          token: 'product-app-runtime-bridge-token',
+          appId: 'content-studio',
+          entryKey: 'workbench',
+          expiresAt: '2026-06-09T00:00:00.000Z',
+        }),
+      }, async () => {
+        const text = new TextGenerationService(modelConfig, new AppServerSidecarService());
+        const result = await text.generateJson({
+          workspacePath,
+          systemPrompt: '只输出 JSON。',
+          prompt: '{"task":"platform_text_runtime"}',
+          schema: { type: 'object', required: ['ok', 'source'], properties: { ok: { type: 'boolean' }, source: { type: 'string' } } },
+        });
+
+        assert.deepEqual(result.value, { ok: true, source: 'provider-store' });
+        const captured = JSON.parse(await readFile(capturePath, 'utf8'));
+        assert.ok(captured.argv.includes('--backend'));
+        assert.equal(captured.argv[captured.argv.indexOf('--backend') + 1], 'runtime');
+        assert.equal(captured.argv.includes('--backend-command'), false);
+        assert.equal(captured.env.CONTENT_STUDIO_TEXT_API_KEY, '');
+        assert.equal(captured.env.OPENAI_API_KEY, '');
+        assert.equal(captured.env.LLM_API_KEY, '');
+        assert.equal(captured.env.PROVIDER_SECRET, '');
+        assert.equal(captured.env.LIME_RUNTIME_BRIDGE, '');
+        assert.equal(captured.turnStart.runtimeOptions.capabilityId, 'content.text.generate');
+        assert.equal(captured.turnStart.runtimeOptions.providerPreference, 'platform-openai');
+        assert.equal(captured.turnStart.runtimeOptions.modelPreference, 'platform-text-model');
+        assert.equal(captured.turnStart.runtimeOptions.metadata.textProtocol, 'openai-chat');
+        const serializedTurn = JSON.stringify(captured.turnStart);
+        assert.equal(serializedTurn.includes('apiKey'), false);
+        assert.equal(serializedTurn.includes('product-app-text-key'), false);
+        assert.equal(serializedTurn.includes('product-app-openai-key'), false);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('平台宿主下媒体生成走 App Server provider store 且不传 Product App Key', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-platform-media-runtime-'));
+    const appServerPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+    const capturePath = join(tempDir, 'capture.json');
+    const imageAssetPath = join(workspacePath, 'platform-image.png');
+    const videoAssetPath = join(workspacePath, 'platform-video.mp4');
+    try {
+      await writeFile(imageAssetPath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
+      await writeFile(videoAssetPath, TEST_VIDEO);
+      await writeFakeAppServerBinary(appServerPath, {
+        'content.image.generate': [
+          {
+            type: 'message.delta',
+            payload: {
+              status: 'succeeded',
+              message: '平台图片生成完成',
+              assetRefs: [imageAssetPath],
+              model: 'platform-image-model',
+            },
+          },
+          {
+            type: 'turn.completed',
+            payload: { status: 'succeeded', summary: '平台图片生成完成', assetRefs: [imageAssetPath] },
+          },
+        ],
+        'content.video.generate': [
+          {
+            type: 'message.delta',
+            payload: {
+              status: 'succeeded',
+              message: '平台视频生成完成',
+              assetRefs: [videoAssetPath],
+              billing: { currency: 'CNY', durationSeconds: 8, unit: 'second', unitPrice: 2, estimatedCost: 16, source: 'provider-response' },
+              model: 'platform-video-model',
+            },
+          },
+          {
+            type: 'turn.completed',
+            payload: {
+              status: 'succeeded',
+              summary: '平台视频生成完成',
+              assetRefs: [videoAssetPath],
+              billing: { currency: 'CNY', durationSeconds: 8, unit: 'second', unitPrice: 2, estimatedCost: 16, source: 'provider-response' },
+            },
+          },
+        ],
+      });
+
+      const logs = new GenerationLogStore();
+      const modelConfig = {
+        async readView() {
+          return {
+            platformManaged: true,
+            imageProviderPreference: 'platform-image-provider',
+            videoProviderPreference: 'platform-video-provider',
+            imageProvider: 'openai-responses',
+            imageProtocol: 'openai-responses',
+            imageApiEndpoint: 'https://api.image.example/v1',
+            imageOuterModel: 'platform-image-model',
+            imageApiKeyStatus: 'available',
+            imageModels: ['platform-image-model'],
+            videoProvider: 'generic-http',
+            videoApiEndpoint: 'https://api.video.example/v1',
+            videoApiKeyStatus: 'available',
+            videoModel: 'platform-video-model',
+            videoModels: ['platform-video-model'],
+          };
+        },
+        async getImageApiKey() {
+          throw new Error('平台托管图片生成不应读取 Product App 本地 image key');
+        },
+        async getVideoApiKey() {
+          throw new Error('平台托管视频生成不应读取 Product App 本地 video key');
+        },
+      };
+
+      await withEnv({
+        APP_SERVER_RESOURCES_DIR: undefined,
+        CONTENT_STUDIO_RESOURCES_DIR: undefined,
+        APP_SERVER_BIN: appServerPath,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        FAKE_APP_SERVER_CAPTURE_PATH: capturePath,
+        CONTENT_STUDIO_IMAGE_API_KEY: 'product-app-image-key',
+        IMAGE_API_KEY: 'product-app-image-env-key',
+        CONTENT_STUDIO_VIDEO_API_KEY: 'product-app-video-key',
+        VIDEO_API_KEY: 'product-app-video-env-key',
+        OPENAI_API_KEY: 'product-app-openai-key',
+        PROVIDER_SECRET: 'product-app-provider-secret',
+        LIME_RUNTIME_BRIDGE: JSON.stringify({
+          protocol: 'lime.runtimeBridge',
+          version: 1,
+          endpoint: 'http://127.0.0.1:1',
+          token: 'product-app-runtime-bridge-token',
+          appId: 'content-studio',
+          entryKey: 'workbench',
+          expiresAt: '2026-06-09T00:00:00.000Z',
+        }),
+      }, async () => {
+        const provider = new MediaProvider(modelConfig, logs, new AppServerSidecarService());
+        const image = await provider.generateImage({
+          workspacePath,
+          productImageRefs: [],
+          referenceImageRefs: [],
+          prompt: '通过平台 Provider Store 生成图片',
+          promptMode: 'preset',
+          generationMode: 'smart',
+          template: '场景图',
+          watermark: false,
+          citations: [citation],
+          selectedSkillSlugs: ['ecommerce-image-prompt'],
+          params: { textModel: 'fake', imageModel: 'platform-image-model', videoModel: 'platform-video-model', runMode: 'single', count: 1, aspectRatio: '4:5', resolution: '1k', quality: 'low' },
+        });
+        const video = await provider.generateVideo({
+          workspacePath,
+          imageAssetRefs: image.assetRefs,
+          videoAssetRefs: [],
+          prompt: '通过平台 Provider Store 生成视频',
+          script: '测试脚本',
+          citations: [citation],
+          selectedSkillSlugs: ['video-script-writer'],
+          params: { videoModel: 'platform-video-model', aspectRatio: '4:5', durationSeconds: 8 },
+        });
+
+        assert.equal(image.status, 'succeeded');
+        assert.deepEqual(image.assetRefs, [imageAssetPath]);
+        assert.equal(video.status, 'succeeded');
+        assert.deepEqual(video.assetRefs, [videoAssetPath]);
+        const captured = JSON.parse(await readFile(capturePath, 'utf8'));
+        assert.equal(captured.env.CONTENT_STUDIO_IMAGE_API_KEY, '');
+        assert.equal(captured.env.IMAGE_API_KEY, '');
+        assert.equal(captured.env.CONTENT_STUDIO_VIDEO_API_KEY, '');
+        assert.equal(captured.env.VIDEO_API_KEY, '');
+        assert.equal(captured.env.OPENAI_API_KEY, '');
+        assert.equal(captured.env.PROVIDER_SECRET, '');
+        assert.equal(captured.env.LIME_RUNTIME_BRIDGE, '');
+        assert.deepEqual(
+          captured.turnStarts.map((turnStart) => turnStart.runtimeOptions.capabilityId),
+          ['content.image.generate', 'content.video.generate'],
+        );
+        assert.equal(captured.turnStarts[0].runtimeOptions.providerPreference, 'platform-image-provider');
+        assert.equal(captured.turnStarts[0].runtimeOptions.modelPreference, 'platform-image-model');
+        assert.equal(captured.turnStarts[1].runtimeOptions.providerPreference, 'platform-video-provider');
+        assert.equal(captured.turnStarts[1].runtimeOptions.modelPreference, 'platform-video-model');
+        const serializedTurns = JSON.stringify(captured.turnStarts);
+        assert.equal(serializedTurns.includes('apiKey'), false);
+        assert.equal(serializedTurns.includes('product-app-image-key'), false);
+        assert.equal(serializedTurns.includes('product-app-video-key'), false);
+        assert.equal(serializedTurns.includes('product-app-openai-key'), false);
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('平台宿主下未接入 lime.agent 的视觉/视频直连 Provider 不读取 Product App Key', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const logs = new GenerationLogStore();
+    const inputSources = new InputSourceStore();
+    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
+    const referencePath = join(workspacePath, 'platform-reference.png');
+    await writeFile(referencePath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
+    const reference = await inputSources.register({
+      workspacePath,
+      kind: 'image',
+      purpose: 'reference',
+      title: '平台参考图',
+      sourcePath: referencePath,
+      summary: '参考图。',
+    });
+    const product = await inputSources.register({
+      workspacePath,
+      kind: 'manual-note',
+      purpose: 'product-brief',
+      title: '平台产品资料',
+      text: '便携条包。',
+    });
+    const platformModelConfig = {
+      async readView() {
+        return {
+          platformManaged: true,
+          apiEndpoint: 'https://api.openai.example/v1',
+          safeStorageAvailable: false,
+          hasApiKey: true,
+          textProvider: 'http-text-generation',
+          textProtocol: 'openai-chat',
+          textApiEndpoint: 'https://api.openai.example/v1',
+          hasTextApiKey: true,
+          textApiKeyStatus: 'available',
+          textModel: 'platform-text-model',
+          textModels: [],
+          imageProvider: 'openai-responses',
+          imageProtocol: 'openai-responses',
+          imageApiEndpoint: 'https://api.image.example/v1',
+          imageOuterModel: 'platform-vision-model',
+          hasImageApiKey: true,
+          imageApiKeyStatus: 'available',
+          imageModels: [],
+          videoProvider: 'video-understanding-openai-compatible',
+          videoApiEndpoint: 'https://api.video.example/v1',
+          hasVideoApiKey: true,
+          videoApiKeyStatus: 'available',
+          videoModel: 'platform-video-model',
+          videoModels: [],
+        };
+      },
+      async getImageApiKey() {
+        throw new Error('平台托管素材拆解不应读取 Product App 本地 image key');
+      },
+      async getVideoApiKey() {
+        throw new Error('平台托管视频拆解不应读取 Product App 本地 video key');
+      },
+    };
+
+    await withEnv({
+      CONTENT_STUDIO_VISION_API_KEY: 'product-app-vision-key',
+      CONTENT_STUDIO_VIDEO_API_KEY: 'product-app-video-key',
+      VIDEO_API_KEY: 'product-app-video-env-key',
+      CONTENT_STUDIO_VISION_MODEL: 'vision-provider',
+      VISUAL_MODEL: 'gemini-2.5-flash',
+      LLM_API_KEY: 'product-app-llm-key',
+      OPENAI_API_KEY: 'product-app-openai-key',
+    }, async () => {
+      const referenceReverse = new ReferenceReverseService(logs, inputSources, promptDrafts, platformModelConfig);
+      await assert.rejects(
+        () => referenceReverse.generate({
+          workspacePath,
+          referenceSourceIds: [reference.id],
+          productSourceIds: [product.id],
+          userIntent: '生成平台托管素材拆解 Prompt。',
+        }),
+        /暂未接入平台 lime\.agent 视觉理解 runtime/,
+      );
+
+      const videos = new VideoWorkflowService(logs, new FakeTextGenerationService(), platformModelConfig);
+      await assert.rejects(
+        () => videos.analyze({
+          workspacePath,
+          sourceType: 'url',
+          source: 'https://video.example.test/item.mp4',
+          promptPackId: 'platform-video-breakdown',
+          citations: [citation],
+          params: { textModel: 'platform-text-model' },
+          dimensions: ['hook'],
+        }),
+        /真实视频理解模型未配置/,
+      );
+    });
+
+    const storedLogs = await logs.list(workspacePath);
+    const visionLog = storedLogs.find((entry) => entry.error === 'VISION_PLATFORM_AGENT_RUNTIME_REQUIRED');
+    const videoLog = storedLogs.find((entry) => entry.error === 'VIDEO_UNDERSTANDING_PROVIDER_NOT_CONFIGURED');
+    assert.equal(Boolean(visionLog), true);
+    assert.equal(Boolean(videoLog), true);
+    assert.equal(visionLog?.model, '');
+    assert.equal(videoLog?.model, '');
+    assert.notEqual(visionLog?.model, 'vision-provider');
+    assert.notEqual(videoLog?.model, 'gemini-2.5-flash');
+    assert.notEqual(videoLog?.model, 'platform-text-model');
+  });
+});
+
 test('对话会话首轮和续写都只记录 Lime Agent Server runtime 事实', async () => {
   await withWorkspace(async (workspacePath) => {
     const text = new FakeTextGenerationService();
@@ -8243,14 +10001,17 @@ test('对话会话会把 App Server artifact snapshot 收口成本地 Prompt 草
     });
 
     const artifactEvents = started.session.executionEvents?.filter((event) => event.eventClass === 'artifact.changed') ?? [];
-    assert.equal(artifactEvents.length, 1);
-    assert.equal(artifactEvents[0].owner, 'artifact');
-    assert.deepEqual(artifactEvents[0].artifactRefs, [`prompt-draft:${started.draft.id}`]);
+    const upstreamArtifactEvent = artifactEvents.find((event) => event.owner === 'artifact');
+    const localDraftEvent = artifactEvents.find((event) => event.owner === 'artifact' && event.payload?.draftId === started.draft.id);
+    assert.equal(Boolean(upstreamArtifactEvent), true);
+    assert.equal(Boolean(localDraftEvent), true);
+    assert.deepEqual(upstreamArtifactEvent?.artifactRefs, ['app-server:prompt-draft:snapshot']);
+    assert.deepEqual(localDraftEvent?.artifactRefs, [`prompt-draft:${started.draft.id}`]);
 
     const readModel = projectAgentRuntimeReadModel(started.session);
     const visibleArtifactEvents = readModel.visibleEvents.filter((event) => event.source.eventClass === 'artifact.changed');
-    assert.equal(visibleArtifactEvents.length, 1);
-    assert.deepEqual(readModel.artifactRefs, [`prompt-draft:${started.draft.id}`]);
+    assert.ok(visibleArtifactEvents.length >= 1);
+    assert.equal(readModel.artifactRefs.includes('app-server:prompt-draft:snapshot'), true);
 
     const providerEvents = started.session.executionEvents
       ?.find((event) => event.eventClass === 'model.completed')
@@ -8301,9 +10062,9 @@ test('Lime Agent Server 不可用时保留 runtime 失败事实并要求配置�
     assert.equal(Array.isArray(providerEvents), true);
     assert.equal(providerEvents.some((event) => (
       event.eventClass === 'runtime.error' &&
-      event.payload?.runtime === 'lime-agent-server' &&
-      event.payload?.error === 'sidecar offline'
+      event.payload?.runtime === 'lime-agent-server'
     )), true);
+    assert.equal(JSON.stringify(providerEvents).includes('sidecar offline'), false);
     assert.equal(permissionRequest?.payload?.permissionDecision?.decision, 'ask');
     assert.equal(permissionRequest?.payload?.permissionDecision?.approvalActionId, configureAction?.actionId);
     assert.equal(configureAction?.phase, 'action_required');
@@ -8809,9 +10570,13 @@ test('v2 provider 验收脚本默认只做 dry-run 配置诊断', async () => {
     CONTENT_STUDIO_TEXT_API_KEY: 'test-text-key',
     CONTENT_STUDIO_TEXT_MODEL: 'gpt-test',
     CONTENT_STUDIO_VISION_ENDPOINT: 'https://vision.example.test/analyze',
+    CONTENT_STUDIO_VISION_MODEL: 'test-vision-model',
     CONTENT_STUDIO_IMAGE_API_KEY: 'test-image-key',
+    CONTENT_STUDIO_IMAGE_MODEL: 'test-image-model',
+    CONTENT_STUDIO_IMAGE_OUTER_MODEL: 'test-outer-model',
     CONTENT_STUDIO_VIDEO_ENDPOINT: 'https://video.example.test/generate',
     CONTENT_STUDIO_VIDEO_API_KEY: 'test-video-key',
+    CONTENT_STUDIO_VIDEO_MODEL: 'test-video-model',
     CONTENT_STUDIO_PROVIDER_CHECK_ALLOW_NETWORK: '0',
   }, { allowNetwork: false, allowMedia: false });
 
@@ -8983,6 +10748,7 @@ test('v2 provider strict 在四类 provider 都真实响应后才通过', async 
       CONTENT_STUDIO_TEXT_MODEL: 'test-text-model',
       CONTENT_STUDIO_VISION_ENDPOINT: `${baseUrl}/vision`,
       CONTENT_STUDIO_VISION_API_KEY: 'test-vision-key',
+      CONTENT_STUDIO_VISION_MODEL: 'test-vision-model',
       CONTENT_STUDIO_IMAGE_BASE_URL: baseUrl,
       CONTENT_STUDIO_IMAGE_API_KEY: 'test-image-key',
       CONTENT_STUDIO_IMAGE_MODEL: 'test-image-model',
@@ -9044,6 +10810,7 @@ test('v2 provider strict 不接受文字 provider 普通文本响应', async () 
       CONTENT_STUDIO_TEXT_API_KEY: 'test-text-key',
       CONTENT_STUDIO_TEXT_MODEL: 'test-text-model',
       CONTENT_STUDIO_VISION_ENDPOINT: `${baseUrl}/vision`,
+      CONTENT_STUDIO_VISION_MODEL: 'test-vision-model',
       CONTENT_STUDIO_IMAGE_BASE_URL: baseUrl,
       CONTENT_STUDIO_IMAGE_API_KEY: 'test-image-key',
       CONTENT_STUDIO_IMAGE_MODEL: 'test-image-model',
@@ -9097,6 +10864,7 @@ test('v2 provider strict 不接受视觉 provider 空结构响应', async () => 
       CONTENT_STUDIO_TEXT_API_KEY: 'test-text-key',
       CONTENT_STUDIO_TEXT_MODEL: 'test-text-model',
       CONTENT_STUDIO_VISION_ENDPOINT: `${baseUrl}/vision`,
+      CONTENT_STUDIO_VISION_MODEL: 'test-vision-model',
       CONTENT_STUDIO_IMAGE_BASE_URL: baseUrl,
       CONTENT_STUDIO_IMAGE_API_KEY: 'test-image-key',
       CONTENT_STUDIO_IMAGE_MODEL: 'test-image-model',
@@ -9155,6 +10923,7 @@ test('v2 provider strict 不接受视觉 provider 缺少风险边界响应', asy
       CONTENT_STUDIO_TEXT_API_KEY: 'test-text-key',
       CONTENT_STUDIO_TEXT_MODEL: 'test-text-model',
       CONTENT_STUDIO_VISION_ENDPOINT: `${baseUrl}/vision`,
+      CONTENT_STUDIO_VISION_MODEL: 'test-vision-model',
       CONTENT_STUDIO_IMAGE_BASE_URL: baseUrl,
       CONTENT_STUDIO_IMAGE_API_KEY: 'test-image-key',
       CONTENT_STUDIO_IMAGE_MODEL: 'test-image-model',
@@ -9215,6 +10984,7 @@ test('v2 provider strict 不接受视频 provider 空 JSON 响应', async () => 
       CONTENT_STUDIO_TEXT_API_KEY: 'test-text-key',
       CONTENT_STUDIO_TEXT_MODEL: 'test-text-model',
       CONTENT_STUDIO_VISION_ENDPOINT: `${baseUrl}/vision`,
+      CONTENT_STUDIO_VISION_MODEL: 'test-vision-model',
       CONTENT_STUDIO_IMAGE_BASE_URL: baseUrl,
       CONTENT_STUDIO_IMAGE_API_KEY: 'test-image-key',
       CONTENT_STUDIO_IMAGE_MODEL: 'test-image-model',
@@ -9281,6 +11051,7 @@ test('v2 provider strict 不接受视频 provider 单独状态、普通 URL 或�
       CONTENT_STUDIO_TEXT_API_KEY: 'test-text-key',
       CONTENT_STUDIO_TEXT_MODEL: 'test-text-model',
       CONTENT_STUDIO_VISION_ENDPOINT: `${baseUrl}/vision`,
+      CONTENT_STUDIO_VISION_MODEL: 'test-vision-model',
       CONTENT_STUDIO_IMAGE_BASE_URL: baseUrl,
       CONTENT_STUDIO_IMAGE_API_KEY: 'test-image-key',
       CONTENT_STUDIO_IMAGE_MODEL: 'test-image-model',
@@ -9311,8 +11082,230 @@ test('本地总闸包含 v2 provider dry-run 和业务验收入口', async () =>
   assert.equal(packageJson.scripts['verify:v2'], 'npm run verify:v2:providers && npm run verify:v2:acceptance && npm run verify:v2:ux-copy');
   assert.equal(packageJson.scripts['verify:v2:evidence'], 'node scripts/run-v2-acceptance-evidence.mjs');
   assert.equal(packageJson.scripts['verify:v2:ux-copy'], 'node scripts/v2-ux-copy-audit.mjs');
+  assert.equal(packageJson.scripts['app-server:runtime:live'], 'node scripts/app-server-runtime-live-check.mjs');
+  assert.equal(packageJson.scripts['platform-host:runtime:live'], 'node scripts/platform-host-runtime-live-check.mjs');
+  assert.equal(packageJson.scripts['verify:lime-agent'], 'node scripts/lime-agent-boundary-audit.mjs');
   assert.equal(packageJson.scripts['verify:v2:release'], 'node scripts/run-v2-acceptance-evidence.mjs --provider-strict --require-real-workspace-evidence --require-external-mix-evidence --allow-network --allow-media');
   assert.match(packageJson.scripts['verify:local'], /npm run verify:v2/);
+  assert.match(packageJson.scripts['verify:local'], /npm run verify:lime-agent/);
+});
+
+test('App Server runtime live gate 缺真实 provider store 配置时不会伪通过', async () => {
+  const { stdout, stderr } = await execFileAsync(process.execPath, [
+    'scripts/app-server-runtime-live-check.mjs',
+  ], {
+    cwd: process.cwd(),
+    env: {
+      PATH: process.env.PATH,
+      NODE_OPTIONS: process.env.NODE_OPTIONS,
+    },
+  }).then(
+    (result) => ({ ...result, code: 0 }),
+    (error) => ({
+      stdout: error.stdout ?? '',
+      stderr: error.stderr ?? '',
+      code: error.code ?? 1,
+    }),
+  );
+
+  assert.notEqual(stdout, undefined);
+  assert.match(stderr, /missing App Server runtime source/);
+});
+
+test('App Server runtime live gate 会阻断不支持 data-dir 的旧 sidecar', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-runtime-live-old-sidecar-'));
+  const binaryPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+  const dataDir = join(tempDir, 'data');
+  try {
+    await writeFakeRuntimeLiveAppServerBinary(binaryPath, { supportsDataDir: false });
+    const { stderr } = await execFileAsync(process.execPath, [
+      'scripts/app-server-runtime-live-check.mjs',
+    ], {
+      cwd: process.cwd(),
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        TMPDIR: process.env.TMPDIR,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        APP_SERVER_BIN: binaryPath,
+        CONTENT_STUDIO_APP_SERVER_DATA_DIR: dataDir,
+        CONTENT_STUDIO_RUNTIME_PROVIDER_PREFERENCE: 'probe-provider',
+        CONTENT_STUDIO_RUNTIME_MODEL_PREFERENCE: 'probe-model',
+      },
+    }).then(
+      (result) => ({ ...result, code: 0 }),
+      (error) => ({
+        stdout: error.stdout ?? '',
+        stderr: error.stderr ?? '',
+        code: error.code ?? 1,
+      }),
+    );
+
+    assert.match(stderr, /does not support --data-dir/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('App Server runtime live gate 会阻断缺少 provider store 方法的 sidecar', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-runtime-live-no-provider-store-'));
+  const binaryPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+  const dataDir = join(tempDir, 'data');
+  try {
+    await writeFakeRuntimeLiveAppServerBinary(binaryPath, { supportsProviderStore: false });
+    const { stderr } = await execFileAsync(process.execPath, [
+      'scripts/app-server-runtime-live-check.mjs',
+    ], {
+      cwd: process.cwd(),
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        TMPDIR: process.env.TMPDIR,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        APP_SERVER_BIN: binaryPath,
+        CONTENT_STUDIO_APP_SERVER_DATA_DIR: dataDir,
+        CONTENT_STUDIO_RUNTIME_PROVIDER_PREFERENCE: 'probe-provider',
+        CONTENT_STUDIO_RUNTIME_MODEL_PREFERENCE: 'probe-model',
+      },
+    }).then(
+      (result) => ({ ...result, code: 0 }),
+      (error) => ({
+        stdout: error.stdout ?? '',
+        stderr: error.stderr ?? '',
+        code: error.code ?? 1,
+      }),
+    );
+
+    assert.match(stderr, /does not expose provider store modelProvider\/list/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('App Server runtime live gate 通过 provider store 预检后仍要求真实 provider 配置', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-runtime-live-provider-missing-'));
+  const binaryPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+  const dataDir = join(tempDir, 'data');
+  try {
+    await writeFakeRuntimeLiveAppServerBinary(binaryPath);
+    const { stderr } = await execFileAsync(process.execPath, [
+      'scripts/app-server-runtime-live-check.mjs',
+    ], {
+      cwd: process.cwd(),
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        TMPDIR: process.env.TMPDIR,
+        CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE: '1',
+        APP_SERVER_BIN: binaryPath,
+        CONTENT_STUDIO_APP_SERVER_DATA_DIR: dataDir,
+        CONTENT_STUDIO_RUNTIME_PROVIDER_PREFERENCE: 'probe-provider',
+        CONTENT_STUDIO_RUNTIME_MODEL_PREFERENCE: 'probe-model',
+      },
+    }).then(
+      (result) => ({ ...result, code: 0 }),
+      (error) => ({
+        stdout: error.stdout ?? '',
+        stderr: error.stderr ?? '',
+        code: error.code ?? 1,
+      }),
+    );
+
+    assert.match(stderr, /provider is not configured in provider store/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('平台宿主 runtime live gate 缺真实 bridge 时不会伪通过', async () => {
+  const { stdout, stderr } = await execFileAsync(process.execPath, [
+    'scripts/platform-host-runtime-live-check.mjs',
+  ], {
+    cwd: process.cwd(),
+    env: {
+      PATH: process.env.PATH,
+      NODE_OPTIONS: process.env.NODE_OPTIONS,
+    },
+  }).then(
+    (result) => ({ ...result, code: 0 }),
+    (error) => ({
+      stdout: error.stdout ?? '',
+      stderr: error.stderr ?? '',
+      code: error.code ?? 1,
+    }),
+  );
+
+  assert.notEqual(stdout, undefined);
+  assert.match(stderr, /missing real platform runtime bridge/);
+});
+
+test('平台宿主 runtime live gate 会通过真实 bridge 合同调用 lime.agent', async () => {
+  const requests = [];
+  await withPlatformRuntimeBridge(async ({ url, body }) => {
+    requests.push({ url, body });
+    assert.equal(url, '/capability/invoke');
+    assert.equal(body.capability, 'lime.agent');
+    assert.equal(body.operation, 'agentSession/turn/start');
+    assert.equal(body.input.runtimeOptions.providerPreference, 'platform-provider');
+    assert.equal(body.input.runtimeOptions.modelPreference, 'platform-model');
+    assert.equal(body.input.runtimeOptions.modelId, 'platform-model');
+    return {
+      ok: true,
+      requestId: 'platform-live-check',
+      output: {
+        ok: true,
+        state: 'completed',
+        sessionId: 'platform-live-session',
+        threadId: 'platform-live-thread',
+        turnId: 'platform-live-turn',
+        events: [
+          {
+            sessionId: 'platform-live-session',
+            threadId: 'platform-live-thread',
+            turnId: 'platform-live-turn',
+            sequence: 1,
+            type: 'artifact.snapshot',
+            payload: {
+              artifactId: 'platform-live-artifact',
+              title: '平台联调草稿',
+              content: '平台宿主联调草稿。',
+            },
+          },
+          {
+            sessionId: 'platform-live-session',
+            threadId: 'platform-live-thread',
+            turnId: 'platform-live-turn',
+            sequence: 2,
+            type: 'turn.completed',
+            payload: { summary: 'done', inputTokens: 12, outputTokens: 8 },
+          },
+        ],
+      },
+    };
+  }, async () => {
+    const descriptor = JSON.parse(process.env.LIME_RUNTIME_BRIDGE);
+    const result = await execFileAsync(process.execPath, [
+      'scripts/platform-host-runtime-live-check.mjs',
+      '--provider',
+      'platform-provider',
+      '--model',
+      'platform-model',
+      '--prompt',
+      '平台宿主联调',
+    ], {
+      cwd: process.cwd(),
+      env: {
+        PATH: process.env.PATH,
+        NODE_OPTIONS: process.env.NODE_OPTIONS,
+        LIME_RUNTIME_BRIDGE: JSON.stringify(descriptor),
+      },
+    });
+    assert.match(result.stdout, /mode=lime-desktop-platform/);
+    assert.match(result.stdout, /provider=platform-provider/);
+    assert.match(result.stdout, /model=platform-model/);
+    assert.match(result.stdout, /artifact=平台联调草稿/);
+  });
+  assert.equal(requests.some((request) => request.url === '/capability/invoke'), true);
 });
 
 test('v2 UX 文案审计会阻断普通用户可见工程词回退', async () => {
@@ -9340,6 +11333,77 @@ test('v2 UX 文案审计会阻断普通用户可见工程词回退', async () =>
     assert.equal(failed.summary.passed, false);
     assert.equal(failed.summary.failed, 3);
     assert.deepEqual(failed.checks[0].failures.map((item) => item.ruleId), ['mix-manifest-main-task', 'visible-blocked-status', 'flat-feature-overview']);
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('公开桥接不会暴露平台模型设置保存入口', async () => {
+  const files = {
+    shared: await readFile(join(process.cwd(), 'src/shared/types.ts'), 'utf-8'),
+    preload: await readFile(join(process.cwd(), 'src/preload/index.ts'), 'utf-8'),
+    ipc: await readFile(join(process.cwd(), 'src/main/ipc.ts'), 'utf-8'),
+    settingsOutlet: await readFile(join(process.cwd(), 'src/renderer/src/components/SettingsDialogOutlet.tsx'), 'utf-8'),
+  };
+
+  assert.equal(files.shared.includes('savePlatformModelSettings('), false);
+  assert.equal(files.preload.includes('savePlatformModelSettings:'), false);
+  assert.equal(files.preload.includes('modelConfig:savePlatformModelSettings'), false);
+  assert.equal(files.ipc.includes('modelConfig:savePlatformModelSettings'), false);
+  assert.equal(files.settingsOutlet.includes('onSaveModelSettings'), false);
+  assert.equal(files.settingsOutlet.includes('window.contentStudio.savePlatformModelSettings'), false);
+});
+
+test('Lime Agent 边界审计会阻断 runtime/key/UI 协议回流', async () => {
+  const report = await buildLimeAgentBoundaryAudit();
+  assert.equal(report.schema, 'buguai.lime-agent-boundary-audit.v1');
+  assert.equal(report.summary.passed, true, JSON.stringify(report.failures, null, 2));
+  assert.equal(report.summary.failed, 0);
+  assert.ok(report.summary.files >= 8);
+
+  const tmpRoot = await mkdtemp(join(tmpdir(), 'content-studio-lime-agent-audit-'));
+  try {
+    await mkdir(join(tmpRoot, 'src/shared'), { recursive: true });
+    await mkdir(join(tmpRoot, 'src/preload'), { recursive: true });
+    await mkdir(join(tmpRoot, 'src/main/services'), { recursive: true });
+    await mkdir(join(tmpRoot, 'src/main'), { recursive: true });
+    await mkdir(join(tmpRoot, 'src/renderer/src/components/agents'), { recursive: true });
+    await mkdir(join(tmpRoot, 'src/renderer/src/components/agent'), { recursive: true });
+    await mkdir(join(tmpRoot, 'src/renderer/src/components'), { recursive: true });
+    const minimalFiles = {
+      'package.json': '{"dependencies":{"@limecloud/agent-runtime-ui":"0.1.0","@limecloud/agent-runtime-projection":"0.1.0"},"scripts":{"verify:lime-agent":"node scripts/lime-agent-boundary-audit.mjs"}}',
+      'src/shared/types.ts': 'export interface PlatformModelProviderConfig { id: string; displayName: string; apiKey?: string; apiKeyConfigured: boolean; }',
+      'src/preload/index.ts': 'export const api = { savePlatformModelSettings() {} };',
+      'src/main/ipc.ts': "ipcMain.handle('modelConfig:savePlatformModelSettings', () => undefined);",
+      'src/main/services/appServerAgentRuntimeGateway.ts': 'export function runContentStudioAgentRuntimeTurn() { return {}; }',
+      'src/main/services/appServerSidecarService.ts': 'export class AppServerSidecarService { runCapabilityTurn() { return {}; } }',
+      'src/main/services/appServerPromptAgentService.ts': 'async function run(modelConfig) { await modelConfig.getTextApiKey(); return process.env.CONTENT_STUDIO_TEXT_API_KEY; }',
+      'src/main/services/agentPromptSessionStore.ts': "const event = { owner: 'ui', eventClass: 'snapshot.updated' };",
+      'src/main/services/modelConfigStore.ts': 'export class ModelConfigStore {}',
+      'src/renderer/src/components/agents/AgentsWorkbench.tsx': 'export function AgentsWorkbench() { return "后端接口"; }',
+      'src/renderer/src/components/agent/AgentSessionPanel.tsx': "import { AgentRuntimeRefLists } from './AgentRuntimeRefLists'; export function AgentSessionPanel() { return 'bad'; }",
+      'src/renderer/src/components/agent/AgentUiProjectionSurface.tsx': "export function AgentUiProjectionSurface() { return 'missing-standard-surface'; }",
+      'src/renderer/src/components/agent/agentRuntimeProjection.ts': 'export function projectAgentRuntimeReadModel() { return {}; }',
+      'src/renderer/src/components/SettingsDialogOutlet.tsx': 'window.contentStudio.savePlatformModelSettings({});',
+    };
+    await Promise.all(Object.entries(minimalFiles).map(([path, content]) => writeFile(join(tmpRoot, path), content, 'utf-8')));
+
+    const failed = await buildLimeAgentBoundaryAudit({ projectRoot: tmpRoot });
+    assert.equal(failed.summary.passed, false);
+    assert.ok(failed.failures.some((item) => item.ruleId === 'no-public-platform-model-save'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'platform-provider-projection-no-api-key'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'prompt-agent-no-product-app-key'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agent-runtime-session-gateway-contract'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agent-runtime-gateway-start-turn-method'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agent-runtime-gateway-event-notification-method'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agent-runtime-gateway-internal-runtime-event-helper'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'sidecar-uses-agent-runtime-session-gateway'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'sidecar-constructs-agent-runtime-session-gateway'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agents-no-old-visible-copy'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agents-uses-agentui-projection-surface'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agent-session-panel-uses-agentui-projection-surface'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agentui-projection-surface-contract'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'no-page-local-agentui-composition'));
   } finally {
     await rm(tmpRoot, { recursive: true, force: true });
   }
@@ -11632,7 +13696,7 @@ test('内容制造批次调优阶段会要求投放表现和行动复盘', async
     ));
     assert.ok(missingStage.recoveryTasks.some((task) =>
       task.title === '写入运行复盘' &&
-      task.targetModule === 'assets-history'
+      task.targetModule === 'assets'
     ));
 
     const performanceSource = await inputSources.register({
@@ -11681,7 +13745,7 @@ test('内容制造批次调优阶段会要求投放表现和行动复盘', async
       ref.kind === 'generation-log' &&
       ref.id === reviewLog.id &&
       ref.summary.includes('已生成') &&
-      ref.targetModule === 'assets-history'
+      ref.targetModule === 'assets'
     ));
   });
 });

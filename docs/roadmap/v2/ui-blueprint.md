@@ -50,7 +50,7 @@ v2 原型和实现必须保留当前客户端用户的肌肉记忆：图片、�
 │   ├── SOP 工作流
 │   └── 运行历史
 └── 管理
-    ├── 生成服务设置
+    ├── 平台模型设置
     ├── skills 管理
     ├── 工作流定义
     └── Canvas 编排
@@ -67,7 +67,7 @@ v2 新能力挂入现有模块
   视频：拆解、脚本、视频 Prompt、导入成品、混剪包
   知识库：品牌 / 产品知识库、IP 知识库、场景库
   资产：Prompt 工作台、SOP、运行历史
-  管理：生成服务、SkillDefinition、WorkflowDefinition、Canvas
+  管理：平台模型设置、SkillDefinition、WorkflowDefinition、Canvas
 ```
 
 ## 3. 知识中台

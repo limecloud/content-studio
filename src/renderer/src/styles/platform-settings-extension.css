@@ -1,0 +1,36 @@
+.content-studio-platform-settings-host .lime-settings-dialog {
+  grid-template-columns: 170px minmax(0, 820px);
+  width: min(980px, calc(100vw - 72px));
+}
+
+.content-studio-platform-settings-host .lime-settings-nav-title,
+.content-studio-platform-settings-host .lime-settings-nav-item,
+.content-studio-platform-settings-host .lime-settings-nav-section,
+.content-studio-platform-settings-host .lime-settings-content,
+.content-studio-platform-settings-host .lime-settings-content button,
+.content-studio-platform-settings-host .lime-settings-content input,
+.content-studio-platform-settings-host .lime-settings-content select,
+.content-studio-platform-settings-host .lime-settings-content textarea {
+  font-family: inherit;
+}
+
+.content-studio-platform-settings-host .lime-settings-nav-item {
+  min-height: 34px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.content-studio-platform-settings-host .lime-settings-nav-item.active {
+  font-weight: 600;
+}
+
+.content-studio-platform-settings-host .lime-settings-content h1 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.content-studio-platform-settings-host .lime-settings-content h2,
+.content-studio-platform-settings-host .lime-setting-row strong,
+.content-studio-platform-settings-host .lime-model-card-title h2 {
+  font-weight: 600;
+}

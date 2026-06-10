@@ -306,48 +306,16 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     preview: '转换队列：嘉文老师_IP知识库_v1.0.docx -> markdown；参考视频 01 -> analyze；SKU 表 -> ProductBrief。',
     table: [['DOCX', '已转换 2', '待转换 1', '可重试'], ['参考视频', '待分析', '视频理解', '待配置'], ['SKU 表', '可解析', '变量表', '可运行']],
   },
-  'assets-prompt-workbench': {
-    eyebrow: '资产 / 玩法跑通',
-    title: 'Prompt 工作台',
-    description: '多源输入、用户意图、多轮调整、Prompt 草稿版本和物化入口。',
-    scope: '多源输入 -> 对话协作 -> Prompt 草稿 -> Skill 草案',
-    status: '可运行入口',
-    primaryAction: '生成 Prompt',
-    secondaryAction: '物化为 Skill',
-    flow: ['选择输入源', '输入意图', '追问缺口', '确认 Prompt', '版本对比', '沉淀'],
-    cards: [
-      { title: '适用场景', text: '当玩法还没固化时先跑通 Prompt，而不是先做复杂工作流。', items: ['读文档', '看图反推', '视频拆解'] },
-      { title: '物化入口', text: '确认过的 Prompt 草稿可沉淀为 Prompt Pack 或 Skill。', items: ['Prompt Pack', 'Skill'] },
-    ],
-    preview: 'Prompt v5：根据产品知识库和早餐场景库，生成 10 组 UGC 手机实拍提示词。',
-    table: [['Prompt v3', '已淘汰', '太广告感', '保留历史'], ['Prompt v5', '待确认', '更自然', '可物化'], ['Skill 草案', '未上线', '人工确认', '待保存']],
-  },
-  'assets-history': {
-    eyebrow: '资产 / 审计',
-    title: '运行历史',
-    description: '用于复盘、重试和审计。查看每次运行的输入、输出、步骤耗时、模型、失败原因和产物列表。',
-    scope: '运行记录 -> 步骤轨迹 -> 待配置恢复 / 复用输入',
-    status: '可运行入口',
-    primaryAction: '查看运行详情',
-    secondaryAction: '复用输入',
-    flow: ['运行列表', '步骤详情', '输入输出', '日志', '重试', '复用'],
-    cards: [
-      { title: '详情结构', text: '左侧步骤列表，中间步骤输入输出，右侧产物和来源引用。', items: ['步骤', '日志', '产物'] },
-      { title: '失败处理', text: '失败不跳过、不伪造；保留生成服务、错误和恢复路径。', items: ['待配置', '重试', '配置生成服务'] },
-    ],
-    preview: '运行记录：图片生成服务未配置，图片生成步骤待配置；已保存 Prompt 和输入源，可在配置后重试。',
-    table: [['运行记录 001', '待配置', '图片生成服务未配置', '可重试'], ['运行记录 002', '完成', '4 张图片', '可复用'], ['运行记录 003', '待审核', '视频 Prompt', '查看详情']],
-  },
 };
 
 const V2_FEATURE_ACTION_TARGETS: Partial<
   Record<V2ModuleKey, Partial<Record<V2FeatureActionSlot, V2FeatureActionTarget>>>
 > = {
   'material-breakdown': {
-    secondary: { type: 'module', module: 'assets-prompt-workbench' },
+    secondary: { type: 'module', module: 'agents' },
   },
   'image-scene-prompts': {
-    secondary: { type: 'module', module: 'image' },
+    secondary: { type: 'module', module: 'image-production' },
   },
   'image-green-screen': {
     secondary: { type: 'module', module: 'video-mix-export' },
@@ -362,7 +330,7 @@ const V2_FEATURE_ACTION_TARGETS: Partial<
     secondary: { type: 'module', module: 'video-prompt' },
   },
   'video-mix-export': {
-    secondary: { type: 'module', module: 'assets-history' },
+    secondary: { type: 'module', module: 'assets' },
   },
   'article-title': {
     secondary: { type: 'module', module: 'article' },
@@ -384,7 +352,7 @@ const V2_FEATURE_ACTION_TARGETS: Partial<
   },
   'knowledge-scenes': {
     primary: { type: 'module', module: 'image-scene-prompts' },
-    secondary: { type: 'module', module: 'image' },
+    secondary: { type: 'module', module: 'image-production' },
   },
   'knowledge-ip': {
     primary: { type: 'module', module: 'knowledge' },
@@ -392,12 +360,6 @@ const V2_FEATURE_ACTION_TARGETS: Partial<
   },
   'knowledge-inputs': {
     primary: { type: 'module', module: 'knowledge' },
-  },
-  'assets-prompt-workbench': {
-    secondary: { type: 'module', module: 'skills' },
-  },
-  'assets-history': {
-    secondary: { type: 'module', module: 'assets' },
   },
 };
 

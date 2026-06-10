@@ -33,7 +33,7 @@ export function checkContentProductionHandoff(
     candidate.task.targetType === 'gap' ? '缺口任务需要先补资料，不能直接进入确定性生产。' : '',
     candidate.task.targetType === 'constraint' ? '规则任务需要先固化为边界，不能直接进入确定性生产。' : '',
     candidate.readyEvidence.length ? '' : '缺少已通过证据，不能生成确定性 Prompt。',
-    isCompetitorMatrixRow(candidate.row) ? '竞品观察只能用于结构、模式和差异化机会判断，不能直接交给 Prompt 工作台；请先转写为本品牌已审核卖点或场景。' : '',
+    isCompetitorMatrixRow(candidate.row) ? '竞品观察只能用于结构、模式和差异化机会判断，不能直接生成确定性 Prompt；请先转写为本品牌已审核卖点或场景。' : '',
     isIpMatrixRow(candidate.row) && !hasIpBoundary(candidate.map) ? 'IP 内容缺少核心立场或语言规则边界，不能交给下游生产。' : '',
     ...riskIssues.map((issue) => issue.message),
   ].filter(Boolean);

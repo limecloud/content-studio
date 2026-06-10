@@ -79,12 +79,6 @@ export const V2_UX_COPY_AUDITS = [
     ],
   },
   {
-    path: 'src/renderer/src/components/SettingsDialog.tsx',
-    rules: [
-      rule('disabled-future-link-button', /<button[^>]*disabled[^>]*>[^<]*后续提供[^<]*<\/button>/, '未配置的外部链接应用状态文本表达，不能做成不可点击按钮。'),
-    ],
-  },
-  {
     path: 'src/renderer/src/components/modules/SkillsModule.tsx',
     rules: [
       rule('disabled-try-chat-button', /<button[^>]*disabled[^>]*>\s*<SkillIcon name=["']message["'] \/>[\s\S]*?Try in chat[\s\S]*?<\/button>/, '未接通的 skill 试聊入口不能作为不可点击按钮展示。'),
@@ -110,6 +104,13 @@ export const V2_UX_COPY_AUDITS = [
   {
     path: 'src/renderer/src/components/modules/PromptWorkbenchModule.tsx',
     rules: v1BusinessModuleRules(),
+  },
+  {
+    path: 'src/renderer/src/components/agents/AgentsWorkbench.tsx',
+    rules: [
+      ...v1BusinessModuleRules(),
+      rule('agents-old-toolbar-copy', /计划模式|追求目标|附加 Wave|后端接口|等待启动协作|进行中的目标/, 'agents 工作台不能回流通用 Agent 工具栏、旧调试文案或无业务对象状态。'),
+    ],
   },
   {
     path: 'src/renderer/src/components/modules/InputSourcesModule.tsx',

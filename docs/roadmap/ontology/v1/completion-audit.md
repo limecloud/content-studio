@@ -12,7 +12,7 @@ Ontology v1 当前不能标记为生产完成。
 - 本地实现已经覆盖 v1 主链：内容知识地图、矩阵、审核、生产交接、素材回写、团队知识包导出、内容制造批次、Bugu 同步适配器和在线验收脚本。
 - 内容知识地图构建链路已从本地规则成功兜底升级为真实文字模型结构化生成：本地规则只生成 seed / evidence，真实运行时必须调用 `generate_content_knowledge_map`；模型失败、待配置、缺少结构化输出接口或空结果不会保存为伪成功知识地图。
 - 内容知识地图生成流程已落成本地事实源：每次生成都会保存输入收集、团队状态、生成服务检查、来源证据整理、结构化矩阵生成和质量检查步骤；成功和 blocked 路径都可在工作台查看，不再只保存最终知识地图。
-- 本地功能测试已通过，覆盖 v1 关键策略、UI 文案门禁、团队共享模拟、知识包导出、在线验收报告归档门禁和两账号同清单校验；UI 文案门禁已经覆盖内容知识地图、审核台、Prompt 工作台和 SOP 执行页，并通过 retired guard 阻止旧作战入口回流。
+- 本地功能测试已通过，覆盖 v1 关键策略、UI 文案门禁、团队共享模拟、知识包导出、在线验收报告归档门禁和两账号同清单校验；UI 文案门禁已经覆盖内容知识地图、审核台、Prompt 工作台、agents 工作台和 SOP 执行页，并通过 retired guard 阻止旧作战入口回流。
 - v1 HTML 原型已补成可交互确认版，普通用户不需要理解 Ontology 也能按业务对象下钻证据、风险、恢复路径和交付去向。
 - Content Studio 真实客户端已补齐原型第一批关键承诺并完成旧作战运行时退役：内容知识地图支持矩阵行下钻查看证据、风险、恢复路径和交付去向；IP 口径、竞品观察、素材回写、团队知识包内容和高级导出可在真实页面切换查看；矩阵行可直接交接为真实 Prompt 草稿、场景卡和 SOP 执行链路，未审核组合先进入审核台；内容制造批次承接审核、制造、调优和复盘阶段，生产交接行动通过 Bugu `content-action-records` 保留审计和交付物引用。
 - Content Studio 内容知识地图页已把“生成流程”落成真实详情页签：同一业务对象内可查看生成服务检查、来源证据整理、结构化矩阵生成、质量检查和团队同步步骤；失败或待配置时显示恢复路径，不再只在右侧摘要里展示少量步骤。
@@ -150,7 +150,7 @@ Ontology v1 当前不能标记为生产完成。
 | AC-10 | 真实生成服务和待配置兜底 | Local Verified | `ContentKnowledgeMapApplicationService` 可调用 `TextGenerationService.generateJson` 执行 `generate_content_knowledge_map`，模型输出经固定 schema、来源 / 证据约束和 validation policy 落库；生成服务待配置、失败、缺少结构化输出接口或空矩阵时保存待配置 / 失败记录，不生成伪矩阵 / 伪证据；`ContentKnowledgeMapBuildRunStore` 保存成功和 blocked 生成流程记录；Bugu `content-knowledge-maps` 保存团队地图快照，`content-build-runs` 保存团队生成流程摘要；功能测试覆盖服务层策略；目标 E2E 覆盖普通用户点击“生成内容知识地图”后通过真实文字服务路由生成模型矩阵、显示生成流程，并向 Bugu 测试服务写入地图快照和生成流程 payload。 | 仍需真实模型 Key / 真实产品资料执行质量验收；无 Key 环境表现已本地覆盖。 |
 | AC-11 | Agent Knowledge v0.7.2 导出 | Local Verified | `AgentKnowledgeContentExportService` 生成 `KNOWLEDGE.md`、`ontology/`、`answers/`、`assets/material-coverage.json`、`interop/ontology.jsonld` / `ontology.ttl` / `ontology.rdf`、zip、sha256 / size；导出 policy 阻断敏感内容、本机路径、脚本和操控指令；`contentKnowledgePack:readFile` 只读取当前工作区本机预览包并阻断越界读取；功能测试覆盖素材覆盖、互操作文件、预览摘要、真实文件读取和安全阻断；目标 E2E 覆盖高级导出页真实点击生成本机预览、切换读取 `compiled/prompt-grounding.md` 与 `assets/material-coverage.json`。 | 真实包上传到 R2 / OSS 后公开地址和 sha256 校验。 |
 | AC-12 | 团队共享和 Release | Production Pending | Bugu smoke、本地双工作区模拟、知识地图快照服务端事实源、构建运行服务端事实源、同步冲突、release 拉取、团队知识包绑定、Prompt 工作台选择团队知识包、SOP 执行表单选择团队知识包、补素材任务保真、行动记录交付物服务端安全校验、输入源共享范围门禁、资料共享检查真实客户端回归、在线验收脚本、报告门禁、本地事实源并发写入、追加不变量、已发布 release 不可变、发布历史保留、真实客户端点击创建 / 提交 / 导出 / 导入变更包、发布团队知识包版本、拉取团队更新和同步冲突处理均已覆盖。 | 必须使用真实 Bugu 工作区、两真实账号和真实公开包执行 `content:v1:verify-online` 并归档生产报告。 |
-| AC-13 | 普通用户不感知 Ontology | Local Verified | `v2-ux-copy-audit` 扫描内容知识地图、审核台、内容制造批次、Prompt 工作台和 SOP 执行页；readiness 检查覆盖范围；prototype 禁用工程词扫描未命中；业务 UI 契约已落文档。 | 真实用户验收仍需确认文案理解成本。 |
+| AC-13 | 普通用户不感知 Ontology | Local Verified | `v2-ux-copy-audit` 扫描内容知识地图、审核台、内容制造批次、Prompt 工作台、agents 工作台和 SOP 执行页；readiness 检查覆盖范围；prototype 禁用工程词扫描未命中；业务 UI 契约已落文档。 | 真实用户验收仍需确认文案理解成本。 |
 
 ## 5. 不能宣称完成的硬门槛
 

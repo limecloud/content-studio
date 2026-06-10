@@ -1,6 +1,5 @@
 import { test, expect, _electron as electron } from '@playwright/test';
 import { createRequire } from 'node:module';
-import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,68 +12,23 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const mainEntry = join(projectRoot, 'out/main/index.js');
 const resourcesDir = join(projectRoot, 'resources');
 
-function startModelCatalogServer() {
-  const requests = [];
-  const models = [
-    'gpt-remote-text-primary',
-    'gpt-remote-text',
-    'gpt-remote-text-03',
-    'gpt-remote-text-04',
-    'gpt-remote-text-05',
-    'gpt-remote-text-06',
-    'gpt-remote-text-07',
-    'gpt-remote-text-08',
-    'gpt-remote-text-09',
-    'gpt-remote-text-hidden',
-    'gpt-image-remote',
-    'imagen-remote',
-    'veo-remote-video',
-    'kling-remote-video',
-  ];
-  const server = createServer((request, response) => {
-    requests.push({
-      method: request.method,
-      url: request.url,
-      authorization: request.headers.authorization ?? '',
-    });
-    if (request.method !== 'GET' || request.url !== '/v1/models') {
-      response.statusCode = 404;
-      response.end('not found');
-      return;
-    }
-    response.setHeader('content-type', 'application/json');
-    response.end(JSON.stringify({ data: models.map((id) => ({ id })) }));
-  });
-  return new Promise((resolveListen) => {
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      if (!address || typeof address === 'string') throw new Error('无法启动本地模型目录服务。');
-      resolveListen({
-        server,
-        baseUrl: `http://127.0.0.1:${address.port}/v1`,
-        requests,
-      });
-    });
-  });
-}
-
-async function launchWithModelConfig(userDataDir, endpoint) {
+async function launchWithModelConfig(userDataDir) {
   await writeFile(join(userDataDir, 'model-config.json'), JSON.stringify({
     textProtocol: 'openai-chat',
-    textApiEndpoint: endpoint,
+    textApiEndpoint: 'https://text-provider.example.test/v1',
     textApiKeyPlain: 'test-text-key',
     textModel: 'saved-text-model',
-    textModels: ['saved-text-model'],
+    textModels: ['saved-text-model', 'saved-text-backup'],
     imageProvider: 'openai-responses',
     imageProtocol: 'openai-responses',
-    imageApiEndpoint: endpoint,
+    imageApiEndpoint: 'https://image-provider.example.test/v1',
     imageApiKeyPlain: 'test-image-key',
-    imageModels: ['saved-image-model'],
+    imageModels: ['saved-image-model', 'saved-image-backup'],
     videoProvider: 'video-understanding-openai-compatible',
-    videoApiEndpoint: endpoint,
+    videoApiEndpoint: 'https://video-provider.example.test/v1',
     videoApiKeyPlain: 'test-video-key',
     videoModel: 'saved-video-model',
-    videoModels: ['saved-video-model'],
+    videoModels: ['saved-video-model', 'saved-video-backup'],
     updatedAt: new Date().toISOString(),
   }, null, 2));
 
@@ -99,119 +53,146 @@ async function launchWithModelConfig(userDataDir, endpoint) {
   return { electronApp, page };
 }
 
-test('远程模型目录分流到文字、图片、视频模型池并支持切换', async () => {
+async function openPlatformSettings(page) {
+  const accountEntry = page.locator('.content-studio-platform-account-entry');
+  const settingsButton = accountEntry.getByLabel('打开设置');
+  await expect(accountEntry).toBeVisible();
+  await expect(settingsButton).toBeVisible();
+  await settingsButton.click();
+  await expect(page.locator('.lime-settings-dialog')).toBeVisible();
+}
+
+async function openAgentsEntry(page) {
+  if (await page.locator('.app-shell').getAttribute('data-sidebar') !== 'expanded') {
+    await page.getByRole('button', { name: '展开侧边栏' }).first().click();
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar', 'expanded');
+  }
+  const collapsedAgents = page.locator('.agent-nav-root[aria-expanded="false"]');
+  if (await collapsedAgents.count()) {
+    await collapsedAgents.first().click();
+  }
+  const newDialogButton = page.locator('.nav-stack button.agent-nav-action[title="新对话"]').first();
+  await expect(newDialogButton, 'agents 新对话入口应存在').toBeVisible();
+  await newDialogButton.click();
+}
+
+test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页', async () => {
   test.setTimeout(90_000);
   if (!existsSync(mainEntry)) throw new Error('请先运行 npm run build。');
 
-  const { server, baseUrl, requests } = await startModelCatalogServer();
-  const userDataDir = await mkdtemp(join(tmpdir(), 'content-studio-model-catalog-'));
+  const userDataDir = await mkdtemp(join(tmpdir(), 'content-studio-platform-settings-'));
   let electronApp;
   try {
-    const launched = await launchWithModelConfig(userDataDir, baseUrl);
+    const launched = await launchWithModelConfig(userDataDir);
     electronApp = launched.electronApp;
     const page = launched.page;
 
-    await page.getByLabel('设置').click();
-    await expect(page.locator('.settings-modal')).toBeVisible();
-    await page.locator('.settings-nav button').filter({ hasText: '模型' }).click();
-    await expect(page.locator('.model-config-hero')).toContainText('文字生成');
-    await expect(page.locator('.model-runtime-strip')).toContainText('Lime App Server');
-    await expect(page.locator('.model-runtime-strip')).toContainText('content.text.generate');
-    await expect(page.locator('.model-config-section')).toHaveCount(1);
-    await expect(page.locator('.model-config-section')).toContainText('文字生成');
-    await expect(page.locator('.model-config-section')).not.toContainText('图片生成');
-    await expect(page.locator('.model-config-section')).not.toContainText('视频理解 / 生成');
-
-    await expect(page.locator('.model-preset-row button').filter({ hasText: 'gpt-remote-text-primary' })).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.model-preset-row button').filter({ hasText: 'gpt-image-remote' })).toHaveCount(0);
-    await expect(page.locator('.model-preset-row button').filter({ hasText: 'veo-remote-video' })).toHaveCount(0);
-
-    const textSection = page.locator('.model-config-section').filter({ hasText: '文字生成' });
-    const hiddenTextPreset = textSection.locator('.model-preset-row button').filter({ hasText: 'gpt-remote-text-hidden' });
-    await expect(hiddenTextPreset).toHaveCount(0);
-    const expandTextPresetsButton = textSection.getByRole('button', { name: /^显示全部 \d+ 个$/ });
-    await expect(expandTextPresetsButton).toBeVisible();
-    await expandTextPresetsButton.click();
-    await expect(hiddenTextPreset).toBeVisible();
-    await textSection.getByRole('button', { name: '收起' }).click();
-    await expect(hiddenTextPreset).toHaveCount(0);
-
-    await page.locator('.model-config-section').filter({ hasText: '文字生成' }).locator('select').filter({ hasText: 'gpt-remote-text-primary' }).selectOption('gpt-remote-text');
-    await expect(page.locator('.model-config-section').filter({ hasText: '文字生成' }).locator('.image-model-priority-item').first()).toContainText('gpt-remote-text');
-
-    await page.locator('.model-list-item').filter({ hasText: '图片生成' }).click();
-    await expect(page.locator('.model-config-hero')).toContainText('图片生成');
-    await expect(page.locator('.model-runtime-strip')).toContainText('content.image.generate');
-    await expect(page.locator('.model-list-item').filter({ hasText: '图片生成' })).toHaveClass(/active/);
-    await expect(page.locator('.model-config-section')).toHaveCount(1);
-    await expect(page.locator('.model-config-section')).toContainText('图片生成');
-    await expect(page.locator('.model-config-section')).not.toContainText('文字模型池');
-    await expect(page.locator('.model-preset-row button').filter({ hasText: 'gpt-image-remote' })).toBeVisible();
-
-    await page.locator('.model-config-section').filter({ hasText: '图片生成' }).locator('select').filter({ hasText: 'gpt-image-remote' }).selectOption('imagen-remote');
-    await expect(page.locator('.model-config-section').filter({ hasText: '图片生成' }).locator('.image-model-priority-item').first()).toContainText('imagen-remote');
-
-    await page.locator('.model-list-item').filter({ hasText: '视频生成' }).click();
-    await expect(page.locator('.model-config-hero')).toContainText('视频理解 / 生成');
-    await expect(page.locator('.model-runtime-strip')).toContainText('content.video.generate');
-    await expect(page.locator('.model-runtime-strip')).toContainText('content.video.analyze');
-    await expect(page.locator('.model-list-item').filter({ hasText: '视频生成' })).toHaveClass(/active/);
-    await expect(page.locator('.model-config-section')).toHaveCount(1);
-    await expect(page.locator('.model-config-section')).toContainText('视频理解 / 生成');
-    await expect(page.locator('.model-config-section')).not.toContainText('图片模型优先级');
-    await expect(page.locator('.model-preset-row button').filter({ hasText: 'veo-remote-video' })).toBeVisible();
-
-    await page.locator('.model-config-section').filter({ hasText: '视频理解 / 生成' }).locator('select').filter({ hasText: 'veo-remote-video' }).selectOption('kling-remote-video');
-    await expect(page.locator('.model-config-section').filter({ hasText: '视频理解 / 生成' }).locator('.image-model-priority-item').first()).toContainText('kling-remote-video');
-
-    await page.locator('.model-list-item').filter({ hasText: '图片生成' }).click();
-    await page.locator('.model-config-section').filter({ hasText: '图片生成' }).locator('.model-preset-row button').filter({ hasText: 'gpt-image-remote' }).click();
-    await expect(page.locator('.model-config-section').filter({ hasText: '图片生成' }).locator('.image-model-priority-item').first()).toContainText('gpt-image-remote');
-
-    await page.getByRole('button', { name: '保存配置' }).click();
-    await expect.poll(
-      async () => page.evaluate(() => window.contentStudio.getModelConfig().then((config) => config.imageModels[0])),
-      { message: '等待模型配置保存完成', timeout: 20_000 },
-    ).toBe('gpt-image-remote');
-    await page.getByRole('button', { name: '完成' }).click();
-    await expect(page.locator('.settings-modal')).toHaveCount(0);
-
-    const showcaseImageModelSelect = page.locator('.showcase-page-frame select').filter({ hasText: 'gpt-image-remote' }).first();
-    await expect(showcaseImageModelSelect).toHaveValue('gpt-image-remote');
-    await showcaseImageModelSelect.selectOption('imagen-remote');
-    await expect(showcaseImageModelSelect).toHaveValue('imagen-remote');
-
-    await page.getByRole('button', { name: '图片生成' }).click();
-    await expect(page.locator('.params-panel')).toBeVisible();
-    if (await page.locator('.params-panel.collapsed').count()) {
-      await page.getByRole('button', { name: '展开右侧参数栏' }).click();
-    }
-    await expect(page.locator('.params-panel')).not.toHaveClass(/collapsed/);
-    const paramsPanelValues = await page.evaluate(() => {
-      const values = {};
-      document.querySelectorAll('.params-panel label').forEach((label) => {
-        const name = label.querySelector('span')?.textContent?.trim();
-        const select = label.querySelector('select');
-        if (name && select instanceof HTMLSelectElement) values[name] = select.value;
-      });
-      return values;
+    await openPlatformSettings(page);
+    await expect(page.getByRole('button', { name: '内容工厂', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '内容工厂主题', exact: true })).toHaveCount(0);
+    await expect(page.locator('.lime-settings-content h1')).toHaveText('通用');
+    const settingsFontFamily = await page.evaluate(() => {
+      const accountEntry = document.querySelector('.content-studio-platform-account-entry');
+      const dialog = document.querySelector('.lime-settings-dialog');
+      const navItem = document.querySelector('.lime-settings-nav-item');
+      return {
+        account: accountEntry ? window.getComputedStyle(accountEntry).fontFamily : '',
+        body: window.getComputedStyle(document.body).fontFamily,
+        dialog: dialog ? window.getComputedStyle(dialog).fontFamily : '',
+        nav: navItem ? window.getComputedStyle(navItem).fontFamily : '',
+      };
     });
-    expect(paramsPanelValues).toMatchObject({
-      文字模型: 'gpt-remote-text',
-      图片模型: 'imagen-remote',
-      视频模型: 'kling-remote-video',
+    expect(settingsFontFamily.account).toContain('Inter');
+    expect(settingsFontFamily.dialog).toContain('Inter');
+    expect(settingsFontFamily.nav).toBe(settingsFontFamily.dialog);
+
+    const settingsLayout = await page.evaluate(() => {
+      const dialog = document.querySelector('.lime-settings-dialog');
+      const body = document.querySelector('.lime-settings-body');
+      const footer = document.querySelector('.lime-settings-footer');
+      if (!dialog || !body || !footer) return null;
+      const dialogRect = dialog.getBoundingClientRect();
+      const footerRect = footer.getBoundingClientRect();
+      const bodyStyle = window.getComputedStyle(body);
+      return {
+        bodyOverflowY: bodyStyle.overflowY,
+        footerBottom: footerRect.bottom,
+        dialogBottom: dialogRect.bottom,
+        footerVisible: footerRect.bottom <= dialogRect.bottom && footerRect.top >= dialogRect.top,
+      };
     });
+    expect(settingsLayout).not.toBeNull();
+    expect(settingsLayout.bodyOverflowY).toBe('auto');
+    expect(settingsLayout.footerVisible).toBe(true);
+
+    const reduceMotionRow = page.locator('.lime-setting-row').filter({ hasText: '减少动画' });
+    await reduceMotionRow.locator('.lime-toggle').click();
+    await expect(page.locator('.lime-general-status')).toContainText(/当前窗口已预览|通用设置已保存/);
+    await expect(reduceMotionRow.locator('.lime-toggle')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByRole('button', { name: '个性化', exact: true }).click();
+    await expect(page.locator('.lime-settings-content h1')).toHaveText('个性化');
+    await expect(page.locator('.lime-settings-content')).toContainText('头像与昵称');
+
+    await page.getByRole('button', { name: '主题', exact: true }).click();
+    await expect(page.locator('.lime-settings-content h1')).toHaveText('主题');
+    await expect(page.locator('.lime-theme-settings')).toContainText('外观模式');
+    await page.getByRole('button', { name: '深色' }).click();
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('.lime-theme-status')).toContainText('当前窗口已预览');
+    await page.getByRole('button', { name: /海洋/ }).click();
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-color', 'ocean');
+    await expect(page.locator('.lime-theme-palette.active')).toContainText('海洋');
+
+    await page.getByRole('button', { name: '关闭设置' }).click();
+    await expect(page.locator('.lime-settings-dialog')).toHaveCount(0);
+
+    await openAgentsEntry(page);
+    await expect(page.locator('.agents-entry')).toBeVisible();
+    await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).toContainText(/saved-text-model|未配置可用模型/);
+    await expect(page.locator('.agents-entry .lime-runtime-model-popover')).toHaveCount(0);
+    await expect(page.locator('.agents-entry')).not.toContainText('图片生成模型');
+    await expect(page.locator('.agents-entry')).not.toContainText('saved-image-model');
+    await expect(page.locator('.agents-entry')).not.toContainText('saved-image-backup');
+
+    await openPlatformSettings(page);
+    await page.getByRole('button', { name: '模型', exact: true }).click();
+    await expect(page.locator('.lime-settings-content h1')).toHaveText('模型');
+    await expect(page.locator('.lime-model-settings')).toBeVisible();
+    const providerRows = await page.locator('.lime-model-provider-row').allTextContents();
+    expect(providerRows.join('\n')).not.toContain('OpenAI Compatible');
+    expect(providerRows.join('\n')).not.toContain('Anthropic Compatible');
+    expect(providerRows.join('\n')).not.toContain('Local Runtime');
+    await expect(page.locator('.lime-model-settings')).toContainText('未连接平台设置');
+    await expect(page.locator('.lime-model-settings')).toContainText('未连接平台设置 / 图片生成');
+    await expect(page.locator('.lime-model-settings')).toContainText('provider 设置由平台统一保存');
+    await page.getByRole('button', { name: '打开完整模型设置' }).click();
+    await expect(page.locator('.app-error-banner')).toContainText('当前窗口未连接平台设置中心，请从平台客户端打开内容工厂后再进入完整模型设置。');
+    await expect(page.locator('.app-error-banner')).not.toContainText('Error invoking remote method');
+    await expect(page.locator('.app-error-banner')).not.toContainText('platformHost:openModelSettings');
+    await expect(page.locator('.app-error-banner')).not.toContainText('runtime bridge');
+    await page.getByLabel('关闭错误提示').click();
+
+    await page.getByRole('button', { name: /未连接平台设置 \/ 图片生成/ }).click();
+    await page.getByLabel('API 密钥').fill('new-product-app-key');
+    await page.locator('.lime-model-add-priority input').fill('new-product-app-model');
+    await page.locator('.lime-model-add-priority button').click();
+    await page.locator('.lime-model-save-button').click();
+    await expect(page.locator('.lime-model-status')).toContainText('当前宿主未接入 settings.saveModel');
 
     const persisted = await page.evaluate(() => window.contentStudio.getModelConfig());
-    expect(persisted.textModel).toBe('gpt-remote-text');
-    expect(persisted.textModels[0]).toBe('gpt-remote-text');
-    expect(persisted.imageModels[0]).toBe('gpt-image-remote');
-    expect(persisted.videoModel).toBe('kling-remote-video');
-    expect(persisted.videoModels[0]).toBe('kling-remote-video');
-    expect(requests.some((request) => request.url === '/v1/models')).toBe(true);
+    expect(persisted.imageModels[0]).toBe('saved-image-model');
+    expect(persisted.hasImageApiKey).toBe(true);
+
+    await page.getByRole('button', { name: '账号', exact: true }).click();
+    await expect(page.locator('.lime-settings-content h1')).toHaveText('账号');
+    await expect(page.locator('.lime-settings-content')).toContainText('smoke@bugu.run');
+    await expect(page.locator('.lime-settings-dialog')).not.toContainText('业务设置');
+
+    await page.getByRole('button', { name: '关闭设置' }).click();
+    await expect(page.locator('.lime-settings-dialog')).toHaveCount(0);
   } finally {
     await electronApp?.close().catch(() => undefined);
     await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined);
-    await new Promise((resolveClose) => server.close(resolveClose));
   }
 });

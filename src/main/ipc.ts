@@ -117,6 +117,7 @@ import { ModelConfigStore } from './services/modelConfigStore';
 import { MixPackageStore } from './services/mixPackageStore';
 import { getOemRuntimeConfig } from './services/oemRuntimeConfig';
 import { OverlayCardStore } from './services/overlayCardStore';
+import { PlatformHostBridgeClient } from './services/platformHostBridgeClient';
 import { PromptDraftStore } from './services/promptDraftStore';
 import { PromptPackService } from './services/promptPackService';
 import { PlatformDraftStore } from './services/platformDraftStore';
@@ -371,7 +372,8 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const settings = new SettingsStore();
   const buguAuth = new BuguAuthService();
   const autoUpdates = new AutoUpdateService(settings, mainWindow);
-  const modelConfig = new ModelConfigStore();
+  const platformHost = new PlatformHostBridgeClient();
+  const modelConfig = new ModelConfigStore(platformHost);
   const fileAssociations = new FileAssociationService();
   const skills = new SkillManager();
   const skillSelection = new SkillSelectionStore();
@@ -379,7 +381,7 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const logs = new GenerationLogStore();
   const appServer = new AppServerSidecarService();
   const textGeneration = new TextGenerationService(modelConfig, appServer);
-  const promptAgent = new AppServerPromptAgentService(appServer, modelConfig);
+  const promptAgent = new AppServerPromptAgentService(appServer, modelConfig, platformHost);
   const imageSkills = new ImageSkillGenerationService(textGeneration);
   const inputSources = new InputSourceStore();
   const promptDrafts = new PromptDraftStore(inputSources, textGeneration, skills);
@@ -510,6 +512,18 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('modelConfig:get', () => modelConfig.readView());
   ipcMain.handle('modelConfig:save', (_event, input: SaveModelConfigInput) => modelConfig.save(input));
   ipcMain.handle('modelConfig:catalog', () => modelConfig.readCatalog());
+  ipcMain.handle('platformHost:getPlatformSettings', () => platformHost.getPlatformSettings());
+  ipcMain.handle('platformHost:savePlatformSettings', (_event, settings) => platformHost.savePlatformSettings(settings));
+  ipcMain.handle('platformHost:status', async () => {
+    await platformHost.ensureConnected();
+    return platformHost.status();
+  });
+  ipcMain.handle('platformHost:openModelSettings', () =>
+    platformHost.openIntent({
+      target: 'model-settings',
+      reason: 'Content Studio 请求打开平台模型设置。',
+    }),
+  );
 
   ipcMain.handle('skills:scan', (_event, workspacePath?: string) => skills.scan(workspacePath));
   ipcMain.handle('skills:installBuiltin', async (_event, slug: string, workspacePath: string) => {

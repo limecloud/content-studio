@@ -6,13 +6,8 @@ const DEFAULTS = {
   textEndpoint: 'https://api.anthropic.com',
   openaiTextEndpoint: 'https://api.openai.com/v1',
   geminiTextEndpoint: 'https://generativelanguage.googleapis.com/v1beta',
-  textModel: 'gpt-4o-mini',
   imageProtocol: 'openai-responses',
   imageEndpoint: 'https://api.openai.com/v1',
-  imageModel: 'gpt-image-2',
-  imageOuterModel: 'gpt-5.5',
-  videoModel: 'veo-3.1',
-  visionModel: 'vision-provider',
 };
 
 const TEXT_PROTOCOLS = new Set(['anthropic-messages', 'openai-chat', 'gemini-generate-content']);
@@ -114,16 +109,40 @@ function providerRecovery(check) {
       nextAction: '配置文字模型 Key 后重跑 provider 检查；文字生成只走显式 HTTP 协议。',
     };
   }
+  if (reason === 'TEXT_PROVIDER_MODEL_MISSING') {
+    return {
+      requiredEnv: ['CONTENT_STUDIO_TEXT_MODEL'],
+      nextAction: '配置文字模型 ID 后重跑；Content Studio 不再内置默认文字模型。',
+    };
+  }
   if (reason === 'VISION_ENDPOINT_MISSING') {
     return {
       requiredEnv: ['CONTENT_STUDIO_VISION_ENDPOINT or CONTENT_STUDIO_IMAGE_UNDERSTANDING_ENDPOINT'],
       nextAction: '配置视觉理解 endpoint 后重跑；对标图反推必须由真实视觉服务返回结构化结果。',
     };
   }
+  if (reason === 'VISION_MODEL_MISSING') {
+    return {
+      requiredEnv: ['CONTENT_STUDIO_VISION_MODEL'],
+      nextAction: '配置视觉理解模型 ID 后重跑；视觉拆解不再回落内置模型名。',
+    };
+  }
   if (reason === 'IMAGE_PROVIDER_KEY_MISSING') {
     return {
       requiredEnv: imageRequiredEnv(check.protocol),
       nextAction: '配置图片生成 Key 后重跑；图片生成必须走真实 provider，不生成占位图。',
+    };
+  }
+  if (reason === 'IMAGE_MODEL_MISSING') {
+    return {
+      requiredEnv: ['CONTENT_STUDIO_IMAGE_MODEL'],
+      nextAction: '配置图片生成模型 ID 后重跑；图片生成不再内置默认模型。',
+    };
+  }
+  if (reason === 'IMAGE_OUTER_MODEL_MISSING') {
+    return {
+      requiredEnv: ['CONTENT_STUDIO_IMAGE_OUTER_MODEL or CONTENT_STUDIO_TEXT_MODEL'],
+      nextAction: 'OpenAI Responses 图片检查需要显式外层模型 ID；请配置后重跑。',
     };
   }
   if (reason === 'VIDEO_ENDPOINT_MISSING') {
@@ -136,6 +155,12 @@ function providerRecovery(check) {
     return {
       requiredEnv: ['CONTENT_STUDIO_VIDEO_API_KEY or VIDEO_API_KEY'],
       nextAction: '配置视频 provider Key 后重跑；真实视频联调还需要显式开启媒体检查。',
+    };
+  }
+  if (reason === 'VIDEO_MODEL_MISSING') {
+    return {
+      requiredEnv: ['CONTENT_STUDIO_VIDEO_MODEL'],
+      nextAction: '配置视频生成模型 ID 后重跑；视频检查不再内置默认模型。',
     };
   }
   if (reason === 'NETWORK_CHECK_NOT_ENABLED') {
@@ -634,7 +659,7 @@ async function postImageProbe({ protocol, endpoint, key, model, outerModel }) {
 
 async function checkTextProvider(env, allowNetwork) {
   const protocol = textProtocol(env);
-  const model = envValue(env, 'CONTENT_STUDIO_TEXT_MODEL') || DEFAULTS.textModel;
+  const model = envValue(env, 'CONTENT_STUDIO_TEXT_MODEL');
   const endpoint = cleanBaseUrl(envValue(env, 'CONTENT_STUDIO_TEXT_BASE_URL'), defaultTextEndpoint(protocol));
   const key = textKey(env, protocol);
   if (!key) {
@@ -643,6 +668,14 @@ async function checkTextProvider(env, allowNetwork) {
       model,
       reason: 'TEXT_PROVIDER_KEY_MISSING',
       configured: configuredFlags({ apiKey: key }),
+    });
+  }
+  if (!model) {
+    return providerCheck('text', 'blocked', {
+      protocol,
+      model,
+      reason: 'TEXT_PROVIDER_MODEL_MISSING',
+      configured: configuredFlags({ apiKey: key, model }),
     });
   }
   if (!allowNetwork) {
@@ -695,12 +728,19 @@ async function checkTextProvider(env, allowNetwork) {
 async function checkVisionProvider(env, allowNetwork) {
   const endpoint = envValue(env, 'CONTENT_STUDIO_VISION_ENDPOINT', 'CONTENT_STUDIO_IMAGE_UNDERSTANDING_ENDPOINT');
   const key = envValue(env, 'CONTENT_STUDIO_VISION_API_KEY', 'CONTENT_STUDIO_IMAGE_UNDERSTANDING_API_KEY', 'CONTENT_STUDIO_IMAGE_API_KEY', 'IMAGE_API_KEY');
-  const model = envValue(env, 'CONTENT_STUDIO_VISION_MODEL') || DEFAULTS.visionModel;
+  const model = envValue(env, 'CONTENT_STUDIO_VISION_MODEL');
   if (!endpoint) {
     return providerCheck('vision', 'blocked', {
       model,
       reason: 'VISION_ENDPOINT_MISSING',
       configured: configuredFlags({ endpoint, apiKey: key }),
+    });
+  }
+  if (!model) {
+    return providerCheck('vision', 'blocked', {
+      model,
+      reason: 'VISION_MODEL_MISSING',
+      configured: configuredFlags({ endpoint, apiKey: key, model }),
     });
   }
   if (!allowNetwork) {
@@ -749,8 +789,8 @@ async function checkVisionProvider(env, allowNetwork) {
 async function checkImageProvider(env, allowNetwork, allowMedia) {
   const protocol = imageProtocol(env);
   const key = imageKey(env, protocol);
-  const model = envValue(env, 'CONTENT_STUDIO_IMAGE_MODEL') || DEFAULTS.imageModel;
-  const outerModel = envValue(env, 'CONTENT_STUDIO_IMAGE_OUTER_MODEL', 'CONTENT_STUDIO_TEXT_MODEL') || DEFAULTS.imageOuterModel;
+  const model = envValue(env, 'CONTENT_STUDIO_IMAGE_MODEL');
+  const outerModel = envValue(env, 'CONTENT_STUDIO_IMAGE_OUTER_MODEL', 'CONTENT_STUDIO_TEXT_MODEL');
   const endpoint = cleanBaseUrl(envValue(env, 'CONTENT_STUDIO_IMAGE_BASE_URL'), DEFAULTS.imageEndpoint);
   if (!key) {
     return providerCheck('image', 'blocked', {
@@ -759,6 +799,24 @@ async function checkImageProvider(env, allowNetwork, allowMedia) {
       outerModel,
       reason: 'IMAGE_PROVIDER_KEY_MISSING',
       configured: configuredFlags({ apiKey: key }),
+    });
+  }
+  if (!model) {
+    return providerCheck('image', 'blocked', {
+      protocol,
+      model,
+      outerModel,
+      reason: 'IMAGE_MODEL_MISSING',
+      configured: configuredFlags({ apiKey: key, model }),
+    });
+  }
+  if (protocol === 'openai-responses' && !outerModel) {
+    return providerCheck('image', 'blocked', {
+      protocol,
+      model,
+      outerModel,
+      reason: 'IMAGE_OUTER_MODEL_MISSING',
+      configured: configuredFlags({ apiKey: key, model, outerModel }),
     });
   }
   if (!allowNetwork || !allowMedia) {
@@ -796,12 +854,19 @@ async function checkImageProvider(env, allowNetwork, allowMedia) {
 async function checkVideoProvider(env, allowNetwork, allowMedia) {
   const endpoint = envValue(env, 'CONTENT_STUDIO_VIDEO_ENDPOINT');
   const key = envValue(env, 'CONTENT_STUDIO_VIDEO_API_KEY', 'VIDEO_API_KEY');
-  const model = envValue(env, 'CONTENT_STUDIO_VIDEO_MODEL') || DEFAULTS.videoModel;
+  const model = envValue(env, 'CONTENT_STUDIO_VIDEO_MODEL');
   if (!endpoint || !key) {
     return providerCheck('video', 'blocked', {
       model,
       reason: !endpoint ? 'VIDEO_ENDPOINT_MISSING' : 'VIDEO_PROVIDER_KEY_MISSING',
       configured: configuredFlags({ endpoint, apiKey: key }),
+    });
+  }
+  if (!model) {
+    return providerCheck('video', 'blocked', {
+      model,
+      reason: 'VIDEO_MODEL_MISSING',
+      configured: configuredFlags({ endpoint, apiKey: key, model }),
     });
   }
   if (!allowNetwork || !allowMedia) {

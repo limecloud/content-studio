@@ -21,6 +21,53 @@ const COMMAND_CENTER_MAX_HEIGHT = {
   managed: 195,
   flow: 220,
 };
+const NAV_BUTTON_LABELS = new Set([
+  'agents',
+  '图片生成',
+  'AI 生图',
+  '拆解素材',
+  '场景提示词',
+  '绿幕文案图',
+  '视频生成',
+  'AI 视频',
+  '视频脚本',
+  '视频 Prompt',
+  '混剪包导出',
+  '内容制造',
+  '成型知识库',
+  '内容知识地图',
+  '审核任务',
+  '品牌 / 产品知识库',
+  '场景库',
+  'IP 知识库',
+  '输入源 / 文档转换',
+  '素材库',
+  'skills 管理',
+]);
+const AGENTS_FORBIDDEN_TERMS = [
+  '本地输入源：',
+  '输出要求：',
+  '团队知识包：',
+  '输入源快照：',
+  '内容工厂的 Prompt 生成 Agent',
+  '本轮 skill 执行规范',
+  'Skills',
+  'Lime App Server',
+  'Lime Agent Server',
+  'App Server',
+  'Provider Store',
+  'Provider projection',
+  'runtime bridge',
+  'Product App',
+  'API Key',
+  'credential',
+  'secret',
+  'token',
+  'backend',
+  'artifact',
+  'session',
+  'blocked:',
+];
 const CRC32_TABLE = new Uint32Array(256).map((_, index) => {
   let value = index;
   for (let bit = 0; bit < 8; bit += 1) {
@@ -218,8 +265,21 @@ async function closeHttpServer(server) {
 }
 
 async function clickButton(page, label) {
+  if (NAV_BUTTON_LABELS.has(label)) {
+    await clickNavItem(page, label);
+    return;
+  }
+
+  if (label === '设置') {
+    const settingsButton = page.locator('.content-studio-platform-account-entry .lime-account-entry-settings').first();
+    if (await settingsButton.isVisible().catch(() => false)) {
+      await settingsButton.click();
+      return;
+    }
+  }
+
   const scopes = [
-    page.locator('.settings-modal'),
+    page.locator('.lime-settings-dialog'),
     page.locator('.detail-dialog-card'),
     page.locator('body'),
   ];
@@ -244,40 +304,17 @@ async function clickButton(page, label) {
   throw new Error(`未找到可点击按钮：${label}`);
 }
 
-async function openPromptSupportDrawer(page) {
-  const drawer = page.locator('.prompt-workbench:visible .prompt-support-drawer').first();
-  await expect(drawer).toBeVisible({ timeout: 20_000 });
-  await drawer.evaluate((element) => {
-    if (element instanceof HTMLDetailsElement) {
-      element.open = true;
-    }
-  });
-  const layout = drawer.locator('.prompt-workbench-layout').first();
-  await expect(layout).toBeAttached({ timeout: 20_000 });
-  await layout.evaluate((element) => {
-    element.scrollLeft = 0;
-    element.scrollTop = 0;
-  });
-  const panel = drawer.locator('.prompt-source-panel').first();
-  const titleInput = promptSourceTitleInput(panel);
-  await titleInput.scrollIntoViewIfNeeded();
-  await expect(titleInput).toBeEditable({ timeout: 20_000 });
-  return panel;
-}
-
-function promptSourcePurposeSelect(panel) {
-  return panel.locator('.workflow-form-grid label').filter({ hasText: '用途' }).locator('select').first();
-}
-
-function promptSourceTitleInput(panel) {
-  return panel.locator('.workflow-form-grid label').filter({ hasText: '标题' }).locator('input').first();
-}
-
-function promptSourceIntentInput(panel) {
-  return panel.locator('.workflow-form-grid label').filter({ hasText: '用户意图' }).locator('textarea').first();
-}
-
 async function clickNavItem(page, label) {
+  await ensureSidebarExpanded(page);
+  await expandAllNavGroups(page);
+  if (label === 'agents' || label === 'skills 管理') {
+    const actionTitle = label === 'agents' ? '新对话' : 'skills 管理';
+    const agentItem = page.locator(`.nav-stack button.agent-nav-action[title="${actionTitle}"]`).first();
+    await expect(agentItem, `${label} 入口应存在`).toBeVisible();
+    await agentItem.click();
+    return;
+  }
+
   const escapedLabel = label.replace(/"/g, '\\"');
   const semanticItem = page.locator(
     `.nav-stack button.nav-item[aria-label="${escapedLabel}"], .nav-stack button.nav-item[title="${escapedLabel}"]`,
@@ -287,6 +324,29 @@ async function clickNavItem(page, label) {
     : page.locator('.nav-stack button.nav-item').filter({ hasText: label }).first();
   await expect(item, `导航项应存在：${label}`).toBeVisible();
   await item.click();
+}
+
+async function openArticleWorkbenchFromAgents(page) {
+  await clickNavItem(page, 'agents');
+  await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+  await clickButton(page, '打开文案工作台');
+  await expect(page.locator('.article-module-workbench')).toBeVisible({ timeout: 20_000 });
+}
+
+async function addAgentsProductImage(page) {
+  await page.locator('.agents-entry-composer button[aria-label="添加输入"]').first().click();
+  const addMenu = page.locator('.agents-entry .agents-add-menu');
+  await expect(addMenu).toBeVisible({ timeout: 20_000 });
+  await addMenu.locator('button').filter({ hasText: '添加照片和文件' }).first().click();
+}
+
+async function expectAgentsProductImageCount(page, count) {
+  const addButton = page.locator('.agents-entry-composer button[aria-label="添加输入"]').first();
+  await addButton.click();
+  const addMenu = page.locator('.agents-entry .agents-add-menu');
+  await expect(addMenu).toContainText(`产品图 ${count}`, { timeout: 20_000 });
+  await addButton.click();
+  await expect(addMenu).toHaveCount(0);
 }
 
 async function expectNavLabelAbsent(page, label) {
@@ -300,6 +360,10 @@ async function expectNavLabelAbsent(page, label) {
 }
 
 async function expectNavLabelVisible(page, label) {
+  if (label === 'agents') {
+    await expect(page.locator('.nav-stack .agent-nav-root'), 'agents 一级入口应存在').toBeVisible();
+    return;
+  }
   await expect.poll(
     async () => page.locator('.nav-stack .nav-label').evaluateAll(
       (items, expected) => items.filter((item) => item.textContent?.trim() === expected).length,
@@ -307,6 +371,27 @@ async function expectNavLabelVisible(page, label) {
     ),
     { message: `导航项应作为普通用户入口出现：${label}` },
   ).toBeGreaterThan(0);
+}
+
+async function expandAllNavGroups(page) {
+  await ensureSidebarExpanded(page);
+  const collapsedGroupToggles = page.locator('.nav-group-toggle[aria-expanded="false"], .agent-nav-root[aria-expanded="false"]');
+  while (await collapsedGroupToggles.count()) {
+    await collapsedGroupToggles.first().click();
+  }
+}
+
+async function expectDefaultNavGroupCollapse(page) {
+  const groups = await page.locator('.nav-group-toggle').evaluateAll((buttons) =>
+    buttons.map((button) => ({
+      label: button.textContent?.replace(/[+−-]/g, '').trim(),
+      expanded: button.getAttribute('aria-expanded'),
+    })),
+  );
+  expect(groups.length, JSON.stringify(groups)).toBeGreaterThanOrEqual(2);
+  for (const group of groups) {
+    expect(group.expanded, JSON.stringify(groups)).toBe('false');
+  }
 }
 
 async function expectNotStaticV2Page(page) {
@@ -390,6 +475,10 @@ async function expectOverlayAboveFloatingControl(page, overlaySelector, floating
 }
 
 async function ensureSidebarExpanded(page) {
+  const viewport = page.viewportSize();
+  if (viewport && viewport.width <= 1440) {
+    await page.setViewportSize({ width: 1600, height: viewport.height });
+  }
   if (await page.locator('.app-shell').getAttribute('data-sidebar') === 'expanded') return;
   await page.getByRole('button', { name: '展开侧边栏' }).first().click();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar', 'expanded');
@@ -480,11 +569,216 @@ async function startFakeOpenAITextServer(onPrompt) {
   return { server, baseUrl, requests };
 }
 
+async function startFakePlatformRuntimeBridge(options = {}) {
+  const requests = [];
+  const token = options.token ?? 'platform-runtime-e2e-token';
+  const defaultAppearance = {
+    colorTheme: 'emerald',
+    fontScale: 1,
+    serifEnabled: false,
+  };
+  const snapshot = options.snapshot ?? {
+    hostKind: 'electron',
+    hostVersion: 'e2e',
+    appId: 'content-studio',
+    entryKey: 'content-studio-agents-e2e',
+    locale: 'zh-CN',
+    theme: 'light',
+    appearance: defaultAppearance,
+    modelSettingsVersion: 'e2e-model-settings',
+  };
+  const modelSettings = options.modelSettings ?? {
+    version: 'e2e-model-settings',
+    updatedAt: '2026-06-09T00:00:00.000Z',
+    defaultAgentProviderId: 'platform-openai',
+    defaultTextModelId: 'test-text-model',
+    providers: [{
+      id: 'platform-openai',
+      displayName: 'Platform OpenAI',
+      protocol: 'openai-compatible',
+      capabilityKinds: ['text'],
+      enabled: true,
+      apiKeyConfigured: true,
+      authType: 'api-key',
+      baseUrl: 'https://api.openai.example/v1',
+      useResponsesApi: true,
+      models: ['test-text-model'],
+    }, {
+      id: 'platform-anthropic',
+      displayName: 'Platform Anthropic',
+      protocol: 'anthropic-compatible',
+      capabilityKinds: ['text'],
+      enabled: true,
+      apiKeyConfigured: true,
+      authType: 'api-key',
+      baseUrl: 'https://api.anthropic.example/v1',
+      models: ['other-provider-text-model'],
+    }],
+  };
+
+  const writeJson = (response, statusCode, payload) => {
+    response.statusCode = statusCode;
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify(payload));
+  };
+
+  const server = createServer((request, response) => {
+    if (request.method !== 'POST') {
+      writeJson(response, 405, { ok: false, error: { code: 'method_not_allowed', message: 'method not allowed' } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${token}`) {
+      writeJson(response, 401, { ok: false, error: { code: 'unauthorized', message: 'unauthorized' } });
+      return;
+    }
+
+    let body = '';
+    request.on('data', (chunk) => { body += chunk.toString(); });
+    request.on('end', () => {
+      const payload = body ? JSON.parse(body) : {};
+      requests.push({ url: request.url, body: payload });
+
+      if (request.url === '/snapshot') {
+        writeJson(response, 200, { ok: true, snapshot });
+        return;
+      }
+
+      if (request.url === '/capability/invoke') {
+        if (payload.capability === 'lime.modelSettings') {
+          if (payload.operation === 'model-settings/read' || payload.operation === 'model-settings/save') {
+            writeJson(response, 200, {
+              ok: true,
+              result: {
+                ok: true,
+                requestId: `model-settings-${payload.operation}`,
+                output: payload.operation === 'model-settings/save'
+                  ? payload.input?.settings ?? modelSettings
+                  : modelSettings,
+                event: {},
+              },
+            });
+            return;
+          }
+        }
+
+        if (payload.capability === 'lime.agent' && payload.operation === 'agentSession/turn/start') {
+          const input = payload.input ?? {};
+          const prompt = typeof input.prompt === 'string' ? input.prompt : '';
+          const userIntent = prompt.match(/用户意图：([\s\S]*?)(\n场景卡：|\n团队知识包：|$)/)?.[1]?.trim() || prompt;
+          const defaultDraftContent = [
+            '# 真实生活场景图片 Prompt',
+            '',
+            '目标：基于产品图生成自然生活化的图片候选。',
+            '',
+            `用户意图：${userIntent}`,
+            '',
+            '画面：保留产品主体，使用手机实拍视角，背景为日常桌面或办公室抽屉。',
+            '',
+            '负面约束：避免棚拍感、夸张光效和不可追溯功效表达。',
+          ].join('\n');
+          const draftContent = typeof options.agentDraftContent === 'string'
+            ? options.agentDraftContent
+            : defaultDraftContent;
+          const artifactTitle = typeof options.agentArtifactTitle === 'string'
+            ? options.agentArtifactTitle
+            : 'E2E agents Prompt Draft';
+          const modelId = input.runtimeOptions?.modelId || input.modelPolicy?.preferredModelId || 'test-text-model';
+          const baseRuntimeEvent = (event, sequence) => ({
+            sessionId: 'platform-session-e2e',
+            threadId: 'platform-thread-e2e',
+            turnId: 'platform-turn-e2e',
+            ...event,
+            sequence,
+            payload: event.payload ?? {},
+          });
+          const extraRuntimeEvents = Array.isArray(options.agentRuntimeEvents)
+            ? options.agentRuntimeEvents.map((event, index) => baseRuntimeEvent(event, index + 2))
+            : [];
+          writeJson(response, 200, {
+            ok: true,
+            result: {
+              ok: true,
+              requestId: 'agent-turn',
+              output: {
+                ok: true,
+                state: 'started',
+                sessionId: 'platform-session-e2e',
+                threadId: 'platform-thread-e2e',
+                turnId: 'platform-turn-e2e',
+                bridge: 'app-server-json-rpc',
+                message: 'platform runtime started',
+                readiness: { state: 'ready', reasons: [], setupActions: [] },
+                runtimeContext: { modelProfile: { modelId } },
+                events: [
+                  baseRuntimeEvent({
+                    type: 'message.delta',
+                    payload: {
+                      text: draftContent,
+                      model: modelId,
+                      title: options.agentMessageTitle,
+                    },
+                  }, 1),
+                  ...extraRuntimeEvents,
+                  baseRuntimeEvent({
+                    type: 'artifact.snapshot',
+                    payload: {
+                      artifactId: 'e2e-agents-artifact',
+                      artifactRef: 'e2e-agents-artifact',
+                      title: artifactTitle,
+                      kind: 'markdown',
+                      content: draftContent,
+                      model: modelId,
+                    },
+                  }, extraRuntimeEvents.length + 2),
+                ],
+                bridgeProfile: { mode: 'fake-host-bridge' },
+              },
+              event: {},
+            },
+          });
+          return;
+        }
+      }
+
+      writeJson(response, 404, { ok: false, error: { code: 'not_found', message: 'not found' } });
+    });
+  });
+
+  const endpoint = await new Promise((resolveListen) => {
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('无法启动本地平台 Host Bridge。');
+      resolveListen(`http://127.0.0.1:${address.port}`);
+    });
+  });
+  const descriptor = {
+    protocol: 'lime.runtimeBridge',
+    version: 1,
+    endpoint,
+    token,
+    appId: snapshot.appId,
+    entryKey: snapshot.entryKey,
+    expiresAt: '2099-01-01T00:00:00.000Z',
+  };
+  return {
+    server,
+    endpoint,
+    descriptor,
+    snapshot,
+    modelSettings,
+    requests,
+    close: () => closeHttpServer(server),
+  };
+}
+
 async function expectModelSettingsVisible(page) {
-  await expect(page.getByText('生成服务设置')).toBeVisible();
-  await expect(page.locator('.model-settings-layout')).toContainText('文字生成');
-  await expect(page.locator('.model-settings-layout')).toContainText('图片生成');
-  await expect(page.locator('.model-settings-layout')).toContainText('视频生成');
+  await expect(page.locator('.lime-settings-dialog')).toBeVisible();
+  await expect(page.locator('.lime-model-settings')).toBeVisible();
+  await expect(page.locator('.lime-model-settings')).not.toContainText('Content Studio 文案生成');
+  await expect(page.locator('.lime-model-settings')).not.toContainText('Content Studio 图片生成');
+  await expect(page.locator('.lime-model-settings')).not.toContainText('Content Studio 视频生成');
+  await expect(page.locator('.lime-model-settings')).toContainText('provider 设置由平台统一保存');
+  await expect(page.locator('.lime-model-settings')).toContainText('打开完整模型设置');
 }
 
 async function expectAgentBusinessReply(locator, expected) {
@@ -493,6 +787,13 @@ async function expectAgentBusinessReply(locator, expected) {
     await expect(locator).toContainText(expected.secondary, { timeout: 20_000 });
   }
   await expect(locator).toContainText(/blocked:text-provider|Prompt 草稿|可执行 Prompt/, { timeout: 20_000 });
+}
+
+async function expectAgentsUiHidesInternalTerms(page, selector = '.agents-workbench') {
+  const target = page.locator(selector);
+  for (const term of AGENTS_FORBIDDEN_TERMS) {
+    await expect(target, `agents UI 不应展示内部词：${term}`).not.toContainText(term);
+  }
 }
 
 async function startFakeBuguContentWorkspaceServer() {
@@ -1076,7 +1377,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     await page.getByLabel('用自然语言描述你想要的技能').fill('创建一个小红书护肤品封面技能，适合高端护肤品牌种草。');
     await expect(page.getByRole('button', { name: 'AI 生成技能' })).toBeEnabled();
     await clickButton(page, 'AI 生成技能');
-    await expect(page.getByText('文字模型未配置')).toBeVisible();
+    await expect(page.locator('.error-banner')).toContainText('文字模型未配置');
     await clickButton(page, '关闭');
 
     await clickButton(page, '导出 / 编辑');
@@ -1120,7 +1421,7 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
 
     await clickButton(page, '视频生成');
     await expect(page.getByRole('heading', { name: '爆款视频拆解与脚本工厂' })).toBeVisible();
-    await clickButton(page, '文章生成');
+    await openArticleWorkbenchFromAgents(page);
     await expectCommandCenter(page, '.article-module-workbench > .module-command-center', 'compact');
     await expect(page.locator('.article-module-workbench > .v2-feature-hero')).toHaveCount(0);
     await expect(page.locator('.article-agent-canvas')).toBeVisible();
@@ -1176,11 +1477,11 @@ test('真实 Electron 壳层、preload bridge、导航和详情弹窗可用', as
     await expect(page.locator('.detail-dialog-card')).toHaveCount(0);
 
     await clickButton(page, '设置');
-    await expect(page.locator('.settings-modal')).toBeVisible();
+    await expect(page.locator('.lime-settings-dialog')).toBeVisible();
     await clickButton(page, '模型');
     await expectModelSettingsVisible(page);
-    await clickButton(page, '完成');
-    await expect(page.locator('.settings-modal')).toHaveCount(0);
+    await clickButton(page, '关闭设置');
+    await expect(page.locator('.lime-settings-dialog')).toHaveCount(0);
 
     const scrollState = await page.evaluate(() => {
       const viewport = document.scrollingElement || document.documentElement;
@@ -1207,13 +1508,14 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
   await withContentStudio(
     testInfo,
     async ({ page }) => {
-    await clickNavItem(page, 'AI 生图');
-    await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar', 'collapsed');
-    await expect(page.locator('.sidebar')).toBeVisible();
-    await expect(page.getByRole('button', { name: '展开侧边栏' }).first()).toBeVisible();
-    await expect(page.locator('.ai-showcase-shell')).toBeVisible();
-    await page.setViewportSize({ width: 2048, height: 1152 });
-    await expect(page.locator('.ai-showcase-left')).toContainText('选择场景');
+      await page.setViewportSize({ width: 2048, height: 1152 });
+      await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar', 'expanded');
+      await clickNavItem(page, 'AI 生图');
+      await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar', 'expanded');
+      await expect(page.locator('.sidebar')).toBeVisible();
+      await expect(page.getByRole('button', { name: '折叠侧边栏' }).first()).toBeVisible();
+      await expect(page.locator('.ai-showcase-shell')).toBeVisible();
+      await expect(page.locator('.ai-showcase-left')).toContainText('选择场景');
     await expect(page.locator('.ai-showcase-left')).toContainText('模特产品展示');
     await expect(page.locator('.scene-panel')).toContainText('选择场景 （模特产品展示）');
     await expect(page.locator('.scene-panel')).not.toContainText('服装上身与商拍展示');
@@ -1452,12 +1754,16 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
     await expect(page.locator('.ai-history-record-thumb').first().locator('strong')).toHaveCount(0);
     await page.getByRole('button', { name: '关闭历史记录' }).click();
     if (aiImageFixtureEnabled) {
-      await expect(page.locator('.ai-case-board')).toContainText('后端素材 228 组 · 577 张资产');
+      await expect(page.locator('.ai-case-board')).toContainText('公共素材 228 组 · 577 张资产');
       await expect(page.locator('.ai-case-board')).toContainText('当前功能 33 组');
       await expect(page.locator('.ai-case-card')).toHaveCount(33);
     } else {
       await expect.poll(async () => page.locator('.ai-case-card').count()).toBeGreaterThan(10);
     }
+    await expect(page.locator('.ai-case-board')).not.toContainText('Error invoking remote method');
+    await expect(page.locator('.ai-case-board')).not.toContainText('oem:getSiteConfig');
+    await expect(page.locator('.ai-case-board')).not.toContainText('OEM site config request failed');
+    await expect(page.locator('.ai-case-board')).not.toContainText('后端读取失败');
     const splitScrollState = await page.evaluate(() => {
       const viewport = document.scrollingElement || document.documentElement;
       const left = document.querySelector('.ai-showcase-left');
@@ -1694,16 +2000,16 @@ test('模型密钥不可解密时进入统一授权处理', async ({}, testInfo)
 
   try {
     await withContentStudio(testInfo, async ({ page }) => {
-      await expect(page.locator('.model-reauthorization-banner')).toContainText('文字、图片、视频 API Key');
-      await expect(page.locator('.settings-modal')).toBeVisible();
+      await expect(page.locator('.model-reauthorization-banner')).toContainText('文字、图片、视频访问凭据');
+      await expect(page.locator('.lime-settings-dialog')).toBeVisible();
       await expectModelSettingsVisible(page);
-      await expect(page.locator('.model-auth-warning')).toContainText('文字、图片、视频 API Key 需要重新授权');
+      await expect(page.locator('.lime-model-status')).toContainText('provider 设置由平台统一保存');
 
-      await clickButton(page, '完成');
-      await expect(page.locator('.settings-modal')).toHaveCount(0);
+      await clickButton(page, '关闭设置');
+      await expect(page.locator('.lime-settings-dialog')).toHaveCount(0);
       await page.locator('.model-reauthorization-banner button').click();
-      await expect(page.locator('.settings-modal')).toBeVisible();
-      await expect(page.locator('.model-auth-warning')).toContainText('当前系统无法读取已保存的加密密钥');
+      await expect(page.locator('.lime-settings-dialog')).toBeVisible();
+      await expectModelSettingsVisible(page);
     }, { modelConfigPath });
   } finally {
     await rm(configDir, { recursive: true, force: true });
@@ -1719,10 +2025,12 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
   await withContentStudio(
     testInfo,
     async ({ page }) => {
+      await page.setViewportSize({ width: 2048, height: 1152 });
+      await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar', 'expanded');
       await clickNavItem(page, 'AI 视频');
-      await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar', 'collapsed');
+      await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar', 'expanded');
       await expect(page.locator('.sidebar')).toBeVisible();
-      await expect(page.getByRole('button', { name: '展开侧边栏' }).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: '折叠侧边栏' }).first()).toBeVisible();
       await expect(page.locator('.ai-video-showcase-shell')).toBeVisible();
       await page.setViewportSize({ width: 2048, height: 1152 });
       const videoSplitLayout = await page.evaluate(() => {
@@ -1762,7 +2070,7 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       expect(videoSplitLayout.documentHeight, JSON.stringify(videoSplitLayout)).toBe(videoSplitLayout.viewportHeight);
       expect(videoSplitLayout.leftOverflowY, JSON.stringify(videoSplitLayout)).toBe('auto');
       expect(videoSplitLayout.mainOverflowY, JSON.stringify(videoSplitLayout)).toBe('hidden');
-      expect(videoSplitLayout.collapseDisplay, JSON.stringify(videoSplitLayout)).toBe('none');
+      expect(videoSplitLayout.collapseDisplay, JSON.stringify(videoSplitLayout)).not.toBe('none');
       await expect(page.locator('.ai-video-scene-heading')).toContainText('选择场景');
       await expect(page.locator('.ai-video-scene-heading')).toContainText('分镜图');
       await expect(page.locator('.ai-video-scene-selector')).toContainText('选择功能');
@@ -1890,7 +2198,11 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
       await expect(page.locator('img[src*="oss.dressingkit.com"], video[src*="oss.dressingkit.com"]')).toHaveCount(0);
       await expect(page.locator('.ai-video-industry-filter')).toContainText('服饰类');
       await expect(page.locator('.ai-video-industry-filter')).toContainText('运动户外类');
-      await expect(page.locator('.ai-video-case-board')).toContainText('后端素材 51 组 · 111 个资产 · 当前功能 9 组');
+      await expect(page.locator('.ai-video-case-board')).toContainText('公共视频案例 51 组 · 111 个资产 · 当前功能 9 组');
+      await expect(page.locator('.ai-video-case-board')).not.toContainText('Error invoking remote method');
+      await expect(page.locator('.ai-video-case-board')).not.toContainText('oem:getSiteConfig');
+      await expect(page.locator('.ai-video-case-board')).not.toContainText('OEM site config request failed');
+      await expect(page.locator('.ai-video-case-board')).not.toContainText('后端读取失败');
       await expect(page.locator('.ai-video-case-card')).toHaveCount(9);
       await expect(page.locator('.ai-video-case-card img')).not.toHaveCount(0);
       await expect(page.locator('.ai-video-case-card video')).toHaveCount(0);
@@ -2305,19 +2617,26 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
   test.setTimeout(120_000);
 
   await withContentStudio(testInfo, async ({ page }) => {
+    await expectDefaultNavGroupCollapse(page);
+    await expandAllNavGroups(page);
+
     for (const label of [
+      'agents',
+      '图片生成',
+      'AI 生图',
+      '拆解素材',
+      '场景提示词',
+      '绿幕文案图',
       '合规检测',
       '图片精修',
       '视频脚本',
       '成品视频导入',
-      '标题生成',
-      '脚本生成',
       '内容制造',
       '内容知识地图',
       '审核任务',
       '输入源 / 文档转换',
       '场景库',
-      '运行历史',
+      '素材库',
     ]) {
       await expectNavLabelVisible(page, label);
     }
@@ -2330,9 +2649,20 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
       '作战编组',
       '执行队列',
       '行动记录',
+      '文章生成',
+      '标题生成',
+      '脚本生成',
+      'Prompt 工作台',
+      '运行历史',
     ]) {
       await expectNavLabelAbsent(page, label);
     }
+
+    await clickNavItem(page, 'agents');
+    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.agents-entry-board')).toContainText('文章生成');
+    await expect(page.locator('.agents-entry-board')).toContainText('标题生成');
+    await expect(page.locator('.agents-entry-board')).toContainText('脚本生成');
 
     await clickNavItem(page, '内容制造');
     await expect(page.locator('.content-batch-workbench, .content-batch-empty')).toBeVisible();
@@ -2368,36 +2698,7 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     expect(reviewAgentLayout?.panelHeight ?? 0, JSON.stringify(reviewAgentLayout)).toBeGreaterThanOrEqual((reviewAgentLayout?.workbenchHeight ?? 0) * 0.58);
     await expectNotStaticV2Page(page);
 
-    await clickNavItem(page, 'Prompt 工作台');
-    await expect(page.locator('.prompt-workbench')).toBeVisible();
-    await expectCommandCenter(page, '.prompt-workbench > .module-command-center', 'compact');
-    await expect(page.locator('.prompt-workbench > .v2-feature-hero')).toHaveCount(0);
-    await expect(page.locator('.prompt-workbench > .prompt-session-panel')).toHaveCount(0);
-    await expect(page.locator('.prompt-workbench > .agent-session-panel')).toBeVisible();
-    await expect(page.locator('.prompt-workbench > .agent-session-panel .agent-session-footer')).toContainText('这次任务');
-    await expect(page.locator('.prompt-workbench > .agent-session-panel .agent-session-footer textarea')).toBeVisible();
-    const promptAgentLayout = await page.evaluate(() => {
-      const workbench = document.querySelector('.prompt-workbench');
-      const panel = document.querySelector('.prompt-workbench > .agent-session-panel');
-      const surface = document.querySelector('.stage-module-surface');
-      const params = document.querySelector('.params-panel');
-      if (!workbench || !panel || !surface || !params) return null;
-      const workbenchRect = workbench.getBoundingClientRect();
-      const panelRect = panel.getBoundingClientRect();
-      const surfaceRect = surface.getBoundingClientRect();
-      return {
-        panelHeight: Math.round(panelRect.height),
-        panelWidth: Math.round(panelRect.width),
-        paramsDisplay: window.getComputedStyle(params).display,
-        surfaceWidth: Math.round(surfaceRect.width),
-        workbenchHeight: Math.round(workbenchRect.height),
-      };
-    });
-    expect(promptAgentLayout?.paramsDisplay, JSON.stringify(promptAgentLayout)).toBe('none');
-    expect(promptAgentLayout?.panelWidth ?? 0, JSON.stringify(promptAgentLayout)).toBeGreaterThanOrEqual((promptAgentLayout?.surfaceWidth ?? 0) - 40);
-    expect(promptAgentLayout?.panelHeight ?? 0, JSON.stringify(promptAgentLayout)).toBeGreaterThanOrEqual((promptAgentLayout?.workbenchHeight ?? 0) * 0.45);
-    await expectNotStaticV2Page(page);
-    await clickButton(page, '补输入源');
+    await clickNavItem(page, '输入源 / 文档转换');
     await expect(page.locator('.input-sources-workbench')).toBeVisible();
     await expectCommandCenter(page, '.input-sources-workbench > .module-command-center', 'compact');
     await expect(page.locator('.input-sources-workbench > .v2-feature-hero')).toHaveCount(0);
@@ -2478,15 +2779,14 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expect(page.locator('.ai-breakdown-shell')).toBeVisible();
     await expectNotStaticV2Page(page);
 
-    await clickNavItem(page, 'Prompt 工作台');
-    await expect(page.locator('.prompt-workbench')).toBeVisible();
-    await expectCommandCenter(page, '.prompt-workbench > .module-command-center', 'compact');
-    await expect(page.locator('.prompt-workbench > .prompt-session-panel')).toHaveCount(0);
-    await expectNotStaticV2Page(page);
-    await page.locator('.prompt-workbench > .agent-session-panel .agent-session-footer textarea').fill('基于已解析产品资料，生成小红书种草图 Prompt，强调真实生活场景。');
-    await clickButton(page, '仅生成草稿');
-    await expect(page.locator('.prompt-draft-editor')).toHaveValue(/Prompt 草稿|任务：/, { timeout: 20_000 });
-    await expect(page.locator('.prompt-draft-list .record-card').first()).toBeVisible();
+    await clickNavItem(page, 'agents');
+    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+    const agentsIntent = '基于已解析产品资料，生成小红书种草图 Prompt，强调真实生活场景。';
+    await page.locator('.agents-entry-composer textarea').fill(agentsIntent);
+    await page.locator('.agents-entry-composer textarea').press('Enter');
+    await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.agents-thread')).toContainText(agentsIntent, { timeout: 20_000 });
+    await expect(page.locator('.agents-draft-inline')).toContainText(/Prompt 草稿|未完成记录/, { timeout: 20_000 });
 
     await clickNavItem(page, '场景提示词');
     await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
@@ -2625,7 +2925,7 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
   });
 });
 
-test('审核任务 Agent 支持人工决策并交接 Prompt 工作台', async ({}, testInfo) => {
+test('审核任务 Agent 支持人工决策并生成 Prompt 草稿', async ({}, testInfo) => {
   test.setTimeout(90_000);
 
   await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
@@ -2711,7 +3011,7 @@ test('审核任务 Agent 支持人工决策并交接 Prompt 工作台', async ({
     await expect(taskCard).toBeVisible({ timeout: 20_000 });
     await taskCard.click();
     await expect(page.locator('.content-review-workbench .agent-session-artifact')).toContainText('敏感肌安心可用');
-    await expect(page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '交给 Prompt 工作台' })).toBeDisabled();
+    await expect(page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '生成 Prompt 草稿' })).toBeDisabled();
 
     await page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '通过' }).click();
     await expect(page.locator('.content-review-workbench .agent-session-panel')).toContainText('已通过', { timeout: 20_000 });
@@ -2722,10 +3022,13 @@ test('审核任务 Agent 支持人工决策并交接 Prompt 工作台', async ({
     expect(approvedTask?.status).toBe('approved');
     expect(approvedTask?.decisions?.[0]?.action).toBe('approve');
 
-    await page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '交给 Prompt 工作台' }).click();
-    await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.prompt-workbench')).toContainText('敏感肌安心可用', { timeout: 20_000 });
-    await expect(page.locator('.prompt-workbench > .agent-session-panel')).toBeVisible();
+    await page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '生成 Prompt 草稿' }).click();
+    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+    const generatedDraft = await page.evaluate(async (workspacePath) => {
+      const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
+      return drafts.find((draft) => draft.title.includes('敏感肌安心可用'));
+    }, workspaceDir);
+    expect(generatedDraft?.title).toContain('敏感肌安心可用');
   });
 });
 
@@ -3739,7 +4042,7 @@ test('内容知识地图能开始真实对话', async ({}, testInfo) => {
         primary: '内容知识地图协作',
         secondary: '证据缺口',
       });
-      await expect(page.locator('.content-map-workbench .agent-execution-events [data-event-class="artifact.changed"][data-owner="artifact"]')).toHaveCount(1);
+      await expect(page.locator('.content-map-workbench .agent-execution-events [data-event-class="artifact.changed"]')).toHaveCount(1);
 
       const sessions = await page.evaluate(async (workspacePath) => {
         const all = await window.contentStudio.listAgentPromptSessions(workspacePath);
@@ -3750,6 +4053,699 @@ test('内容知识地图能开始真实对话', async ({}, testInfo) => {
     });
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
+  }
+});
+
+test('agents 入口页启动后会绑定真实图片输入源并进入线程', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const bridge = await startFakePlatformRuntimeBridge();
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir, e2eProductAssetPath }) => {
+      await page.evaluate(async ({ workspacePath }) => {
+        const api = window.contentStudio;
+        await api.saveSettings({ workspacePath });
+      }, { workspacePath: workspaceDir });
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待 agents 测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, 'agents');
+      await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-workbench')).toHaveCount(0);
+      await expect(page.locator('.params-panel')).toHaveCount(0);
+      await expect(page.locator('[aria-label="语音输入"]')).toHaveCount(0);
+      await expect(page.locator('.agents-entry')).toContainText('我们应该在 agents 中构建什么？');
+      await expect(page.locator('.agents-entry-composer textarea')).toHaveAttribute('placeholder', '说明要检查的产品、平台、资料缺口和交付物');
+      await expectAgentsProductImageCount(page, 0);
+      await expect(page.locator('.agents-entry')).toContainText('完全访问');
+      await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).toContainText('test-text-model');
+      await expect(page.locator('.agents-entry')).not.toContainText('5.5 超高');
+      await expect(page.locator('.agents-entry .agent-turn')).toHaveCount(0);
+      await expect(page.locator('.agents-entry')).not.toContainText('Skills');
+      await expect(page.locator('.agents-entry')).not.toContainText('skill');
+      await expect(page.locator('.agents-entry')).not.toContainText('图片生成模型');
+      await expect(page.locator('.agents-entry')).not.toContainText(/gemini|根据已选产品图和参考图/i);
+      await expect(page.locator('.agents-entry .lime-runtime-model-popover')).toHaveCount(0);
+      await page.setViewportSize({ width: 1024, height: 768 });
+      const compactEntryLayout = await page.evaluate(() => {
+        const entry = document.querySelector('.agents-entry')?.getBoundingClientRect();
+        const composer = document.querySelector('.agents-entry-composer')?.getBoundingClientRect();
+        const board = document.querySelector('.agents-entry .agents-entry-board')?.getBoundingClientRect();
+        const controls = document.querySelector('.agents-entry .agents-composer-controls')?.getBoundingClientRect();
+        return {
+          entryOverflowX: Boolean(entry && document.querySelector('.agents-entry')?.scrollWidth > entry.width + 1),
+          composerFits: Boolean(entry && composer && composer.left >= entry.left - 1 && composer.right <= entry.right + 1),
+          boardFits: Boolean(entry && board && board.left >= entry.left - 1 && board.right <= entry.right + 1),
+          controlsFit: Boolean(entry && controls && controls.left >= entry.left - 1 && controls.right <= entry.right + 1),
+        };
+      });
+      expect(compactEntryLayout, JSON.stringify(compactEntryLayout)).toMatchObject({
+        entryOverflowX: false,
+        composerFits: true,
+        boardFits: true,
+        controlsFit: true,
+      });
+      await page.setViewportSize({ width: 1280, height: 720 });
+      const shellLayout = await page.evaluate(() => {
+        const shell = document.querySelector('.app-shell');
+        const style = shell ? getComputedStyle(shell) : null;
+        return {
+          dataParams: shell?.getAttribute('data-params'),
+          columnCount: style?.gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length ?? 0,
+        };
+      });
+      expect(shellLayout, JSON.stringify(shellLayout)).toMatchObject({
+        dataParams: 'hidden',
+        columnCount: 2,
+      });
+      const entryLayout = await page.evaluate(() => {
+        const composer = document.querySelector('.agents-entry-composer')?.getBoundingClientRect();
+        const entry = document.querySelector('.agents-entry')?.getBoundingClientRect();
+        return {
+          hasComposer: Boolean(composer),
+          hasStaticContextCards: Boolean(document.querySelector('.agents-entry-context')),
+          composerInsideEntry: Boolean(composer && entry && composer.top >= entry.top && composer.bottom <= entry.bottom),
+          entryOverflowX: Boolean(entry && document.querySelector('.agents-entry')?.scrollWidth > entry.width + 1),
+        };
+      });
+      expect(entryLayout, JSON.stringify(entryLayout)).toMatchObject({
+        hasComposer: true,
+        hasStaticContextCards: false,
+        composerInsideEntry: true,
+        entryOverflowX: false,
+      });
+
+      const addButton = page.locator('.agents-entry-composer button[aria-label="添加输入"]').first();
+      await addButton.click();
+      await expect(page.locator('.agents-entry .agents-add-menu')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-entry .agents-add-menu')).toContainText('添加照片和文件');
+      await expect(page.locator('.agents-entry .agents-add-menu')).toContainText('添加参考图');
+      await expect(page.locator('.agents-entry .agents-add-menu')).toContainText('skills 管理');
+      await expect(page.locator('.agents-entry .agents-add-menu')).not.toContainText('计划模式');
+      await expect(page.locator('.agents-entry .agents-add-menu')).not.toContainText('追求目标');
+      const addMenuLayout = await page.evaluate(() => {
+        const menu = document.querySelector('.agents-entry .agents-add-menu')?.getBoundingClientRect();
+        const composer = document.querySelector('.agents-entry-composer')?.getBoundingClientRect();
+        const entry = document.querySelector('.agents-entry')?.getBoundingClientRect();
+        return {
+          visible: Boolean(menu),
+          top: Math.round(menu?.top ?? -1),
+          bottom: Math.round(menu?.bottom ?? -1),
+          withinViewport: Boolean(menu && menu.top >= 0 && menu.bottom <= window.innerHeight),
+          noHorizontalOverflow: Boolean(menu && entry && menu.left >= entry.left - 1 && menu.right <= entry.right + 1),
+          anchoredToComposer: Boolean(menu && composer && menu.top >= composer.top - 1 && menu.top <= composer.bottom + 16),
+        };
+      });
+      expect(addMenuLayout.visible, JSON.stringify(addMenuLayout)).toBe(true);
+      expect(addMenuLayout.withinViewport, JSON.stringify(addMenuLayout)).toBe(true);
+      expect(addMenuLayout.noHorizontalOverflow, JSON.stringify(addMenuLayout)).toBe(true);
+      expect(addMenuLayout.anchoredToComposer, JSON.stringify(addMenuLayout)).toBe(true);
+      await addButton.click();
+
+      await page.locator('.agents-entry-composer button[aria-label="权限设置"]').click();
+      await expect(page.locator('.agents-entry .agents-access-menu')).toContainText('请求批准');
+      await expect(page.locator('.agents-entry .agents-access-menu')).toContainText('替我审批');
+      await expect(page.locator('.agents-entry .agents-access-menu')).toContainText('完全访问权限');
+      await page.locator('.agents-entry-composer button[aria-label="权限设置"]').click();
+
+      await page.locator('.agents-entry .lime-runtime-model-trigger').click();
+      await expect(page.locator('.agents-entry .lime-runtime-model-popover')).toContainText('模型设置');
+      await expect(page.locator('.agents-entry .lime-runtime-model-popover')).toContainText('test-text-model');
+      await expect(page.locator('.agents-entry .lime-runtime-model-popover')).not.toContainText('other-provider-text-model');
+      const platformModelMenuTheme = await page.evaluate(() => {
+        const resolveColor = (value, scope = document.body) => {
+          const probe = document.createElement('span');
+          probe.style.color = value;
+          scope.appendChild(probe);
+          const resolved = window.getComputedStyle(probe).color;
+          probe.remove();
+          return resolved;
+        };
+        const bodyStyle = window.getComputedStyle(document.body);
+        const menu = document.querySelector('.agents-entry .lime-runtime-model-menu');
+        const trigger = document.querySelector('.agents-entry .lime-runtime-model-trigger');
+        const activeModel = document.querySelector('.agents-entry .lime-runtime-model-list button.active');
+        const triggerStyle = trigger ? window.getComputedStyle(trigger) : null;
+        const activeStyle = activeModel ? window.getComputedStyle(activeModel) : null;
+        return {
+          bodyFont: bodyStyle.fontFamily,
+          triggerFont: triggerStyle?.fontFamily ?? '',
+          bodyColor: bodyStyle.color,
+          triggerColor: triggerStyle?.color ?? '',
+          activeColor: activeStyle?.color ?? '',
+          menuAccent: menu ? resolveColor('var(--lime-runtime-model-accent)', menu) : '',
+          oldPlatformText: resolveColor('#31423a'),
+        };
+      });
+      expect(platformModelMenuTheme.triggerFont).toBe(platformModelMenuTheme.bodyFont);
+      expect(platformModelMenuTheme.triggerColor).toBe(platformModelMenuTheme.bodyColor);
+      expect(platformModelMenuTheme.activeColor).toBe(platformModelMenuTheme.menuAccent);
+      expect(platformModelMenuTheme.triggerColor).not.toBe(platformModelMenuTheme.oldPlatformText);
+      await page.locator('.agents-entry .lime-runtime-model-trigger').click();
+
+      await addAgentsProductImage(page);
+      await expectAgentsProductImageCount(page, 1);
+
+      const firstPromptLine = 'E2E agents 入口协作：基于产品图生成真实生活场景图片 Prompt。';
+      const secondPromptLine = '补充要求：真实生活场景，避免棚拍感。';
+      const promptText = `${firstPromptLine}\n${secondPromptLine}`;
+      const entryTextarea = page.locator('.agents-entry-composer textarea');
+      await expect(entryTextarea).toHaveValue('');
+      const videoPromptTask = page.locator('.agents-entry-board button').filter({ hasText: '视频 Prompt' }).first();
+      await videoPromptTask.click();
+      await expect(videoPromptTask).toHaveClass(/active/);
+      await expect(entryTextarea).toHaveValue('');
+      await entryTextarea.fill(firstPromptLine);
+      await entryTextarea.press('Shift+Enter');
+      await entryTextarea.pressSequentially(secondPromptLine);
+      await expect(entryTextarea).toHaveValue(promptText);
+      await expect(page.locator('.agents-entry')).toBeVisible();
+      await entryTextarea.press('Enter');
+
+      await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-entry')).toHaveCount(0);
+      await expect(page.locator('.agents-side-panel')).toHaveCount(0);
+      await expect(page.locator('.params-panel')).toHaveCount(0);
+      const threadShellLayout = await page.evaluate(() => {
+        const shell = document.querySelector('.app-shell');
+        const style = shell ? getComputedStyle(shell) : null;
+        const workbench = document.querySelector('.agents-workbench');
+        const stage = document.querySelector('.stage');
+        const shellRect = shell?.getBoundingClientRect();
+        const workbenchRect = workbench?.getBoundingClientRect();
+        const stageRect = stage?.getBoundingClientRect();
+        return {
+          dataParams: shell?.getAttribute('data-params'),
+          shellColumnCount: style?.gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length ?? 0,
+          fillsStageRight: Boolean(workbenchRect && stageRect && Math.abs(workbenchRect.right - stageRect.right) < 2),
+          noDetachedRightColumn: Boolean(shellRect && stageRect && shellRect.right - stageRect.right < 64),
+        };
+      });
+      expect(threadShellLayout, JSON.stringify(threadShellLayout)).toMatchObject({
+        dataParams: 'hidden',
+        shellColumnCount: 2,
+        fillsStageRight: true,
+        noDetachedRightColumn: true,
+      });
+      await expect(page.locator('.agents-workbench')).not.toContainText('后端接口');
+      await expect(page.locator('.agents-workbench')).not.toContainText('等待启动协作');
+      await expect(page.locator('.agents-workbench')).not.toContainText('进行中的目标');
+      await expectAgentsUiHidesInternalTerms(page);
+      await expectAgentsUiHidesInternalTerms(page, '.agents-draft-inline');
+      await expect(page.locator('.agents-thread')).toContainText('图生视频 Prompt 协作');
+      await expect(page.locator('.agents-thread')).toContainText(promptText);
+      const threadMessageLayout = await page.evaluate(() => {
+        const userTurn = document.querySelector('.agents-thread-scroll .agent-turn.user')?.getBoundingClientRect();
+        const userBody = document.querySelector('.agents-thread-scroll .agent-turn.user .agent-turn-body')?.getBoundingClientRect();
+        const userText = document.querySelector('.agents-thread-scroll .agent-turn.user p')?.getBoundingClientRect();
+        return {
+          turnWidth: Math.round(userTurn?.width ?? 0),
+          bodyWidth: Math.round(userBody?.width ?? 0),
+          textWidth: Math.round(userText?.width ?? 0),
+        };
+      });
+      expect(threadMessageLayout.turnWidth, JSON.stringify(threadMessageLayout)).toBeGreaterThan(360);
+      expect(threadMessageLayout.bodyWidth, JSON.stringify(threadMessageLayout)).toBeGreaterThan(320);
+      expect(threadMessageLayout.textWidth, JSON.stringify(threadMessageLayout)).toBeGreaterThan(300);
+      await expect(page.locator('.agents-draft-inline')).toContainText(/Prompt 草稿|未完成记录/, { timeout: 20_000 });
+      await expect(page.locator('.agents-dialog-composer textarea')).toHaveValue('');
+
+      await expect.poll(async () => page.evaluate(async ({ workspacePath, assetPath, userIntent }) => {
+        const api = window.contentStudio;
+        const sessions = await api.listAgentPromptSessions(workspacePath);
+        const sources = await api.listInputSources(workspacePath);
+        const session = sessions.find((item) => item.userIntent === userIntent);
+        const productSource = sources.find((source) => source.sourcePath === assetPath && source.tags.includes('产品图'));
+        return {
+          sessionFound: Boolean(session),
+          sessionStatus: session?.status,
+          sessionInputSourceIds: session?.inputSourceIds ?? [],
+          snapshotCount: session?.sourceSnapshots.length ?? 0,
+          productSourceId: productSource?.id ?? '',
+          productSourceKind: productSource?.kind,
+          productSourceStatus: productSource?.status,
+          linked: Boolean(productSource && session?.inputSourceIds.includes(productSource.id)),
+          snapshotLinked: Boolean(productSource && session?.sourceSnapshots.some((snapshot) => snapshot.sourceId === productSource.id && snapshot.kind === 'image')),
+          hasLocalAssetId: Boolean(session?.inputSourceIds.some((id) => id.startsWith('local-asset:'))),
+          messageHasSnapshot: Boolean(session?.messages.some((message) => message.content.includes('输入源快照：') && message.content.includes('图片 / 待补齐'))),
+        };
+      }, { workspacePath: workspaceDir, assetPath: e2eProductAssetPath, userIntent: promptText }), {
+        message: '等待 agents session 写入真实图片输入源和快照',
+        timeout: 30_000,
+      }).toMatchObject({
+        sessionFound: true,
+        sessionInputSourceIds: [expect.any(String)],
+        snapshotCount: 1,
+        productSourceKind: 'image',
+        productSourceStatus: 'blocked',
+        linked: true,
+        snapshotLinked: true,
+        hasLocalAssetId: false,
+        messageHasSnapshot: true,
+      });
+
+      const trace = await page.evaluate(async ({ workspacePath, assetPath, userIntent }) => {
+        const api = window.contentStudio;
+        const sessions = await api.listAgentPromptSessions(workspacePath);
+        const sources = await api.listInputSources(workspacePath);
+        const session = sessions.find((item) => item.userIntent === userIntent);
+        const productSource = sources.find((source) => source.sourcePath === assetPath && source.tags.includes('产品图'));
+        return {
+          sessionFound: Boolean(session),
+          sessionStatus: session?.status,
+          sessionInputSourceIds: session?.inputSourceIds ?? [],
+          snapshotCount: session?.sourceSnapshots.length ?? 0,
+          productSourceId: productSource?.id ?? '',
+          productSourceKind: productSource?.kind,
+          productSourceStatus: productSource?.status,
+          linked: Boolean(productSource && session?.inputSourceIds.includes(productSource.id)),
+          snapshotLinked: Boolean(productSource && session?.sourceSnapshots.some((snapshot) => snapshot.sourceId === productSource.id && snapshot.kind === 'image')),
+          hasLocalAssetId: Boolean(session?.inputSourceIds.some((id) => id.startsWith('local-asset:'))),
+          messageHasSnapshot: Boolean(session?.messages.some((message) => message.content.includes('输入源快照：') && message.content.includes('图片 / 待补齐'))),
+        };
+      }, { workspacePath: workspaceDir, assetPath: e2eProductAssetPath, userIntent: promptText });
+      expect(trace.sessionFound, JSON.stringify(trace)).toBe(true);
+      expect(trace.sessionStatus, JSON.stringify(trace)).toMatch(/draft-created|blocked|waiting-user|active/);
+      expect(trace.sessionInputSourceIds.length, JSON.stringify(trace)).toBe(1);
+      expect(trace.snapshotCount, JSON.stringify(trace)).toBe(1);
+      expect(trace.productSourceId, JSON.stringify(trace)).toBeTruthy();
+      expect(trace.productSourceKind, JSON.stringify(trace)).toBe('image');
+      expect(trace.productSourceStatus, JSON.stringify(trace)).toBe('blocked');
+      expect(trace.linked, JSON.stringify(trace)).toBe(true);
+      expect(trace.snapshotLinked, JSON.stringify(trace)).toBe(true);
+      expect(trace.hasLocalAssetId, JSON.stringify(trace)).toBe(false);
+      expect(trace.messageHasSnapshot, JSON.stringify(trace)).toBe(true);
+
+      const agentRequest = bridge.requests.find((request) => request.body.capability === 'lime.agent');
+      expect(agentRequest, JSON.stringify(bridge.requests)).toBeTruthy();
+      const agentPayload = JSON.stringify(agentRequest.body);
+      expect(agentRequest.body.operation).toBe('agentSession/turn/start');
+      expect(agentPayload).toContain('"providerPreference":"platform-openai"');
+      expect(agentPayload).toContain('"modelId":"test-text-model"');
+      expect(agentPayload).not.toMatch(/apiKey|api_key|token|secret|password|credential|authorization|cookie/i);
+    }, {
+      env: {
+        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
+        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
+      },
+      requireExplicitTextKey: false,
+    });
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('agents 默认不自动打开历史会话或显示模型选择', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const bridge = await startFakePlatformRuntimeBridge({
+    agentDraftContent: [
+      '# 历史协作草稿',
+      '',
+      '这是一条不应该自动出现在入口页的历史会话内容。',
+    ].join('\n'),
+  });
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      const historicalIntent = 'E2E 历史 agents 会话：根据已选产品图和参考图生成旧草稿。';
+      await page.evaluate(async ({ workspacePath, intent }) => {
+        const api = window.contentStudio;
+        await api.saveSettings({ workspacePath });
+        await api.startAgentPromptSession({
+          workspacePath,
+          title: '历史 agents 会话',
+          purpose: 'image',
+          userIntent: intent,
+          inputSourceIds: [],
+          selectedSkillSlugs: [],
+          textModel: 'test-text-model',
+        });
+      }, { workspacePath: workspaceDir, intent: historicalIntent });
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待 agents 历史会话隔离测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, 'agents');
+      await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-workbench')).toHaveCount(0);
+      await expect(page.locator('.agents-entry-composer textarea')).toHaveValue('');
+      await expect(page.locator('.agents-entry')).not.toContainText(historicalIntent);
+      await expect(page.locator('.agents-entry')).not.toContainText('历史协作草稿');
+      await expect(page.locator('.agents-entry')).not.toContainText('图片生成模型');
+      await expect(page.locator('.agents-entry')).not.toContainText(/gemini|根据已选产品图和参考图/i);
+      await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).toContainText('test-text-model');
+      await expect(page.locator('.agents-entry .lime-runtime-model-popover')).toHaveCount(0);
+
+      await page.locator('.agents-entry-sessions button').filter({ hasText: '历史 agents 会话' }).first().click();
+      await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-thread')).toContainText(historicalIntent, { timeout: 20_000 });
+      await expect(page.locator('.agents-draft-inline')).toContainText('历史协作草稿', { timeout: 20_000 });
+    }, {
+      env: {
+        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
+        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
+      },
+      requireExplicitTextKey: false,
+    });
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('agents 文案能力能发起文章、标题和脚本协作会话', async ({}, testInfo) => {
+  test.setTimeout(120_000);
+
+  const bridge = await startFakePlatformRuntimeBridge({
+    agentDraftContent: [
+      '# 文案协作草稿',
+      '',
+      '已根据当前文案任务生成可编辑草稿，并保留来源与交付提醒。',
+    ].join('\n'),
+    agentArtifactTitle: 'E2E 文案协作交付物',
+  });
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async ({ workspacePath }) => {
+        await window.contentStudio.saveSettings({ workspacePath });
+      }, { workspacePath: workspaceDir });
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待 agents 文案能力测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, 'agents');
+      await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+      await expectNavLabelAbsent(page, '文章生成');
+      await expectNavLabelAbsent(page, '标题生成');
+      await expectNavLabelAbsent(page, '脚本生成');
+
+      const tasks = [
+        {
+          label: '文章生成',
+          title: '文章生成协作',
+          intent: 'E2E agents 文章生成：基于产品资料写一篇公众号正文。',
+          expectedSkills: ['copywriting-master', 'article-typesetting-master'],
+        },
+        {
+          label: '标题生成',
+          title: '标题矩阵协作',
+          intent: 'E2E agents 标题生成：为早餐后便携条包场景生成小红书标题矩阵。',
+          expectedSkills: ['copywriting-master', 'moments-copywriter'],
+        },
+        {
+          label: '脚本生成',
+          title: '脚本生成协作',
+          intent: 'E2E agents 脚本生成：生成 30 秒口播脚本和分镜结构。',
+          expectedSkills: ['copywriting-master', 'moments-copywriter', 'ip-knowledge-base-builder'],
+        },
+      ];
+
+      for (const task of tasks) {
+        await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+        const taskCard = page.locator('.agents-entry-board button').filter({ hasText: task.label }).first();
+        await expect(taskCard).toBeVisible({ timeout: 20_000 });
+        await taskCard.click();
+        await expect(taskCard).toHaveClass(/active/);
+
+        const textarea = page.locator('.agents-entry-composer textarea');
+        await textarea.fill(task.intent);
+        await textarea.press('Enter');
+        await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+        await expect(page.locator('.agents-thread')).toContainText(task.title, { timeout: 20_000 });
+        await expect(page.locator('.agents-thread')).toContainText(task.intent, { timeout: 20_000 });
+        await expect(page.locator('.agents-draft-inline')).toContainText('文案协作草稿', { timeout: 20_000 });
+
+        const trace = await page.evaluate(async ({ workspacePath, intent, title }) => {
+          const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+          const session = sessions.find((item) => item.userIntent === intent && item.title === title);
+          return {
+            found: Boolean(session),
+            title: session?.title,
+            purpose: session?.purpose,
+            status: session?.status,
+            selectedSkillSlugs: session?.selectedSkillSlugs ?? [],
+            promptDraftIds: session?.promptDraftIds ?? [],
+          };
+        }, { workspacePath: workspaceDir, intent: task.intent, title: task.title });
+        expect(trace.found, JSON.stringify(trace)).toBe(true);
+        expect(trace.purpose, JSON.stringify(trace)).toBe('article');
+        expect(trace.status, JSON.stringify(trace)).toMatch(/draft-created|waiting-user|active/);
+        expect(trace.promptDraftIds.length, JSON.stringify(trace)).toBeGreaterThanOrEqual(1);
+        for (const slug of task.expectedSkills) {
+          expect(trace.selectedSkillSlugs, JSON.stringify(trace)).toContain(slug);
+        }
+
+        await clickNavItem(page, 'agents');
+      }
+
+      const agentRequests = bridge.requests.filter((request) =>
+        request.body.capability === 'lime.agent' && request.body.operation === 'agentSession/turn/start',
+      );
+      expect(agentRequests.length, JSON.stringify(bridge.requests)).toBeGreaterThanOrEqual(3);
+      for (const task of tasks) {
+        const matchedRequest = agentRequests.find((request) => JSON.stringify(request.body).includes(task.intent));
+        expect(matchedRequest, `缺少 ${task.label} 的 agents 请求`).toBeTruthy();
+        const payload = JSON.stringify(matchedRequest.body);
+        for (const slug of task.expectedSkills) {
+          expect(payload).toContain(slug);
+        }
+        expect(payload).not.toMatch(/apiKey|api_key|token|secret|password|credential|authorization|cookie/i);
+      }
+    }, {
+      env: {
+        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
+        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
+      },
+      requireExplicitTextKey: false,
+    });
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('agents 会阻断 Lime 回显内部 Prompt 片段且不展示内部事实', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const internalEchoDraft = [
+    '# 真实生活场景图片 Prompt',
+    '',
+    '目标：基于产品图生成自然生活化的图片候选。',
+    'Lime App Server Provider Store runtime bridge token API Key secret artifact session',
+    '',
+    '本地输入源：',
+    '产品图 / 待补齐',
+    '',
+    '输出要求：',
+    '- 直接输出完整 Markdown',
+  ].join('\n');
+  const bridge = await startFakePlatformRuntimeBridge({
+    agentDraftContent: internalEchoDraft,
+    agentArtifactTitle: 'Lime Agent Server Provider artifact session token',
+    agentMessageTitle: 'runtime bridge Provider Store',
+  });
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async ({ workspacePath }) => {
+        const api = window.contentStudio;
+        await api.saveSettings({ workspacePath });
+      }, { workspacePath: workspaceDir });
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待 agents 内部回显测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, 'agents');
+      await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+      await addAgentsProductImage(page);
+      await expectAgentsProductImageCount(page, 1);
+
+      const userIntent = 'E2E agents 内部回显防护：生成真实生活场景图片 Prompt。';
+      const entryTextarea = page.locator('.agents-entry-composer textarea');
+      await entryTextarea.fill(userIntent);
+      await entryTextarea.press('Enter');
+
+      await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-entry')).toHaveCount(0);
+      await expect(page.locator('.agents-draft-inline.blocked')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-draft-inline')).toContainText('恢复路径', { timeout: 20_000 });
+      await expect(page.locator('.agents-draft-inline')).toContainText('确认生成服务和文字模型已配置后重试', { timeout: 20_000 });
+
+      await expectAgentsUiHidesInternalTerms(page);
+
+      const trace = await page.evaluate(async ({ workspacePath, userIntent: expectedIntent }) => {
+        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+        const session = sessions.find((item) => item.userIntent === expectedIntent);
+        const draftMessage = session?.messages.find((message) => message.role === 'assistant' && message.kind === 'draft');
+        return {
+          found: Boolean(session),
+          status: session?.status,
+          model: draftMessage?.model,
+          content: draftMessage?.content ?? '',
+        };
+      }, { workspacePath: workspaceDir, userIntent });
+      expect(trace.found, JSON.stringify(trace)).toBe(true);
+      expect(trace.status, JSON.stringify(trace)).toBe('blocked');
+      expect(trace.model, JSON.stringify(trace)).toBe('blocked:lime-agent-server');
+      expect(trace.content, JSON.stringify(trace)).toContain('Prompt 草稿未生成');
+      expect(trace.content, JSON.stringify(trace)).not.toContain('本地输入源：');
+      expect(trace.content, JSON.stringify(trace)).not.toContain('输出要求：');
+    }, {
+      env: {
+        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
+        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
+      },
+      requireExplicitTextKey: false,
+    });
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const userIntent = 'E2E agents 运行事实投影：请判断还缺哪些输入源。';
+  const bridge = await startFakePlatformRuntimeBridge({
+    agentDraftContent: [
+      '# 输入源补齐 Prompt',
+      '',
+      '目标：先判断产品资料和参考素材缺口，再生成可追溯的内容任务。',
+      '',
+      `用户意图：${userIntent}`,
+      '',
+      '下一步：补齐产品事实、使用场景和合规边界后继续。',
+    ].join('\n'),
+    agentArtifactTitle: 'E2E agents runtime facts draft',
+    agentRuntimeEvents: [
+      {
+        type: 'tool.failed',
+        payload: {
+          toolName: 'input-source.read',
+          message: '资料读取工具需要人工补源',
+          evidenceRefs: ['evidence-runtime-input'],
+        },
+      },
+      {
+        type: 'evidence.changed',
+        payload: {
+          evidenceRef: 'evidence-runtime-input',
+          evidenceRefs: ['evidence-runtime-input'],
+          message: '平台返回来源证据已更新',
+        },
+      },
+      {
+        type: 'action.required',
+        payload: {
+          actionId: 'runtime-action-add-source',
+          actionKind: 'add-input-source',
+          targetModule: 'knowledge-inputs',
+          message: '需要补充输入源后继续',
+          evidenceRefs: ['evidence-runtime-input'],
+        },
+      },
+    ],
+  });
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async ({ workspacePath }) => {
+        await window.contentStudio.saveSettings({ workspacePath });
+      }, { workspacePath: workspaceDir });
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待 agents 运行事实测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, 'agents');
+      await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+      await page.locator('.agents-entry-composer textarea').fill(userIntent);
+      await page.locator('.agents-entry-composer textarea').press('Enter');
+
+      await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+      const runtimePanel = page.locator('.agents-runtime-inline');
+      await expect(runtimePanel).toBeVisible({ timeout: 20_000 });
+      await expect(runtimePanel.locator('.agent-runtime-summary [data-summary-kind="actions"] strong')).not.toHaveText('0');
+      await expect(runtimePanel.locator('.agent-runtime-summary [data-summary-kind="artifacts"] strong')).not.toHaveText('0');
+      await expect(runtimePanel.locator('.agent-runtime-summary [data-summary-kind="evidence"] strong')).not.toHaveText('0');
+      await expect(runtimePanel.locator('.agent-execution-events [data-event-class="tool.failed"]')).toContainText('资料读取工具需要人工补源');
+      await expect(runtimePanel.locator('.agent-execution-events [data-event-class="evidence.changed"]')).toContainText('平台返回来源证据已更新');
+      const platformAction = runtimePanel
+        .locator('.agent-execution-events [data-event-class="action.required"][data-action-kind="add-input-source"]')
+        .filter({ hasText: '需要补充输入源后继续' })
+        .first();
+      await expect(platformAction).toBeVisible({ timeout: 20_000 });
+      await expect(platformAction.locator('.agent-event-action')).toHaveText('补输入源');
+
+      await expect(page.locator('.agents-thread-scroll .agent-turn').filter({ hasText: '资料读取工具需要人工补源' })).toHaveCount(0);
+      await expect(page.locator('.agents-draft-inline').filter({ hasText: '资料读取工具需要人工补源' })).toHaveCount(0);
+
+      const runtimeTrace = await page.evaluate(async ({ workspacePath, intent }) => {
+        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+        const session = sessions.find((item) => item.userIntent === intent);
+        return {
+          found: Boolean(session),
+          hasToolFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'tool.failed' &&
+            event.detail?.includes('资料读取工具需要人工补源')
+          ))),
+          hasActionFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'action.required' &&
+            event.actionId === 'runtime-action-add-source' &&
+            event.payload?.actionKind === 'add-input-source'
+          ))),
+          hasEvidenceFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'evidence.changed' &&
+            event.evidenceRefs?.includes('evidence-runtime-input')
+          ))),
+          hasArtifactFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'artifact.changed' &&
+            event.artifactRefs?.includes('e2e-agents-artifact')
+          ))),
+          messageLeaksRuntimeFact: Boolean(session?.messages.some((message) => (
+            message.content.includes('资料读取工具需要人工补源') ||
+            message.content.includes('runtime-action-add-source') ||
+            message.content.includes('evidence-runtime-input')
+          ))),
+        };
+      }, { workspacePath: workspaceDir, intent: userIntent });
+      expect(runtimeTrace, JSON.stringify(runtimeTrace)).toMatchObject({
+        found: true,
+        hasToolFact: true,
+        hasActionFact: true,
+        hasEvidenceFact: true,
+        hasArtifactFact: true,
+        messageLeaksRuntimeFact: false,
+      });
+
+      await platformAction.locator('.agent-event-action').click();
+      await expect(page.locator('.input-sources-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect.poll(
+        async () => page.evaluate(async ({ workspacePath, intent }) => {
+          const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+          const session = sessions.find((item) => item.userIntent === intent);
+          return Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'action.resolved' &&
+            event.actionId === 'runtime-action-add-source'
+          )));
+        }, { workspacePath: workspaceDir, intent: userIntent }),
+        { message: '等待平台运行事实待办动作写回 resolved', timeout: 20_000 },
+      ).toBe(true);
+    }, {
+      env: {
+        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
+        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
+      },
+      requireExplicitTextKey: false,
+    });
+  } finally {
+    await bridge.close();
   }
 });
 
@@ -4123,8 +5119,12 @@ test('内容知识地图 v1 真实工作台支持下钻和素材回写', async (
     await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('生成 Prompt 草稿');
     await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('生成场景卡');
     await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '生成 Prompt 草稿' }).click();
-    await expect(page.locator('.prompt-workbench')).toBeVisible();
-    await expect(page.locator('.prompt-workbench')).toContainText('轻量便携不压包 生产提示词');
+    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+    const rowPromptDraft = await page.evaluate(async (workspacePath) => {
+      const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
+      return drafts.find((item) => item.title === '轻量便携不压包 生产提示词');
+    }, workspaceDir);
+    expect(rowPromptDraft?.title).toBe('轻量便携不压包 生产提示词');
     await clickNavItem(page, '内容知识地图');
     await mapWorkbench.locator('.content-map-table tbody tr').filter({ hasText: '轻量便携不压包' }).click();
     await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '生成场景卡' }).click();
@@ -4143,11 +5143,7 @@ test('内容知识地图 v1 真实工作台支持下钻和素材回写', async (
     await expect(mapWorkbench.locator('.content-map-package-primary-actions .primary')).toHaveCount(1);
     await expect(mapWorkbench.locator('.content-map-delivery-actions .primary')).toHaveCount(0);
     await mapWorkbench.locator('.content-map-package-content button').filter({ hasText: '生成 Prompt 草稿' }).click();
-    await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.prompt-workbench')).toContainText('BreezeGo Air 团队知识包 v1.4 / Prompt 依据');
-    await expect(page.locator('.prompt-draft-editor')).toHaveValue(/团队知识包：BreezeGo Air 团队知识包 v1\.4/);
-    await expect(page.locator('.prompt-draft-editor')).toHaveValue(/可复用卖点/);
-    await expect(page.locator('.prompt-draft-editor')).toHaveValue(/禁用边界/);
+    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
     const teamKnowledgeDraft = await page.evaluate(async (workspacePath) => {
       const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
       const draft = drafts.find((item) => item.title === 'BreezeGo Air 团队知识包 v1.4 / Prompt 依据');
@@ -4181,6 +5177,9 @@ test('内容知识地图 v1 真实工作台支持下钻和素材回写', async (
       ]),
     );
     expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('不能把知识包标题、版本号或文件地址当成产品事实');
+    expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('团队知识包：BreezeGo Air 团队知识包 v1.4');
+    expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('可复用卖点');
+    expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('禁用边界');
     expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('节奏');
     await clickNavItem(page, '内容知识地图');
     await page.locator('.content-map-tabs button').filter({ hasText: '素材回写' }).click();
@@ -4509,32 +5508,19 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
       { message: '等待待处理动作测试工作区重新加载', timeout: 20_000 },
     ).toBe(true);
 
-    await clickNavItem(page, 'Prompt 工作台');
-    const promptPanel = page.locator('.prompt-workbench > .agent-session-panel');
-    await expect(promptPanel).toBeVisible({ timeout: 20_000 });
-    const promptSupportPanel = await openPromptSupportDrawer(page);
-    const activeSkillButtons = promptSupportPanel.locator('.prompt-skill-chip-row button.active');
-    let activeSkillCount = await activeSkillButtons.count();
-    while (activeSkillCount > 0) {
-      await activeSkillButtons.first().click();
-      await expect.poll(
-        async () => activeSkillButtons.count(),
-        { message: '等待本轮 skill 选择清空', timeout: 5_000 },
-      ).toBeLessThan(activeSkillCount);
-      activeSkillCount = await activeSkillButtons.count();
-    }
-    await expect(promptPanel).toContainText('0 个输入源 / 0 个 skill');
-    await promptPanel.locator('.agent-session-footer textarea').fill('请先判断需要补哪些产品资料和参考素材。');
-    const startSessionButton = promptPanel.locator('.agent-session-footer button').filter({ hasText: '开始协作' });
-    await expect(startSessionButton).toBeEnabled({ timeout: 20_000 });
-    await startSessionButton.click();
+    await clickNavItem(page, 'agents');
+    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+    await page.locator('.agents-entry-composer textarea').fill('请先判断需要补哪些产品资料和参考素材。');
+    await page.locator('.agents-entry-composer textarea').press('Enter');
+    const agentPanel = page.locator('.agents-workbench');
+    await expect(agentPanel).toBeVisible({ timeout: 20_000 });
     let promptSessionId = '';
     await expect.poll(
       async () => page.evaluate(async (workspacePath) => {
         const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
         return sessions.find((session) => session.userIntent === '请先判断需要补哪些产品资料和参考素材。')?.id ?? '';
       }, workspaceDir),
-      { message: '等待 Prompt 工作台会话写入', timeout: 20_000 },
+      { message: '等待 agents 会话写入', timeout: 20_000 },
     ).not.toBe('');
     promptSessionId = await page.evaluate(async (workspacePath) => {
       const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
@@ -4542,7 +5528,7 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
     }, workspaceDir);
     expect(promptSessionId).toBeTruthy();
 
-    const actionButton = promptPanel.locator(
+    const actionButton = agentPanel.locator(
       '.agent-execution-events [data-event-class="action.required"][data-action-kind="add-input-source"] .agent-event-action',
     );
     await expect(actionButton).toHaveText('补输入源', { timeout: 20_000 });
@@ -4580,25 +5566,25 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
     await inputAgentFooter.locator('textarea').fill('资料已补齐，请基于新资料重新生成图片 Prompt。');
     const continueSessionButton = inputAgentFooter.locator('button').filter({ hasText: '继续会话' });
     await expect(continueSessionButton).toBeEnabled({ timeout: 20_000 });
-    await continueSessionButton.click();
-    await expect.poll(
-      async () => page.evaluate(async ({ workspacePath, sessionId }) => {
-        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
-        const session = sessions.find((item) => item.id === sessionId);
-        return {
-          hasAdjustment: Boolean(session?.messages?.some((message) => (
-            message.kind === 'adjustment' &&
-            message.content.includes('资料已补齐')
-          ))),
-          hasDraft: Boolean(session?.messages?.some((message) => (
-            message.kind === 'draft' &&
-            message.content.includes('便携条包')
-          ))),
-          modelCompleted: Boolean(session?.executionEvents?.some((event) => event.eventClass === 'model.completed')),
-        };
-      }, { workspacePath: workspaceDir, sessionId: promptSessionId }),
-      { message: '等待补资料后继续生成草稿', timeout: 45_000 },
-    ).toEqual({ hasAdjustment: true, hasDraft: true, modelCompleted: true });
+	    await continueSessionButton.click();
+	    await expect.poll(
+	      async () => page.evaluate(async ({ workspacePath, sessionId }) => {
+	        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+	        const session = sessions.find((item) => item.id === sessionId);
+	        return {
+	          hasAdjustment: Boolean(session?.messages?.some((message) => (
+	            message.kind === 'adjustment' &&
+	            message.content.includes('资料已补齐')
+	          ))),
+	          noteKept: Boolean(session?.messages?.some((message) => (
+	            message.kind === 'note' &&
+	            message.content.includes('Playwright 补充产品资料')
+	          ))),
+	          inputCount: session?.inputSourceIds.length ?? 0,
+	        };
+	      }, { workspacePath: workspaceDir, sessionId: promptSessionId }),
+	      { message: '等待补资料后继续写回原会话', timeout: 45_000 },
+	    ).toEqual({ hasAdjustment: true, noteKept: true, inputCount: 1 });
     }, { requireExplicitTextKey: false });
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
@@ -4900,7 +5886,7 @@ test('文章生成不会自动混入未显式选择的场景卡', async ({}, tes
         { message: '等待场景隔离测试工作区重新加载', timeout: 20_000 },
       ).toBe(true);
 
-      await clickNavItem(page, '文章生成');
+      await openArticleWorkbenchFromAgents(page);
       await expect(page.locator('.article-module-workbench')).toBeVisible({ timeout: 20_000 });
       await page.locator('.article-editor-panel label').filter({ hasText: '主题' }).locator('input').fill('独立文章不绑定场景卡');
       await page.locator('.article-editor-panel textarea').fill('只根据知识引用生成文章，不应自动携带任何场景卡。');
@@ -4994,7 +5980,16 @@ test('IP 知识库能进入场景延伸库和 PromptPack 引用', async ({}, tes
       await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('待生成延伸知识库');
       await scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' }).getByRole('button', { name: '生成延伸库' }).click();
       await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-draft-editor')).toHaveValue(/IP 场景延伸知识库|延伸场景：口播|内容工程顾问/, { timeout: 20_000 });
+      await expect(page.locator('.prompt-workbench')).toContainText('创意视频');
+      const ipScenarioDraft = await page.evaluate(async (workspacePath) => {
+        const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
+        return drafts.find((item) => {
+          const content = item.versions.find((version) => version.id === item.activeVersionId)?.content ?? item.versions.at(-1)?.content ?? '';
+          return item.title.includes('口播') && content.includes('内容工程顾问');
+        });
+      }, workspaceDir);
+      const activeIpScenarioDraftContent = ipScenarioDraft?.versions.find((version) => version.id === ipScenarioDraft.activeVersionId)?.content ?? '';
+      expect(activeIpScenarioDraftContent).toMatch(/IP 场景延伸知识库|延伸场景：口播|内容工程顾问/);
       await clickNavItem(page, 'IP 知识库');
       await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('已确认');
       await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('延伸知识库已生成');
@@ -5112,9 +6107,10 @@ test('业务主链在无真实 Provider 时 blocked，不伪造成果', async ({
         videoBreakdownError = error instanceof Error ? error.message : String(error);
       }
 
-      let videoScriptError = '';
+      let videoScriptStatus = '';
+      let videoScriptMessage = '';
       try {
-        await api.generateVideoScript({
+        const videoScript = await api.generateVideoScript({
           workspacePath,
           productName: 'Playwright 测试产品',
           sceneBackground: '真实使用场景',
@@ -5129,8 +6125,10 @@ test('业务主链在无真实 Provider 时 blocked，不伪造成果', async ({
           selectedSkillSlugs: [],
           params: { textModel: 'gpt-4o-mini' },
         });
+        videoScriptStatus = videoScript.status || '';
+        videoScriptMessage = [videoScript.script, videoScript.error].filter(Boolean).join('\n');
       } catch (error) {
-        videoScriptError = error instanceof Error ? error.message : String(error);
+        videoScriptMessage = error instanceof Error ? error.message : String(error);
       }
 
       const video = await api.generateVideo({
@@ -5154,7 +6152,7 @@ test('业务主链在无真实 Provider 时 blocked，不伪造成果', async ({
         imageStatus: image.status,
         imageAssetCount: image.assetRefs.length,
         videoBreakdownBlocked: videoBreakdownError.includes('真实视频理解模型未配置'),
-        videoScriptBlocked: videoScriptError.includes('文字模型未配置'),
+        videoScriptBlocked: (videoScriptStatus === 'blocked' || videoScriptStatus === '') && videoScriptMessage.includes('文字模型未配置'),
         videoStatus: video.status,
         videoAssetCount: video.assetRefs.length,
         logsCount: logs.length,
@@ -5265,7 +6263,7 @@ test('文章生成通过本地文字 Provider mock 生成正文并记录成功�
         async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
         { message: '等待文章测试工作区重新加载', timeout: 20_000 },
       ).toBe(true);
-      await clickButton(page, '文章生成');
+      await openArticleWorkbenchFromAgents(page);
     await page.locator('.article-editor-panel input').filter({ hasText: '' }).first().waitFor({ state: 'attached' });
     await page.locator('.article-editor-panel label').filter({ hasText: '目标读者' }).locator('input').fill('关注健康管理但讨厌夸张营销的办公人群');
     await page.locator('.article-editor-panel label').filter({ hasText: '主题' }).locator('input').fill('便携营养补充产品如何讲清真实使用场景');
@@ -5432,8 +6430,9 @@ test('爆款视频拆解五阶段工作台使用真实 blocked 分支，不伪�
     await assertVideoWorkbenchLayout(page);
 
     await clickVideoAction(page, '生成分镜脚本');
-    await expect(page.getByText('文字模型未配置')).toBeVisible();
-    await expect(page.locator('.video-script-card')).toContainText('等待生成新视频脚本');
+    await expect(page.getByText('文字模型未配置，未生成本地模板。', { exact: true })).toBeVisible();
+    await expect(page.locator('.video-script-card')).toContainText('新产品脚本生成未完成');
+    await expect(page.locator('.video-script-card')).toContainText('文字模型未配置，未生成本地模板。');
 
     await clickVideoStageTab(page, 'Prompt 交接');
     await expect(page.getByRole('heading', { name: '视频 Prompt 使用的素材' })).toBeVisible();

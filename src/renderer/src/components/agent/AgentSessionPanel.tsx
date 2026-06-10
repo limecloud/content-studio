@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { AgentTimeline, RuntimeFactsPanel } from '@limecloud/agent-runtime-ui';
 import type { AgentPromptExecutionEvent, AgentPromptSession } from '../../../../shared/types';
 import type { StatusPillTone } from '../WorkbenchPrimitives';
 import { StatusPill } from '../WorkbenchPrimitives';
+import { AgentUiProjectionSurface } from './AgentUiProjectionSurface';
 import { projectAgentRuntimeReadModel } from './agentRuntimeProjection';
 
 export type AgentExecutionStepState = 'done' | 'active' | 'idle' | 'blocked';
@@ -166,7 +166,9 @@ export function AgentSessionPanel({
             <div className="agent-session-flow" aria-label="Claw 会话流">
               <AgentExecutionTimeline steps={steps} />
 
-              <AgentTimeline
+              <AgentUiProjectionSurface
+                mode="conversation"
+                readModel={runtimeReadModel}
                 messages={session?.messages}
                 empty={empty}
                 runningLabel={runningLabel}
@@ -177,7 +179,8 @@ export function AgentSessionPanel({
             </div>
 
             <aside className="agent-session-sidecar" aria-label="运行事实">
-              <RuntimeFactsPanel
+              <AgentUiProjectionSurface
+                mode="runtime"
                 readModel={runtimeReadModel}
                 onResolveAction={onResolveAction ? (event) => onResolveAction(event) : undefined}
               />
@@ -234,7 +237,9 @@ export function AgentSessionPanel({
               </div>
             )}
 
-            <AgentTimeline
+            <AgentUiProjectionSurface
+              mode="conversation"
+              readModel={runtimeReadModel}
               messages={session?.messages}
               empty={empty}
               runningLabel={runningLabel}
@@ -247,7 +252,8 @@ export function AgentSessionPanel({
         </main>
 
         <aside className="agent-session-sidecar agent-claw-sidecar" aria-label="运行事实">
-          <RuntimeFactsPanel
+          <AgentUiProjectionSurface
+            mode="runtime"
             readModel={runtimeReadModel}
             artifact={artifact}
             onResolveAction={onResolveAction ? (event) => onResolveAction(event) : undefined}

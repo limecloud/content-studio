@@ -43,10 +43,7 @@ test('prepares current sidecar resources and verifies sha256', async () => {
   await withTempDir(async (dir) => {
     const platform = platformKey(process.platform, process.arch);
     const binaryName = sidecarBinaryName(process.platform);
-    const sourceBinary = join(dir, binaryName);
-    await writeFile(sourceBinary, '#!/usr/bin/env node\nconsole.log("app-server")\n');
-    await chmod(sourceBinary, 0o755);
-    const sha256 = await sha256File(sourceBinary);
+    const { sourceBinary, sha256 } = await writeFakeAppServerBinary(dir, binaryName);
     const manifestPath = join(dir, 'app-server.release.json');
     await writeFile(manifestPath, `${JSON.stringify({
       version: '1.0.0',
@@ -65,6 +62,7 @@ test('prepares current sidecar resources and verifies sha256', async () => {
 
     assert.equal(result.platform, platform);
     assert.equal(result.sha256, sha256);
+    assert.equal(result.runtimeProviderStore, 'validated');
     assert.equal(result.binaryPath, join(resourcesDir, 'current', binaryName));
     assert.equal(await sha256File(result.binaryPath), sha256);
     assert.deepEqual(JSON.parse(await readFile(result.manifestPath, 'utf8')).artifacts[0].sha256, sha256);
@@ -113,17 +111,23 @@ test('resolves release CI environment options', () => {
     platform: 'linux-x64',
     binary: '/tmp/app-server',
     version: '1.59.0',
+    skipRuntimeProviderStoreCheck: false,
   });
+});
+
+test('resolves explicit runtime provider store check skip option', () => {
+  const options = resolveCliOptions({ 'skip-runtime-provider-store-check': '1' }, {
+    APP_SERVER_RELEASE_MANIFEST: '/tmp/app-server.release.json',
+  });
+
+  assert.equal(options.skipRuntimeProviderStoreCheck, true);
 });
 
 test('prepares resources from a direct built sidecar binary', async () => {
   await withTempDir(async (dir) => {
     const platform = platformKey(process.platform, process.arch);
     const binaryName = sidecarBinaryName(process.platform);
-    const sourceBinary = join(dir, binaryName);
-    await writeFile(sourceBinary, '#!/usr/bin/env node\nconsole.log("app-server")\n');
-    await chmod(sourceBinary, 0o755);
-    const sha256 = await sha256File(sourceBinary);
+    const { sourceBinary, sha256 } = await writeFakeAppServerBinary(dir, binaryName);
     const resourcesDir = join(dir, 'resources', 'app-server');
 
     const result = await prepareAppServerResources({
@@ -135,6 +139,7 @@ test('prepares resources from a direct built sidecar binary', async () => {
 
     assert.equal(result.platform, platform);
     assert.equal(result.sha256, sha256);
+    assert.equal(result.runtimeProviderStore, 'validated');
     assert.equal(await sha256File(join(resourcesDir, 'current', binaryName)), sha256);
     const manifest = JSON.parse(await readFile(result.manifestPath, 'utf8'));
     assert.equal(manifest.version, '1.59.0');
@@ -153,7 +158,7 @@ test('prepares resources from remote manifest with relative artifact url', async
   await withTempDir(async (dir) => {
     const platform = platformKey(process.platform, process.arch);
     const binaryName = sidecarBinaryName(process.platform);
-    const binaryBody = Buffer.from('#!/usr/bin/env node\nconsole.log("app-server")\n');
+    const binaryBody = Buffer.from(fakeAppServerScript());
     const sha256 = createSha256(binaryBody);
     const manifestBody = `${JSON.stringify({
       version: '1.0.0',
@@ -192,6 +197,7 @@ test('prepares resources from remote manifest with relative artifact url', async
       });
 
       assert.equal(result.sha256, sha256);
+      assert.equal(result.runtimeProviderStore, 'validated');
       assert.equal(await sha256File(join(resourcesDir, 'current', binaryName)), sha256);
     } finally {
       await new Promise((resolveClose) => server.close(resolveClose));
@@ -199,6 +205,189 @@ test('prepares resources from remote manifest with relative artifact url', async
   });
 });
 
+test('prepares resources from Lime dist-electron app-resource manifest url', async () => {
+  await withTempDir(async (dir) => {
+    const platform = platformKey(process.platform, process.arch);
+    const binaryName = sidecarBinaryName(process.platform);
+    const appServerDir = join(dir, 'app-server', platform);
+    await mkdir(appServerDir, { recursive: true });
+    const { sourceBinary, sha256 } = await writeFakeAppServerBinary(appServerDir, binaryName);
+    const manifestPath = join(dir, 'app-server.release.json');
+    await writeFile(manifestPath, `${JSON.stringify({
+      version: '1.65.0',
+      protocolVersion: 'appserver.v0',
+      artifacts: [
+        { platform, url: `app-resource://app-server/${platform}/${binaryName}`, sha256 },
+      ],
+    }, null, 2)}\n`);
+
+    const resourcesDir = join(dir, 'resources', 'app-server');
+    const result = await prepareAppServerResources({
+      manifest: manifestPath,
+      resourcesDir,
+      platform,
+    });
+
+    assert.equal(result.sha256, sha256);
+    assert.equal(result.runtimeProviderStore, 'validated');
+    assert.equal(await sha256File(join(resourcesDir, 'current', binaryName)), sha256);
+    assert.equal(JSON.parse(await readFile(result.manifestPath, 'utf8')).artifacts[0].url, `app-resource://app-server/${platform}/${binaryName}`);
+    assert.equal(sourceBinary, join(appServerDir, binaryName));
+  });
+});
+
+test('rejects app-resource artifact url from remote manifest', async () => {
+  await withTempDir(async (dir) => {
+    const platform = platformKey(process.platform, process.arch);
+    const binaryName = sidecarBinaryName(process.platform);
+    const { sha256 } = await writeFakeAppServerBinary(dir, binaryName);
+    const manifestBody = `${JSON.stringify({
+      version: '1.65.0',
+      protocolVersion: 'appserver.v0',
+      artifacts: [
+        { platform, url: `app-resource://app-server/${platform}/${binaryName}`, sha256 },
+      ],
+    }, null, 2)}\n`;
+
+    const server = http.createServer((request, response) => {
+      if (request.url === '/app-server.release.json') {
+        response.setHeader('content-type', 'application/json');
+        response.end(manifestBody);
+        return;
+      }
+      response.statusCode = 404;
+      response.end('not found');
+    });
+
+    await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
+    try {
+      const { port } = server.address();
+      await assert.rejects(() => prepareAppServerResources({
+        manifest: `http://127.0.0.1:${port}/app-server.release.json`,
+        resourcesDir: join(dir, 'resources', 'app-server'),
+        platform,
+      }), /app-resource artifact URLs require a local app-server release manifest/);
+    } finally {
+      await new Promise((resolveClose) => server.close(resolveClose));
+    }
+  });
+});
+
+test('rejects same-platform release artifact without runtime data-dir support', async () => {
+  await withTempDir(async (dir) => {
+    const platform = platformKey(process.platform, process.arch);
+    const binaryName = sidecarBinaryName(process.platform);
+    const { sourceBinary, sha256 } = await writeFakeAppServerBinary(dir, binaryName, { supportsDataDir: false });
+    const manifestPath = await writeManifest(dir, platform, sourceBinary, sha256);
+    const resourcesDir = join(dir, 'resources', 'app-server');
+
+    await assert.rejects(() => prepareAppServerResources({
+      manifest: manifestPath,
+      resourcesDir,
+      platform,
+    }), /does not support --data-dir/);
+
+    await assert.rejects(() => stat(join(resourcesDir, 'current', `${binaryName}.tmp-${process.pid}`)), /ENOENT/);
+  });
+});
+
+test('rejects same-platform release artifact without provider store modelProvider list', async () => {
+  await withTempDir(async (dir) => {
+    const platform = platformKey(process.platform, process.arch);
+    const binaryName = sidecarBinaryName(process.platform);
+    const { sourceBinary, sha256 } = await writeFakeAppServerBinary(dir, binaryName, { providerListError: true });
+    const manifestPath = await writeManifest(dir, platform, sourceBinary, sha256);
+
+    await assert.rejects(() => prepareAppServerResources({
+      manifest: manifestPath,
+      resourcesDir: join(dir, 'resources', 'app-server'),
+      platform,
+    }), /does not expose provider store modelProvider\/list: method not found/);
+  });
+});
+
+test('skips runtime provider store check for cross-platform artifacts', async () => {
+  await withTempDir(async (dir) => {
+    const hostPlatform = platformKey(process.platform, process.arch);
+    const targetPlatform = hostPlatform === 'linux-x64' ? 'darwin-arm64' : 'linux-x64';
+    const binaryName = sidecarBinaryName(targetPlatform.split('-')[0]);
+    const { sourceBinary, sha256 } = await writeFakeAppServerBinary(dir, binaryName, { supportsDataDir: false });
+    const manifestPath = await writeManifest(dir, targetPlatform, sourceBinary, sha256);
+
+    const result = await prepareAppServerResources({
+      manifest: manifestPath,
+      resourcesDir: join(dir, 'resources', 'app-server'),
+      platform: targetPlatform,
+    });
+
+    assert.equal(result.platform, targetPlatform);
+    assert.equal(result.runtimeProviderStore, 'skipped-cross-platform');
+  });
+});
+
+test('allows explicit runtime provider store check skip for local release preparation', async () => {
+  await withTempDir(async (dir) => {
+    const platform = platformKey(process.platform, process.arch);
+    const binaryName = sidecarBinaryName(process.platform);
+    const { sourceBinary, sha256 } = await writeFakeAppServerBinary(dir, binaryName, { supportsDataDir: false });
+    const manifestPath = await writeManifest(dir, platform, sourceBinary, sha256);
+
+    const result = await prepareAppServerResources({
+      manifest: manifestPath,
+      resourcesDir: join(dir, 'resources', 'app-server'),
+      platform,
+      skipRuntimeProviderStoreCheck: true,
+    });
+
+    assert.equal(result.runtimeProviderStore, 'skipped-explicit');
+  });
+});
+
 function createSha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+async function writeManifest(dir, platform, sourceBinary, sha256) {
+  const manifestPath = join(dir, `app-server-${platform}.release.json`);
+  await writeFile(manifestPath, `${JSON.stringify({
+    version: '1.0.0',
+    protocolVersion: 'appserver.v0',
+    artifacts: [
+      { platform, url: sourceBinary, sha256 },
+    ],
+  }, null, 2)}\n`);
+  return manifestPath;
+}
+
+async function writeFakeAppServerBinary(dir, binaryName, options = {}) {
+  const sourceBinary = join(dir, binaryName);
+  await writeFile(sourceBinary, fakeAppServerScript(options));
+  await chmod(sourceBinary, 0o755);
+  return {
+    sourceBinary,
+    sha256: await sha256File(sourceBinary),
+  };
+}
+
+function fakeAppServerScript({ supportsDataDir = true, providerListError = false } = {}) {
+  const providerListResponse = providerListError
+    ? '{"id":2,"error":{"code":-32601,"message":"method not found"}}'
+    : '{"id":2,"result":{"providers":[]}}';
+  return `#!/bin/sh
+if [ "$1" = "--help" ]; then
+  printf '%s\\n' 'Usage: app-server --stdio --backend <backend>${supportsDataDir ? ' --data-dir <path>' : ''}'
+  exit 0
+fi
+
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '%s\\n' '{"id":1,"result":{"protocolVersion":"appserver.v0"}}'
+      ;;
+    *'"method":"modelProvider/list"'*)
+      printf '%s\\n' '${providerListResponse}'
+      ;;
+  esac
+done
+`;
 }

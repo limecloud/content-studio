@@ -97,7 +97,7 @@ function buildTeamKnowledgePromptContent(
       : ['- 暂无可用内容']
   );
   return [
-    `# ${map.title} / Prompt 工作台交接`,
+    `# ${map.title} / Prompt 草稿交接`,
     '',
     `团队知识包：${release.title} ${release.version}`,
     `地图状态：${map.status === 'published' ? '已发布' : '可用'} / ${map.coverage.readyPercent}% 可用`,
@@ -146,7 +146,7 @@ export class ContentTeamKnowledgePromptDraftService {
 
     const releases = await this.releases.list(input.workspacePath);
     const release = selectRelease(releases, map, input.contentKnowledgeReleaseId);
-    if (!release) throw new Error('请先发布当前内容知识地图的团队知识包版本，再交给 Prompt 工作台。');
+    if (!release) throw new Error('请先发布当前内容知识地图的团队知识包版本，再生成 Prompt 草稿。');
 
     const readyRows = allRows(map).filter((row) => row.status === 'ready').slice(0, 12);
     if (!readyRows.length) throw new Error('当前没有可复用组合，请先完成审核或补证据。');
@@ -172,7 +172,7 @@ export class ContentTeamKnowledgePromptDraftService {
       inputSourceIds: map.sourceInputSourceIds,
       sceneCardIds: map.sceneCardIds,
       content: buildTeamKnowledgePromptContent(map, release, readyRows),
-      note: '由团队知识包详情页生成，可在 Prompt 工作台继续编辑和确认。',
+      note: '由团队知识包详情页生成，可在 agents 继续协作和确认。',
       model: 'local-team-knowledge-package-handoff',
       status: 'draft',
     });

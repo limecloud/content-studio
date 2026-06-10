@@ -85,11 +85,11 @@ const STAGE_PRIMARY_MODULE: Record<ContentBatchStageId, ModuleKey> = {
   intent: 'knowledge-inputs',
   modeling: 'knowledge-map',
   selling: 'knowledge-map',
-  matrix: 'assets-prompt-workbench',
+  matrix: 'agents',
   manufacturing: 'video-prompt',
   review: 'knowledge-review',
-  optimization: 'assets-history',
-  feedback: 'assets-history',
+  optimization: 'assets',
+  feedback: 'assets',
 };
 
 const STAGE_GUIDES: Record<ContentBatchStageId, {
@@ -113,7 +113,7 @@ const STAGE_GUIDES: Record<ContentBatchStageId, {
     primaryAction: '生成痛点选题',
     actions: [
       { label: '登记评论原声', module: 'knowledge-inputs', hint: '导入评论、差评、客服问答或私信' },
-      { label: '打开 Prompt 工作台', module: 'assets-prompt-workbench', hint: '把用户语言转成选题和话术' },
+      { label: '打开 agents', module: 'agents', hint: '把用户语言转成选题和话术' },
     ],
   },
   modeling: {
@@ -139,7 +139,7 @@ const STAGE_GUIDES: Record<ContentBatchStageId, {
     delivery: '形成可执行的 Prompt 草稿、场景卡和补资源任务。',
     primaryAction: '生成矩阵交接',
     actions: [
-      { label: '打开 Prompt 工作台', module: 'assets-prompt-workbench', hint: '逐条处理 Prompt、审核和补资源动作' },
+      { label: '打开 agents', module: 'agents', hint: '逐条处理 Prompt、审核和补资源动作' },
       { label: '打开场景库', module: 'knowledge-scenes', hint: '确认场景卡和素材方向' },
     ],
   },
@@ -148,7 +148,7 @@ const STAGE_GUIDES: Record<ContentBatchStageId, {
     delivery: '产物进入审核台、素材库或混剪包，不在软件内伪造第三方视频任务。',
     primaryAction: '生成视频制造单',
     actions: [
-      { label: '生成图片素材', module: 'image', hint: '用已确认 Prompt 和素材生成图片候选' },
+      { label: '生成图片素材', module: 'image-production', hint: '用已确认 Prompt 和素材生成图片候选' },
       { label: '打开视频 Prompt', module: 'video-prompt', hint: '生成并复制到第三方视频平台' },
       { label: '生成绿幕文案图', module: 'image-green-screen', hint: '拆标题卡、卖点卡和 CTA 卡' },
       { label: '导出混剪包', module: 'video-mix-export', hint: '把通过素材交给第三方混剪软件' },
@@ -168,7 +168,7 @@ const STAGE_GUIDES: Record<ContentBatchStageId, {
     delivery: '形成下一轮补素材、补证据或调整 Prompt 的运行记录。',
     primaryAction: '写入运行复盘',
     actions: [
-      { label: '查看运行历史', module: 'assets-history', hint: '追溯 Prompt 和素材表现' },
+      { label: '查看素材追溯', module: 'assets', hint: '追溯 Prompt 和素材表现' },
       { label: '打开输入源', module: 'knowledge-inputs', hint: '补充投放表现、复制记录和素材反馈' },
     ],
   },
@@ -177,8 +177,8 @@ const STAGE_GUIDES: Record<ContentBatchStageId, {
     delivery: '沉淀可复用的知识更新、成功素材模板和下一批输入。',
     primaryAction: '回写素材覆盖',
     actions: [
-      { label: '打开运行历史', module: 'assets-history', hint: '复盘本批输入、运行和交付物' },
-      { label: '沉淀 Prompt', module: 'assets-prompt-workbench', hint: '把成功素材回炉成可复用提示词' },
+      { label: '打开素材库', module: 'assets', hint: '复盘本批输入、运行和交付物' },
+      { label: '沉淀 Prompt', module: 'agents', hint: '把成功素材回炉成可复用提示词' },
     ],
   },
 };

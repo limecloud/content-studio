@@ -13,7 +13,10 @@ import {
 
 export { TextProviderBlockedError, TextProviderFailedError };
 
-interface RuntimeConfig extends TextRuntimeConfig {}
+interface RuntimeConfig extends TextRuntimeConfig {
+  platformManaged: boolean;
+  providerPreference?: string;
+}
 
 type TextModelConfigStore = Pick<ModelConfigStore, 'readView' | 'getTextApiKey'>;
 type TextAppServerRuntime = Pick<AppServerSidecarService, 'runCapabilityTurn'>;
@@ -178,6 +181,17 @@ function isBlockedTextError(message: string): boolean {
   return /未配置|API Key|api\s*key|credential|unauthorized|401|403|无法解密|requires-reauthorization/i.test(message);
 }
 
+function resolveTextModel(view: Awaited<ReturnType<TextModelConfigStore['readView']>>, modelOverride?: string): string {
+  const override = modelOverride?.trim();
+  if (view.platformManaged) {
+    const textModels = view.textModels ?? [];
+    if (override && textModels.includes(override)) return override;
+    if (view.textModel && textModels.includes(view.textModel)) return view.textModel;
+    return textModels[0] || '';
+  }
+  return override || view.textModel;
+}
+
 export class TextGenerationService {
   constructor(
     private readonly modelConfig: TextModelConfigStore,
@@ -186,20 +200,27 @@ export class TextGenerationService {
 
   async getRuntimeConfig(modelOverride?: string): Promise<RuntimeConfig> {
     const view = await this.modelConfig.readView();
-    const protocol = protocolOverride(process.env.CONTENT_STUDIO_TEXT_PROTOCOL, view.textProtocol);
-    const storedKey = await this.modelConfig.getTextApiKey();
-    const apiKey = storedKey || envTextApiKey(protocol);
+    const platformManaged = Boolean(view.platformManaged);
+    const protocol = platformManaged ? view.textProtocol : protocolOverride(process.env.CONTENT_STUDIO_TEXT_PROTOCOL, view.textProtocol);
+    const storedKey = platformManaged ? undefined : await this.modelConfig.getTextApiKey();
+    const apiKey = platformManaged ? undefined : storedKey || envTextApiKey(protocol);
     if (!apiKey && view.textApiKeyStatus === 'requires-reauthorization') {
       throw new TextProviderBlockedError('文字 API Key 已保存，但当前系统无法解密。请在设置 - 模型中重新保存文字 API Key 后再生成。');
     }
-    if (!apiKey && requiresExplicitTextKey()) {
+    if (!platformManaged && !apiKey && requiresExplicitTextKey()) {
       throw new TextProviderBlockedError();
+    }
+    const model = resolveTextModel(view, modelOverride);
+    if (platformManaged && !model) {
+      throw new TextProviderBlockedError('平台文字模型未配置：请在平台模型设置中为文字 Provider 添加显式模型 ID 后再生成。');
     }
     return {
       apiKey,
-      baseUrl: process.env.CONTENT_STUDIO_TEXT_BASE_URL || view.textApiEndpoint,
-      model: modelOverride || view.textModel,
+      baseUrl: platformManaged ? view.textApiEndpoint : process.env.CONTENT_STUDIO_TEXT_BASE_URL || view.textApiEndpoint,
+      model,
       protocol,
+      platformManaged,
+      providerPreference: platformManaged ? view.agentProviderPreference : undefined,
     };
   }
 
@@ -238,15 +259,20 @@ export class TextGenerationService {
             model: runtime.model,
           },
         },
-        backendEnv: {
-          CONTENT_STUDIO_TEXT_PROTOCOL: runtime.protocol,
-          CONTENT_STUDIO_TEXT_MODEL: runtime.model,
-          CONTENT_STUDIO_TEXT_BASE_URL: runtime.baseUrl,
-          CONTENT_STUDIO_TEXT_API_KEY: runtime.apiKey ?? '',
-          LLM_PROTOCOL: runtime.protocol,
-          LLM_MODEL: runtime.model,
-          LLM_BASE_URL: runtime.baseUrl,
-        },
+        backendEnv: runtime.platformManaged
+          ? undefined
+          : {
+            CONTENT_STUDIO_TEXT_PROTOCOL: runtime.protocol,
+            CONTENT_STUDIO_TEXT_MODEL: runtime.model,
+            CONTENT_STUDIO_TEXT_BASE_URL: runtime.baseUrl,
+            CONTENT_STUDIO_TEXT_API_KEY: runtime.apiKey ?? '',
+            LLM_PROTOCOL: runtime.protocol,
+            LLM_MODEL: runtime.model,
+            LLM_BASE_URL: runtime.baseUrl,
+          },
+        providerPreference: runtime.providerPreference,
+        modelPreference: runtime.model,
+        backendMode: runtime.platformManaged ? 'runtime' : undefined,
       });
       const rawText = rawTextFromResult(result);
       const model = resultModel(result, runtime.model);

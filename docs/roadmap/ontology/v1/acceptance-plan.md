@@ -515,7 +515,7 @@ npm run content:v1:verify-report -- \
 
 当前实现状态：
 
-- `scripts/v2-ux-copy-audit.mjs` 已扩展扫描 v1 普通用户主路径模块：内容知识地图、审核任务、Prompt 工作台和 SOP 执行页，并通过 retired guard 阻止旧作战入口回流。
+- `scripts/v2-ux-copy-audit.mjs` 已扩展扫描 v1 普通用户主路径模块：内容知识地图、审核任务、Prompt 工作台、agents 工作台和 SOP 执行页，并通过 retired guard 阻止旧作战入口回流。
 - 扫描规则会拦截功能入口合集文案，以及 `Ontology`、`Concept`、`Relation`、`CoverageMatrix`、`PromptGroundingContext`、`DecisionGate`、`ActionLog` 等工程术语出现在普通用户模块中。
 - `npm run test:functional` 会执行该文案门禁；`content:v1:verify-readiness` 也会检查当前 v1 主路径模块都已纳入门禁。
 

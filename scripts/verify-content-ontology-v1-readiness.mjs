@@ -73,6 +73,7 @@ const V1_USER_FACING_COPY_AUDIT_PATHS = [
   'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx',
   'src/renderer/src/components/modules/ContentReviewTasksModule.tsx',
   'src/renderer/src/components/modules/PromptWorkbenchModule.tsx',
+  'src/renderer/src/components/agents/AgentsWorkbench.tsx',
 ];
 
 const RETIRED_BRAND_COMMAND_PATHS = [
@@ -319,10 +320,10 @@ async function checkV1UserFacingCopyGate(repoRoot, checks) {
   const required = [
     ['copy-audit-content-map', auditScript.includes("path: 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'")],
     ['copy-audit-review-tasks', auditScript.includes("path: 'src/renderer/src/components/modules/ContentReviewTasksModule.tsx'")],
-    ['copy-audit-prompt-workbench', auditScript.includes("path: 'src/renderer/src/components/modules/PromptWorkbenchModule.tsx'")],
+    ['copy-audit-agents', auditScript.includes("path: 'src/renderer/src/components/agents/AgentsWorkbench.tsx'")],
     ['copy-audit-engineering-terms', auditScript.includes('visible-ontology-engineering-term') && auditScript.includes('PromptGroundingContext') && auditScript.includes('DecisionGate')],
     ['functional-runs-copy-audit', functional.includes('v2 UX 文案审计会阻断普通用户可见工程词回退') && functional.includes('buildV2UxCopyAudit()')],
-    ['docs-ac13-copy-scope', acceptancePlan.includes('Prompt 工作台') && acceptancePlan.includes('知识地图') && completionAudit.includes('Prompt 工作台')],
+    ['docs-ac13-copy-scope', acceptancePlan.includes('agents') && acceptancePlan.includes('知识地图') && completionAudit.includes('agents')],
     ['copy-audit-runs-v1-modules', copyAuditReport.summary.passed && copyAuditReport.summary.files === V1_USER_FACING_COPY_AUDIT_PATHS.length],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
@@ -333,7 +334,7 @@ async function checkV1UserFacingCopyGate(repoRoot, checks) {
     missing.length || failures.length ? 'failed' : 'passed',
     missing.length || failures.length
       ? 'v1 普通用户主路径文案门禁缺少模块覆盖、工程词规则、功能测试或文档证据。'
-      : 'v1 普通用户主路径文案门禁已覆盖知识地图、审核台和 Prompt 工作台。',
+      : 'v1 普通用户主路径文案门禁已覆盖知识地图、审核台和 agents。',
     {
       files: copyAuditReport.summary.files,
       rules: copyAuditReport.summary.rules,
@@ -369,8 +370,8 @@ async function checkTeamKnowledgePromptHandoff(repoRoot, checks) {
     'team-knowledge-prompt-handoff',
     missing.length ? 'failed' : 'passed',
     missing.length
-      ? '团队知识包详情页到 Prompt 工作台的真实交接缺少主进程服务、门禁或回归证据。'
-      : '团队知识包详情页到 Prompt 工作台的真实交接已有主进程服务和回归证据。',
+      ? '团队知识包详情页到 agents 的真实交接缺少主进程服务、门禁或回归证据。'
+      : '团队知识包详情页到 agents 的真实交接已有主进程服务和回归证据。',
     missing.length ? { missing } : {},
   );
 }

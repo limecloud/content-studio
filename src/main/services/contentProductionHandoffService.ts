@@ -314,7 +314,7 @@ export class ContentProductionHandoffService {
         teamKnowledgeRelease: input.teamKnowledgeRelease,
       }),
       nextStep: input.status === 'created'
-        ? '在 Prompt 工作台确认草稿，或在场景库继续拆成图片和视频任务。'
+        ? '在 agents 确认草稿，或在场景库继续拆成图片和视频任务。'
         : '先处理发布检查问题，再重新发起生产交接。',
       createdAt: now,
     };

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { ContentStudioAppController } from '../app/useContentStudioApp';
 import { ArticleModule } from './modules/ArticleModule';
 import { AssetsModule } from './modules/AssetsModule';
+import { AgentsWorkbench } from './agents/AgentsWorkbench';
 import { ImageModule } from './modules/ImageModule';
 import { ImageShowcaseModule } from './modules/ImageShowcaseModule';
 import { BrandKnowledgeModule } from './modules/BrandKnowledgeModule';
@@ -23,6 +24,7 @@ import { SkillsModule } from './modules/SkillsModule';
 import { V2FeatureModule } from './modules/V2FeatureModule';
 import { VideoModule } from './modules/VideoModule';
 import { isV2FeatureModule } from '../app/v2FeatureRegistry';
+import { createAgentModelSettingsProjection, createModelSettingsProjection } from '../app/platformModelSettingsProjection';
 import type { AgentActionResolver } from './agent/AgentSessionPanel';
 import { projectAgentRuntimeAction } from './agent/agentRuntimeProjection';
 
@@ -32,6 +34,8 @@ interface ModuleOutletProps {
 }
 
 export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
+  const modelSettings = createModelSettingsProjection(app);
+  const agentModelSettings = createAgentModelSettingsProjection(app);
   const brandName = app.authState?.bootstrap?.branding?.shortName
     || app.authState?.bootstrap?.branding?.appName
     || app.authState?.bootstrap?.tenant?.name
@@ -66,7 +70,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
 
     if (action.decision === 'open-model-settings') {
       recordResponse(() => {
-        app.setSettingsTab('model');
+        app.setSettingsPage('model');
         app.setShowSettingsDialog(true);
       });
       return;
@@ -111,11 +115,68 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
       }
       onOpenPromptDraft={app.openTracePromptDraft}
       onOpenSceneCards={app.openTraceSceneCards}
-      onOpenRunTrace={() => app.setActiveModule('assets-history')}
+      onOpenRunTrace={() => app.setActiveModule('assets')}
     />
   );
 
-  if (app.activeModule === 'image') {
+  if (app.activeModule === 'agents') {
+    return (
+      <AgentsWorkbench
+        busy={app.busy}
+        workspaceReady={Boolean(app.workspacePath)}
+        workspacePath={app.workspacePath}
+        recentWorkspacePaths={app.settings?.recentWorkspacePaths ?? []}
+        productImageRefs={app.productImageRefs}
+        referenceImageRefs={app.referenceImageRefs}
+        textModel={app.params.textModel}
+        textProviderId={agentModelSettings.defaultAgentProviderId}
+        modelSettings={agentModelSettings}
+        skills={app.skills}
+        enabledSkillKeys={app.enabledSkillKeys}
+        mediaResult={app.mediaResult}
+        agentPromptSessions={app.agentPromptSessions}
+        activeSessionId={app.activeAgentPromptSessionId}
+        onSelectWorkspacePath={(workspacePath) =>
+          app.runAction(() => app.switchWorkspace(workspacePath), '正在切换项目')
+        }
+        onChooseWorkspace={() => app.runAction(() => app.chooseWorkspace(), '正在选择项目')}
+        onClearWorkspace={() => app.runAction(() => app.clearWorkspace(), '正在取消项目')}
+        onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
+        onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
+        onSelectAgentSession={app.setActiveAgentPromptSessionId}
+        onSelectTextModel={(selection) => {
+          if (!selection.modelId) return;
+          app.setParams((current) => ({ ...current, textModel: selection.modelId }));
+        }}
+        onStartAgentSession={(input) =>
+          app.runAction(() => app.startAgentPromptSession(input), '正在开始图片提示词协作')
+        }
+        onContinueAgentSession={(input) =>
+          app.runAction(() => app.continueAgentPromptSession(input), '正在继续 agents 协作')
+        }
+        onUsePromptInImage={app.useShowcasePromptInImage}
+        onGenerateImage={(input) => app.runAction((context) => app.generateShowcaseImage(input, context), '正在生成图片候选')}
+        onOpenImageProduction={() => app.setActiveModule('image-production')}
+        onOpenImageShowcase={() => app.setActiveModule('image-showcase')}
+        onOpenMaterialBreakdown={() => app.setActiveModule('material-breakdown')}
+        onOpenScenePrompts={() => app.setActiveModule('image-scene-prompts')}
+        onOpenVideoPrompt={() => app.setActiveModule('video')}
+        onOpenArticle={() => app.setActiveModule('article')}
+        onOpenArticleTitle={() => app.setActiveModule('article-title')}
+        onOpenArticleScript={() => app.setActiveModule('article-script')}
+        onOpenGreenScreen={() => app.setActiveModule('image-green-screen')}
+        onOpenAssets={() => app.setActiveModule('assets')}
+        onOpenSkills={() => app.setActiveModule('skills')}
+        onOpenModelSettings={() => {
+          app.setSettingsPage('model');
+          app.setShowSettingsDialog(true);
+        }}
+        onResolveAgentAction={resolveAgentAction}
+      />
+    );
+  }
+
+  if (app.activeModule === 'image' || app.activeModule === 'image-production') {
     return (
       <ImageModule
         busy={app.busy}
@@ -234,7 +295,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onUsePromptInVideo={app.useShowcasePromptInVideo}
         onStartPartialRetouch={(input) => {
           app.startShowcasePartialRetouch(input);
-          app.setActiveModule('image');
+          app.setActiveModule('image-production');
         }}
         onClearResult={app.clearMediaResult}
         onGenerateVideo={(input) => app.runAction((context) => app.generateShowcaseVideo(input, context))}
@@ -502,7 +563,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           app.runAction(() => app.submitContentReviewDecision(taskId, action, payload), '正在记录审核决策')
         }
         onCreateContentProductionHandoff={(taskId, target) =>
-          app.runAction(() => app.createContentProductionHandoff(taskId, target), '正在交给 Prompt 工作台')
+          app.runAction(() => app.createContentProductionHandoff(taskId, target), '正在生成 Prompt 草稿')
         }
         contentProductionHandoff={app.contentProductionHandoff}
         agentPromptSessions={app.agentPromptSessions}
@@ -552,7 +613,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         }
         onOpenPromptDraft={app.openTracePromptDraft}
         onOpenKnowledgeScenes={() => app.runAction(app.generateSceneCards, '正在基于 IP 知识库生成场景延伸库')}
-        onOpenPromptWorkbench={() => app.setActiveModule('assets-prompt-workbench')}
+        onOpenPromptWorkbench={() => app.setActiveModule('agents')}
       />
     );
   }
@@ -599,18 +660,12 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
     }
 
     if (
-      app.activeModule === 'assets-prompt-workbench' ||
       app.activeModule === 'video-creative' ||
       app.activeModule === 'video-custom' ||
       app.activeModule === 'article-title' ||
       app.activeModule === 'article-script'
     ) {
       const defaults = {
-        'assets-prompt-workbench': {
-          purpose: 'image' as const,
-          title: '图片 Prompt 草稿',
-          intent: '根据产品资料和参考图，生成自然真实的小红书种草图 Prompt。',
-        },
         'video-creative': {
           purpose: 'video' as const,
           title: '创意视频 Prompt 草稿',
@@ -678,7 +733,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           }
           onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
           onCopyPlatformDraft={(draftId) => app.runAction(() => app.copyPlatformDraftText(draftId), '正在复制发布文案')}
-          onOpenRunTrace={() => app.setActiveModule('assets-history')}
+          onOpenRunTrace={() => app.setActiveModule('assets')}
           onOpenSourceLog={app.openTraceGenerationLog}
           onSelectModule={app.setActiveModule}
         />
@@ -786,7 +841,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onRevealPath={(path) => app.runAction(() => app.revealPath(path))}
           onOpenPromptDraft={app.openTracePromptDraft}
           onOpenSceneCards={app.openTraceSceneCards}
-          onOpenRunTrace={() => app.setActiveModule('assets-history')}
+          onOpenRunTrace={() => app.setActiveModule('assets')}
           onSelectModule={app.setActiveModule}
         />
       );
