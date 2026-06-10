@@ -115,7 +115,7 @@ jobs:
     env:
       CI: 'true'
       CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '1'
-      LIME_APP_SERVER_REF: ${{ vars.LIME_APP_SERVER_REF || 'v1.59.0' }}
+      LIME_APP_SERVER_REF: ${{ vars.LIME_APP_SERVER_REF || 'v1.65.0' }}
     steps:
       - name: Checkout release ref
         uses: actions/checkout@v4
@@ -215,7 +215,7 @@ jobs:
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       OEM_BRAND: ${{ matrix.brand }}
-      LIME_APP_SERVER_REF: ${{ vars.LIME_APP_SERVER_REF || 'v1.59.0' }}
+      LIME_APP_SERVER_REF: ${{ vars.LIME_APP_SERVER_REF || 'v1.65.0' }}
 
     steps:
       - name: Checkout release ref
