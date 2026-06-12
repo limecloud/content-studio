@@ -1,5 +1,6 @@
 import { NAV_GROUPS } from "../app/constants";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   PlatformAccountEntry,
   type PlatformSettingsPageKey,
@@ -12,6 +13,7 @@ import type {
 import { createPlatformAccountProjection } from "../app/platformAccountProjection";
 import { CONTENT_STUDIO_PLATFORM_SETTINGS_THEME } from "../app/platformSettingsTheme";
 import type { ModuleKey } from "../app/types";
+import defaultAppLogoUrl from "../logo.png";
 
 interface AppSidebarProps {
   activeModule: ModuleKey;
@@ -101,6 +103,91 @@ const ADVANCED_MODULES = new Set<ModuleKey>([
 
 const DEFAULT_OPEN_GROUP_TITLES = new Set(["agents"]);
 
+type RailIconName = "agent" | "skills" | "image" | "video" | "database" | "box";
+type AgentNavIconName = "new-chat" | "skills" | "project";
+
+const RAIL_ICON_PATHS: Record<RailIconName, ReactNode> = {
+  agent: (
+    <>
+      <path d="M7 8.5h10" />
+      <path d="M7 12h6" />
+      <path d="M9 19l3-3h5a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h2z" />
+    </>
+  ),
+  skills: (
+    <>
+      <path d="M12 3l7 7-7 11-7-11z" />
+      <path d="M5 10h14" />
+      <path d="M12 3v18" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="4" y="5" width="16" height="14" rx="2" />
+      <circle cx="9" cy="10" r="1.5" />
+      <path d="M7 17l4-4 3 3 2-2 3 3" />
+    </>
+  ),
+  video: (
+    <>
+      <rect x="4" y="7" width="11" height="10" rx="2" />
+      <path d="M15 11l5-3v8l-5-3z" />
+    </>
+  ),
+  database: (
+    <>
+      <ellipse cx="12" cy="6" rx="7" ry="3" />
+      <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
+      <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+    </>
+  ),
+  box: (
+    <>
+      <path d="M4 8l8-4 8 4-8 4z" />
+      <path d="M4 8v8l8 4 8-4V8" />
+      <path d="M12 12v8" />
+    </>
+  ),
+};
+
+const AGENT_NAV_ICON_PATHS: Record<AgentNavIconName, ReactNode> = {
+  "new-chat": (
+    <>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </>
+  ),
+  skills: (
+    <>
+      <path d="M12 3l7 7-7 11-7-11z" />
+      <path d="M5 10h14" />
+      <path d="M12 3v18" />
+    </>
+  ),
+  project: (
+    <>
+      <path d="M4 7h6l2 2h8v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+      <path d="M4 7v11" />
+    </>
+  ),
+};
+
+function RailIcon({ name }: { name: RailIconName }) {
+  return (
+    <svg className="sidebar-rail-icon" viewBox="0 0 24 24" aria-hidden="true">
+      {RAIL_ICON_PATHS[name]}
+    </svg>
+  );
+}
+
+function AgentNavIcon({ name }: { name: AgentNavIconName }) {
+  return (
+    <svg className="agent-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+      {AGENT_NAV_ICON_PATHS[name]}
+    </svg>
+  );
+}
+
 export function AppSidebar({
   activeModule,
   workspacePath,
@@ -126,8 +213,52 @@ export function AppSidebar({
     authState?.bootstrap?.tenant?.name ||
     "布谷AI";
   const logoUrl = authState?.bootstrap?.branding?.logoUrl;
+  const sidebarLogoUrl = logoUrl || defaultAppLogoUrl;
   const brandInitial = brandName.trim().slice(0, 1).toUpperCase() || "C";
   const visibleActiveModule = NAV_ACTIVE_PARENT.get(activeModule) ?? activeModule;
+  const collapsedRailItems: Array<{
+    label: string;
+    icon: RailIconName;
+    active: boolean;
+    onClick: () => void;
+  }> = [
+    {
+      label: "Agents",
+      icon: "agent",
+      active: visibleActiveModule === "agents",
+      onClick: () => onSelectModule("agents"),
+    },
+    {
+      label: "skills 管理",
+      icon: "skills",
+      active: visibleActiveModule === "skills",
+      onClick: () => onSelectModule("skills"),
+    },
+    {
+      label: "图片",
+      icon: "image",
+      active: activeModule.startsWith("image") || activeModule === "material-breakdown",
+      onClick: () => onSelectModule("image-production"),
+    },
+    {
+      label: "视频",
+      icon: "video",
+      active: activeModule.startsWith("video"),
+      onClick: () => onSelectModule("video"),
+    },
+    {
+      label: "知识库",
+      icon: "database",
+      active: activeModule.startsWith("knowledge") || activeModule === "content-batch",
+      onClick: () => onSelectModule("content-batch"),
+    },
+    {
+      label: "素材库",
+      icon: "box",
+      active: activeModule === "assets",
+      onClick: () => onSelectModule("assets"),
+    },
+  ];
   const activeAgentSession = useMemo(
     () => agentPromptSessions.find((session) => session.id === activeAgentPromptSessionId),
     [activeAgentPromptSessionId, agentPromptSessions],
@@ -256,8 +387,8 @@ export function AppSidebar({
             if (collapsed) onToggleCollapsed();
           }}
         >
-          {logoUrl ? (
-            <img src={logoUrl} alt="Logo" className="brand-logo-img" />
+          {sidebarLogoUrl ? (
+            <img src={sidebarLogoUrl} alt="Logo" className="brand-logo-img" />
           ) : (
             <span className="brand-logo-fallback">{brandInitial}</span>
           )}
@@ -278,7 +409,24 @@ export function AppSidebar({
       </section>
 
       <nav className="nav-stack">
-        <section className="agent-nav" aria-label="agents">
+        {collapsed ? (
+          <div className="sidebar-rail-nav" aria-label="折叠导航">
+            {collapsedRailItems.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className={`sidebar-rail-item ${item.active ? "active" : ""}`}
+                aria-label={item.label}
+                title={item.label}
+                onClick={item.onClick}
+              >
+                <RailIcon name={item.icon} />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <>
+          <section className="agent-nav" aria-label="agents">
           <button
             type="button"
             className="agent-nav-root"
@@ -299,7 +447,7 @@ export function AppSidebar({
                   title="新对话"
                   onClick={startNewAgentDialog}
                 >
-                  <span className="agent-nav-icon">✎</span>
+                  <AgentNavIcon name="new-chat" />
                   <span>新对话</span>
                 </button>
                 <button
@@ -308,7 +456,7 @@ export function AppSidebar({
                   title="skills 管理"
                   onClick={() => onSelectModule("skills")}
                 >
-                  <span className="agent-nav-icon">◇</span>
+                  <AgentNavIcon name="skills" />
                   <span>skills 管理</span>
                 </button>
               </div>
@@ -329,7 +477,7 @@ export function AppSidebar({
                           title={project.label}
                           onClick={() => selectAgentProject(project.path)}
                         >
-                          <span className="agent-project-icon">▱</span>
+                          <AgentNavIcon name="project" />
                           <span>{project.label}</span>
                         </button>
                         {projectOpen && visibleSessions.length ? (
@@ -453,6 +601,8 @@ export function AppSidebar({
             </div>
           );
         })}
+          </>
+        )}
       </nav>
 
       <div className="sidebar-bottom">

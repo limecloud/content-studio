@@ -76,15 +76,15 @@ Content Studio 的 renderer 只消费共享 projection 后的 `UIMessageParts`�
     -> agentSession/read / artifact/read / evidence/export
     -> AgentUiProjectionSurface
 
-仍未完成的标准包依赖：
-  @limecloud/agent-runtime-client/sessionGateway
+已接入的标准包依赖：
+  @limecloud/agent-runtime-client@0.1.1/sessionGateway
     -> createAgentRuntimeClientFromSessionGateway(...)
     -> readThread / subscribeEvents / nextEvent / exportEvidence
     -> @limecloud/agent-runtime-projection
     -> @limecloud/agent-runtime-ui
 ```
 
-`ContentStudioAgentRuntimeSessionGateway` 是 current 过渡 owner，只允许封装 App Server current `agentSession/*` / `evidence/export` 方法和事件 notification，不拥有 projection state、React surface、Provider key 或 tool 状态机。它的 `nextEvent()` 必须保留 `agentSession/event` JSON-RPC notification 形状，以便后续无缝替换为 `@limecloud/agent-runtime-client/sessionGateway`；内部轮询如需裸 `RuntimeEvent`，只能通过 `nextRuntimeEvent()` helper 消费。真正安装并接入 `@limecloud/agent-runtime-client` 需要修改 `package.json` / `package-lock.json`，属于单独依赖变更，不在未确认的情况下夹写。
+`ContentStudioAgentRuntimeSessionGateway` 是 current adapter owner，只允许封装 App Server current `agentSession/start`、`artifact/read` 和 sidecar transport 适配，不拥有 projection state、React surface、Provider key 或 tool 状态机。标准 lifecycle 已由 `@limecloud/agent-runtime-client/sessionGateway` 包装成本仓的 `AgentRuntimeClient`；`nextEvent()` 必须保留 `agentSession/event` JSON-RPC notification 形状，内部轮询如需裸 `RuntimeEvent`，只能通过 `nextRuntimeEvent()` helper 消费。`package.json` 固定 `@limecloud/agent-runtime-client: 0.1.1`，lockfile 只能解析到 `@limecloud` organization registry tarball。
 
 ## 5. 架构图
 
@@ -421,7 +421,7 @@ Content Studio 可以包一层内容工厂业务壳，例如当前对象、素�
 - `AgentUiProjectionSurface` 集中组合已发布的 `@limecloud/agent-runtime-ui` `AgentTimeline` / `RuntimeFactsPanel` 与 product-side `AgentRuntimeRefLists`，并输出 `.agent-ui-projection`、`.agent-ui-main`、`.agent-ui-sidecar` 标准 DOM surface。
 - 已新增 product-side `AgentRuntimeRefLists` 过渡 surface，消费共享 read model 的 `artifactRefs` / `evidenceRefs`，渲染 `.agent-artifact-refs`、`.agent-evidence-refs`、`.agent-ref-card` 和 `data-ref-kind` / `data-ref-id` / `data-source-event-id` 稳定 DOM contract。退出条件：`@limecloud/agent-runtime-ui` 发布结构化 `ArtifactRefList` / `EvidenceRefList` 后替换为共享组件。
 - 已将 standalone/dev App Server turn 主链抽到 `ContentStudioAgentRuntimeSessionGateway`，由 `AppServerSidecarService.runCapabilityTurn` 委托执行，sidecar service 只保留生命周期、资源解析和 transport owner 职责。
-- `ContentStudioAgentRuntimeSessionGateway.nextEvent()` 已对齐标准 `agentSession/event` notification 形状；内部 `drainRuntimeEvents` 使用 `nextRuntimeEvent()`，避免未来接入 `@limecloud/agent-runtime-client/sessionGateway` 时再改事件合同。
+- `ContentStudioAgentRuntimeSessionGateway.nextEvent()` 已对齐标准 `agentSession/event` notification 形状；内部 `drainRuntimeEvents` 通过 `@limecloud/agent-runtime-client/sessionGateway` 的 `nextEvent()` 消费 notification，再用本地 guard 提取裸 `RuntimeEvent`。
 - Host Bridge / App Server 返回 `RuntimeEvent` 时优先保留 runtime/artifact/evidence owner；旧本地事件标记为 `owner: "ui"`，只作为 standalone/dev 兼容输入。
 - 缺失 fact 时显示 `blocked` / 待配置 / 恢复路径，不从助手正文猜测成功。
 
@@ -429,7 +429,7 @@ Content Studio 可以包一层内容工厂业务壳，例如当前对象、素�
 
 - 已覆盖：`AgentUiProjectionSurface`、`AgentTimeline`、`RuntimeFactsPanel`、Human-in-the-loop action、ArtifactRef / EvidenceRef 引用列表、运行事件列表和 blocked 恢复路径。
 - 已覆盖：工具结果、审批状态、artifact body、内部 Prompt 回显不进入普通助手最终正文；`artifact.snapshot` 才能成为 Prompt 交付物，只有 `message.delta` 时 fail closed。
-- 仍待共享包发布 / 真实 runtime：完整 `AgentUiProjectionView` 接入、安装并消费 `@limecloud/agent-runtime-client/sessionGateway`、`UIMessageParts`、`ProcessTimeline`、`ExecutionGraph`、`ToolGroup`、`TaskCapsule`、`ArtifactWorkspace`、`EvidencePack` 组件和 read model 合同；Content Studio 不自行补第二套协议。
+- 仍待共享包补齐 / 真实 runtime：完整 `AgentUiProjectionView`、`UIMessageParts`、`ProcessTimeline`、`ExecutionGraph`、`ToolGroup`、`TaskCapsule`、`ArtifactWorkspace`、`EvidencePack` 组件和 read model 合同；Content Studio 已消费 `@limecloud/agent-runtime-client/sessionGateway`，后续不自行补第二套协议。
 
 ### P3: App Server sidecar 版本收敛
 
@@ -529,11 +529,11 @@ Content Studio 可以包一层内容工厂业务壳，例如当前对象、素�
 | 平台宿主下未接视觉 / 视频 runtime 的直连 Provider blocked | functional / service 回归 | 已完成本仓库合同 |
 | `AI agents` 入口页、回车发送、内容能力文案、动态内部词净化、布局不溢出 | `npm run test:e2e -- --grep "agents"` | 已完成 |
 | 共享 AgentUI 已发布能力接入 | `AgentsWorkbench` 与 `AgentSessionPanel` 统一通过 `AgentUiProjectionSurface` 消费 `@limecloud/agent-runtime-projection` read model，并集中组合已发布 `AgentTimeline` / `RuntimeFactsPanel` 与 product-side `AgentRuntimeRefLists`；`verify:lime-agent` 守卫标准 DOM surface 和页面禁止散装拼 primitives | 部分完成，已进入真实产品 UI 主路径 |
-| 标准 session gateway 形状 | `ContentStudioAgentRuntimeSessionGateway` 集中封装 `agentSession/start`、`agentSession/turn/start`、`agentSession/read`、`agentSession/action/respond`、`agentSession/turn/cancel`、`artifact/read`、`evidence/export` 和 `agentSession/event` notification；`AppServerSidecarService.runCapabilityTurn` 已委托该 gateway；`verify:lime-agent` 守卫事件形状和 sidecar 委托 | 已完成过渡形状，未安装标准 runtime-client 包 |
+| 标准 session gateway / runtime-client 接入 | `ContentStudioAgentRuntimeSessionGateway` 负责 `agentSession/start`、`artifact/read` 和 sidecar transport；`startTurn/readThread/cancelTurn/respondAction/exportEvidence/nextEvent` 已通过 `@limecloud/agent-runtime-client/sessionGateway` 包装为标准 `AgentRuntimeClient`；`verify:lime-agent` 守卫 scoped 依赖、lockfile、标准 import、事件形状和 sidecar 委托 | 已完成标准包接入，GUI smoke / 真实 Provider live 仍待补 |
 | 真实 `lime-desktop-platform` 宿主 `LIME_RUNTIME_BRIDGE` / `lime.modelSettings` / `lime.agent` external fixture 端到端 | 2026-06-10 跑通 `lime-desktop-platform` `npm run smoke:product-app-runtime-live -- --content-studio-root "$CONTENT_STUDIO_ROOT" --zhongcao-root "$ZHONGCAO_ROOT" --app-server-bin "$APP_SERVER_BIN"`；Content Studio `platform-host:runtime:live` 通过 discovery 收到 `message.delta`、`artifact.snapshot`、`turn.completed` | 已完成真实宿主 + App Server JSON-RPC external fixture 证据 |
 | `npm run platform-host:runtime:live` 真实宿主 gate | 脚本已新增；要求真实 `LIME_RUNTIME_BRIDGE`、provider/model preference、runtime events 和 `artifact.snapshot`；默认无真实宿主时 fail closed；已由跨仓 smoke 用真实平台 discovery 调起 | 已完成脚本和 external fixture 宿主证据，正式 Provider live 未完成 |
 | standalone/dev `--backend runtime --data-dir` 真实 provider store live | 需要支持 runtime/data-dir 的 App Server release resources 和真实 provider store 配置 | 未完成，外部联调阻塞 |
 | `npm run app-server:runtime:live` live gate | 脚本已新增；默认无真实 runtime source 时 fail closed，不会伪通过 | 已完成脚本，未完成真实 live 证据 |
 | 真实上游 LLM Provider / RuntimeBackend live | 需要显式授权真实 Provider key、真实 model 和网络调用；不能用 external fixture 代替 | 未完成，密钥与授权环境阻塞 |
 | `app-server:backend:live` external compat backend 发布验收 | 需要受控真实 provider key / 网络模型 | 未完成，密钥环境阻塞 |
-| 完整 `AgentUiProjectionView` / `UIMessageParts` / `ProcessTimeline` / `ExecutionGraph` / `ToolGroup` / `TaskCapsule` / `ArtifactWorkspace` / `EvidencePack` | 需要共享 AgentUI / AgentRuntime 发布对应 read model 和组件合同，并把 Product App runtime client 从当前过渡 gateway 替换为 `@limecloud/agent-runtime-client/sessionGateway` | 未完成，依赖安装、锁文件更新与 GUI smoke 阻塞 |
+| 完整 `AgentUiProjectionView` / `UIMessageParts` / `ProcessTimeline` / `ExecutionGraph` / `ToolGroup` / `TaskCapsule` / `ArtifactWorkspace` / `EvidencePack` | 需要共享 AgentUI / AgentRuntime 发布对应 read model 和组件合同；Product App runtime client 已替换为 `@limecloud/agent-runtime-client/sessionGateway` 标准 adapter | 未完成，GUI smoke、真实 Provider live 与完整 shared surface 阻塞 |

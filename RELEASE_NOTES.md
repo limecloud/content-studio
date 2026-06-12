@@ -1,5 +1,29 @@
 # Release Notes
 
+## v0.22.0 - 2026-06-12
+
+### Lime App Server 与 Desktop Platform 一体化
+
+- Electron 启动链路内置启动 Lime App Server sidecar，并通过 `lime-desktop-platform` 统一读取 provider store、模型选择和平台 Host 状态，不再把模型密钥同步到 Content Studio 本地配置。
+- App Server / Platform Host runtime live check、release resource gate 和边界审计继续收敛，阻断旧 sidecar、旧 runtime adapter、renderer 直连 JSON-RPC 或 API Key 回流。
+- 模型设置入口恢复为平台公共 Provider 设置页投影，模型下拉、默认模型和待配置状态统一从平台设置事实源读取。
+
+### Codex 式 Agents 对话工作台
+
+- `agents` 工作台收敛为 Codex 式单列对话体验：启动后不自动折叠应用侧栏，右侧运行详情作为整体抽屉呈现，普通寒暄不再伪造成 Prompt 草稿。
+- Agent 对话支持真实流式输出和平台会话事实投影，消息正文只展示用户 / 助手对话；Prompt 交付物只在真实 artifact / PromptDraft 存在时展示。
+- 工具、Web Search、MCP 和 Skill 运行事实从 `executionEvents` 投影为对话内折叠块，同时完整保留在运行详情中，不把工具日志、证据或审批状态塞进普通助手正文。
+
+### 内容主链与验证覆盖
+
+- 品牌 / IP 知识库、内容知识地图、文章 / 图片 / 视频主链继续使用平台文字 capability 和真实 blocked 分支；未配置真实生成服务时不伪造成果。
+- E2E 覆盖 Agent 入口、真实图片输入源、寒暄对话、运行事实投影、Human-in-the-loop action、模型设置页和主业务链路。
+- 发布门禁补齐 Lime Agent 边界审计、平台 runtime live check、App Server resource 检查和全量 Playwright E2E。
+
+### 验证
+
+- `npm run verify:local`
+
 ## v0.21.0 - 2026-06-11
 
 ### Lime Desktop Platform Runtime 接入

@@ -9,7 +9,6 @@ import { SettingsDialogOutlet } from "./components/SettingsDialogOutlet";
 import { SkillPackageInstallDialog } from "./components/SkillPackageInstallDialog";
 
 const AUTH_ONBOARDING_SKIP_KEY = "buguai:auth-onboarding-skipped";
-const COMPACT_LAYOUT_QUERY = "(max-width: 1440px)";
 const AGENT_MODULES = new Set(["agents"]);
 
 function modelReauthorizationLabels(app: ReturnType<typeof useContentStudioApp>): string[] {
@@ -36,24 +35,6 @@ export function App() {
     window.localStorage.setItem(AUTH_ONBOARDING_SKIP_KEY, "1");
     setAuthOnboardingSkipped(true);
   }, [app.authState?.authenticated, authOnboardingSkipped]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mediaQuery = window.matchMedia(COMPACT_LAYOUT_QUERY);
-    const syncCompactLayout = () => {
-      const shouldCollapse = mediaQuery.matches;
-      setSidebarCollapsed(shouldCollapse);
-      setParamsPanelCollapsed(shouldCollapse);
-    };
-
-    syncCompactLayout();
-    mediaQuery.addEventListener("change", syncCompactLayout);
-
-    return () => {
-      mediaQuery.removeEventListener("change", syncCompactLayout);
-    };
-  }, [app.activeModule]);
 
   const reauthorizationLabels = modelReauthorizationLabels(app);
   const reauthorizationKey = reauthorizationLabels.join("-");

@@ -1,4 +1,20 @@
 import { randomUUID } from 'node:crypto';
+import { createAgentRuntimeClientFromSessionGateway } from '@limecloud/agent-runtime-client/sessionGateway';
+import type {
+  AgentRuntimeClient,
+  AgentSessionActionRespondParams,
+  AgentSessionActionRespondResponse,
+  AgentSessionEventNotification as StandardAgentSessionEventNotification,
+  AgentSessionReadParams,
+  AgentSessionReadResponse,
+  AgentSessionTurnCancelParams,
+  AgentSessionTurnCancelResponse,
+  AgentSessionTurnStartParams,
+  AgentSessionTurnStartResponse,
+  AppServerRequestResult as StandardAppServerRequestResult,
+  EvidenceExportParams,
+  EvidenceExportResponse,
+} from '@limecloud/agent-runtime-client';
 import {
   APP_SERVER_AGENT_SESSION_METHODS,
 } from '../../shared/types';
@@ -155,10 +171,10 @@ export class ContentStudioAgentRuntimeSessionGateway {
   }
 
   respondAction(
-    params: { sessionId: string; actionId: string; response: Record<string, unknown> },
+    params: AgentSessionActionRespondParams | { sessionId: string; actionId: string; response: Record<string, unknown> },
     options?: AppServerRequestOptions,
   ): Promise<AppServerRequestResult<AppServerActionRespondResponse>> {
-    return this.request(APP_SERVER_AGENT_SESSION_METHODS.respondAction, params, options);
+    return this.request(APP_SERVER_AGENT_SESSION_METHODS.respondAction, normalizeActionResponseParams(params), options);
   }
 
   exportEvidence(
@@ -205,6 +221,7 @@ export async function runContentStudioAgentRuntimeTurn(
   input: AppServerAgentRuntimeTurnInput,
   timeoutMs: number,
 ): Promise<AppServerAgentRuntimeTurnResult> {
+  const runtimeClient = createContentStudioAgentRuntimeClient(gateway);
   const sessionPrefix = input.sessionIdPrefix?.trim() || 'content_studio_capability';
   const sessionId = `${sessionPrefix}_${randomUUID()}`;
   const turnId = `turn_${randomUUID()}`;
@@ -217,10 +234,10 @@ export async function runContentStudioAgentRuntimeTurn(
     businessObjectRef: input.businessObjectRef,
   }, { timeoutMs });
 
-  const turn = await gateway.startTurn({
+  const turn = await runtimeClient.startTurn({
     sessionId,
     turnId,
-    input: input.input,
+    input: toAgentRuntimeInput(input.input),
     runtimeOptions: {
       stream: true,
       capabilityId: input.capabilityId,
@@ -237,9 +254,10 @@ export async function runContentStudioAgentRuntimeTurn(
   }, { timeoutMs });
 
   const events = turn.notifications.map(notificationEvent).filter(isRuntimeEvent);
-  await drainRuntimeEvents(gateway, events, timeoutMs);
+  await drainRuntimeEvents(runtimeClient, events, timeoutMs);
+  await runtimeClient.readThread({ sessionId }, { timeoutMs });
   const artifacts = await readArtifacts(gateway, sessionId, turnId, events, timeoutMs);
-  const evidence = await exportEvidence(gateway, sessionId, turnId, timeoutMs);
+  const evidence = await exportEvidence(runtimeClient, sessionId, turnId, timeoutMs);
   return {
     sessionId,
     turnId,
@@ -247,6 +265,73 @@ export async function runContentStudioAgentRuntimeTurn(
     artifacts,
     evidenceEvents: evidence.events,
     evidenceArtifacts: evidence.artifacts,
+  };
+}
+
+function createContentStudioAgentRuntimeClient(gateway: ContentStudioAgentRuntimeSessionGateway): AgentRuntimeClient {
+  return createAgentRuntimeClientFromSessionGateway({
+    startTurn: async (params: AgentSessionTurnStartParams, options) =>
+      toStandardRequestResult<AgentSessionTurnStartResponse>(await gateway.startTurn(toGatewayTurnStartParams(params), options)),
+    readSession: async (params: AgentSessionReadParams, options) =>
+      toStandardRequestResult<AgentSessionReadResponse>(await gateway.readSession(params, options)),
+    cancelTurn: async (params: AgentSessionTurnCancelParams, options) =>
+      toStandardRequestResult<AgentSessionTurnCancelResponse>(await gateway.cancelTurn(params, options)),
+    respondAction: async (params: AgentSessionActionRespondParams, options) =>
+      toStandardRequestResult<AgentSessionActionRespondResponse>(await gateway.respondAction(params, options)),
+    exportEvidence: async (params: EvidenceExportParams, options) =>
+      toStandardRequestResult<EvidenceExportResponse>(await gateway.exportEvidence(params, options)),
+    nextEvent: async (timeoutMs?: number) =>
+      gateway.nextEvent(timeoutMs) as Promise<StandardAgentSessionEventNotification>,
+  });
+}
+
+function toStandardRequestResult<T>(result: AppServerRequestResult<unknown>): StandardAppServerRequestResult<T> {
+  const response = {
+    jsonrpc: '2.0',
+    id: 'content-studio-runtime-client',
+    result: result.result as T,
+  };
+  return {
+    id: response.id,
+    result: response.result,
+    response,
+    notifications: result.notifications.filter(isJsonRpcNotification),
+    messages: [...result.notifications, response],
+  } as StandardAppServerRequestResult<T>;
+}
+
+function toGatewayTurnStartParams(params: AgentSessionTurnStartParams): Parameters<ContentStudioAgentRuntimeSessionGateway['startTurn']>[0] {
+  if (!params.turnId) {
+    throw new Error('App Server turnId is required before starting a Content Studio agent turn.');
+  }
+  return {
+    sessionId: params.sessionId,
+    turnId: params.turnId,
+    input: { ...params.input } as Record<string, unknown>,
+    runtimeOptions: { ...(params.runtimeOptions ?? {}) } as Record<string, unknown>,
+    queueIfBusy: params.queueIfBusy,
+    skipPreSubmitResume: params.skipPreSubmitResume,
+  };
+}
+
+function toAgentRuntimeInput(input: Record<string, unknown>): AgentSessionTurnStartParams['input'] {
+  const text = typeof input.text === 'string' && input.text.trim()
+    ? input.text
+    : JSON.stringify(input);
+  return { ...input, text } as AgentSessionTurnStartParams['input'];
+}
+
+function normalizeActionResponseParams(
+  params: AgentSessionActionRespondParams | { sessionId: string; actionId: string; response: Record<string, unknown> },
+): AgentSessionActionRespondParams {
+  if ('requestId' in params) return params;
+  return {
+    sessionId: params.sessionId,
+    requestId: params.actionId,
+    actionType: 'ask_user',
+    confirmed: true,
+    userData: params.response,
+    response: textFromRuntimePayload(params.response),
   };
 }
 
@@ -266,19 +351,23 @@ function isAgentSessionEventNotification(message: AppServerJsonRpcMessage): mess
   );
 }
 
+function isJsonRpcNotification(message: AppServerJsonRpcMessage): message is AppServerJsonRpcMessage & { method: string } {
+  return 'method' in message && !('id' in message);
+}
+
 async function drainRuntimeEvents(
-  gateway: ContentStudioAgentRuntimeSessionGateway,
+  runtimeClient: AgentRuntimeClient,
   events: AppServerRuntimeEvent[],
   timeoutMs: number,
 ): Promise<void> {
   const expiresAt = Date.now() + timeoutMs;
   for (;;) {
     const terminalEvent = events.find((event) => (
-      event.type === 'turn.completed' ||
+      isCompletedRuntimeEvent(event) ||
       isFailedRuntimeEvent(event) ||
       event.type === 'turn.canceled'
     ));
-    if (terminalEvent?.type === 'turn.completed') return;
+    if (terminalEvent && isCompletedRuntimeEvent(terminalEvent)) return;
     if (terminalEvent && isFailedRuntimeEvent(terminalEvent)) {
       throw new Error(textFromRuntimePayload(terminalEvent.payload) || 'App Server turn failed');
     }
@@ -289,7 +378,11 @@ async function drainRuntimeEvents(
     const remainingMs = expiresAt - Date.now();
     if (remainingMs <= 0) throw new Error(`app-server prompt turn timed out after ${timeoutMs}ms`);
     try {
-      events.push(await gateway.nextRuntimeEvent(Math.min(AGENT_RUNTIME_EVENT_POLL_MS, remainingMs)));
+      const event = notificationEvent(await runtimeClient.nextEvent(Math.min(AGENT_RUNTIME_EVENT_POLL_MS, remainingMs)));
+      if (!isRuntimeEvent(event)) {
+        throw new Error('App Server notification is not agentSession/event.');
+      }
+      events.push(event);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (/timed out/.test(message)) continue;
@@ -317,12 +410,12 @@ async function readArtifacts(
 }
 
 async function exportEvidence(
-  gateway: ContentStudioAgentRuntimeSessionGateway,
+  runtimeClient: AgentRuntimeClient,
   sessionId: string,
   turnId: string,
   timeoutMs: number,
 ): Promise<{ events: AppServerRuntimeEvent[]; artifacts: AppServerTurnArtifact[] }> {
-  const response = await gateway.exportEvidence({
+  const response = await runtimeClient.exportEvidence({
     sessionId,
     turnId,
     includeEvents: true,
@@ -370,6 +463,10 @@ function uniqueArtifacts(artifacts: AppServerTurnArtifact[]): AppServerTurnArtif
 
 function isFailedRuntimeEvent(event: AppServerRuntimeEvent): boolean {
   return event.type === 'turn.failed' || event.type.endsWith('.failed');
+}
+
+function isCompletedRuntimeEvent(event: AppServerRuntimeEvent): boolean {
+  return event.type === 'turn.final_done' || event.type === 'turn.completed';
 }
 
 function textFromRuntimePayload(payload: unknown): string {

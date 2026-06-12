@@ -9,6 +9,17 @@ let mainWindow: BrowserWindow | null = null;
 const pendingSkillPackages: string[] = [];
 let rendererAcceptsSkillPackages = false;
 
+function configureDevelopmentUserDataDir(): void {
+  if (!process.env.ELECTRON_RENDERER_URL || app.commandLine.hasSwitch('user-data-dir')) {
+    return;
+  }
+  const userDataDir =
+    process.env.CONTENT_STUDIO_DEV_USER_DATA_DIR?.trim() ||
+    join(app.getPath('appData'), 'content-studio-dev');
+  app.setPath('userData', userDataDir);
+  console.info(`[content-studio] development userData=${userDataDir}`);
+}
+
 function shouldHideWindowForTests(): boolean {
   if (process.env.CONTENT_STUDIO_TEST_SILENT === '0') return false;
   return process.env.CONTENT_STUDIO_SMOKE === '1' || process.env.CONTENT_STUDIO_E2E === '1' || process.env.CONTENT_STUDIO_TEST_SILENT === '1';
@@ -155,6 +166,7 @@ if (!singleInstanceLock) {
     flushPendingSkillPackages();
   });
 
+  configureDevelopmentUserDataDir();
   app.whenReady().then(() => {
     protocol.handle('local-asset', (request) => {
       const filePath = decodeURIComponent(new URL(request.url).pathname);

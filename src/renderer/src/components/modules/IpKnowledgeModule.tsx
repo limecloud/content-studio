@@ -173,7 +173,7 @@ export function IpKnowledgeModule({
   const [agentMessage, setAgentMessage] = useState('请检查当前 IP 六层知识库的缺口、语气一致性和场景延伸优先级。');
   const activeSourceLabel = activeKnowledgeBase ? `${activeKnowledgeBase.title} · ${baseLabel(activeKnowledgeBase.baseType)}` : '当前未选知识库';
   const hasSource = citationCount > 0;
-  const hasIpKnowledge = Boolean(activeIpKnowledgeBase);
+  const hasIpKnowledge = activeIpKnowledgeBase?.status === 'ready';
   const hasMissingLayers = Boolean(activeIpKnowledgeBase?.missingLayers.length);
   const scenarioExtensions = activeIpKnowledgeBase
     ? activeIpKnowledgeBase.extensionScenes.map((scene) => {
@@ -408,8 +408,8 @@ export function IpKnowledgeModule({
             key={record.id}
             className="prompt-draft-card"
             active={record.id === activeIpKnowledgeBaseId}
-            status={record.status === 'ready' ? '已构建' : '待确认'}
-            statusTone={record.status === 'ready' ? 'ready' : 'idle'}
+            status={record.status === 'ready' ? '已构建' : record.status === 'blocked' ? '待配置' : '待确认'}
+            statusTone={record.status === 'ready' ? 'ready' : record.status === 'blocked' ? 'blocked' : 'idle'}
             title={record.title}
             meta={`完整度 ${record.completeness}%`}
             onClick={() => setActiveIpKnowledgeBaseId(record.id)}

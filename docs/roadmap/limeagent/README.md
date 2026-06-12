@@ -19,7 +19,8 @@ renderer -> contentStudio.runAgentTask (preload)
 
 Lime 侧把 Agent runtime 服务化成 App Server（见 Lime 仓库 `internal/roadmap/appserver/`），对外发布：
 
-1. `app-server-client` npm package（JSON-RPC client + sidecar 启动 helper；content-studio 当前尚未引入 npm 依赖）。
+1. `@limecloud/app-server-client` npm package（JSON-RPC client + sidecar 启动 helper；Content Studio 通过 `@limecloud/agent-runtime-client` 间接消费，不直接依赖无 scope 包）。
+1. `@limecloud/agent-runtime-client` npm package（标准 AgentRuntime facade；Content Studio 固定依赖 `0.1.1`，并通过 `@limecloud/agent-runtime-client/sessionGateway` 包装现有 App Server session gateway）。
 2. `app-server` sidecar binary（stdio newline-delimited JSON-RPC）。
 3. release manifest（version / platform / sha256）。
 
@@ -165,6 +166,7 @@ content-studio AppServerSidecarService smoke / compat
 22. 2026-06-10 已跑通 `lime-desktop-platform` 跨仓 Product App runtime smoke：`npm run smoke:product-app-runtime-live -- --content-studio-root "$CONTENT_STUDIO_ROOT" --zhongcao-root "$ZHONGCAO_ROOT" --app-server-bin "$APP_SERVER_BIN"`。该 smoke 启动真实 `lime-desktop-platform` Electron，发布 runtime bridge discovery，写入平台模型设置到 App Server provider store，再由 Content Studio 的 `platform-host:runtime:live` 通过 discovery 调 `lime.agent` 并收到 `message.delta`、`artifact.snapshot`、`turn.completed`；后端使用本地 external fixture，不调用正式上游 LLM API。输出包含 `mode=lime-desktop-platform`、`source=discovery`、`model=platform-live-model`、artifact `平台 Runtime 生成草稿`，`zhongcao` 同链路 runtime projection 任务成功。
 23. 2026-06-11 `AI agents` 工作台和通用 `AgentSessionPanel` 已统一通过 `AgentUiProjectionSurface` 渲染共享 AgentUI 投影；该 surface 集中组合已发布的 `AgentTimeline`、`RuntimeFactsPanel` 与 product-side `AgentRuntimeRefLists`，并输出 `.agent-ui-projection`、`.agent-ui-main`、`.agent-ui-sidecar` 标准 DOM surface。`npm run verify:lime-agent` 已增加守卫，禁止产品页面继续散装拼共享 primitives。
 24. 2026-06-11 `AppServerSidecarService.runCapabilityTurn` 已把 `agentSession/start`、`agentSession/turn/start`、`agentSession/event`、`artifact/read`、`evidence/export` 主链委托到 `ContentStudioAgentRuntimeSessionGateway`；gateway 暴露 `startTurn`、`readSession`、`cancelTurn`、`respondAction`、`exportEvidence`、`nextEvent` 的标准 session gateway 形状，其中 `nextEvent` 保持 `agentSession/event` JSON-RPC notification 形状，内部轮询才消费 `nextRuntimeEvent`。
+25. 2026-06-11 Content Studio 已通过正式 npm registry 固定安装 `@limecloud/agent-runtime-client@0.1.1`；lockfile 解析到 `@limecloud/agent-runtime-client` 和间接 `@limecloud/app-server-client@1.66.0` 的 `@limecloud` organization tarball，没有 `file:`、本机绝对路径或无 scope `app-server-client` 依赖。`appServerAgentRuntimeGateway.ts` 已通过 `createAgentRuntimeClientFromSessionGateway(...)` 进入标准 `AgentRuntimeClient`，本地 gateway 只保留 `agentSession/start` 与 `artifact/read` 这两类产品侧补充能力。
 
 仍未完成：
 
@@ -173,7 +175,7 @@ content-studio AppServerSidecarService smoke / compat
 3. `app-server:backend:live` 仍需在受控发布环境用真实生产密钥 / 真实网络模型跑过并留存结果，作为 external compat backend 的发布验收。
 4. 图片、视频、视觉拆解和通用文字生成仍有 standalone 本地 `ModelConfigStore` key 兼容面；平台宿主下这些旧设置要作为一次性迁移 source 进入 `lime.modelSettings` / App Server provider store，迁移成功后不再双存 key。
 5. 更接近生产环境的长流式输出压测、自动 restart / retry 退避策略仍需扩展。
-6. 共享 AgentUI 仍缺完整发布版 `AgentUiProjectionView`、`@limecloud/agent-runtime-client` 产品依赖接入，以及业务 artifact workspace / evidence pack 打开闭环；Content Studio 当前通过 `ContentStudioAgentRuntimeSessionGateway` 对齐标准 session gateway 形状，并通过 `AgentUiProjectionSurface` 消费已发布的 `AgentTimeline`、`RuntimeFactsPanel`、projection read model，用 product-side `AgentRuntimeRefLists` 过渡展示 ArtifactRef / EvidenceRef。由于仓库尚未安装 `@limecloud/agent-runtime-client` 依赖，不能声明完整 AgentUI 100%。
+6. 共享 AgentUI 仍缺完整发布版 `AgentUiProjectionView`、业务 artifact workspace / evidence pack 打开闭环和 GUI smoke 证据；Content Studio 已固定安装并消费 `@limecloud/agent-runtime-client@0.1.1` 的 `sessionGateway` adapter，通过 `AgentUiProjectionSurface` 消费已发布的 `AgentTimeline`、`RuntimeFactsPanel`、projection read model，用 product-side `AgentRuntimeRefLists` 过渡展示 ArtifactRef / EvidenceRef。由于真实 Provider live、完整 shared refs surface 和 GUI smoke 尚未闭环，不能声明完整 AgentUI 100%。
 7. 跨 App 下一刀已推进：`zhongcao` 只读盘点显示无本地 Provider key / 旧 SDK runtime / 旧本地 agent；`geo.generateDraft` 已从 `lime.modelSettings` 迁到 `lime.agent`，`geo.scoreDraft` / `geo.addSchema` 已归入 `lime.diagnostics`。`zhongcao` 已新增 `npm run smoke:runtime-bridge`，用真实 Electron IPC + 本地 `lime.runtimeBridge` fixture 验证 `lime.agent` -> draft result -> 业务 store 写回且 payload 不含 key/token/secret。2026-06-10 `lime-desktop-platform` 的 `smoke:product-app-runtime-live` 已在真实平台宿主 + App Server JSON-RPC external fixture 下同时跑通 Content Studio 与 zhongcao；剩余缺口是真实 Provider live API / RuntimeBackend 上游模型调用证据。
 
 CI / release 已完成串联：

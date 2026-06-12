@@ -4,6 +4,7 @@ import type {
   AgentPromptMessage,
   AgentPromptExecutionEvent,
   AgentPromptSession,
+  AgentPromptSessionEvent,
   AgentPromptSessionResult,
   AgentPromptSourceSnapshot,
   AttachAgentPromptSessionInputSourcesInput,
@@ -12,6 +13,7 @@ import type {
   PromptDraft,
   PromptDraftVersion,
   RespondAgentPromptActionInput,
+  SkillRef,
   StartAgentPromptSessionInput,
 } from '../../shared/types';
 import { isReusablePromptInputSource } from '../../shared/inputSourcePolicy';
@@ -28,6 +30,8 @@ import type {
   GenerateAgentPromptRefinementResult,
 } from './appServerPromptAgentService';
 import type { TextProviderRuntimeEvent } from '../providers/textGenerationProvider';
+
+type AgentPromptSessionPublisher = (event: AgentPromptSessionEvent) => void;
 
 function sessionsFilePath(workspacePath: string): string {
   return join(getWorkspaceDataDir(workspacePath), 'agent-prompt-sessions.json');
@@ -103,38 +107,11 @@ function reusableSessionModel(model?: string): string | undefined {
   return trimmed;
 }
 
-function blockedDraftContent(input: StartAgentPromptSessionInput, reason: string): string {
-  return [
-    '# Prompt 草稿未生成',
-    '',
-    '用户意图：',
-    input.userIntent.trim(),
-    '',
-    '处理状态：',
-    `本轮协作暂未生成可交付草稿。${reason ? '生成服务未完成，请按恢复路径处理。' : ''}`,
-    '',
-    '恢复路径：',
-    '请确认生成服务和文字模型已配置后重试；如果输入源未解析，请先补齐素材或资料。',
-  ].join('\n');
-}
-
-function blockedRefinedContent(previousContent: string, adjustment: string, reason: string): string {
-  return [
-    previousContent,
-    '',
-    '本轮调整要求：',
-    adjustment.trim(),
-    '',
-    '处理状态：',
-    `本轮调整暂未生成可交付草稿。${reason ? '生成服务未完成，请按恢复路径处理。' : ''}`,
-    '',
-    '恢复路径：',
-    '请确认生成服务和文字模型已配置后重试；如果输入源未解析，请先补齐素材或资料。',
-  ].join('\n');
-}
-
 function limeAgentServerErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  if (/lime-desktop-platform|runtime bridge|provider store|sidecar/i.test(message)) {
+    return '未连接 Lime Desktop Platform，无法读取统一模型设置并启动 AI Agent 对话。请先启动平台宿主后重试。';
+  }
   const sanitized = message
     .replace(/Lime Agent Server/gi, '协作生成服务')
     .replace(/App Server backend/gi, '生成服务')
@@ -150,61 +127,155 @@ function limeAgentServerErrorMessage(error: unknown): string {
   return sanitized;
 }
 
-function blockedProviderEvents(reason: string, operation: 'draft' | 'refine'): TextProviderRuntimeEvent[] {
-  return [
-    {
-      eventClass: 'runtime.error',
-      kind: 'model',
-      status: 'failed',
-      phase: 'blocked',
-      title: '协作生成服务未完成',
-      detail: '请确认生成服务和文字模型已配置后重试；如果输入源未解析，请先补齐素材或资料。',
-      model: 'blocked:lime-agent-server',
-      payload: {
-        runtime: 'lime-agent-server',
-        operation,
-        error: reason,
+function blockedAgentSession(input: {
+  workspacePath: string;
+  workflowRunId?: string;
+  teamKnowledgeRelease?: AgentPromptSession['teamKnowledgeRelease'];
+  title?: string;
+  purpose: AgentPromptSession['purpose'];
+  userIntent: string;
+  inputSourceIds: string[];
+  sceneCardIds?: string[];
+  selectedSkills?: AgentPromptSession['selectedSkills'];
+  selectedSkillSlugs?: string[];
+  sourceSnapshots: AgentPromptSourceSnapshot[];
+  reason: string;
+  createdAt?: string;
+}): AgentPromptSession {
+  const now = input.createdAt ?? new Date().toISOString();
+  const sessionId = randomUUID();
+  const turnId = randomUUID();
+  const message = [
+    'AI Agent 对话未启动。',
+    input.reason,
+    '当前不会生成本地 Prompt 草稿、工具记录或证据链；请连接 Lime Desktop Platform 后重试。',
+  ].filter(Boolean).join('\n');
+  return {
+    id: sessionId,
+    workspacePath: input.workspacePath,
+    workflowRunId: input.workflowRunId,
+    teamKnowledgeRelease: input.teamKnowledgeRelease,
+    title: input.title?.trim() || 'AI Agent 未接通',
+    purpose: input.purpose,
+    status: 'blocked',
+    userIntent: input.userIntent.trim(),
+    inputSourceIds: input.inputSourceIds,
+    sceneCardIds: input.sceneCardIds ?? [],
+    selectedSkills: input.selectedSkills,
+    selectedSkillSlugs: input.selectedSkillSlugs,
+    promptDraftIds: [],
+    sourceSnapshots: input.sourceSnapshots,
+    messages: [
+      {
+        id: randomUUID(),
+        role: 'user',
+        kind: 'intent',
+        content: input.userIntent.trim(),
+        createdAt: now,
       },
-    },
-  ];
+      {
+        id: randomUUID(),
+        role: 'system',
+        kind: 'note',
+        content: message,
+        model: 'blocked:lime-agent-server',
+        createdAt: now,
+      },
+    ],
+    executionEvents: [
+      executionEvent({
+        kind: 'state',
+        status: 'blocked',
+        eventClass: 'runtime.error',
+        owner: 'runtime',
+        phase: 'blocked',
+        sequence: 1,
+        threadId: sessionId,
+        turnId,
+        taskId: `task:${sessionId}:app-server-runtime`,
+        runId: `run:${sessionId}:app-server-runtime`,
+        stepId: 'runtime:error',
+        title: 'AI Agent 对话未启动',
+        detail: input.reason,
+        payload: {
+          runtime: 'lime-agent-server',
+          blockedReason: input.reason,
+        },
+        model: 'blocked:lime-agent-server',
+        createdAt: now,
+      }),
+    ],
+    model: 'blocked:lime-agent-server',
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
-function resolvedActionTitle(decision: RespondAgentPromptActionInput['decision']): string {
-  if (decision === 'open-input-source') return '已打开输入源登记';
-  if (decision === 'open-model-settings') return '已打开模型设置';
-  return '已处理待办';
-}
-
-function resolvedActionDetail(
-  sourceEvent: AgentPromptExecutionEvent,
-  input: RespondAgentPromptActionInput,
-): string {
-  if (input.note?.trim()) return input.note.trim();
-  const actionKind = typeof sourceEvent.payload?.actionKind === 'string' ? sourceEvent.payload.actionKind : '';
-  if (input.decision === 'open-input-source' || actionKind === 'add-input-source') {
-    return '用户已进入输入源登记页面，后续补充资料会作为新的来源证据进入工作区。';
-  }
-  if (input.decision === 'open-model-settings' || actionKind === 'configure-text-model') {
-    return '用户已进入模型设置页面，后续配置结果由生成服务状态继续记录。';
-  }
-  return '用户已确认处理该待办动作。';
+function appendBlockedSessionNote(
+  session: AgentPromptSession,
+  userMessage: string,
+  reason: string,
+): AgentPromptSession {
+  const now = new Date().toISOString();
+  const turnId = randomUUID();
+  const runId = randomUUID();
+  const existingEvents = session.executionEvents ?? [];
+  return {
+    ...session,
+    status: 'blocked',
+    messages: [
+      ...session.messages,
+      {
+        id: randomUUID(),
+        role: 'user' as const,
+        kind: 'adjustment' as const,
+        content: userMessage.trim(),
+        createdAt: now,
+      },
+      {
+        id: randomUUID(),
+        role: 'system' as const,
+        kind: 'note' as const,
+        content: [
+          'AI Agent 对话未启动。',
+          reason,
+          '当前不会生成本地 Prompt 草稿、工具记录或证据链；请连接 Lime Desktop Platform 后重试。',
+        ].join('\n'),
+        model: 'blocked:lime-agent-server',
+        createdAt: now,
+      },
+    ].slice(-80),
+    executionEvents: [
+      ...existingEvents,
+      executionEvent({
+        kind: 'state',
+        status: 'blocked',
+        eventClass: 'runtime.error',
+        owner: 'runtime',
+        phase: 'blocked',
+        sequence: existingEvents.length + 1,
+        threadId: session.id,
+        turnId,
+        taskId: `task:${session.id}:app-server-runtime`,
+        runId,
+        stepId: `runtime:error:${turnId}`,
+        title: 'AI Agent 对话未启动',
+        detail: reason,
+        payload: {
+          runtime: 'lime-agent-server',
+          blockedReason: reason,
+        },
+        model: 'blocked:lime-agent-server',
+        createdAt: now,
+      }),
+    ].slice(-120),
+    model: 'blocked:lime-agent-server',
+    updatedAt: now,
+  };
 }
 
 function skillSummaryText(skillContext: SkillRuntimeContext): string {
   return skillContext.skillRefs.length ? skillContext.summaryText : '未选择 skill。';
-}
-
-function compactProviderEvents(events: TextProviderRuntimeEvent[] | undefined): Array<Record<string, unknown>> {
-  return (events ?? []).map((event) => ({
-    eventClass: event.eventClass,
-    kind: event.kind,
-    status: event.status,
-    phase: event.phase,
-    title: event.title,
-    detail: event.detail,
-    model: event.model,
-    payload: event.payload,
-  }));
 }
 
 function executionEvent(
@@ -311,660 +382,158 @@ function payloadStringArray(payload: Record<string, unknown>, rawPayload: Record
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
 }
 
-function providerRuntimeFactExecutionEvents(input: {
-  now: string;
-  providerEvents?: TextProviderRuntimeEvent[];
-  common: {
-    threadId: string;
-    turnId: string;
-    taskId: string;
-    runId: string;
-  };
-  stepPrefix: string;
-}): AgentPromptExecutionEvent[] {
-  return (input.providerEvents ?? [])
-    .filter((event) => (
-      event.eventClass === 'action.required' ||
-      event.eventClass === 'action.resolved' ||
-      event.eventClass === 'artifact.changed' ||
-      event.eventClass === 'evidence.changed' ||
-      event.eventClass?.startsWith('tool.')
-    ))
-    .map((event, index) => {
-      const payload = payloadRecord(event.payload);
-      const rawPayload = payloadRecord(payload.rawPayload);
-      const actionId =
-        payloadString(payload, rawPayload, 'actionId') ??
-        (event.eventClass === 'action.required' || event.eventClass === 'action.resolved'
-          ? `action:${input.common.threadId}:app-server:${index}`
-          : undefined);
-      const artifactRef =
-        payloadString(payload, rawPayload, 'artifactRef') ??
-        payloadString(payload, rawPayload, 'artifactId') ??
-        payloadString(payload, rawPayload, 'path');
-      const evidenceRefs = payloadStringArray(payload, rawPayload, 'evidenceRefs');
-      const evidenceRef = payloadString(payload, rawPayload, 'evidenceRef') ?? payloadString(payload, rawPayload, 'evidenceId');
-      return executionEvent({
-        kind: event.kind,
-        status: event.status,
-        eventClass: event.eventClass,
-        owner: event.kind === 'draft' ? 'artifact' : event.kind === 'evidence' ? 'evidence' : 'runtime',
-        phase: event.phase,
-        title: event.title.replace(/^Lime Agent Server\s+/, '协作生成服务 '),
-        detail: event.detail,
-        model: event.model,
-        actionId,
-        artifactRefs: artifactRef ? [artifactRef] : undefined,
-        evidenceRefs: evidenceRefs.length ? evidenceRefs : evidenceRef ? [evidenceRef] : undefined,
-        stepId: `${input.stepPrefix}:${event.eventClass}:${index}`,
-        payload: {
-          ...payload,
-          actionKind: payloadString(payload, rawPayload, 'actionKind'),
-          targetModule: payloadString(payload, rawPayload, 'targetModule'),
-        },
-        createdAt: input.now,
-        ...input.common,
-      });
-    });
+function runtimeFactOwner(kind: AgentPromptExecutionEvent['kind']): AgentPromptExecutionEvent['owner'] {
+  if (kind === 'draft') return 'artifact';
+  if (kind === 'evidence') return 'evidence';
+  return 'runtime';
 }
 
-function buildStartExecutionEvents(input: {
+function isWaitingForUserOutput(content: string): boolean {
+  const normalized = content.trim();
+  if (!normalized) return true;
+  if (/信息不足|信息有限|当前信息有限|资料有限|无法直接|不能直接|目前无法|不足以生成|需要进一步确认|需要确认的缺口/.test(normalized)) {
+    return true;
+  }
+  const hasQuestion = /[？?]|请您|请提供|需要您|为了更好|无法直接|目前无法|信息不足|信息有限|未选择|补充|确认|请明确|请告诉我/.test(normalized);
+  const hasDraftMarkers = /###\s*目标|##\s*.+Prompt|Prompt\s*结构|负面约束|事实来源约束|镜头要点|主体[\/／]场景[\/／]动作/.test(normalized);
+  return hasQuestion && !hasDraftMarkers;
+}
+
+function isConversationalUserIntent(content: string): boolean {
+  const normalized = content
+    .trim()
+    .toLowerCase()
+    .replace(/[。！!？?~～\s,.，、]+/g, '');
+  if (!normalized) return true;
+  return /^(你好|您好|哈喽|hello|hi|hey|在吗|在么|测试|test|ping)$/.test(normalized);
+}
+
+function updatedSessionStatus(model: string): AgentPromptSession['status'] {
+  return model.startsWith('blocked:') ? 'blocked' : 'draft-created';
+}
+
+function assistantVisibleContent(content: string): string {
+  const promptDraftIndex = content.indexOf('Prompt 草稿：');
+  if (promptDraftIndex < 0) return content;
+  return content.slice(promptDraftIndex + 'Prompt 草稿：'.length).trim() || content;
+}
+
+function assistantSummaryFromContent(content: string, fallback: string): string {
+  const paragraphs = assistantVisibleContent(content)
+    .trim()
+    .split(/\n{2,}/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const firstParagraph = paragraphs.find((item) =>
+    /信息不足|信息有限|当前信息有限|资料有限|无法直接|不能直接|目前无法|不足以生成|请您提供更多|请提供更多|需要您补充|需要补充更多|补充更多关于|进一步确认|需要进一步确认|需要确认的缺口|请明确|请告诉我/.test(item),
+  ) ?? paragraphs.find(Boolean);
+  return firstParagraph?.slice(0, 600) || fallback;
+}
+
+function appServerProviderExecutionEvents(input: {
   now: string;
-  selectedSources: InputSourceRecord[];
-  skillContext: SkillRuntimeContext;
-  draft: PromptDraft;
-  protocol?: AgentPromptSession['textProtocol'];
   providerEvents?: TextProviderRuntimeEvent[];
   sessionId: string;
   turnId: string;
   runId: string;
-  messageCount?: number;
-}): AgentPromptExecutionEvent[] {
-  const modelStatus = input.draft.model?.startsWith('blocked:')
-    ? 'blocked'
-    : input.draft.model?.startsWith('fallback:')
-      ? 'failed'
-      : 'completed';
-  const hasSources = input.selectedSources.length > 0;
-  const evidenceRefs = input.selectedSources.map((source) => `input-source:${source.id}`);
-  const common = {
-    threadId: input.sessionId,
-    turnId: input.turnId,
-    taskId: `task:${input.sessionId}:draft`,
-    runId: input.runId,
-  };
-  const inputSourceToolCallId = `tool:${input.sessionId}:input-sources`;
-  const events = [
-    executionEvent({
-      kind: 'context',
-      status: 'completed',
-      eventClass: 'turn.submitted',
-      owner: 'ui',
-      phase: 'submitted',
-      title: '读取用户意图',
-      detail: '已把本轮要求写入会话上下文。',
-      stepId: 'turn:submitted',
-      payload: { source: 'user-intent' },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'tool',
-      status: 'completed',
-      eventClass: 'tool.started',
-      owner: 'ui',
-      phase: 'tool_running',
-      title: '准备读取资料',
-      detail: hasSources ? `待读取 ${input.selectedSources.length} 份输入源。` : '本轮没有选择可复用输入源。',
-      refIds: input.selectedSources.map((source) => source.id),
-      evidenceRefs,
-      toolCallId: inputSourceToolCallId,
-      stepId: 'tool:input-sources:started',
-      payload: {
-        toolName: 'input-source.read',
-        safeArgs: { sourceCount: input.selectedSources.length },
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'source',
-      status: hasSources ? 'completed' : 'blocked',
-      eventClass: 'context.resolved',
-      owner: 'ui',
-      phase: hasSources ? 'preparing' : 'blocked',
-      title: '读取输入源',
-      detail: hasSources ? `${input.selectedSources.length} 份可复用输入源` : '本轮没有可复用输入源，只能依赖用户意图。',
-      refIds: input.selectedSources.map((source) => source.id),
-      evidenceRefs,
-      stepId: 'context:input-sources',
-      payload: { sourceCount: input.selectedSources.length },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'tool',
-      status: hasSources ? 'completed' : 'blocked',
-      eventClass: hasSources ? 'tool.result' : 'tool.failed',
-      owner: 'ui',
-      phase: hasSources ? 'completed' : 'blocked',
-      title: hasSources ? '资料读取完成' : '资料读取受阻',
-      detail: hasSources ? `${input.selectedSources.length} 份资料已进入上下文。` : '缺少输入源，需要人工补充资料。',
-      refIds: input.selectedSources.map((source) => source.id),
-      evidenceRefs,
-      toolCallId: inputSourceToolCallId,
-      stepId: 'tool:input-sources:result',
-      payload: {
-        toolName: 'input-source.read',
-        outputPreview: hasSources ? `${input.selectedSources.length} sources` : 'missing sources',
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    ...(hasSources ? [
-      executionEvent({
-        kind: 'evidence',
-        status: 'completed',
-        eventClass: 'evidence.changed',
-        owner: 'ui',
-        phase: 'preparing',
-        title: '绑定来源证据',
-        detail: `${input.selectedSources.length} 份输入源已进入本轮证据链。`,
-        refIds: input.selectedSources.map((source) => source.id),
-        evidenceRefs,
-        stepId: 'evidence:input-sources',
-        payload: { evidenceKind: 'input-source', sourceCount: input.selectedSources.length },
-        createdAt: input.now,
-        ...common,
-      }),
-      executionEvent({
-        kind: 'action',
-        status: 'completed',
-        eventClass: 'action.resolved',
-        owner: 'ui',
-        phase: 'completed',
-        title: '输入源已确认',
-        detail: '本轮可继续生成 Prompt 草稿。',
-        actionId: `action:${input.sessionId}:confirm-sources`,
-        stepId: 'action:confirm-sources',
-        payload: { actionKind: 'confirm-sources', sourceCount: input.selectedSources.length },
-        createdAt: input.now,
-        ...common,
-      }),
-    ] : [
-      executionEvent({
-        kind: 'permission',
-        status: 'pending',
-        eventClass: 'permission.requested',
-        owner: 'ui',
-        phase: 'action_required',
-        title: '请求补充资料权限',
-        detail: '需要用户补充输入源后再继续生成。',
-        actionId: `action:${input.sessionId}:add-input-source`,
-        stepId: 'permission:add-input-source',
-        payload: {
-          permissionDecision: {
-            decision: 'ask',
-            decisionSource: 'runtime',
-            decisionReason: 'missing-input-source',
-            approvalActionId: `action:${input.sessionId}:add-input-source`,
-            scope: 'turn',
-          },
-        },
-        createdAt: input.now,
-        ...common,
-      }),
-      executionEvent({
-        kind: 'action',
-        status: 'pending',
-        eventClass: 'action.required',
-        owner: 'ui',
-        phase: 'action_required',
-        title: '需要补充输入源',
-        detail: '补充品牌资料、产品资料、参考素材或用户评论后再继续生成。',
-        actionId: `action:${input.sessionId}:add-input-source`,
-        stepId: 'action:add-input-source',
-        payload: { actionKind: 'add-input-source', targetModule: 'knowledge-inputs' },
-        createdAt: input.now,
-        ...common,
-      }),
-    ]),
-    executionEvent({
-      kind: 'skill',
-      status: 'completed',
-      eventClass: 'tool.catalog.resolved',
-      owner: 'ui',
-      phase: 'routing',
-      title: '应用 skill 约束',
-      detail: skillSummaryText(input.skillContext),
-      refIds: input.skillContext.skillRefs.map((skill) => skill.slug),
-      stepId: 'tool-catalog:skills',
-      payload: { skillCount: input.skillContext.skillRefs.length },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'permission',
-      status: 'completed',
-      eventClass: 'permission.evaluated',
-      owner: 'ui',
-      phase: modelStatus === 'blocked' ? 'blocked' : 'waiting_provider',
-      title: '检查生成权限',
-      detail: modelStatus === 'blocked' ? '生成服务不可用，需要先配置模型。' : '允许调用当前文字生成服务。',
-      model: input.draft.model,
-      stepId: 'permission:model-generate',
-      payload: {
-        permissionState: { mode: 'default', interactive: true },
-        permissionDecision: {
-          decision: modelStatus === 'blocked' ? 'unavailable' : 'allow',
-          decisionSource: 'runtime',
-          decisionReason: modelStatus === 'blocked' ? 'text-provider-not-configured' : 'configured-text-provider',
-          scope: 'turn',
-        },
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'sandbox',
-      status: 'completed',
-      eventClass: 'sandbox.applied',
-      owner: 'ui',
-      phase: modelStatus === 'blocked' ? 'blocked' : 'waiting_provider',
-      title: '应用执行边界',
-      detail: '仅使用当前工作区资料和已配置的文字生成服务。',
-      model: input.draft.model,
-      stepId: 'sandbox:model-generate',
-      payload: {
-        sandboxProfile: {
-          mode: 'workspace_write',
-          cwd: 'current-workspace',
-          readRoots: ['workspace'],
-          writeRoots: ['workspace'],
-          network: modelStatus === 'blocked' ? 'unavailable' : 'enabled',
-        },
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'model',
-      status: 'completed',
-      eventClass: 'model.requested',
-      owner: 'ui',
-      phase: 'waiting_provider',
-      title: '请求生成模型',
-      detail: input.protocol ? `${input.draft.model ?? '未记录模型'} / ${input.protocol}` : input.draft.model ?? '未记录模型',
-      model: input.draft.model,
-      stepId: 'model:generate-draft:requested',
-      payload: {
-        protocol: input.protocol,
-        model: input.draft.model,
-        providerEvents: compactProviderEvents(input.providerEvents).filter((event) => event.eventClass === 'model.requested'),
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'model',
-      status: modelStatus,
-      eventClass: modelStatus === 'completed' ? 'model.completed' : 'model.failed',
-      owner: 'ui',
-      phase: modelStatus === 'completed' ? 'completed' : modelStatus === 'blocked' ? 'blocked' : 'failed',
-      title: '调用生成模型',
-      detail: input.protocol ? `${input.draft.model ?? '未记录模型'} / ${input.protocol}` : input.draft.model ?? '未记录模型',
-      model: input.draft.model,
-      stepId: 'model:generate-draft',
-      payload: {
-        protocol: input.protocol,
-        model: input.draft.model,
-        providerEvents: compactProviderEvents(input.providerEvents),
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    ...providerRuntimeFactExecutionEvents({
-      now: input.now,
-      providerEvents: input.providerEvents,
-      common,
-      stepPrefix: 'app-server:generate-draft',
-    }),
-    executionEvent({
-      kind: 'draft',
-      status: modelStatus === 'blocked' ? 'blocked' : 'completed',
-      eventClass: 'artifact.changed',
-      owner: modelStatus === 'completed' ? 'artifact' : 'ui',
-      phase: modelStatus === 'blocked' ? 'blocked' : 'completed',
-      title: '写入 Prompt 草稿',
-      detail: input.draft.title,
-      refIds: [input.draft.id],
-      artifactRefs: [`prompt-draft:${input.draft.id}`],
-      model: input.draft.model,
-      stepId: `artifact:prompt-draft:${input.draft.id}`,
-      payload: { artifactKind: 'prompt-draft', draftId: input.draft.id },
-      createdAt: input.now,
-      ...common,
-    }),
-    ...(modelStatus === 'blocked' ? [
-      executionEvent({
-        kind: 'permission',
-        status: 'pending',
-        eventClass: 'permission.requested',
-        owner: 'ui',
-        phase: 'action_required',
-        title: '请求配置模型权限',
-        detail: '需要用户打开模型设置，配置可用的文字生成服务。',
-        actionId: `action:${input.sessionId}:configure-text-model`,
-        stepId: 'permission:configure-text-model',
-        payload: {
-          permissionDecision: {
-            decision: 'ask',
-            decisionSource: 'runtime',
-            decisionReason: 'text-provider-not-configured',
-            approvalActionId: `action:${input.sessionId}:configure-text-model`,
-            scope: 'turn',
-          },
-        },
-        model: input.draft.model,
-        createdAt: input.now,
-        ...common,
-      }),
-      executionEvent({
-        kind: 'action',
-        status: 'pending',
-        eventClass: 'action.required',
-        owner: 'ui',
-        phase: 'action_required',
-        title: '需要配置文字模型',
-        detail: '配置显式 HTTP 文字生成服务后，可继续本轮 Prompt 草稿。',
-        actionId: `action:${input.sessionId}:configure-text-model`,
-        stepId: 'action:configure-text-model',
-        payload: { actionKind: 'configure-text-model', providerStatus: input.draft.model },
-        model: input.draft.model,
-        createdAt: input.now,
-        ...common,
-      }),
-    ] : []),
-  ];
-  const sequenced = events.map((event, index) => ({ ...event, sequence: index + 1 }));
-  const sessionStatus: AgentPromptSession['status'] = modelStatus === 'blocked' ? 'blocked' : 'draft-created';
-  return [
-    ...sequenced,
-    snapshotUpdatedEvent({
-      now: input.now,
-      sequence: sequenced.length + 1,
-      sessionId: input.sessionId,
-      turnId: input.turnId,
-      taskId: common.taskId,
-      runId: input.runId,
-      status: sessionStatus,
-      events: sequenced,
-      messageCount: input.messageCount,
-      draftIds: [input.draft.id],
-    }),
-  ];
-}
-
-function buildContinueExecutionEvents(input: {
-  now: string;
-  adjustment: string;
-  generated: { model: string; protocol?: AgentPromptSession['textProtocol']; providerEvents?: TextProviderRuntimeEvent[] };
-  updatedDraft: PromptDraft;
-  skillContext: SkillRuntimeContext;
-  sessionId: string;
-  turnId: string;
-  runId: string;
-  baseSequence: number;
-  previousEvents?: AgentPromptExecutionEvent[];
+  operation: 'draft' | 'refine';
+  status: AgentPromptSession['status'];
   messageCount?: number;
   draftIds?: string[];
+  baseSequence?: number;
 }): AgentPromptExecutionEvent[] {
-  const modelStatus = input.generated.model.startsWith('blocked:')
-    ? 'blocked'
-    : input.generated.model.startsWith('fallback:')
-      ? 'failed'
-      : 'completed';
   const common = {
     threadId: input.sessionId,
     turnId: input.turnId,
-    taskId: `task:${input.sessionId}:refine`,
+    taskId: `task:${input.sessionId}:app-server-${input.operation}`,
     runId: input.runId,
   };
-  const sessionContextToolCallId = `tool:${input.sessionId}:session-context:${input.turnId}`;
-  const events = [
-    executionEvent({
-      kind: 'context',
-      status: 'completed',
-      eventClass: 'turn.submitted',
-      owner: 'ui',
-      phase: 'submitted',
-      title: '读取本轮追问',
-      detail: input.adjustment.slice(0, 160),
-      stepId: 'turn:submitted',
-      payload: { adjustmentLength: input.adjustment.length },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'tool',
-      status: 'completed',
-      eventClass: 'tool.started',
-      owner: 'ui',
-      phase: 'tool_running',
-      title: '读取对话上下文',
-      detail: '准备读取历史草稿、输入源快照和本轮要求。',
-      toolCallId: sessionContextToolCallId,
-      stepId: 'tool:session-context:started',
+  const baseSequence = input.baseSequence ?? 0;
+  const events = (input.providerEvents ?? []).map((event, index) => {
+    const payload = payloadRecord(event.payload);
+    const rawPayload = payloadRecord(payload.rawPayload);
+    const actionId =
+      payloadString(payload, rawPayload, 'actionId') ??
+      (event.eventClass === 'action.required' || event.eventClass === 'action.resolved'
+        ? `action:${input.sessionId}:app-server:${index}`
+        : undefined);
+    const artifactRef =
+      payloadString(payload, rawPayload, 'artifactRef') ??
+      payloadString(payload, rawPayload, 'artifactId') ??
+      payloadString(payload, rawPayload, 'path');
+    const evidenceRefs = payloadStringArray(payload, rawPayload, 'evidenceRefs');
+    const evidenceRef = payloadString(payload, rawPayload, 'evidenceRef') ?? payloadString(payload, rawPayload, 'evidenceId');
+    return executionEvent({
+      kind: event.kind,
+      status: event.status,
+      eventClass: event.eventClass,
+      owner: runtimeFactOwner(event.kind),
+      phase: event.phase,
+      sequence: baseSequence + index + 1,
+      title: event.title.replace(/^Lime Agent Server\s+/, 'Lime App Server '),
+      detail: event.detail,
+      model: event.model,
+      actionId,
+      artifactRefs: artifactRef ? [artifactRef] : undefined,
+      evidenceRefs: evidenceRefs.length ? evidenceRefs : evidenceRef ? [evidenceRef] : undefined,
+      stepId: `app-server:${input.operation}:${event.eventClass}:${index}`,
       payload: {
-        toolName: 'agent-session.context-read',
-        safeArgs: { adjustmentLength: input.adjustment.length },
+        ...payload,
+        actionKind: payloadString(payload, rawPayload, 'actionKind'),
+        targetModule: payloadString(payload, rawPayload, 'targetModule'),
       },
       createdAt: input.now,
       ...common,
-    }),
+    });
+  });
+  const runtimeEvents = events.length ? events : [
     executionEvent({
-      kind: 'tool',
-      status: 'completed',
-      eventClass: 'tool.result',
-      owner: 'ui',
-      phase: 'completed',
-      title: '上下文读取完成',
-      detail: '已载入当前草稿版本和会话来源快照。',
-      toolCallId: sessionContextToolCallId,
-      artifactRefs: [`prompt-draft:${input.updatedDraft.id}`],
-      stepId: 'tool:session-context:result',
-      payload: {
-        toolName: 'agent-session.context-read',
-        outputPreview: 'draft version and source snapshots loaded',
-      },
+      kind: 'state',
+      status: 'blocked',
+      eventClass: 'runtime.error',
+      owner: 'runtime',
+      phase: 'blocked',
+      sequence: baseSequence + 1,
+      title: 'Lime App Server runtime 未返回事件',
+      detail: '未收到 Lime App Server runtime event，本轮不会补造本地执行记录。',
+      stepId: `app-server:${input.operation}:missing-events`,
+      payload: { runtime: 'lime-agent-server', operation: input.operation },
       createdAt: input.now,
       ...common,
     }),
-    executionEvent({
-      kind: 'skill',
-      status: 'completed',
-      eventClass: 'tool.catalog.resolved',
-      owner: 'ui',
-      phase: 'routing',
-      title: '延续 skill 约束',
-      detail: skillSummaryText(input.skillContext),
-      refIds: input.skillContext.skillRefs.map((skill) => skill.slug),
-      stepId: 'tool-catalog:skills',
-      payload: { skillCount: input.skillContext.skillRefs.length },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'permission',
-      status: 'completed',
-      eventClass: 'permission.evaluated',
-      owner: 'ui',
-      phase: modelStatus === 'blocked' ? 'blocked' : 'waiting_provider',
-      title: '检查调整权限',
-      detail: modelStatus === 'blocked' ? '生成服务不可用，需要先配置模型。' : '允许调用当前文字生成服务。',
-      model: input.generated.model,
-      stepId: 'permission:model-refine',
-      payload: {
-        permissionState: { mode: 'default', interactive: true },
-        permissionDecision: {
-          decision: modelStatus === 'blocked' ? 'unavailable' : 'allow',
-          decisionSource: 'runtime',
-          decisionReason: modelStatus === 'blocked' ? 'text-provider-not-configured' : 'configured-text-provider',
-          scope: 'turn',
-        },
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'sandbox',
-      status: 'completed',
-      eventClass: 'sandbox.applied',
-      owner: 'ui',
-      phase: modelStatus === 'blocked' ? 'blocked' : 'waiting_provider',
-      title: '应用执行边界',
-      detail: '仅使用当前对话资料、草稿版本和已配置的文字生成服务。',
-      model: input.generated.model,
-      stepId: 'sandbox:model-refine',
-      payload: {
-        sandboxProfile: {
-          mode: 'workspace_write',
-          cwd: 'current-workspace',
-          readRoots: ['workspace'],
-          writeRoots: ['workspace'],
-          network: modelStatus === 'blocked' ? 'unavailable' : 'enabled',
-        },
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'model',
-      status: 'completed',
-      eventClass: 'model.requested',
-      owner: 'ui',
-      phase: 'waiting_provider',
-      title: '请求调整模型',
-      detail: input.generated.protocol ? `${input.generated.model} / ${input.generated.protocol}` : input.generated.model,
-      model: input.generated.model,
-      stepId: 'model:refine-draft:requested',
-      payload: {
-        protocol: input.generated.protocol,
-        model: input.generated.model,
-        providerEvents: compactProviderEvents(input.generated.providerEvents).filter((event) => event.eventClass === 'model.requested'),
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    executionEvent({
-      kind: 'model',
-      status: modelStatus,
-      eventClass: modelStatus === 'completed' ? 'model.completed' : 'model.failed',
-      owner: 'ui',
-      phase: modelStatus === 'completed' ? 'completed' : modelStatus === 'blocked' ? 'blocked' : 'failed',
-      title: '调用调整模型',
-      detail: input.generated.protocol ? `${input.generated.model} / ${input.generated.protocol}` : input.generated.model,
-      model: input.generated.model,
-      stepId: 'model:refine-draft',
-      payload: {
-        protocol: input.generated.protocol,
-        model: input.generated.model,
-        providerEvents: compactProviderEvents(input.generated.providerEvents),
-      },
-      createdAt: input.now,
-      ...common,
-    }),
-    ...providerRuntimeFactExecutionEvents({
-      now: input.now,
-      providerEvents: input.generated.providerEvents,
-      common,
-      stepPrefix: 'app-server:refine-draft',
-    }),
-    executionEvent({
-      kind: 'draft',
-      status: modelStatus === 'blocked' ? 'blocked' : 'completed',
-      eventClass: 'artifact.changed',
-      owner: modelStatus === 'completed' ? 'artifact' : 'ui',
-      phase: modelStatus === 'blocked' ? 'blocked' : 'completed',
-      title: '更新 Prompt 草稿',
-      detail: input.updatedDraft.title,
-      refIds: [input.updatedDraft.id],
-      artifactRefs: [`prompt-draft:${input.updatedDraft.id}`],
-      model: input.generated.model,
-      stepId: `artifact:prompt-draft:${input.updatedDraft.id}`,
-      payload: { artifactKind: 'prompt-draft', draftId: input.updatedDraft.id },
-      createdAt: input.now,
-      ...common,
-    }),
-    ...(modelStatus === 'blocked' ? [
-      executionEvent({
-        kind: 'permission',
-        status: 'pending',
-        eventClass: 'permission.requested',
-        owner: 'ui',
-        phase: 'action_required',
-        title: '请求配置模型权限',
-        detail: '需要用户打开模型设置，配置可用的文字生成服务。',
-        actionId: `action:${input.sessionId}:configure-text-model`,
-        stepId: 'permission:configure-text-model',
-        payload: {
-          permissionDecision: {
-            decision: 'ask',
-            decisionSource: 'runtime',
-            decisionReason: 'text-provider-not-configured',
-            approvalActionId: `action:${input.sessionId}:configure-text-model`,
-            scope: 'turn',
-          },
-        },
-        model: input.generated.model,
-        createdAt: input.now,
-        ...common,
-      }),
-      executionEvent({
-        kind: 'action',
-        status: 'pending',
-        eventClass: 'action.required',
-        owner: 'ui',
-        phase: 'action_required',
-        title: '需要配置文字模型',
-        detail: '配置显式 HTTP 文字生成服务后，可继续本轮调整。',
-        actionId: `action:${input.sessionId}:configure-text-model`,
-        stepId: 'action:configure-text-model',
-        payload: { actionKind: 'configure-text-model', providerStatus: input.generated.model },
-        model: input.generated.model,
-        createdAt: input.now,
-        ...common,
-      }),
-    ] : [
-      executionEvent({
-        kind: 'action',
-        status: 'completed',
-        eventClass: 'action.resolved',
-        owner: 'ui',
-        phase: 'completed',
-        title: '调整已完成',
-        detail: '本轮调整已经写入 Prompt 草稿版本。',
-        actionId: `action:${input.sessionId}:confirm-refinement`,
-        stepId: 'action:confirm-refinement',
-        payload: { actionKind: 'confirm-refinement', draftId: input.updatedDraft.id },
-        createdAt: input.now,
-        ...common,
-      }),
-    ]),
   ];
-  const sequenced = events.map((event, index) => ({ ...event, sequence: input.baseSequence + index + 1 }));
-  const sessionStatus: AgentPromptSession['status'] = modelStatus === 'blocked' ? 'blocked' : 'draft-created';
-  const eventsBeforeSnapshot = [...(input.previousEvents ?? []), ...sequenced];
+  const localDraftEvents = input.status === 'draft-created'
+    ? (input.draftIds ?? []).map((draftId, index) => executionEvent({
+      kind: 'draft',
+      status: 'completed',
+      eventClass: 'artifact.changed',
+      owner: 'artifact',
+      phase: 'completed',
+      sequence: baseSequence + runtimeEvents.length + index + 1,
+      title: '本地 Prompt 草稿已投影',
+      detail: 'Lime App Server 交付结果已写入 Content Studio Prompt 草稿。',
+      artifactRefs: [`prompt-draft:${draftId}`],
+      stepId: `content-studio:${input.operation}:draft-projected:${draftId}:${index}`,
+      payload: {
+        runtime: 'content-studio',
+        sourceRuntime: 'lime-agent-server',
+        draftId,
+      },
+      createdAt: input.now,
+      ...common,
+    }))
+    : [];
+  const eventsBeforeSnapshot = [...runtimeEvents, ...localDraftEvents];
   return [
-    ...sequenced,
+    ...eventsBeforeSnapshot,
     snapshotUpdatedEvent({
       now: input.now,
-      sequence: input.baseSequence + sequenced.length + 1,
+      sequence: baseSequence + eventsBeforeSnapshot.length + 1,
       sessionId: input.sessionId,
       turnId: input.turnId,
       taskId: common.taskId,
       runId: input.runId,
-      status: sessionStatus,
+      status: input.status,
       events: eventsBeforeSnapshot,
       messageCount: input.messageCount,
       draftIds: input.draftIds,
@@ -983,6 +552,7 @@ export class AgentPromptSessionStore {
     private readonly promptDrafts: PromptDraftStore,
     private readonly promptAgent: AgentPromptModelService,
     private readonly skills = new SkillManager(),
+    private readonly publishSessionEvent?: AgentPromptSessionPublisher,
   ) {}
 
   async list(workspacePath: string): Promise<AgentPromptSession[]> {
@@ -996,8 +566,23 @@ export class AgentPromptSessionStore {
     const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id) && isReusablePromptInputSource(source));
     const inputSourceIds = selectedSources.map((source) => source.id);
     const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, input);
-    let draft: PromptDraft;
-    let providerEvents: TextProviderRuntimeEvent[] | undefined;
+    const sourceSnapshots = selectedSources.map(snapshotSource);
+    const sessionId = randomUUID();
+    const turnId = randomUUID();
+    const runId = randomUUID();
+    let liveSession = this.createActiveSession({
+      input,
+      sessionId,
+      turnId,
+      runId,
+      inputSourceIds,
+      selectedSkills: skillContext.skillRefs,
+      selectedSkillSlugs: skillContext.skillRefs.map((skill) => skill.slug),
+      sourceSnapshots,
+      skillContext,
+    });
+    await this.upsertSession(input.workspacePath, liveSession);
+    this.publish(liveSession, 'upsert');
     let generated: GenerateAgentPromptDraftResult;
     try {
       generated = await this.promptAgent.generatePromptDraft({
@@ -1014,40 +599,56 @@ export class AgentPromptSessionStore {
         skillContext,
         textModel: input.textModel,
         teamKnowledgeRelease: input.teamKnowledgeRelease,
+        onProviderEvent: async (event) => {
+          liveSession = await this.applyProviderEvent({
+            workspacePath: input.workspacePath,
+            session: liveSession,
+            event,
+            operation: 'draft',
+            turnId,
+            runId,
+          });
+        },
       });
     } catch (error) {
       const reason = limeAgentServerErrorMessage(error);
-      generated = {
-        title: '协作生成服务未完成',
-        content: blockedDraftContent(input, reason),
-        note: `协作生成服务未完成，已记录本轮意图：${reason}`,
-        model: 'blocked:lime-agent-server',
-        protocol: undefined,
-        providerEvents: blockedProviderEvents(reason, 'draft'),
-      };
+      const session = blockedAgentSession({
+        workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
+        teamKnowledgeRelease: input.teamKnowledgeRelease,
+        title: input.title,
+        purpose: input.purpose,
+        userIntent: input.userIntent,
+        inputSourceIds,
+        sceneCardIds: input.sceneCardIds,
+        selectedSkills: skillContext.skillRefs,
+        selectedSkillSlugs: skillContext.skillRefs.map((skill) => skill.slug),
+        sourceSnapshots,
+        reason,
+      });
+      await this.upsertSession(input.workspacePath, session, sessionId);
+      this.publish(session, 'blocked');
+      return { session };
     }
-    providerEvents = generated.providerEvents;
-    draft = await this.promptDrafts.createFromContent({
-      workspacePath: input.workspacePath,
-      workflowRunId: input.workflowRunId,
-      teamKnowledgeRelease: input.teamKnowledgeRelease,
-      title: input.title?.trim() || generated.title || '模型生成 Prompt 草稿',
-      purpose: input.purpose,
-      userIntent: input.userIntent.trim(),
-      inputSourceIds,
-      sceneCardIds: input.sceneCardIds ?? [],
-      selectedSkills: skillContext.skillRefs,
-      content: generated.content,
-      note: generated.note,
-      model: generated.model,
-      textProtocol: generated.protocol,
-    });
     const now = new Date().toISOString();
-    const sessionId = randomUUID();
-    const turnId = randomUUID();
-    const runId = randomUUID();
-    const firstVersion = activeVersion(draft);
-    const sourceSnapshots = selectedSources.map(snapshotSource);
+    const waitingForUser = isConversationalUserIntent(input.userIntent) || isWaitingForUserOutput(generated.content);
+    const draft = waitingForUser
+      ? undefined
+      : await this.promptDrafts.createFromContent({
+        workspacePath: input.workspacePath,
+        workflowRunId: input.workflowRunId,
+        teamKnowledgeRelease: input.teamKnowledgeRelease,
+        title: input.title?.trim() || generated.title || '模型生成 Prompt 草稿',
+        purpose: input.purpose,
+        userIntent: input.userIntent.trim(),
+        inputSourceIds,
+        sceneCardIds: input.sceneCardIds ?? [],
+        selectedSkills: skillContext.skillRefs,
+        content: generated.content,
+        note: generated.note,
+        model: generated.model,
+        textProtocol: generated.protocol,
+      });
     const messages: AgentPromptMessage[] = [
       {
         id: randomUUID(),
@@ -1073,48 +674,56 @@ export class AgentPromptSessionStore {
       {
         id: randomUUID(),
         role: 'assistant',
-        kind: 'draft',
-        content: firstVersion.content,
-        model: draft.model,
-        promptDraftId: draft.id,
+        kind: waitingForUser ? 'note' : 'draft',
+        content: waitingForUser
+          ? assistantSummaryFromContent(generated.content, '需要补充更多信息后才能生成可交付 Prompt 草稿。')
+          : '已生成 Prompt 草稿。完整内容已放入交付物区域，可继续调整或交付到下游。',
+        model: generated.model,
+        promptDraftId: draft?.id,
         createdAt: now,
       },
     ];
+    const status: AgentPromptSession['status'] = waitingForUser
+      ? 'waiting-user'
+      : generated.model.startsWith('blocked:')
+        ? 'blocked'
+        : 'draft-created';
+    const finalRuntimeEvents = appServerProviderExecutionEvents({
+      now,
+      sessionId,
+      turnId,
+      runId,
+      operation: 'draft',
+      status,
+      providerEvents: generated.providerEvents,
+      messageCount: messages.length,
+      draftIds: draft ? [draft.id] : [],
+      baseSequence: liveSession.executionEvents?.length ?? 0,
+    });
     const session: AgentPromptSession = {
-      id: sessionId,
+      ...liveSession,
       workspacePath: input.workspacePath,
       workflowRunId: input.workflowRunId,
       teamKnowledgeRelease: input.teamKnowledgeRelease,
-      title: input.title?.trim() || draft.title,
+      title: input.title?.trim() || draft?.title || '等待补充信息',
       purpose: input.purpose,
-      status: draft.model?.startsWith('blocked:') ? 'blocked' : 'draft-created',
+      status,
       userIntent: input.userIntent.trim(),
       inputSourceIds,
       sceneCardIds: input.sceneCardIds ?? [],
       selectedSkills: skillContext.skillRefs,
       selectedSkillSlugs: skillContext.skillRefs.map((skill) => skill.slug),
-      promptDraftIds: [draft.id],
+      promptDraftIds: draft ? [draft.id] : [],
       sourceSnapshots,
       messages,
-      executionEvents: buildStartExecutionEvents({
-        now,
-        selectedSources,
-        skillContext,
-        draft,
-        protocol: draft.textProtocol,
-        providerEvents,
-        sessionId,
-        turnId,
-        runId,
-        messageCount: messages.length,
-      }),
-      model: draft.model,
-      textProtocol: draft.textProtocol,
+      executionEvents: mergeExecutionEvents(liveSession.executionEvents ?? [], finalRuntimeEvents),
+      model: generated.model,
+      textProtocol: draft?.textProtocol,
       createdAt: now,
       updatedAt: now,
     };
-    const existing = await this.list(input.workspacePath);
-    await writeJsonFile(sessionsFilePath(input.workspacePath), [session, ...existing].slice(0, 120));
+    await this.upsertSession(input.workspacePath, session);
+    this.publish(session, status === 'blocked' ? 'blocked' : 'completed');
     return { session, draft };
   }
 
@@ -1125,13 +734,35 @@ export class AgentPromptSessionStore {
     const session = sessions.find((item) => item.id === input.sessionId);
     if (!session) throw new Error(`对话不存在: ${input.sessionId}`);
     const draftId = session.promptDraftIds[session.promptDraftIds.length - 1];
+    if (!draftId) {
+      const reason = '当前会话没有 Lime App Server 交付物，不能用本地草稿继续。';
+      const updatedSession = appendBlockedSessionNote(session, adjustment, reason);
+      await writeJsonFile(
+        sessionsFilePath(input.workspacePath),
+        sessions.map((item) => (item.id === session.id ? updatedSession : item)),
+      );
+      return { session: updatedSession };
+    }
     const draft = (await this.promptDrafts.list(input.workspacePath)).find((item) => item.id === draftId);
-    if (!draft) throw new Error(`对话关联的 Prompt 草稿不存在: ${draftId}`);
+    if (!draft) {
+      const reason = `对话关联的 Prompt 草稿不存在: ${draftId}`;
+      const updatedSession = appendBlockedSessionNote(session, adjustment, reason);
+      await writeJsonFile(
+        sessionsFilePath(input.workspacePath),
+        sessions.map((item) => (item.id === session.id ? updatedSession : item)),
+      );
+      return { session: updatedSession };
+    }
 
     const previousContent = activeVersion(draft).content;
     const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, {
       selectedSkills: session.selectedSkills ?? draft.selectedSkills ?? [],
     });
+    const turnId = randomUUID();
+    const runId = randomUUID();
+    let liveSession = this.appendUserTurnPending(session, adjustment, turnId, runId, input.textModel ?? reusableSessionModel(session.model));
+    await this.upsertSession(input.workspacePath, liveSession);
+    this.publish(liveSession, 'upsert');
     let generated: GenerateAgentPromptRefinementResult;
     try {
       generated = await this.promptAgent.generateRefinedPrompt({
@@ -1145,16 +776,23 @@ export class AgentPromptSessionStore {
         messages: session.messages,
         skillContext,
         textModel: input.textModel ?? reusableSessionModel(session.model),
+        onProviderEvent: async (event) => {
+          liveSession = await this.applyProviderEvent({
+            workspacePath: input.workspacePath,
+            session: liveSession,
+            event,
+            operation: 'refine',
+            turnId,
+            runId,
+          });
+        },
       });
     } catch (error) {
       const reason = limeAgentServerErrorMessage(error);
-      generated = {
-        content: blockedRefinedContent(previousContent, adjustment, reason),
-        note: `协作生成服务调整未完成，已记录本轮要求：${reason}`,
-        model: 'blocked:lime-agent-server',
-        protocol: undefined,
-        providerEvents: blockedProviderEvents(reason, 'refine'),
-      };
+      const updatedSession = appendBlockedSessionNote(session, adjustment, reason);
+      await this.upsertSession(input.workspacePath, updatedSession);
+      this.publish(updatedSession, 'blocked');
+      return { session: updatedSession };
     }
     const updatedDraft = await this.promptDrafts.update({
       workspacePath: input.workspacePath,
@@ -1165,10 +803,8 @@ export class AgentPromptSessionStore {
       textProtocol: generated.protocol,
     });
     const now = new Date().toISOString();
-    const turnId = randomUUID();
-    const runId = randomUUID();
     const updatedSession: AgentPromptSession = {
-      ...session,
+      ...liveSession,
       status: generated.model.startsWith('blocked:') ? 'blocked' : 'draft-created',
       promptDraftIds: session.promptDraftIds.includes(updatedDraft.id)
         ? session.promptDraftIds
@@ -1194,315 +830,292 @@ export class AgentPromptSessionStore {
         },
       ].slice(-80),
       executionEvents: [
-        ...(session.executionEvents ?? []),
-        ...buildContinueExecutionEvents({
-          now,
-          adjustment,
-          generated,
-          updatedDraft,
-          skillContext,
-          sessionId: session.id,
-          turnId,
-          runId,
-          baseSequence: session.executionEvents?.length ?? 0,
-          previousEvents: session.executionEvents ?? [],
-          messageCount: session.messages.length + 2,
-          draftIds: session.promptDraftIds.includes(updatedDraft.id)
-            ? session.promptDraftIds
-            : [...session.promptDraftIds, updatedDraft.id],
-        }),
+        ...mergeExecutionEvents(
+          liveSession.executionEvents ?? [],
+          appServerProviderExecutionEvents({
+            now,
+            sessionId: session.id,
+            turnId,
+            runId,
+            operation: 'refine',
+            status: updatedSessionStatus(generated.model),
+            providerEvents: generated.providerEvents,
+            baseSequence: liveSession.executionEvents?.length ?? 0,
+            messageCount: session.messages.length + 2,
+            draftIds: session.promptDraftIds.includes(updatedDraft.id)
+              ? session.promptDraftIds
+              : [...session.promptDraftIds, updatedDraft.id],
+          }),
+        ),
       ].slice(-120),
       model: generated.model,
       textProtocol: updatedDraft.textProtocol ?? session.textProtocol,
       updatedAt: now,
     };
-    await writeJsonFile(
-      sessionsFilePath(input.workspacePath),
-      sessions.map((item) => (item.id === session.id ? updatedSession : item)),
-    );
+    await this.upsertSession(input.workspacePath, updatedSession);
+    this.publish(updatedSession, updatedSession.status === 'blocked' ? 'blocked' : 'completed');
     return { session: updatedSession, draft: updatedDraft };
   }
 
   async respondAction(input: RespondAgentPromptActionInput): Promise<AgentPromptSession> {
-    if (!input.actionId.trim()) throw new Error('处理待办动作需要 actionId。');
     const sessions = await this.list(input.workspacePath);
     const session = sessions.find((item) => item.id === input.sessionId);
     if (!session) throw new Error(`对话不存在: ${input.sessionId}`);
-    const events = session.executionEvents ?? [];
-    const sourceEvent = events.find((event) => event.eventClass === 'action.required' && event.actionId === input.actionId);
-    if (!sourceEvent) throw new Error(`待处理动作不存在: ${input.actionId}`);
-    const alreadyResolved = events.some((event) => (
-      event.eventClass === 'action.resolved' &&
-      event.actionId === input.actionId &&
-      event.payload?.resolvedFromEventId === sourceEvent.id
-    ));
-    if (alreadyResolved) return session;
-
-    const now = new Date().toISOString();
-    const sourcePermission = events.find((event) => event.eventClass === 'permission.requested' && event.actionId === input.actionId);
-    const resolvedPermissionEvent = executionEvent({
-      kind: 'permission',
-      status: 'completed',
-      eventClass: 'permission.resolved',
-      owner: 'ui',
-      phase: 'completed',
-      sequence: events.length + 1,
-      threadId: sourceEvent.threadId ?? session.id,
-      turnId: sourceEvent.turnId,
-      taskId: sourceEvent.taskId,
-      runId: sourceEvent.runId,
-      actionId: input.actionId,
-      stepId: sourcePermission?.stepId ? `${sourcePermission.stepId}:resolved` : `permission:${input.actionId}:resolved`,
-      title: '人工处理已记录',
-      detail: resolvedActionDetail(sourceEvent, input),
-      refIds: sourceEvent.refIds,
-      artifactRefs: sourceEvent.artifactRefs,
-      evidenceRefs: sourceEvent.evidenceRefs,
-      payload: {
-        ...(sourcePermission?.payload ?? {}),
-        permissionDecision: {
-          decision: 'allow',
-          decisionSource: 'human',
-          decisionReason: input.decision,
-          approvalActionId: input.actionId,
-          scope: 'turn',
-        },
-        responsePayload: input.payload ?? {},
-        resolvedFromEventId: sourcePermission?.id ?? sourceEvent.id,
-      },
-      model: sourceEvent.model,
-      createdAt: now,
-    });
-    const resolvedEvent = executionEvent({
-      kind: 'action',
-      status: 'completed',
-      eventClass: 'action.resolved',
-      owner: 'ui',
-      phase: 'completed',
-      sequence: events.length + 2,
-      threadId: sourceEvent.threadId ?? session.id,
-      turnId: sourceEvent.turnId,
-      taskId: sourceEvent.taskId,
-      runId: sourceEvent.runId,
-      actionId: input.actionId,
-      stepId: sourceEvent.stepId ? `${sourceEvent.stepId}:resolved` : `action:${input.actionId}:resolved`,
-      title: resolvedActionTitle(input.decision),
-      detail: resolvedActionDetail(sourceEvent, input),
-      refIds: sourceEvent.refIds,
-      artifactRefs: sourceEvent.artifactRefs,
-      evidenceRefs: sourceEvent.evidenceRefs,
-      payload: {
-        ...(sourceEvent.payload ?? {}),
-        decision: input.decision,
-        responsePayload: input.payload ?? {},
-        resolvedFromEventId: sourceEvent.id,
-      },
-      model: sourceEvent.model,
-      createdAt: now,
-    });
-    const nextEvents = [...events, resolvedPermissionEvent, resolvedEvent];
-    const snapshotEvent = snapshotUpdatedEvent({
-      now,
-      sequence: events.length + 3,
-      sessionId: session.id,
-      turnId: sourceEvent.turnId,
-      taskId: sourceEvent.taskId,
-      runId: sourceEvent.runId,
-      status: session.status,
-      events: nextEvents,
-      messageCount: session.messages.length,
-      draftIds: session.promptDraftIds,
-    });
-    const updatedSession: AgentPromptSession = {
-      ...session,
-      executionEvents: [...nextEvents, snapshotEvent].slice(-120),
-      updatedAt: now,
-    };
-    await writeJsonFile(
-      sessionsFilePath(input.workspacePath),
-      sessions.map((item) => (item.id === session.id ? updatedSession : item)),
-    );
-    return updatedSession;
+    throw new Error('当前 actions 必须由 Lime App Server runtime 处理，Content Studio 不再本地伪造 action.resolved。');
   }
 
   async attachInputSources(input: AttachAgentPromptSessionInputSourcesInput): Promise<AgentPromptSession> {
-    const requestedIds = Array.from(new Set(input.inputSourceIds.map((id) => id.trim()).filter(Boolean)));
-    if (!requestedIds.length) throw new Error('绑定输入源需要至少一个 inputSourceId。');
     const sessions = await this.list(input.workspacePath);
     const session = sessions.find((item) => item.id === input.sessionId);
     if (!session) throw new Error(`对话不存在: ${input.sessionId}`);
+    throw new Error('当前输入源补充必须重新提交到 Lime App Server runtime，Content Studio 不再本地伪造 context/evidence facts。');
+  }
 
-    const idSet = new Set(requestedIds);
-    const currentIds = new Set(session.inputSourceIds);
-    const allSources = await this.inputSources.list(input.workspacePath);
-    const newSources = allSources.filter((source) => (
-      idSet.has(source.id) &&
-      !currentIds.has(source.id) &&
-      isReusablePromptInputSource(source)
-    ));
-    if (!newSources.length) return session;
-
+  private createActiveSession(input: {
+    input: StartAgentPromptSessionInput;
+    sessionId: string;
+    turnId: string;
+    runId: string;
+    inputSourceIds: string[];
+    selectedSkills: SkillRef[];
+    selectedSkillSlugs: string[];
+    sourceSnapshots: AgentPromptSourceSnapshot[];
+    skillContext: SkillRuntimeContext;
+  }): AgentPromptSession {
     const now = new Date().toISOString();
-    const events = session.executionEvents ?? [];
-    const turnId = randomUUID();
-    const runId = randomUUID();
-    const taskId = `task:${session.id}:source-supplement`;
-    const refIds = newSources.map((source) => source.id);
-    const evidenceRefs = newSources.map((source) => `input-source:${source.id}`);
-    const sourceTitles = newSources.map((source) => source.title).join('、');
-    const pendingSourceAction = events.find((event) => (
-      event.eventClass === 'action.required' &&
-      event.payload?.actionKind === 'add-input-source' &&
-      !events.some((item) => item.eventClass === 'action.resolved' && item.actionId === event.actionId)
-    ));
-    const nextEvents: AgentPromptExecutionEvent[] = [
-      executionEvent({
-        kind: 'source',
-        status: 'completed',
-        eventClass: 'context.resolved',
-        owner: 'ui',
-        phase: 'preparing',
-        sequence: events.length + 1,
-        threadId: session.id,
-        turnId,
-        taskId,
-        runId,
-        stepId: `context:input-source-supplement:${turnId}`,
-        title: '已补充输入源',
-        detail: `${newSources.length} 份资料已绑定到当前对话。`,
-        refIds,
-        evidenceRefs,
-        payload: {
-          sourceCount: newSources.length,
-          reason: input.reason?.trim() || 'input-source-supplement',
-        },
-        createdAt: now,
-      }),
-      executionEvent({
-        kind: 'evidence',
-        status: 'completed',
-        eventClass: 'evidence.changed',
-        owner: 'ui',
-        phase: 'preparing',
-        sequence: events.length + 2,
-        threadId: session.id,
-        turnId,
-        taskId,
-        runId,
-        stepId: `evidence:input-source-supplement:${turnId}`,
-        title: '来源证据已更新',
-        detail: sourceTitles,
-        refIds,
-        evidenceRefs,
-        payload: {
-          evidenceKind: 'input-source',
-          sourceCount: newSources.length,
-        },
-        createdAt: now,
-      }),
-      ...(pendingSourceAction?.actionId ? [
-        executionEvent({
-          kind: 'permission',
-          status: 'completed',
-          eventClass: 'permission.resolved',
-          owner: 'ui',
-          phase: 'completed',
-          sequence: events.length + 3,
-          threadId: session.id,
-          turnId,
-          taskId,
-          runId,
-          actionId: pendingSourceAction.actionId,
-          stepId: `permission:${pendingSourceAction.actionId}:resolved`,
-          title: '补充资料权限已完成',
-          detail: `${newSources.length} 份资料已绑定到当前对话。`,
-          refIds,
-          evidenceRefs,
-          payload: {
-            permissionDecision: {
-              decision: 'allow',
-              decisionSource: 'human',
-              decisionReason: input.reason?.trim() || 'input-source-supplement',
-              approvalActionId: pendingSourceAction.actionId,
-              scope: 'turn',
-            },
-            responsePayload: { inputSourceIds: refIds },
-            resolvedFromEventId: pendingSourceAction.id,
-          },
+    return {
+      id: input.sessionId,
+      workspacePath: input.input.workspacePath,
+      workflowRunId: input.input.workflowRunId,
+      teamKnowledgeRelease: input.input.teamKnowledgeRelease,
+      title: input.input.title?.trim() || 'AI Agent 正在处理',
+      purpose: input.input.purpose,
+      status: 'active',
+      userIntent: input.input.userIntent.trim(),
+      inputSourceIds: input.inputSourceIds,
+      sceneCardIds: input.input.sceneCardIds ?? [],
+      selectedSkills: input.selectedSkills,
+      selectedSkillSlugs: input.selectedSkillSlugs,
+      promptDraftIds: [],
+      sourceSnapshots: input.sourceSnapshots,
+      messages: [
+        {
+          id: randomUUID(),
+          role: 'user' as const,
+          kind: 'intent' as const,
+          content: input.input.userIntent.trim(),
           createdAt: now,
-        }),
-        executionEvent({
-          kind: 'action',
-          status: 'completed',
-          eventClass: 'action.resolved',
-          owner: 'ui',
-          phase: 'completed',
-          sequence: events.length + 4,
-          threadId: session.id,
-          turnId,
-          taskId,
-          runId,
-          actionId: pendingSourceAction.actionId,
-          stepId: `${pendingSourceAction.stepId ?? pendingSourceAction.actionId}:resolved`,
-          title: '输入源已补充',
-          detail: `${newSources.length} 份资料已进入本轮证据链。`,
-          refIds,
-          evidenceRefs,
-          payload: {
-            ...(pendingSourceAction.payload ?? {}),
-            decision: 'open-input-source',
-            responsePayload: { inputSourceIds: refIds },
-            resolvedFromEventId: pendingSourceAction.id,
-          },
+        },
+        {
+          id: randomUUID(),
+          role: 'assistant' as const,
+          kind: 'note' as const,
+          content: '',
+          model: input.input.textModel,
           createdAt: now,
-        }),
-      ] : []),
-    ];
-    const mergedEvents = [...events, ...nextEvents];
-    const mergedSnapshots = [
-      ...session.sourceSnapshots.filter((source) => !idSet.has(source.sourceId)),
-      ...newSources.map(snapshotSource),
-    ];
-    const note: AgentPromptMessage = {
-      id: randomUUID(),
-      role: 'system',
-      kind: 'note',
-      content: [
-        '已补充输入源：',
-        ...newSources.map((source, index) => `${index + 1}. ${source.title}（${sourcePurposeLabel(source.purpose)} / ${sourceStatusLabel(source.status)}）`),
-        '',
-        '后续调整必须基于这些输入源，不得编造未登记事实。',
-      ].join('\n'),
-      createdAt: now,
-    };
-    const updatedSession: AgentPromptSession = {
-      ...session,
-      status: session.status === 'waiting-user' ? 'active' : session.status,
-      inputSourceIds: Array.from(new Set([...session.inputSourceIds, ...refIds])),
-      sourceSnapshots: mergedSnapshots,
-      messages: [...session.messages, note].slice(-80),
+        },
+      ],
       executionEvents: [
-        ...mergedEvents,
-        snapshotUpdatedEvent({
-          now,
-          sequence: mergedEvents.length + 1,
-          sessionId: session.id,
+        executionEvent({
+          kind: 'state',
+          status: 'running',
+          eventClass: 'turn.submitted',
+          owner: 'runtime',
+          phase: 'submitted',
+          sequence: 1,
+          threadId: input.sessionId,
+          turnId: input.turnId,
+          taskId: `task:${input.sessionId}:app-server-draft`,
+          runId: input.runId,
+          stepId: `app-server:draft:submitted:${input.turnId}`,
+          title: '请求已提交',
+          detail: '正在等待 Lime App Server runtime 返回事件。',
+          model: input.input.textModel,
+          payload: {
+            runtime: 'lime-agent-server',
+            selectedSkillSlugs: input.selectedSkillSlugs,
+            skillSummary: skillSummaryText(input.skillContext),
+          },
+          createdAt: now,
+        }),
+      ],
+      model: input.input.textModel,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private appendUserTurnPending(
+    session: AgentPromptSession,
+    adjustment: string,
+    turnId: string,
+    runId: string,
+    model?: string,
+  ): AgentPromptSession {
+    const now = new Date().toISOString();
+    const nextMessages: AgentPromptMessage[] = [
+      ...session.messages,
+      {
+        id: randomUUID(),
+        role: 'user' as const,
+        kind: 'adjustment' as const,
+        content: adjustment,
+        createdAt: now,
+      },
+      {
+        id: randomUUID(),
+        role: 'assistant' as const,
+        kind: 'note' as const,
+        content: '',
+        model,
+        createdAt: now,
+      },
+    ].slice(-80);
+    return {
+      ...session,
+      status: 'active',
+      messages: nextMessages,
+      executionEvents: [
+        ...(session.executionEvents ?? []),
+        executionEvent({
+          kind: 'state',
+          status: 'running',
+          eventClass: 'turn.submitted',
+          owner: 'runtime',
+          phase: 'submitted',
+          sequence: (session.executionEvents?.length ?? 0) + 1,
+          threadId: session.id,
           turnId,
-          taskId,
+          taskId: `task:${session.id}:app-server-refine`,
           runId,
-          status: session.status === 'waiting-user' ? 'active' : session.status,
-          events: mergedEvents,
-          messageCount: session.messages.length + 1,
-          draftIds: session.promptDraftIds,
+          stepId: `app-server:refine:submitted:${turnId}`,
+          title: '请求已提交',
+          detail: '正在等待 Lime App Server runtime 返回事件。',
+          model,
+          payload: { runtime: 'lime-agent-server' },
+          createdAt: now,
         }),
       ].slice(-120),
       updatedAt: now,
     };
-    await writeJsonFile(
-      sessionsFilePath(input.workspacePath),
-      sessions.map((item) => (item.id === session.id ? updatedSession : item)),
-    );
-    return updatedSession;
   }
 
+  private async applyProviderEvent(input: {
+    workspacePath: string;
+    session: AgentPromptSession;
+    event: TextProviderRuntimeEvent;
+    operation: 'draft' | 'refine';
+    turnId: string;
+    runId: string;
+  }): Promise<AgentPromptSession> {
+    const now = new Date().toISOString();
+    const runtimeEvents = appServerProviderExecutionEvents({
+      now,
+      providerEvents: [input.event],
+      sessionId: input.session.id,
+      turnId: input.turnId,
+      runId: input.runId,
+      operation: input.operation,
+      status: input.event.eventClass === 'model.failed' || input.event.eventClass === 'tool.failed' ? 'blocked' : 'active',
+      messageCount: input.session.messages.length,
+      draftIds: input.session.promptDraftIds,
+      baseSequence: input.session.executionEvents?.length ?? 0,
+    });
+    const nextSession: AgentPromptSession = {
+      ...input.session,
+      status: input.event.eventClass === 'model.failed' || input.event.eventClass === 'tool.failed' ? 'blocked' : 'active',
+      messages: updateStreamingAssistantMessage(input.session.messages, input.event),
+      executionEvents: mergeExecutionEvents(input.session.executionEvents ?? [], runtimeEvents),
+      model: input.event.model ?? input.session.model,
+      updatedAt: now,
+    };
+    await this.upsertSession(input.workspacePath, nextSession);
+    this.publish(nextSession, nextSession.status === 'blocked' ? 'blocked' : 'upsert');
+    return nextSession;
+  }
+
+  private async upsertSession(
+    workspacePath: string,
+    session: AgentPromptSession,
+    replaceSessionId = session.id,
+  ): Promise<void> {
+    const existing = await this.list(workspacePath);
+    const next = [
+      session,
+      ...existing.filter((item) => item.id !== replaceSessionId && item.id !== session.id),
+    ].slice(0, 120);
+    await writeJsonFile(sessionsFilePath(workspacePath), next);
+  }
+
+  private publish(session: AgentPromptSession, type: AgentPromptSessionEvent['type']): void {
+    this.publishSessionEvent?.({
+      type,
+      workspacePath: session.workspacePath,
+      session,
+    });
+  }
+
+}
+
+function mergeExecutionEvents(
+  previous: AgentPromptExecutionEvent[],
+  next: AgentPromptExecutionEvent[],
+): AgentPromptExecutionEvent[] {
+  const seen = new Set<string>();
+  return [...previous, ...next]
+    .filter((event) => {
+      const key = [
+        event.turnId,
+        event.eventClass,
+        event.toolCallId,
+        event.actionId,
+        event.artifactRefs?.join(','),
+        event.evidenceRefs?.join(','),
+        event.payload?.eventId,
+        event.detail,
+      ].filter(Boolean).join(':');
+      if (key && seen.has(key)) return false;
+      if (key) seen.add(key);
+      return true;
+    })
+    .slice(-120);
+}
+
+function updateStreamingAssistantMessage(
+  messages: AgentPromptMessage[],
+  event: TextProviderRuntimeEvent,
+): AgentPromptMessage[] {
+  if (event.eventClass !== 'model.delta') return messages;
+  const chunk = event.detail?.trim();
+  if (!chunk) return messages;
+  const next = [...messages];
+  const index = findLastAssistantMessageIndex(next);
+  const now = new Date().toISOString();
+  if (index < 0) {
+    return [
+      ...next,
+      {
+        id: randomUUID(),
+        role: 'assistant' as const,
+        kind: 'note' as const,
+        content: chunk,
+        model: event.model,
+        createdAt: now,
+      },
+    ].slice(-80);
+  }
+  const current = next[index];
+  next[index] = {
+    ...current,
+    content: `${current.content ?? ''}${chunk}`,
+    model: event.model ?? current.model,
+  };
+  return next.slice(-80);
+}
+
+function findLastAssistantMessageIndex(messages: AgentPromptMessage[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === 'assistant') return index;
+  }
+  return -1;
 }

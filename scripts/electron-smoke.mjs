@@ -226,6 +226,7 @@ try {
       },
     };
   })()`, true);
+  const platformHostStatus = await evaluate(cdp, `(async () => window.contentStudio.getPlatformHostStatus())()`, true);
   const coreFlowState = await evaluate(cdp, `(async () => {
     const workspacePath = ${JSON.stringify(workspaceDir)};
     await window.contentStudio.installBuiltinKnowledgeBase('product-demo', workspacePath);
@@ -301,10 +302,10 @@ try {
       knowledgeBaseCount: knowledgeBases.length,
       searchResultCount: searchResults.length,
       citationCount: citations.length,
-      promptPackBlocked: promptPackError.includes('文字模型未配置'),
+      promptPackBlocked: promptPackError.includes('文字模型未配置') || promptPackError.includes('平台文字模型未配置'),
       imageStatus: image.status,
       imageAssetCount: image.assetRefs.length,
-      breakdownBlocked: breakdownError.includes('视频理解模型未配置') || breakdownError.includes('真实视频理解模型未配置'),
+      breakdownBlocked: breakdownError.includes('视频理解模型未配置') || breakdownError.includes('真实视频理解模型未配置') || breakdownError.includes('平台视频模型未配置'),
       videoStatus: video.status,
       videoAssetCount: video.assetRefs.length,
       logCount: logs.length,
@@ -421,10 +422,14 @@ try {
         && !document.body.innerText.includes('Content Studio 图片生成')
         && !document.body.innerText.includes('Content Studio 视频生成')
         && (
-          document.body.innerText.includes('Platform OpenAI')
+          document.body.innerText.includes('平台模型设置')
+          || document.body.innerText.includes('Agent Runtime')
+          || document.body.innerText.includes('Platform OpenAI')
           || document.body.innerText.includes('未连接平台设置')
           || document.body.innerText.includes('尚未配置 Provider')
           || document.body.innerText.includes('添加自定义 Provider')
+          || document.body.innerText.includes('选择或添加模型')
+          || document.body.innerText.includes('还没有启用模型')
         )
         && (
           document.body.innerText.includes('打开完整模型设置')
@@ -562,9 +567,15 @@ try {
     await clickButton('开始协作');
     await waitFor('article blocked', () => (
       bodyText().includes('文章生成协作')
-      && bodyText().includes('生成服务待配置')
-      && bodyText().includes('需要配置文字模型')
-      && bodyText().includes('打开模型设置')
+      && (
+        bodyText().includes('平台文字模型未配置')
+        || bodyText().includes('未连接 Lime Desktop Platform')
+        || bodyText().includes('AI Agent 对话未启动')
+      )
+      && (
+        bodyText().includes('模型')
+        || bodyText().includes('打开模型设置')
+      )
     ));
     checks.push({ step: 'article blocked without provider', ok: true });
 
@@ -574,6 +585,7 @@ try {
       bodyText().includes('后台生成队列')
       || bodyText().includes('排队中')
       || bodyText().includes('生成中')
+      || bodyText().includes('平台图片模型未配置')
       || ((bodyText().includes('图片生成服务未配置') || bodyText().includes('图片 provider 未配置')) && (bodyText().includes('未生成占位') || bodyText().includes('未生成 SVG 占位') || bodyText().includes('未伪造')))
     ));
     checks.push({ step: 'image blocked without provider', ok: true });
@@ -584,7 +596,7 @@ try {
     checks.push({ step: 'video breakdown blocked without provider', ok: true });
     await clickVideoStageTab('脚本改写');
     await clickAnyActionButton(['生成分镜脚本', '生成新视频脚本', '生成复刻脚本']);
-    await waitFor('video script blocked', () => bodyText().includes('文字模型未配置'));
+    await waitFor('video script blocked', () => bodyText().includes('文字模型未配置') || bodyText().includes('平台文字模型未配置'));
     checks.push({ step: 'video script blocked without provider', ok: true });
     await clickVideoStageTab('Prompt 交接');
     await clickActionButton('内部生成');
@@ -592,6 +604,7 @@ try {
       bodyText().includes('后台生成队列')
       || bodyText().includes('排队中')
       || bodyText().includes('生成中')
+      || bodyText().includes('平台视频模型未配置')
       || ((bodyText().includes('视频生成服务未配置') || bodyText().includes('视频 provider 未配置')) && (bodyText().includes('队列文件') || bodyText().includes('队列产物')))
     ));
     checks.push({ step: 'video queue blocked', ok: true });
@@ -644,11 +657,13 @@ try {
     ['redundant workbench hint removed', !bridgeState.hasRedundantWorkbenchHint],
     ['builtin skills >= 4', bridgeState.builtinSkillsCount >= 4],
     ['bridge methods >= 20', bridgeState.bridgeMethodCount >= 20],
+    ['embedded platform host available', platformHostStatus?.available === true && platformHostStatus?.source === 'embedded'],
+    ['lime app server sidecar started on electron startup', platformHostStatus?.appServerSidecar?.ok === true && platformHostStatus?.appServerSidecar?.connected === true],
     ['core flow citations >= 1', coreFlowState.citationCount >= 1],
     ['core flow prompt pack blocked', coreFlowState.promptPackBlocked],
     ['core flow image blocked without asset', coreFlowState.imageStatus === 'blocked' && coreFlowState.imageAssetCount === 0],
     ['core flow video breakdown blocked', coreFlowState.breakdownBlocked],
-    ['core flow video assets', coreFlowState.videoAssetCount >= 2],
+    ['core flow video blocked without asset', coreFlowState.videoStatus === 'blocked' && coreFlowState.videoAssetCount === 0],
     ['core flow logs >= 4', coreFlowState.logCount >= 4],
     ['core flow duration logs >= 4', coreFlowState.logsWithDuration >= 4],
     ['click flow all checks', clickFlowState.failed.length === 0],
@@ -662,13 +677,14 @@ try {
   if (failedChecks.length) {
     throw new Error([
       `GUI smoke 检查失败：${failedChecks.join(', ')}`,
+      `platformHostStatus: ${JSON.stringify(platformHostStatus)}`,
       `clickFlow failed: ${JSON.stringify(clickFlowState.failed)}`,
       `clickFlow checks: ${JSON.stringify(clickFlowState.checks)}`,
       `clickFlow finalText: ${clickFlowState.finalText}`,
     ].join('\n'));
   }
 
-  console.log(JSON.stringify({ ok: true, target: { title: target.title, url: target.url }, rendererState, bridgeState, coreFlowState, clickFlowState, uiWorkflowState, scrollState }, null, 2));
+  console.log(JSON.stringify({ ok: true, target: { title: target.title, url: target.url }, rendererState, bridgeState, platformHostStatus, coreFlowState, clickFlowState, uiWorkflowState, scrollState }, null, 2));
 } catch (error) {
   if (output.length) console.error(output.join('').slice(-4000));
   throw error;

@@ -18,8 +18,18 @@
     "jsx": "react-jsx",
     "types": ["node", "electron"],
     "paths": {
-      "@limecloud/desktop-platform-contracts": ["../lime-desktop-platform/packages/contracts/dist/index.d.ts"],
-      "@limecloud/desktop-platform-react": ["../lime-desktop-platform/packages/react/dist/index.d.ts"]
+      "@limecloud/desktop-platform-contracts": [
+        ".tmp/lime-desktop-platform/packages/contracts/dist/index.d.ts",
+        "../lime-desktop-platform/packages/contracts/dist/index.d.ts"
+      ],
+      "@limecloud/desktop-platform-react": [
+        ".tmp/lime-desktop-platform/packages/react/dist/index.d.ts",
+        "../lime-desktop-platform/packages/react/dist/index.d.ts"
+      ],
+      "@limecloud/desktop-platform-electron-adapter": [
+        ".tmp/lime-desktop-platform/packages/electron-adapter/dist/packages/electron-adapter/src/index.d.ts",
+        "../lime-desktop-platform/packages/electron-adapter/dist/packages/electron-adapter/src/index.d.ts"
+      ]
     }
   },
   "include": ["electron.vite.config.ts", "src/**/*.ts", "src/**/*.tsx"]

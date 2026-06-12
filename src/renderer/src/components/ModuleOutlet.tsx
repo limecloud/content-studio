@@ -128,12 +128,13 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         recentWorkspacePaths={app.settings?.recentWorkspacePaths ?? []}
         productImageRefs={app.productImageRefs}
         referenceImageRefs={app.referenceImageRefs}
-        textModel={app.params.textModel}
+        textModel={agentModelSettings.defaultTextModelId ?? app.params.textModel}
         textProviderId={agentModelSettings.defaultAgentProviderId}
         modelSettings={agentModelSettings}
         skills={app.skills}
         enabledSkillKeys={app.enabledSkillKeys}
         mediaResult={app.mediaResult}
+        promptDrafts={app.promptDrafts}
         agentPromptSessions={app.agentPromptSessions}
         activeSessionId={app.activeAgentPromptSessionId}
         onSelectWorkspacePath={(workspacePath) =>

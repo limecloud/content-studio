@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import * as esbuild from 'esbuild';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const desktopPlatformDir = resolve(projectRoot, '../lime-desktop-platform');
 const outDir = join(projectRoot, '.tmp', 'functional-tests');
 const outFile = join(outDir, 'content-flow.test.mjs');
 
@@ -33,6 +34,9 @@ if (process.env.CONTENT_STUDIO_FUNCTIONAL_TEST_BUNDLE === '1') {
   plugins: [{
     name: 'electron-test-shim',
     setup(build) {
+      build.onResolve({ filter: /^@limecloud\/desktop-platform-electron-adapter$/ }, () => ({
+        path: join(desktopPlatformDir, 'packages/electron-adapter/dist/packages/electron-adapter/src/index.js'),
+      }));
       build.onResolve({ filter: /^electron$/ }, () => ({ path: 'electron-test-shim', namespace: 'content-studio-test' }));
       build.onLoad({ filter: /.*/, namespace: 'content-studio-test' }, () => ({
         loader: 'js',

@@ -2223,6 +2223,11 @@
   padding: 12px 14px;
 }
 
+.module-command-center--managed {
+  gap: 10px;
+  padding: 12px 14px;
+}
+
 .module-command-top {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2251,6 +2256,11 @@
 
 .module-command-center--compact .module-command-top h2,
 .module-command-center--flow .module-command-top h2 {
+  margin-bottom: 4px;
+  font-size: 22px;
+}
+
+.module-command-center--managed .module-command-top h2 {
   margin-bottom: 4px;
   font-size: 22px;
 }
@@ -2296,6 +2306,11 @@
   line-height: 1.45;
 }
 
+.module-command-center--managed .module-command-top p:not(.eyebrow) {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .module-command-tabs {
   margin-top: 0;
 }
@@ -2305,6 +2320,10 @@
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--cyan) 8%, var(--panel));
   padding: 6px;
+}
+
+.module-command-center--managed .module-command-filters {
+  padding: 4px;
 }
 
 .module-command-center--managed .module-command-tabs {

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   AgentEvent,
+  AgentPromptSessionEvent,
   AttachAgentPromptSessionInputSourcesInput,
   ContinueAgentPromptSessionInput,
   ArticleGenerationRequest,
@@ -198,6 +199,11 @@ const api: ContentStudioApi = {
   listAgentPromptSessions: (workspacePath: string) => ipcRenderer.invoke('agentPromptSessions:list', workspacePath),
   startAgentPromptSession: (input: StartAgentPromptSessionInput) => ipcRenderer.invoke('agentPromptSessions:start', input),
   continueAgentPromptSession: (input: ContinueAgentPromptSessionInput) => ipcRenderer.invoke('agentPromptSessions:continue', input),
+  onAgentPromptSessionEvent: (callback: (event: AgentPromptSessionEvent) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: AgentPromptSessionEvent) => callback(payload);
+    ipcRenderer.on('agentPromptSessions:event', listener);
+    return () => ipcRenderer.off('agentPromptSessions:event', listener);
+  },
   respondAgentPromptAction: (input: RespondAgentPromptActionInput) => ipcRenderer.invoke('agentPromptSessions:respondAction', input),
   attachAgentPromptSessionInputSources: (input: AttachAgentPromptSessionInputSourcesInput) => ipcRenderer.invoke('agentPromptSessions:attachInputSources', input),
   listOverlayCards: (workspacePath: string) => ipcRenderer.invoke('overlayCards:list', workspacePath),

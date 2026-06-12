@@ -7,6 +7,7 @@ import type {
   AgentPromptSession,
   LoadedSkill,
   MediaGenerationResult,
+  PromptDraft,
   PromptDraftPurpose,
   SkillRef,
 } from "../../../../shared/types";
@@ -27,6 +28,7 @@ interface AgentsWorkbenchProps {
   skills: LoadedSkill[];
   enabledSkillKeys: Set<string>;
   mediaResult: MediaGenerationResult | null;
+  promptDrafts: PromptDraft[];
   agentPromptSessions: AgentPromptSession[];
   activeSessionId?: string;
   onSelectWorkspacePath: (workspacePath: string) => void | Promise<void>;
@@ -95,7 +97,6 @@ interface CopywritingTask {
 type ActiveMenu = "add" | "access" | "project" | null;
 type WorkbenchView = "entry" | "thread";
 type ThreadToolbarMenu = "workspace" | "task" | null;
-type ThreadViewMode = "focus" | "artifact" | "sources";
 
 type IconName =
   | "add"
@@ -111,9 +112,6 @@ type IconName =
   | "folder"
   | "grid"
   | "image"
-  | "layoutArtifact"
-  | "layoutFocus"
-  | "layoutSources"
   | "more"
   | "panel"
   | "search"
@@ -273,7 +271,7 @@ function defaultSkillKeys(skills: LoadedSkill[], enabledSkillKeys: Set<string>):
 }
 
 function statusLabel(status: AgentPromptSession["status"]): string {
-  if (status === "waiting-user") return "待确认";
+  if (status === "waiting-user") return "待补充";
   if (status === "draft-created") return "已出草稿";
   if (status === "blocked") return "待配置";
   if (status === "closed") return "已关闭";
@@ -288,11 +286,12 @@ function purposeForIntent(intentId: QuickIntentId): PromptDraftPurpose {
   if (intentId === "videoPrompt") return "video";
   if (intentId === "article" || intentId === "articleTitle" || intentId === "articleScript") return "article";
   if (intentId === "greenScreen") return "green-screen";
-  if (intentId === "assets" || intentId === "breakdown") return "content-task";
+  if (intentId === "guide" || intentId === "assets" || intentId === "breakdown") return "content-task";
   return "image";
 }
 
 function titleForIntent(intentId: QuickIntentId): string {
+  if (intentId === "guide") return "内容协作";
   if (intentId === "videoPrompt") return "图生视频 Prompt 协作";
   if (intentId === "article") return "文章生成协作";
   if (intentId === "articleTitle") return "标题矩阵协作";
@@ -320,7 +319,7 @@ function messageTitle(message: AgentPromptMessage): string {
   if (message.role === "user") return message.kind === "adjustment" ? "你的调整" : "你的任务";
   if (message.role === "assistant") {
     if (isBlockedModel(message.model)) return "未完成";
-    return message.kind === "draft" ? "草稿结果" : "agents";
+    return message.kind === "draft" ? "草稿结果" : "AI Agent";
   }
   return "系统记录";
 }
@@ -384,25 +383,30 @@ function isBlockedModel(model?: string): boolean {
   return Boolean(model?.startsWith("blocked:") || model?.startsWith("fallback:"));
 }
 
-function latestDraftMessage(messages: AgentPromptMessage[]): AgentPromptMessage | undefined {
-  return [...messages].reverse().find((message) => message.kind === "draft" && message.content.trim());
+function activeDraftContent(session: AgentPromptSession | undefined, drafts: PromptDraft[]): string | undefined {
+  const draftId = session?.promptDraftIds.at(-1);
+  if (!draftId) return undefined;
+  const draft = drafts.find((item) => item.id === draftId);
+  const version = draft?.versions.find((item) => item.id === draft.activeVersionId) ?? draft?.versions.at(-1);
+  return version?.content;
 }
 
-function runtimeSurfaceText(surface: AgentRuntimeEventProjection["surface"]): string {
-  if (surface === "human-action") return "待处理";
-  if (surface === "tool") return "工具";
-  if (surface === "permission") return "权限";
-  if (surface === "artifact") return "交付";
-  if (surface === "evidence") return "来源";
-  if (surface === "context") return "上下文";
-  if (surface === "runtime-status") return "运行";
-  return "消息";
+function outputPurposeForIntent(intentId: QuickIntentId): string {
+  if (intentId === "guide") return "内容协作";
+  if (intentId === "videoPrompt") return "视频 Prompt";
+  if (intentId === "article") return "文章草稿";
+  if (intentId === "articleTitle") return "标题矩阵";
+  if (intentId === "articleScript") return "脚本草稿";
+  if (intentId === "greenScreen") return "绿幕文案图";
+  if (intentId === "assets") return "素材入库说明";
+  if (intentId === "breakdown") return "拆解报告 / Prompt";
+  if (intentId === "scenePrompt") return "场景提示词";
+  return "图片 Prompt";
 }
 
 function sanitizeRuntimeProjectionEvent(event: AgentRuntimeEventProjection): AgentRuntimeEventProjection {
   return {
     ...event,
-    surface: runtimeSurfaceText(event.surface) as AgentRuntimeEventProjection["surface"],
     title: sanitizeUserFacingMessage(event.title),
     detail: event.detail ? sanitizeUserFacingMessage(event.detail) : undefined,
     displayStatus: sanitizeUserFacingMessage(event.displayStatus),
@@ -485,21 +489,6 @@ function Icon({ name }: { name: IconName }) {
           <path d="m6.5 16 4.2-5 3.2 4 1.8-2.1 1.8 3.1" />
           <circle cx="16" cy="8.5" r="1.4" />
         </>
-      ) : name === "layoutArtifact" ? (
-        <>
-          <rect x="5" y="6" width="14" height="12" rx="2" />
-          <path d="M8 9h8M8 12h8M8 15h5" />
-        </>
-      ) : name === "layoutFocus" ? (
-        <>
-          <rect x="6" y="7" width="12" height="10" rx="2" />
-          <path d="M9 10h6M9 13h4" />
-        </>
-      ) : name === "layoutSources" ? (
-        <>
-          <rect x="4" y="5" width="16" height="14" rx="2" />
-          <path d="M13 5v14M7 9h3M7 12h3M7 15h3" />
-        </>
       ) : name === "more" ? (
         <>
           <circle cx="6" cy="12" r="1" />
@@ -553,6 +542,7 @@ export function AgentsWorkbench({
   modelSettings,
   skills,
   enabledSkillKeys,
+  promptDrafts,
   agentPromptSessions,
   activeSessionId,
   onSelectWorkspacePath,
@@ -580,7 +570,7 @@ export function AgentsWorkbench({
   const [openedSessionId, setOpenedSessionId] = useState("");
   const [selectedSkillKeys, setSelectedSkillKeys] = useState<string[]>(() => defaultSkillKeys(skills, enabledSkillKeys));
   const [threadToolbarMenu, setThreadToolbarMenu] = useState<ThreadToolbarMenu>(null);
-  const [threadViewMode, setThreadViewMode] = useState<ThreadViewMode>("focus");
+  const [runtimeOpen, setRuntimeOpen] = useState(false);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const activeSession = openedSessionId
     ? agentPromptSessions.find((session) => session.id === openedSessionId)
@@ -624,6 +614,9 @@ export function AgentsWorkbench({
     [selectedSkillKeys, visibleSkills],
   );
   const selectedCopywritingTask = copywritingTaskForIntent(selectedQuickIntentId);
+  const modelMenuEmptyLabel = modelSettings?.providers.length
+    ? "未配置可用模型"
+    : "未连接 Lime Desktop Platform";
   const recommendedCopywritingSkills = useMemo(
     () => selectedCopywritingTask
       ? skills
@@ -651,7 +644,7 @@ export function AgentsWorkbench({
     })),
     [conversationMessages],
   );
-  const draftMessage = latestDraftMessage(conversationMessages);
+  const activeArtifactContent = activeDraftContent(activeSession, promptDrafts);
   const selectedQuickIntent = QUICK_INTENTS.find((intent) => intent.id === selectedQuickIntentId) ?? QUICK_INTENTS[0];
   const selectedAccessOption = ACCESS_OPTIONS.find((option) => option.id === accessMode) ?? ACCESS_OPTIONS[2];
   const runtimeReadModel = useMemo(
@@ -665,9 +658,10 @@ export function AgentsWorkbench({
     runtimeReadModel.artifactRefs.length ||
     runtimeReadModel.evidenceRefs.length,
   );
+  const agentIsRunning = busy && activeSession?.status === "active";
   const primaryDisabled = busy || !workspaceReady || !prompt.trim() || (view === "thread" && !activeSession);
   const sourceCount = runtimeReadModel.sourceCount + productImageRefs.length + referenceImageRefs.length;
-  const artifactCount = runtimeReadModel.artifactRefs.length + (draftMessage ? 1 : 0);
+  const artifactCount = runtimeReadModel.artifactRefs.length + (activeArtifactContent ? 1 : 0);
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -776,11 +770,6 @@ export function AgentsWorkbench({
 
   function renderThreadToolbar() {
     const taskTitle = activeSession?.title?.trim() || titleForIntent(selectedQuickIntentId);
-    const viewOptions: Array<{ id: ThreadViewMode; label: string; icon: IconName }> = [
-      { id: "focus", label: "专注对话", icon: "layoutFocus" },
-      { id: "artifact", label: "产物视图", icon: "layoutArtifact" },
-      { id: "sources", label: "来源侧栏", icon: "layoutSources" },
-    ];
 
     return (
       <div className="agents-thread-toolbar" aria-label="对话工具">
@@ -859,7 +848,7 @@ export function AgentsWorkbench({
                 <span>进度</span>
                 <ul>
                   <li className="done">读取需求与输入源</li>
-                  <li className={draftMessage ? "done" : ""}>生成可审核草稿</li>
+                  <li className={activeArtifactContent ? "done" : ""}>生成可审核草稿</li>
                   <li className={runtimeReadModel.pendingActions.length ? "active" : ""}>等待人工确认</li>
                 </ul>
               </section>
@@ -871,23 +860,18 @@ export function AgentsWorkbench({
           ) : null}
         </div>
 
-        <div className="agents-thread-view-switch" aria-label="对话视图">
-          {viewOptions.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={threadViewMode === option.id ? "active" : ""}
-              aria-label={option.label}
-              title={option.label}
-              onClick={() => {
-                setThreadViewMode(option.id);
-                setThreadToolbarMenu(null);
-              }}
-            >
-              <Icon name={option.icon} />
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          className={`agents-thread-tool ${runtimeOpen ? "active" : ""}`}
+          aria-label="运行详情"
+          title="运行详情"
+          onClick={() => {
+            setRuntimeOpen((current) => !current);
+            setThreadToolbarMenu(null);
+          }}
+        >
+          <Icon name="panel" />
+        </button>
       </div>
     );
   }
@@ -1024,7 +1008,7 @@ export function AgentsWorkbench({
               contextLabel="模型设置"
               placement={mode === "entry" ? "bottom" : "top"}
               className="agents-platform-model-menu"
-              emptyLabel="未配置可用模型"
+              emptyLabel={modelMenuEmptyLabel}
               leadingIcon={null}
               onChange={onSelectTextModel}
               onOpenChange={(open) => {
@@ -1122,6 +1106,87 @@ export function AgentsWorkbench({
     return renderComposerSurface("entry", "agents-entry-composer agents-entry-launch");
   }
 
+  function renderThreadSummary() {
+    const taskTitle = activeSession?.title?.trim() || titleForIntent(selectedQuickIntentId);
+    const outputPurpose = outputPurposeForIntent(selectedQuickIntentId);
+
+    return (
+      <section className="agents-thread-summary" aria-label="当前任务上下文">
+        <div className="agents-thread-summary-title">
+          <span>{activeSession ? statusLabel(activeSession.status) : "待启动"}</span>
+          <strong>{taskTitle}</strong>
+          <em title={currentProjectDetail}>{currentProjectLabel}</em>
+        </div>
+        <div className="agents-thread-summary-chips" aria-label="输入与交付统计">
+          <span>{outputPurpose}</span>
+          <span>输入源 {sourceCount}</span>
+          <span>运行依据 {runtimeReadModel.evidenceRefs.length}</span>
+          <span>交付物 {artifactCount}</span>
+        </div>
+      </section>
+    );
+  }
+
+  function renderArtifactPanel() {
+    if (!activeArtifactContent) return null;
+
+    return (
+      <section
+        className={`agents-artifact-panel${isBlockedModel(activeSession?.model) ? " blocked" : ""}`}
+        aria-label="交付物"
+      >
+        <header className="agents-panel-head">
+          <span>{isBlockedModel(activeSession?.model) ? "未完成记录" : "交付物"}</span>
+          <strong>{isBlockedModel(activeSession?.model) ? "待配置恢复" : "Prompt 草稿"}</strong>
+        </header>
+        <div className="agents-artifact-actions" aria-label="交付动作">
+          <button type="button" onClick={onOpenImageProduction}>
+            <Icon name="image" />
+            <span>图片生产</span>
+          </button>
+          <button type="button" onClick={onOpenVideoPrompt}>
+            <Icon name="video" />
+            <span>视频 Prompt</span>
+          </button>
+          <button type="button" onClick={onOpenArticle}>
+            <Icon name="doc" />
+            <span>文案工作台</span>
+          </button>
+          <button type="button" onClick={onOpenAssets}>
+            <Icon name="archive" />
+            <span>素材库</span>
+          </button>
+        </div>
+        <pre>{draftArtifactContent(activeArtifactContent)}</pre>
+      </section>
+    );
+  }
+
+  function renderRuntimePanel() {
+    return (
+      <aside className={`agents-runtime-panel ${runtimeOpen ? "open" : ""}`} aria-label="运行事实">
+        <header className="agents-panel-head">
+          <span>运行事实</span>
+          <strong>{hasRuntimeFacts ? "来源 / 工具 / 交付" : "暂无运行记录"}</strong>
+        </header>
+        {hasRuntimeFacts ? (
+          <AgentUiProjectionSurface
+            mode="runtime"
+            className="agents-runtime-inline"
+            readModel={runtimeReadModel}
+            showRuntimeWhenEmpty={false}
+            onResolveAction={onResolveAgentAction ? (event) => onResolveAgentAction(event) : undefined}
+          />
+        ) : (
+          <div className="agents-runtime-empty">
+            <strong>暂无运行记录</strong>
+            <span>等待本轮协作开始。</span>
+          </div>
+        )}
+      </aside>
+    );
+  }
+
   if (view === "entry") {
     return (
       <section className="agents-entry">
@@ -1198,41 +1263,29 @@ export function AgentsWorkbench({
     <section className="agents-workbench">
       <div className="agents-dialog-shell">
         {renderThreadToolbar()}
-        <main className="agents-thread" aria-label="agents 对话">
-          <div className="agents-thread-scroll" aria-label="协作对话">
-            <AgentUiProjectionSurface
-              mode="conversation"
-              readModel={runtimeReadModel}
-              messages={displayMessages}
-              empty={(
-                <div className="agents-thread-empty">
-                  <strong>{busy ? "正在生成协作记录" : "还没有协作记录"}</strong>
-                  <span>{busy ? "收到协作消息和交付物后会显示在这里。" : "返回入口输入任务后开始协作。"}</span>
-                </div>
-              )}
-              runningLabel={busy ? "agents 正在处理" : undefined}
-              messageTitle={messageTitle}
-              messageMeta={(message) => new Date(message.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-              messagePreview={(message) => message.content}
-            />
-
-            {draftMessage ? (
-              <section className={`agents-draft-inline${isBlockedModel(draftMessage.model) ? " blocked" : ""}`} aria-label="agents 交付内容">
-                <strong>{isBlockedModel(draftMessage.model) ? "未完成记录" : "Prompt 草稿"}</strong>
-                <pre>{draftArtifactContent(draftMessage.content)}</pre>
-              </section>
-            ) : null}
-
-            {hasRuntimeFacts ? (
+        <main className="agents-thread" aria-label="Agent 对话工作台" data-runtime={runtimeOpen ? "open" : "closed"}>
+          <section className="agents-thread-main" aria-label="Agent 多轮对话">
+            {renderThreadSummary()}
+            <div className="agents-thread-scroll" aria-label="协作对话">
               <AgentUiProjectionSurface
-                mode="runtime"
-                className="agents-runtime-inline"
+                mode="conversation"
                 readModel={runtimeReadModel}
-                showRuntimeWhenEmpty={false}
-                onResolveAction={onResolveAgentAction ? (event) => onResolveAgentAction(event) : undefined}
+                messages={displayMessages}
+                empty={(
+                  <div className="agents-thread-empty">
+                    <strong>{agentIsRunning ? "正在生成协作记录" : "还没有协作记录"}</strong>
+                    <span>{agentIsRunning ? "收到协作消息和交付物后会显示在这里。" : "返回入口输入任务后开始协作。"}</span>
+                  </div>
+                )}
+                runningLabel={agentIsRunning ? "AI Agent 正在处理" : undefined}
+                messageTitle={messageTitle}
+                messageMeta={(message) => new Date(message.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                messagePreview={(message) => message.content}
               />
-            ) : null}
-          </div>
+            </div>
+            {renderArtifactPanel()}
+          </section>
+          {renderRuntimePanel()}
         </main>
 
         {renderComposer("thread")}

@@ -48,7 +48,7 @@ function inferTitle(citations: KnowledgeCitation[], fallback?: string): string {
   return first ? `${first.title.split(' / ')[0]} 品牌知识库` : '品牌 / 产品知识库';
 }
 
-function localRecord(input: GenerateBrandKnowledgeBaseInput, reason?: string): BrandKnowledgeBaseRecord {
+function blockedRecord(input: GenerateBrandKnowledgeBaseInput, reason: string): BrandKnowledgeBaseRecord {
   const productFacts = compactList(
     input.citations.flatMap((citation) => [
       citation.excerpt.slice(0, 120),
@@ -67,24 +67,23 @@ function localRecord(input: GenerateBrandKnowledgeBaseInput, reason?: string): B
     ['早餐后', '办公室抽屉', '家庭场景'],
   );
   const promptFragments = compactList([
-    '真实生活场景，UGC 手机实拍感，先场景后卖点，避免广告棚拍感。',
-    reason ? `本地降级：${reason}` : '',
+    `blocked：${reason}`,
   ], ['真实生活场景、自然光、少字、可读、可复用。']);
   return {
     id: randomUUID(),
     workspacePath: input.workspacePath,
     title: inferTitle(input.citations, input.title),
-    status: reason ? 'draft' : 'ready',
+    status: 'blocked',
     sourceKnowledgeBaseId: input.citations[0]?.knowledgeBaseId,
     sourceCitationIds: input.citations.map((citation) => `${citation.knowledgeBaseId}:${citation.sectionId}`),
-    brandVoice: compactText(undefined, '表达要克制、可信、先说使用场景，再说卖点。'),
-    audience: '目标用户待补齐',
+    brandVoice: `生成服务未完成：${reason}`,
+    audience: '生成服务接通后重新抽取',
     productFacts,
     coreSellingPoints,
     complianceBoundaries,
     sceneSeeds,
     promptFragments,
-    model: reason ? 'fallback:local-rule' : 'local-rule',
+    model: 'blocked:text-provider',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -178,7 +177,7 @@ export class BrandKnowledgeBaseStore {
         : error instanceof TextProviderFailedError
           ? `文字模型生成失败：${error.message}`
           : `文字模型生成异常：${error instanceof Error ? error.message : String(error)}`;
-      const record = localRecord(input, reason);
+      const record = blockedRecord(input, reason);
       record.createdAt = now;
       record.updatedAt = now;
       return updateJsonFile<BrandKnowledgeBaseRecord[], BrandKnowledgeBaseRecord>(

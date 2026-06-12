@@ -583,8 +583,13 @@ export interface PlatformNavigationResult {
 export interface PlatformHostBridgeStatus {
   available: boolean;
   mode: 'lime-desktop-platform' | 'standalone';
-  source?: 'env' | 'discovery';
+  source?: 'embedded' | 'env' | 'discovery';
   snapshot?: PlatformHostSnapshot;
+  appServerSidecar?: {
+    ok: boolean;
+    connected: boolean;
+    error?: string;
+  };
   bridge?: Pick<PlatformRuntimeBridgeDescriptor, 'endpoint' | 'appId' | 'entryKey' | 'expiresAt'>;
   error?: string;
 }
@@ -2042,7 +2047,13 @@ export interface AttachAgentPromptSessionInputSourcesInput {
 
 export interface AgentPromptSessionResult {
   session: AgentPromptSession;
-  draft: PromptDraft;
+  draft?: PromptDraft;
+}
+
+export interface AgentPromptSessionEvent {
+  type: 'upsert' | 'completed' | 'blocked' | 'failed';
+  workspacePath: string;
+  session: AgentPromptSession;
 }
 
 export type OverlayCardType = 'title' | 'selling-point' | 'quote' | 'cta' | 'subtitle';
@@ -3206,6 +3217,7 @@ export interface ContentStudioApi {
   listAgentPromptSessions(workspacePath: string): Promise<AgentPromptSession[]>;
   startAgentPromptSession(input: StartAgentPromptSessionInput): Promise<AgentPromptSessionResult>;
   continueAgentPromptSession(input: ContinueAgentPromptSessionInput): Promise<AgentPromptSessionResult>;
+  onAgentPromptSessionEvent(callback: (event: AgentPromptSessionEvent) => void): () => void;
   respondAgentPromptAction(input: RespondAgentPromptActionInput): Promise<AgentPromptSession>;
   attachAgentPromptSessionInputSources(input: AttachAgentPromptSessionInputSourcesInput): Promise<AgentPromptSession>;
 

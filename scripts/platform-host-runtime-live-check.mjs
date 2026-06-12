@@ -204,9 +204,20 @@ function normalizeAgentResult(output) {
     throw new Error('platform lime.agent did not return runtime events.');
   }
   const artifact = events.find((event) => event?.type === 'artifact.snapshot' && event?.payload?.content);
+  const messageText = events
+    .filter((event) => event?.type === 'message.delta' || event?.type === 'message.delta_batch' || event?.type === 'message')
+    .map((event) => {
+      const payload = event?.payload;
+      if (typeof payload === 'string') return payload;
+      if (!payload || typeof payload !== 'object') return '';
+      return [payload.text, payload.summary, payload.message]
+        .find((value) => typeof value === 'string' && value.trim().length > 0) || '';
+    })
+    .join('')
+    .trim();
   const terminal = events.find((event) => event?.type === 'turn.completed' || event?.type === 'turn.failed' || event?.type === 'turn.canceled');
-  if (!artifact) {
-    throw new Error(`platform lime.agent did not produce artifact.snapshot content; events=${events.map((event) => event.type).join(',')}`);
+  if (!artifact && !messageText) {
+    throw new Error(`platform lime.agent did not produce artifact.snapshot content or message text; events=${events.map((event) => event.type).join(',')}`);
   }
   if (terminal?.type === 'turn.failed') {
     throw new Error(terminal.payload?.message || 'platform lime.agent returned turn.failed.');
@@ -215,7 +226,7 @@ function normalizeAgentResult(output) {
     sessionId,
     turnId,
     events,
-    artifactTitle: artifact.payload.title || artifact.payload.artifactRef || artifact.payload.artifactId || 'untitled',
+    artifactTitle: artifact?.payload?.title || artifact?.payload?.artifactRef || artifact?.payload?.artifactId || 'message.delta',
     terminalType: terminal?.type || 'unknown',
   };
 }

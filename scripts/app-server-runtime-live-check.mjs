@@ -276,12 +276,13 @@ async function runJsonRpcProbe({ binaryPath, args, requests, timeoutMs }) {
 
 function summarizeResult(result) {
   const artifact = result.artifacts.find((item) => item.content?.trim()) ?? result.evidenceArtifacts.find((item) => item.content?.trim());
-  const completed = result.events.find((event) => event.type === 'turn.completed');
-  if (!artifact) {
-    throw new Error(`runtime live check did not produce artifact content; events=${result.events.map((event) => event.type).join(',')}`);
-  }
+  const messageText = finalMessageText(result.events);
+  const completed = result.events.find((event) => event.type === 'turn.final_done' || event.type === 'turn.completed');
   if (!completed) {
-    throw new Error(`runtime live check did not produce turn.completed; events=${result.events.map((event) => event.type).join(',')}`);
+    throw new Error(`runtime live check did not produce turn.final_done; events=${result.events.map((event) => event.type).join(',')}`);
+  }
+  if (!artifact && !messageText) {
+    throw new Error(`runtime live check did not produce artifact or message content; events=${result.events.map((event) => event.type).join(',')}`);
   }
   const serialized = JSON.stringify(result);
   if (/api[_-]?key|token|secret|password|credential|authorization|cookie/i.test(serialized)) {
@@ -291,10 +292,43 @@ function summarizeResult(result) {
     sessionId: result.sessionId,
     turnId: result.turnId,
     eventTypes: Array.from(new Set(result.events.map((event) => event.type))),
-    artifact: artifact.title || artifact.artifactRef || artifact.artifactId || 'untitled',
+    artifact: artifact?.title || artifact?.artifactRef || artifact?.artifactId || (messageText ? 'message.final' : 'untitled'),
     evidenceEvents: result.evidenceEvents.length,
     evidenceArtifacts: result.evidenceArtifacts.length,
   };
+}
+
+function finalMessageText(events) {
+  const deltas = events
+    .filter((event) => event.type === 'message.delta_batch' || event.type === 'message.delta')
+    .map((event) => textFromRuntimePayload(event.payload))
+    .filter(Boolean);
+  if (deltas.length) return deltas.join('').trim();
+  return events
+    .filter((event) => event.type === 'message')
+    .map((event) => textFromRuntimePayload(event.payload))
+    .filter(Boolean)
+    .join('')
+    .trim();
+}
+
+function textFromRuntimePayload(payload) {
+  if (typeof payload === 'string') return payload.trim();
+  if (!payload || typeof payload !== 'object') return '';
+  const direct = [payload.text, payload.content, payload.delta]
+    .find((value) => typeof value === 'string' && value.trim());
+  if (direct) return direct.trim();
+  const message = payload.message;
+  if (message && typeof message === 'object') {
+    if (typeof message.content === 'string') return message.content.trim();
+    if (Array.isArray(message.content)) {
+      return message.content
+        .map((part) => part && typeof part === 'object' && typeof part.text === 'string' ? part.text : '')
+        .join('')
+        .trim();
+    }
+  }
+  return '';
 }
 
 async function main() {

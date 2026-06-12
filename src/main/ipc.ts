@@ -373,19 +373,40 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const buguAuth = new BuguAuthService();
   const autoUpdates = new AutoUpdateService(settings, mainWindow);
   const platformHost = new PlatformHostBridgeClient();
+  void platformHost.ensureConnected().then((connected) => {
+    const status = platformHost.status();
+    const sidecar = status.appServerSidecar;
+    const sidecarState = sidecar?.ok ? 'started' : 'blocked';
+    const errorSuffix = sidecar?.error ? ` error=${sidecar.error}` : '';
+    console.info(
+      `[content-studio] embedded lime-desktop-platform host connected=${connected} appServerSidecar=${sidecarState}${errorSuffix}`,
+    );
+  }).catch((error) => {
+    console.warn(`[content-studio] embedded lime-desktop-platform host startup failed: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  const appServer = new AppServerSidecarService();
   const modelConfig = new ModelConfigStore(platformHost);
   const fileAssociations = new FileAssociationService();
   const skills = new SkillManager();
   const skillSelection = new SkillSelectionStore();
   const knowledgeBases = new KnowledgeBaseStore();
   const logs = new GenerationLogStore();
-  const appServer = new AppServerSidecarService();
   const textGeneration = new TextGenerationService(modelConfig, appServer);
   const promptAgent = new AppServerPromptAgentService(appServer, modelConfig, platformHost);
   const imageSkills = new ImageSkillGenerationService(textGeneration);
   const inputSources = new InputSourceStore();
   const promptDrafts = new PromptDraftStore(inputSources, textGeneration, skills);
-  const agentPromptSessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent, skills);
+  const agentPromptSessions = new AgentPromptSessionStore(
+    inputSources,
+    promptDrafts,
+    promptAgent,
+    skills,
+    (event) => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('agentPromptSessions:event', event);
+      }
+    },
+  );
   const brandKnowledgeBases = new BrandKnowledgeBaseStore(textGeneration);
   const ipKnowledgeBases = new IpKnowledgeBaseStore(textGeneration);
   const overlayCards = new OverlayCardStore();

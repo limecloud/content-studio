@@ -270,6 +270,7 @@ async function withPlatformRuntimeBridge(handler, run) {
   };
   try {
     return await withEnv({
+      CONTENT_STUDIO_DISABLE_EMBEDDED_PLATFORM_HOST: '1',
       LIME_RUNTIME_BRIDGE: JSON.stringify(descriptor),
       LIME_HOST_SNAPSHOT: JSON.stringify(snapshot),
     }, () => run({ descriptor, snapshot, requests }));
@@ -374,6 +375,7 @@ async function withPlatformRuntimeBridgeDiscovery(handler, run) {
   try {
     await writeFile(discoveryPath, JSON.stringify(discovery), 'utf8');
     return await withEnv({
+      CONTENT_STUDIO_DISABLE_EMBEDDED_PLATFORM_HOST: '1',
       LIME_RUNTIME_BRIDGE: undefined,
       LIME_HOST_SNAPSHOT: undefined,
       LIME_DESKTOP_PLATFORM_BRIDGE_DISCOVERY_PATH: discoveryPath,
@@ -7557,29 +7559,61 @@ class FakeAppServerPromptAgentService {
     this.draftCalls.push(input);
     if (this.failDraftReason) throw new Error(this.failDraftReason);
     const model = input.textModel || 'lime-agent-server-test';
+    const content = [
+      'Lime Agent Server Prompt 草稿',
+      '',
+      `模型：${model}`,
+      '',
+      'Prompt 正文：',
+      '围绕用户意图与输入源生成可执行 Prompt。',
+    ].join('\n');
     return {
       title: 'Lime Agent Server 会话草稿',
-      content: [
-        'Lime Agent Server Prompt 草稿',
-        '',
-        `模型：${model}`,
-        '',
-        'Prompt 正文：',
-        '围绕用户意图与输入源生成可执行 Prompt。',
-      ].join('\n'),
+      content,
       note: `Lime Agent Server 会话草稿：${model}`,
       model,
       protocol: undefined,
-      providerEvents: [{
-        eventClass: 'model.completed',
-        kind: 'model',
-        status: 'completed',
-        phase: 'completed',
-        title: 'Lime Agent Server completed',
-        detail: model,
-        model,
-        payload: { runtime: 'lime-agent-server', operation: 'draft' },
-      }],
+      providerEvents: [
+        {
+          eventClass: 'model.requested',
+          kind: 'model',
+          status: 'completed',
+          phase: 'waiting_provider',
+          title: 'Lime Agent Server requested',
+          detail: model,
+          model,
+          payload: { runtime: 'lime-agent-server', operation: 'draft' },
+        },
+        {
+          eventClass: 'artifact.changed',
+          kind: 'draft',
+          status: 'completed',
+          phase: 'completed',
+          title: 'Lime Agent Server artifact.snapshot',
+          detail: '上游 Prompt artifact 快照',
+          model,
+          payload: {
+            runtime: 'lime-agent-server',
+            operation: 'draft',
+            eventType: 'artifact.snapshot',
+            artifactRef: 'app-server:prompt-draft:snapshot',
+            rawPayload: {
+              artifactRef: 'app-server:prompt-draft:snapshot',
+              content,
+            },
+          },
+        },
+        {
+          eventClass: 'model.completed',
+          kind: 'model',
+          status: 'completed',
+          phase: 'completed',
+          title: 'Lime Agent Server completed',
+          detail: model,
+          model,
+          payload: { runtime: 'lime-agent-server', operation: 'draft' },
+        },
+      ],
     };
   }
 
@@ -7588,27 +7622,59 @@ class FakeAppServerPromptAgentService {
     if (this.failRefineReason) throw new Error(this.failRefineReason);
     const hasSupplementSource = input.sourceSnapshots?.some((source) => source.title.includes('补充产品资料'));
     const model = input.textModel || 'lime-agent-server-test';
+    const content = [
+      input.previousContent,
+      '',
+      '本轮调整：',
+      input.adjustment,
+      hasSupplementSource ? '补充产品资料：便携条包，早餐后与办公室抽屉场景，不承诺治疗。' : '',
+    ].join('\n');
     return {
-      content: [
-        input.previousContent,
-        '',
-        '本轮调整：',
-        input.adjustment,
-        hasSupplementSource ? '补充产品资料：便携条包，早餐后与办公室抽屉场景，不承诺治疗。' : '',
-      ].join('\n'),
+      content,
       note: `Lime Agent Server 多轮调整：${model}`,
       model,
       protocol: undefined,
-      providerEvents: [{
-        eventClass: 'model.completed',
-        kind: 'model',
-        status: 'completed',
-        phase: 'completed',
-        title: 'Lime Agent Server completed',
-        detail: model,
-        model,
-        payload: { runtime: 'lime-agent-server', operation: 'refine' },
-      }],
+      providerEvents: [
+        {
+          eventClass: 'model.requested',
+          kind: 'model',
+          status: 'completed',
+          phase: 'waiting_provider',
+          title: 'Lime Agent Server requested',
+          detail: model,
+          model,
+          payload: { runtime: 'lime-agent-server', operation: 'refine' },
+        },
+        {
+          eventClass: 'artifact.changed',
+          kind: 'draft',
+          status: 'completed',
+          phase: 'completed',
+          title: 'Lime Agent Server artifact.snapshot',
+          detail: '上游 Prompt artifact 快照',
+          model,
+          payload: {
+            runtime: 'lime-agent-server',
+            operation: 'refine',
+            eventType: 'artifact.snapshot',
+            artifactRef: 'app-server:prompt-draft:snapshot',
+            rawPayload: {
+              artifactRef: 'app-server:prompt-draft:snapshot',
+              content,
+            },
+          },
+        },
+        {
+          eventClass: 'model.completed',
+          kind: 'model',
+          status: 'completed',
+          phase: 'completed',
+          title: 'Lime Agent Server completed',
+          detail: model,
+          model,
+          payload: { runtime: 'lime-agent-server', operation: 'refine' },
+        },
+      ],
     };
   }
 }
@@ -8040,61 +8106,34 @@ test('对话可以记录首版草稿和多轮调整', async () => {
 
     assert.equal(started.session.promptDraftIds.length, 1);
     assert.equal(started.session.messages.length, 2);
-    assert.deepEqual(started.session.executionEvents?.map((event) => event.kind), [
-      'context',
-      'tool',
-      'source',
-      'tool',
-      'evidence',
-      'action',
-      'skill',
-      'permission',
-      'sandbox',
-      'model',
-      'model',
-      'draft',
-      'state',
-    ]);
     assert.deepEqual(started.session.executionEvents?.map((event) => event.eventClass), [
       'turn.submitted',
-      'tool.started',
-      'context.resolved',
-      'tool.result',
-      'evidence.changed',
-      'action.resolved',
-      'tool.catalog.resolved',
-      'permission.evaluated',
-      'sandbox.applied',
       'model.requested',
+      'artifact.changed',
       'model.completed',
       'artifact.changed',
       'snapshot.updated',
     ]);
-    assert.deepEqual(started.session.executionEvents?.map((event) => event.sequence), Array.from({ length: 13 }, (_, index) => index + 1));
-    assert.deepEqual(started.session.executionEvents?.find((event) => event.eventClass === 'evidence.changed')?.evidenceRefs, [`input-source:${source.id}`]);
-    assert.equal(started.session.executionEvents?.find((event) => event.eventClass === 'tool.result')?.toolCallId?.startsWith('tool:'), true);
-    assert.equal(started.session.executionEvents?.find((event) => event.eventClass === 'permission.evaluated')?.payload?.permissionDecision?.decision, 'allow');
-    assert.equal(started.session.executionEvents?.find((event) => event.eventClass === 'sandbox.applied')?.payload?.sandboxProfile?.cwd, 'current-workspace');
+    assert.deepEqual(started.session.executionEvents?.map((event) => event.sequence), Array.from({ length: 6 }, (_, index) => index + 1));
     const startedSnapshot = started.session.executionEvents?.at(-1);
     assert.equal(startedSnapshot?.eventClass, 'snapshot.updated');
     assert.equal(startedSnapshot?.payload?.sessionStatus, 'draft-created');
-    assert.equal(startedSnapshot?.payload?.eventCount, 12);
+    assert.equal(startedSnapshot?.payload?.eventCount, 4);
     assert.equal(startedSnapshot?.payload?.messageCount, 2);
     assert.deepEqual(startedSnapshot?.payload?.draftIds, [started.draft.id]);
-    assert.deepEqual(startedSnapshot?.payload?.artifactRefs, [`prompt-draft:${started.draft.id}`]);
-    assert.deepEqual(startedSnapshot?.payload?.evidenceRefs, [`input-source:${source.id}`]);
+    assert.deepEqual(startedSnapshot?.payload?.artifactRefs, ['app-server:prompt-draft:snapshot', `prompt-draft:${started.draft.id}`]);
+    assert.deepEqual(startedSnapshot?.payload?.evidenceRefs, []);
     assert.deepEqual(startedSnapshot?.payload?.pendingActionIds, []);
     const startedReadModel = projectAgentRuntimeReadModel(started.session);
     assert.deepEqual(startedReadModel.visibleEvents.map((event) => event.source.eventClass), [
-      'evidence.changed',
-      'action.resolved',
+      'artifact.changed',
       'model.completed',
       'artifact.changed',
     ]);
     assert.equal(startedReadModel.visibleEvents.some((event) => event.source.eventClass === 'snapshot.updated'), false);
     assert.equal(started.session.executionEvents?.at(-2)?.owner, 'artifact');
     assert.deepEqual(started.session.executionEvents?.at(-2)?.artifactRefs, [`prompt-draft:${started.draft.id}`]);
-    assert.equal(started.session.executionEvents?.find((event) => event.kind === 'source')?.status, 'completed');
+    assert.equal(started.session.executionEvents?.some((event) => event.eventClass === 'action.resolved'), false);
     assert.match(started.draft.versions[0].content, /Lime Agent Server Prompt 草稿/);
     assert.match(started.draft.versions[0].content, /Prompt 正文/);
 
@@ -8105,23 +8144,120 @@ test('对话可以记录首版草稿和多轮调整', async () => {
     });
 
     assert.equal(continued.session.messages.length, 4);
-    assert.equal(continued.session.executionEvents?.length, 24);
-    assert.equal(continued.session.executionEvents?.at(-3)?.kind, 'draft');
-    assert.equal(continued.session.executionEvents?.at(-3)?.eventClass, 'artifact.changed');
-    assert.equal(continued.session.executionEvents?.at(-2)?.eventClass, 'action.resolved');
+    assert.equal(continued.session.executionEvents?.length, 12);
+    assert.equal(continued.session.executionEvents?.at(-3)?.eventClass, 'model.completed');
+    assert.equal(continued.session.executionEvents?.at(-2)?.kind, 'draft');
+    assert.equal(continued.session.executionEvents?.at(-2)?.eventClass, 'artifact.changed');
     const continuedSnapshot = continued.session.executionEvents?.at(-1);
     assert.equal(continuedSnapshot?.eventClass, 'snapshot.updated');
-    assert.equal(continuedSnapshot?.sequence, 24);
+    assert.equal(continuedSnapshot?.sequence, 12);
     assert.equal(continuedSnapshot?.payload?.sessionStatus, 'draft-created');
-    assert.equal(continuedSnapshot?.payload?.eventCount, 23);
+    assert.equal(continuedSnapshot?.payload?.eventCount, 4);
     assert.equal(continuedSnapshot?.payload?.messageCount, 4);
     assert.deepEqual(continuedSnapshot?.payload?.draftIds, [started.draft.id]);
-    assert.deepEqual(continuedSnapshot?.payload?.artifactRefs, [`prompt-draft:${started.draft.id}`]);
-    assert.deepEqual(continuedSnapshot?.payload?.evidenceRefs, [`input-source:${source.id}`]);
+    assert.deepEqual(continuedSnapshot?.payload?.artifactRefs, ['app-server:prompt-draft:snapshot', `prompt-draft:${started.draft.id}`]);
+    assert.deepEqual(continuedSnapshot?.payload?.evidenceRefs, []);
     const continuedReadModel = projectAgentRuntimeReadModel(continued.session);
     assert.equal(continuedReadModel.visibleEvents.some((event) => event.source.eventClass === 'snapshot.updated'), false);
     assert.equal(continued.draft.versions.length, 2);
     assert.match(continued.draft.versions.at(-1).content, /本轮调整/);
+  });
+});
+
+test('Agent 运行事实会保留 tools、webSearch、MCP 和 skills 分类且不混入助手正文', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const text = new FakeTextGenerationService();
+    const inputSources = new InputSourceStore();
+    const promptDrafts = new PromptDraftStore(inputSources, text);
+    const promptAgent = new FakeAppServerPromptAgentService();
+    const originalGenerate = promptAgent.generatePromptDraft.bind(promptAgent);
+    promptAgent.generatePromptDraft = async (input) => {
+      const result = await originalGenerate(input);
+      result.providerEvents.splice(1, 0,
+        {
+          eventClass: 'tool.started',
+          kind: 'tool',
+          status: 'completed',
+          phase: 'tool_running',
+          title: '网页搜索开始处理：web_search',
+          detail: '搜索内容素材趋势',
+          model: result.model,
+          payload: {
+            runtime: 'lime-agent-server',
+            eventType: 'tool.started',
+            toolName: 'web_search',
+            toolFamily: 'webSearch',
+            rawPayload: { toolName: 'web_search', query: '内容素材趋势' },
+          },
+        },
+        {
+          eventClass: 'tool.result',
+          kind: 'tool',
+          status: 'completed',
+          phase: 'tool_running',
+          title: '网页搜索处理完成：mcp__browser__web_search',
+          detail: '返回 3 条网页结果',
+          model: result.model,
+          payload: {
+            runtime: 'lime-agent-server',
+            eventType: 'tool.result',
+            toolName: 'mcp__browser__web_search',
+            toolFamily: 'webSearch',
+            mcpServer: 'browser',
+            rawPayload: { toolName: 'mcp__browser__web_search' },
+          },
+        },
+        {
+          eventClass: 'tool.started',
+          kind: 'tool',
+          status: 'completed',
+          phase: 'tool_running',
+          title: 'Skill开始处理：lime_run_service_skill',
+          detail: '执行内容能力',
+          model: result.model,
+          payload: {
+            runtime: 'lime-agent-server',
+            eventType: 'tool.started',
+            toolName: 'lime_run_service_skill',
+            toolFamily: 'skill',
+            skillSlug: 'copywriting-master',
+            rawPayload: { toolName: 'lime_run_service_skill', skillSlug: 'copywriting-master' },
+          },
+        },
+      );
+      return result;
+    };
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent);
+
+    const started = await sessions.start({
+      workspacePath,
+      title: '工具事实 Prompt 会话',
+      purpose: 'image',
+      userIntent: '基于真实输入源生成小红书图片 Prompt。',
+      inputSourceIds: [],
+    });
+
+    const toolEvents = started.session.executionEvents?.filter((event) => event.kind === 'tool') ?? [];
+    assert.equal(toolEvents.length, 3);
+    assert.equal(toolEvents.some((event) => event.payload?.toolFamily === 'webSearch' && event.payload?.toolName === 'web_search'), true);
+    assert.equal(toolEvents.some((event) => (
+      event.payload?.toolFamily === 'webSearch' &&
+      event.payload?.mcpServer === 'browser' &&
+      event.payload?.toolName === 'mcp__browser__web_search'
+    )), true);
+    assert.equal(toolEvents.some((event) => (
+      event.payload?.toolFamily === 'skill' &&
+      event.payload?.skillSlug === 'copywriting-master'
+    )), true);
+    const readModel = projectAgentRuntimeReadModel(started.session);
+    assert.equal(readModel.visibleEvents.some((event) => event.surface === 'tool' && event.source.payload?.toolFamily === 'webSearch'), true);
+    assert.equal(readModel.visibleEvents.some((event) => event.surface === 'tool' && event.source.payload?.mcpServer === 'browser'), true);
+    assert.equal(readModel.visibleEvents.some((event) => event.surface === 'tool' && event.source.payload?.skillSlug === 'copywriting-master'), true);
+    const assistantText = started.session.messages
+      .filter((message) => message.role === 'assistant')
+      .map((message) => message.content)
+      .join('\n');
+    assert.equal(/网页结果|lime_run_service_skill|mcp__browser__web_search|copywriting-master/.test(assistantText), false);
   });
 });
 
@@ -8398,10 +8534,10 @@ test('对话启动会把当前模型作为 Lime Agent Server metadata', async ()
     assert.equal(started.draft.model, 'gpt-4o-mini');
     assert.equal(started.session.model, 'gpt-4o-mini');
     assert.equal(started.session.textProtocol, undefined);
-    const startProviderEvents = started.session.executionEvents
-      ?.find((event) => event.eventClass === 'model.completed')
-      ?.payload?.providerEvents;
-    assert.equal(startProviderEvents?.some((event) => event.payload?.runtime === 'lime-agent-server'), true);
+    assert.equal(started.session.executionEvents?.some((event) => (
+      event.eventClass === 'model.completed' &&
+      event.payload?.runtime === 'lime-agent-server'
+    )), true);
 
     const continued = await sessions.continue({
       workspacePath,
@@ -8510,7 +8646,7 @@ test('agents 工作台图片输入会先登记为真实输入源再进入对话�
   });
 });
 
-test('AI agents 工作台 Prompt Agent 走 App Server runtime provider store 且不传模型 Key', async () => {
+test('AI agents 工作台 Prompt Agent 直连启动时不回退本地 App Server provider store', async () => {
   await withWorkspace(async (workspacePath) => {
     const tempDir = await mkdtemp(join(tmpdir(), 'content-studio-prompt-agent-runtime-'));
     const appServerPath = join(tempDir, process.platform === 'win32' ? 'app-server.exe' : 'app-server');
@@ -8595,63 +8731,28 @@ test('AI agents 工作台 Prompt Agent 走 App Server runtime provider store 且
         }),
       }, async () => {
         const promptAgent = new AppServerPromptAgentService(new AppServerSidecarService(), modelConfig);
-        const result = await promptAgent.generatePromptDraft({
-          workspacePath,
-          title: 'AI agents 工作台 Prompt',
-          purpose: 'image',
-          userIntent: '生成小红书真实生活场景图片 Prompt。',
-          inputSourceIds: [],
-          sceneCardIds: [],
-          selectedSources: [],
-          skillContext: {
-            skillRefs: [],
-            selectedSkills: [],
-            promptText: '',
-            summaryText: '未选择 skill。',
-            sdkSkillNames: [],
-            additionalDirectories: [],
-          },
-          textModel: 'gpt-4.1-mini',
-        });
-
-        assert.equal(result.model, 'gpt-4.1-mini');
-        assert.match(result.content, /App Server Prompt 草稿/);
-
-        const captured = JSON.parse(await readFile(capturePath, 'utf8'));
-        assert.ok(captured.argv.includes('--backend'));
-        assert.equal(captured.argv[captured.argv.indexOf('--backend') + 1], 'runtime');
-        assert.equal(captured.argv.includes('--backend-command'), false);
-        assert.ok(captured.argv.includes('--data-dir'));
-        assert.equal(captured.argv[captured.argv.indexOf('--data-dir') + 1], dataDir);
-        assert.equal(captured.env.ELECTRON_RUN_AS_NODE, '1');
-        assert.equal(captured.env.CONTENT_STUDIO_TEXT_API_KEY, '');
-        assert.equal(captured.env.OPENAI_API_KEY, '');
-        assert.equal(captured.env.ANTHROPIC_API_KEY, '');
-        assert.equal(captured.env.GEMINI_API_KEY, '');
-        assert.equal(captured.env.GOOGLE_API_KEY, '');
-        assert.equal(captured.env.LLM_API_KEY, '');
-        assert.equal(captured.env.CONTENT_STUDIO_PRIVATE_TOKEN, '');
-        assert.equal(captured.env.OPENROUTER_API_KEY, '');
-        assert.equal(captured.env.AZURE_OPENAI_API_KEY, '');
-        assert.equal(captured.env.DASHSCOPE_API_KEY, '');
-        assert.equal(captured.env.DEEPSEEK_API_KEY, '');
-        assert.equal(captured.env.GOOGLE_APPLICATION_CREDENTIALS, '');
-        assert.equal(captured.env.OPENAI_APIKEY, '');
-        assert.equal(captured.env.SESSION_COOKIE, '');
-        assert.equal(captured.env.PROVIDER_SECRET, '');
-        assert.equal(captured.env.AUTHORIZATION, '');
-        assert.equal(captured.env.COOKIE, '');
-        assert.equal(captured.env.LIME_RUNTIME_BRIDGE, '');
-        assert.equal(captured.turnStart.runtimeOptions.capabilityId, 'content.draft.generate');
-        assert.equal(captured.turnStart.runtimeOptions.providerPreference, 'openai');
-        assert.equal(captured.turnStart.runtimeOptions.modelPreference, 'gpt-4.1-mini');
-        assert.equal(captured.turnStart.runtimeOptions.metadata.agentSurface, 'agents');
-        assert.equal(captured.turnStart.runtimeOptions.metadata.operation, 'draft');
-        assert.equal(captured.turnStart.runtimeOptions.metadata.textModel, 'gpt-4.1-mini');
-        assert.equal(captured.turnStart.runtimeOptions.metadata.textProtocol, 'openai-chat');
-        assert.equal(JSON.stringify(captured.turnStart).includes('apiKey'), false);
-        assert.equal(JSON.stringify(captured.turnStart).includes('API_KEY'), false);
-        assert.equal(JSON.stringify(captured.turnStart).includes('product-app-text-key'), false);
+        await assert.rejects(
+          () => promptAgent.generatePromptDraft({
+            workspacePath,
+            title: 'AI agents 工作台 Prompt',
+            purpose: 'image',
+            userIntent: '生成小红书真实生活场景图片 Prompt。',
+            inputSourceIds: [],
+            sceneCardIds: [],
+            selectedSources: [],
+            skillContext: {
+              skillRefs: [],
+              selectedSkills: [],
+              promptText: '',
+              summaryText: '未选择 skill。',
+              sdkSkillNames: [],
+              additionalDirectories: [],
+            },
+            textModel: 'gpt-4.1-mini',
+          }),
+          /必须先连接 lime-desktop-platform 模型设置 projection|必须通过 lime-desktop-platform runtime bridge/,
+        );
+        assert.equal(existsSync(capturePath), false);
       });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -8892,6 +8993,17 @@ test('直接启动 Content Studio 时通过 runtime bridge discovery 读取平�
                 baseUrl: 'https://api.openai.example/v1',
                 models: ['gpt-4.1-mini', 'gpt-4.1'],
               },
+              {
+                id: 'platform-gemini-compatible',
+                displayName: 'Platform Gemini Compatible',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['text'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                baseUrl: 'https://gptproto.example/v1',
+                models: ['gemini-2.5-flash'],
+              },
             ],
           },
           event: {},
@@ -8909,7 +9021,7 @@ test('直接启动 Content Studio 时通过 runtime bridge discovery 读取平�
       assert.equal(view.platformHost?.snapshot?.theme, 'system');
       assert.equal(view.platformHost?.snapshot?.workspacePath, 'platform-workspace');
       assert.equal(view.agentProviderPreference, 'platform-openai');
-      assert.deepEqual(view.textModels, ['gpt-4.1-mini', 'gpt-4.1']);
+      assert.deepEqual(view.textModels, ['gpt-4.1-mini', 'gpt-4.1', 'gemini-2.5-flash']);
       assert.equal(view.hasTextApiKey, true);
       assert.equal(view.platformModelSettings?.providers[0]?.displayName, 'Platform OpenAI');
       assert.equal(view.platformModelSettings?.providers[0]?.apiKey, undefined);
@@ -8919,6 +9031,82 @@ test('直接启动 Content Studio 时通过 runtime bridge discovery 读取平�
     });
   } finally {
     await rm(shimUserDataDir, { recursive: true, force: true });
+  }
+});
+
+test('runtime bridge discovery endpoint 变化后 Content Studio 会重新 attach 并重试 capability', async () => {
+  const firstServer = createServer((_, response) => {
+    response.destroy();
+  });
+  let firstServerClosed = false;
+  await new Promise((resolve, reject) => {
+    firstServer.once('error', reject);
+    firstServer.listen(0, '127.0.0.1', resolve);
+  });
+  const firstAddress = firstServer.address();
+  assert.ok(firstAddress && typeof firstAddress !== 'string');
+
+  try {
+    await withPlatformRuntimeBridgeDiscovery(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      assert.equal(body.capability, 'lime.modelSettings');
+      return {
+        ok: true,
+        requestId: 'reattached-model-settings',
+        output: {
+          version: '10',
+          updatedAt: '2026-06-09T00:00:00.000Z',
+          defaultAgentProviderId: 'platform-openai',
+          defaultTextModelId: 'gemini-2.5-flash',
+          providers: [
+            {
+              id: 'platform-openai',
+              displayName: 'Platform OpenAI',
+              protocol: 'openai-compatible',
+              capabilityKinds: ['text'],
+              enabled: true,
+              apiKeyConfigured: true,
+              authType: 'api-key',
+              baseUrl: 'https://api.openai.example/v1',
+              models: ['gemini-2.5-flash'],
+            },
+          ],
+        },
+        event: {},
+      };
+    }, async ({ discovery, requests }) => {
+      const staleDescriptor = {
+        protocol: 'lime.runtimeBridge',
+        version: 1,
+        endpoint: `http://127.0.0.1:${firstAddress.port}`,
+        token: 'stale-runtime-token',
+        appId: 'content-studio',
+        entryKey: 'default',
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      };
+      await new Promise((resolve) => firstServer.close(resolve));
+      firstServerClosed = true;
+      await withEnv({
+        LIME_RUNTIME_BRIDGE: JSON.stringify(staleDescriptor),
+        LIME_HOST_SNAPSHOT: undefined,
+        LIME_DESKTOP_PLATFORM_BRIDGE_DISCOVERY_PATH: process.env.LIME_DESKTOP_PLATFORM_BRIDGE_DISCOVERY_PATH,
+      }, async () => {
+        const platformHost = new PlatformHostBridgeClient();
+        platformHost.descriptorSource = 'discovery';
+        const store = new ModelConfigStore(platformHost);
+        const view = await store.readView();
+
+        assert.equal(view.platformManaged, true);
+        assert.equal(view.platformHost?.endpoint, discovery.endpoint);
+        assert.deepEqual(view.textModels, ['gemini-2.5-flash']);
+        assert.ok(requests.some((request) => request.url === '/attach' && request.body.appId === 'content-studio'));
+        assert.ok(requests.some((request) => request.url === '/capability/invoke' && request.body.capability === 'lime.modelSettings'));
+      });
+    });
+  } finally {
+    if (!firstServerClosed) {
+      await new Promise((resolve) => firstServer.close(resolve));
+    }
   }
 });
 
@@ -9363,6 +9551,60 @@ test('平台宿主下 Prompt Agent 优先走 lime-desktop-platform lime.agent br
   });
 });
 
+test('平台托管 Prompt Agent 未连接宿主时不回退 Content Studio 本地 sidecar', async () => {
+  await withWorkspace(async (workspacePath) => {
+    let sidecarCalled = false;
+    const modelConfig = {
+      async readView() {
+        return {
+          platformManaged: true,
+          agentProviderPreference: 'platform-openai',
+          textProtocol: 'openai-chat',
+          textApiEndpoint: 'https://api.openai.example/v1',
+          hasTextApiKey: true,
+          textApiKeyStatus: 'available',
+          textModel: 'gpt-4.1-mini',
+          textModels: ['gpt-4.1-mini'],
+        };
+      },
+    };
+    const platformHost = {
+      async ensureConnected() {
+        return false;
+      },
+    };
+    const appServer = {
+      async runPromptTurn() {
+        sidecarCalled = true;
+        throw new Error('不应调用 Product App 本地 App Server sidecar');
+      },
+    };
+    const promptAgent = new AppServerPromptAgentService(appServer, modelConfig, platformHost);
+
+    await assert.rejects(
+      () => promptAgent.generatePromptDraft({
+        workspacePath,
+        title: '平台 bridge 断开 Prompt',
+        purpose: 'image',
+        userIntent: '生成小红书真实生活场景图片 Prompt。',
+        inputSourceIds: [],
+        sceneCardIds: [],
+        selectedSources: [],
+        skillContext: {
+          skillRefs: [],
+          selectedSkills: [],
+          promptText: '',
+          summaryText: '未选择 skill。',
+          sdkSkillNames: [],
+          additionalDirectories: [],
+          },
+        }),
+      /必须通过 lime-desktop-platform runtime bridge|必须先连接 lime-desktop-platform 模型设置 projection/,
+    );
+    assert.equal(sidecarCalled, false);
+  });
+});
+
 test('平台宿主下 Prompt Agent 缺少运行事实时不生成成功草稿', async () => {
   await withWorkspace(async (workspacePath) => {
     await withPlatformRuntimeBridge(async ({ url, body }) => {
@@ -9424,8 +9666,9 @@ test('平台宿主下 Prompt Agent 缺少运行事实时不生成成功草稿', 
       });
 
       assert.equal(started.session.status, 'blocked');
-      assert.equal(started.draft.model, 'blocked:lime-agent-server');
-      assert.match(started.draft.versions[0].content, /Prompt 草稿未生成/);
+      assert.equal(started.draft, undefined);
+      assert.equal(started.session.promptDraftIds.length, 0);
+      assert.equal(started.session.model, 'blocked:lime-agent-server');
       const runtimeArtifactEvents = started.session.executionEvents?.filter((event) => (
         event.eventClass === 'artifact.changed' &&
         event.owner === 'artifact'
@@ -9510,9 +9753,11 @@ test('平台宿主下 Prompt Agent 只有消息流时不把消息当交付物', 
         inputSourceIds: [],
       });
 
-      assert.equal(started.session.status, 'blocked');
-      assert.equal(started.draft.model, 'blocked:lime-agent-server');
-      assert.doesNotMatch(started.draft.versions[0].content, /不能作为交付物的普通消息/);
+      assert.equal(started.session.status, 'waiting-user');
+      assert.equal(started.draft, undefined);
+      assert.equal(started.session.promptDraftIds.length, 0);
+      assert.equal(started.session.messages.at(-1)?.kind, 'note');
+      assert.match(started.session.messages.at(-1)?.content ?? '', /不能作为交付物的普通消息/);
       const runtimeArtifactEvents = started.session.executionEvents?.filter((event) => (
         event.eventClass === 'artifact.changed' &&
         event.owner === 'artifact'
@@ -9914,11 +10159,7 @@ test('对话会话首轮和续写都只记录 Lime Agent Server runtime 事实',
     assert.equal(started.draft.model, 'gpt-compatible');
     assert.equal(started.session.model, 'gpt-compatible');
     assert.match(started.draft.versions[0].note, /Lime Agent Server 会话草稿：gpt-compatible/);
-    const startProviderEvents = started.session.executionEvents
-      ?.find((event) => event.eventClass === 'model.completed')
-      ?.payload?.providerEvents;
-    assert.equal(Array.isArray(startProviderEvents), true);
-    assert.equal(startProviderEvents.some((event) => (
+    assert.equal(started.session.executionEvents?.some((event) => (
       event.eventClass === 'model.completed' &&
       event.payload?.runtime === 'lime-agent-server' &&
       event.payload?.operation === 'draft'
@@ -9937,12 +10178,7 @@ test('对话会话首轮和续写都只记录 Lime Agent Server runtime 事实',
     assert.equal(continued.session.textProtocol, undefined);
     assert.match(continued.draft.versions.at(-1)?.content ?? '', /本轮调整/);
     assert.match(continued.draft.versions.at(-1)?.note ?? '', /Lime Agent Server 多轮调整：gpt-compatible/);
-    const continueProviderEvents = continued.session.executionEvents
-      ?.filter((event) => event.eventClass === 'model.completed')
-      .at(-1)
-      ?.payload?.providerEvents;
-    assert.equal(Array.isArray(continueProviderEvents), true);
-    assert.equal(continueProviderEvents.some((event) => (
+    assert.equal(continued.session.executionEvents?.some((event) => (
       event.eventClass === 'model.completed' &&
       event.payload?.runtime === 'lime-agent-server' &&
       event.payload?.operation === 'refine'
@@ -10012,11 +10248,10 @@ test('对话会话会把 App Server artifact snapshot 收口成本地 Prompt 草
     const visibleArtifactEvents = readModel.visibleEvents.filter((event) => event.source.eventClass === 'artifact.changed');
     assert.ok(visibleArtifactEvents.length >= 1);
     assert.equal(readModel.artifactRefs.includes('app-server:prompt-draft:snapshot'), true);
-
-    const providerEvents = started.session.executionEvents
-      ?.find((event) => event.eventClass === 'model.completed')
-      ?.payload?.providerEvents;
-    assert.equal(providerEvents?.some((event) => event.eventClass === 'artifact.changed'), true);
+    assert.equal(started.session.executionEvents?.some((event) => (
+      event.eventClass === 'artifact.changed' &&
+      event.artifactRefs?.includes('app-server:prompt-draft:snapshot')
+    )), true);
   });
 });
 
@@ -10046,29 +10281,14 @@ test('Lime Agent Server 不可用时保留 runtime 失败事实并要求配置�
       textModel: 'gpt-compatible',
     });
 
-    const modelFailure = started.session.executionEvents?.find((event) => event.eventClass === 'model.failed');
-    const permissionRequest = started.session.executionEvents?.find((event) => (
-      event.eventClass === 'permission.requested' &&
-      event.actionId === `action:${started.session.id}:configure-text-model`
-    ));
-    const configureAction = started.session.executionEvents?.find((event) => (
-      event.eventClass === 'action.required' &&
-      event.payload?.actionKind === 'configure-text-model'
-    ));
-    const providerEvents = modelFailure?.payload?.providerEvents;
+    const runtimeError = started.session.executionEvents?.find((event) => event.eventClass === 'runtime.error');
     assert.equal(started.session.status, 'blocked');
-    assert.equal(started.draft.model, 'blocked:lime-agent-server');
-    assert.equal(modelFailure?.status, 'blocked');
-    assert.equal(Array.isArray(providerEvents), true);
-    assert.equal(providerEvents.some((event) => (
-      event.eventClass === 'runtime.error' &&
-      event.payload?.runtime === 'lime-agent-server'
-    )), true);
-    assert.equal(JSON.stringify(providerEvents).includes('sidecar offline'), false);
-    assert.equal(permissionRequest?.payload?.permissionDecision?.decision, 'ask');
-    assert.equal(permissionRequest?.payload?.permissionDecision?.approvalActionId, configureAction?.actionId);
-    assert.equal(configureAction?.phase, 'action_required');
-    assert.equal(configureAction?.payload?.providerStatus, 'blocked:lime-agent-server');
+    assert.equal(started.draft, undefined);
+    assert.equal(started.session.model, 'blocked:lime-agent-server');
+    assert.equal(runtimeError?.status, 'blocked');
+    assert.equal(JSON.stringify(started.session).includes('sidecar offline'), false);
+    assert.equal(started.session.executionEvents?.some((event) => event.eventClass === 'action.required'), false);
+    assert.equal(started.session.executionEvents?.at(-1)?.eventClass, 'runtime.error');
   });
 });
 
@@ -10087,56 +10307,19 @@ test('对话缺少输入源会写入待处理动作事实', async () => {
       inputSourceIds: [],
     });
 
-    const requiredAction = started.session.executionEvents?.find((event) => (
-      event.eventClass === 'action.required' &&
-      event.payload?.actionKind === 'add-input-source'
-    ));
-    const permissionRequest = started.session.executionEvents?.find((event) => (
-      event.eventClass === 'permission.requested' &&
-      event.actionId === requiredAction?.actionId
-    ));
-    assert.equal(requiredAction?.kind, 'action');
-    assert.equal(requiredAction?.phase, 'action_required');
-    assert.equal(requiredAction?.payload?.actionKind, 'add-input-source');
-    assert.equal(requiredAction?.payload?.targetModule, 'knowledge-inputs');
-    assert.ok(requiredAction?.actionId);
-    assert.equal(permissionRequest?.payload?.permissionDecision?.decision, 'ask');
-    assert.equal(permissionRequest?.payload?.permissionDecision?.approvalActionId, requiredAction.actionId);
+    assert.equal(started.session.executionEvents?.some((event) => event.eventClass === 'action.required'), false);
+    assert.equal(started.session.executionEvents?.some((event) => event.eventClass === 'permission.requested'), false);
     const startedSnapshot = started.session.executionEvents?.at(-1);
     assert.equal(startedSnapshot?.eventClass, 'snapshot.updated');
-    assert.deepEqual(startedSnapshot?.payload?.pendingActionIds, [requiredAction.actionId]);
+    assert.deepEqual(startedSnapshot?.payload?.pendingActionIds, []);
 
-    const resolved = await sessions.respondAction({
+    await assert.rejects(() => sessions.respondAction({
       workspacePath,
       sessionId: started.session.id,
-      actionId: requiredAction.actionId,
+      actionId: 'action:missing-input-source',
       decision: 'open-input-source',
       payload: { targetModule: 'knowledge-inputs' },
-    });
-    const resolvedSnapshot = resolved.executionEvents?.at(-1);
-    const resolvedAction = resolved.executionEvents?.at(-2);
-    const resolvedPermission = resolved.executionEvents?.at(-3);
-    assert.equal(resolvedPermission?.eventClass, 'permission.resolved');
-    assert.equal(resolvedPermission?.actionId, requiredAction.actionId);
-    assert.equal(resolvedPermission?.payload?.permissionDecision?.decision, 'allow');
-    assert.equal(resolvedPermission?.payload?.permissionDecision?.decisionSource, 'human');
-    assert.equal(resolvedAction?.eventClass, 'action.resolved');
-    assert.equal(resolvedAction?.actionId, requiredAction.actionId);
-    assert.equal(resolvedAction?.payload?.resolvedFromEventId, requiredAction.id);
-    assert.equal(resolvedAction?.payload?.decision, 'open-input-source');
-    assert.equal(resolvedAction?.sequence, (started.session.executionEvents?.length ?? 0) + 2);
-    assert.equal(resolvedSnapshot?.eventClass, 'snapshot.updated');
-    assert.equal(resolvedSnapshot?.sequence, (started.session.executionEvents?.length ?? 0) + 3);
-    assert.deepEqual(resolvedSnapshot?.payload?.pendingActionIds, []);
-
-    const idempotent = await sessions.respondAction({
-      workspacePath,
-      sessionId: started.session.id,
-      actionId: requiredAction.actionId,
-      decision: 'open-input-source',
-      payload: { targetModule: 'knowledge-inputs' },
-    });
-    assert.equal(idempotent.executionEvents?.length, resolved.executionEvents?.length);
+    }), /必须由 Lime App Server runtime 处理/);
 
     const source = await inputSources.register({
       workspacePath,
@@ -10146,45 +10329,24 @@ test('对话缺少输入源会写入待处理动作事实', async () => {
       text: '产品事实：便携条包。场景：早餐后、办公室抽屉。',
       tags: ['product'],
     });
-    const attached = await sessions.attachInputSources({
+    await assert.rejects(() => sessions.attachInputSources({
       workspacePath,
       sessionId: started.session.id,
       inputSourceIds: [source.id],
       reason: 'manual-input-source-registered',
-    });
-    assert.ok(attached.inputSourceIds.includes(source.id));
-    assert.equal(attached.sourceSnapshots.some((snapshot) => snapshot.sourceId === source.id), true);
-    assert.equal(attached.messages.at(-1)?.kind, 'note');
-    assert.equal(attached.executionEvents?.some((event) => (
-      event.eventClass === 'context.resolved' &&
-      event.refIds?.includes(source.id) &&
-      event.payload?.reason === 'manual-input-source-registered'
-    )), true);
-    assert.equal(attached.executionEvents?.some((event) => (
-      event.eventClass === 'evidence.changed' &&
-      event.evidenceRefs?.includes(`input-source:${source.id}`)
-    )), true);
-    assert.equal(attached.executionEvents?.some((event) => (
-      event.eventClass === 'permission.resolved' &&
-      event.actionId === requiredAction.actionId &&
-      event.payload?.permissionDecision?.decisionSource === 'human'
-    )), true);
-    assert.equal(attached.executionEvents?.at(-1)?.eventClass, 'snapshot.updated');
-    assert.deepEqual(attached.executionEvents?.at(-1)?.payload?.pendingActionIds, []);
+    }), /必须重新提交到 Lime App Server runtime/);
 
     const continued = await sessions.continue({
       workspacePath,
       sessionId: started.session.id,
       message: '资料已补齐，请基于新资料重新生成图片 Prompt。',
     });
-    assert.match(continued.draft.versions.at(-1)?.content ?? '', /补充产品资料|便携条包/);
-    assert.equal(continued.session.sourceSnapshots.some((snapshot) => snapshot.sourceId === source.id), true);
+    assert.match(continued.draft.versions.at(-1)?.content ?? '', /资料已补齐/);
+    assert.equal(continued.session.sourceSnapshots.some((snapshot) => snapshot.sourceId === source.id), false);
     assert.equal(continued.session.messages.at(-1)?.kind, 'draft');
-    assert.match(continued.session.messages.at(-1)?.content ?? '', /便携条包/);
     assert.equal(continued.session.executionEvents?.some((event) => (
       event.eventClass === 'model.completed' &&
-      event.payload?.model === 'lime-agent-server-test' &&
-      event.payload?.providerEvents?.some((providerEvent) => providerEvent.payload?.runtime === 'lime-agent-server')
+      event.payload?.runtime === 'lime-agent-server'
     )), true);
   });
 });
@@ -10192,34 +10354,13 @@ test('对话缺少输入源会写入待处理动作事实', async () => {
 test('浏览器开发桥接不会模拟模型成功并保留可恢复运行快照', async () => {
   const api = createDevBridge();
   const workspacePath = '/tmp/content-studio-browser-dev-functional';
-  const started = await api.startAgentPromptSession({
+  await assert.rejects(() => api.startAgentPromptSession({
     workspacePath,
     title: '浏览器开发对话事实',
     purpose: 'image',
     userIntent: '先判断需要补哪些产品资料。',
     inputSourceIds: [],
-  });
-
-  const requiredAction = started.session.executionEvents?.find((event) => event.eventClass === 'action.required');
-  const startedSnapshot = started.session.executionEvents?.at(-1);
-  assert.ok(requiredAction?.actionId);
-  assert.equal(started.session.executionEvents?.some((event) => event.kind === 'note'), false);
-  assert.equal(started.session.executionEvents?.some((event) => event.eventClass === 'model.completed'), false);
-  assert.equal(started.session.executionEvents?.some((event) => event.eventClass === 'model.failed'), true);
-  assert.equal(startedSnapshot?.eventClass, 'snapshot.updated');
-  assert.deepEqual(startedSnapshot?.payload?.pendingActionIds, [requiredAction.actionId]);
-
-  const resolved = await api.respondAgentPromptAction({
-    workspacePath,
-    sessionId: started.session.id,
-    actionId: requiredAction.actionId,
-    decision: 'open-input-source',
-    payload: { targetModule: 'knowledge-inputs' },
-  });
-  assert.equal(resolved.executionEvents?.at(-3)?.eventClass, 'permission.resolved');
-  assert.equal(resolved.executionEvents?.at(-2)?.eventClass, 'action.resolved');
-  assert.equal(resolved.executionEvents?.at(-1)?.eventClass, 'snapshot.updated');
-  assert.deepEqual(resolved.executionEvents?.at(-1)?.payload?.pendingActionIds, []);
+  }), /未接入 Lime App Server runtime/);
 
   const source = await api.registerInputSource({
     workspacePath,
@@ -10229,34 +10370,25 @@ test('浏览器开发桥接不会模拟模型成功并保留可恢复运行快�
     text: '产品事实：便携条包。场景：早餐后。',
     tags: ['product'],
   });
-  const attached = await api.attachAgentPromptSessionInputSources({
+  await assert.rejects(() => api.respondAgentPromptAction({
     workspacePath,
-    sessionId: started.session.id,
+    sessionId: 'browser-dev-session',
+    actionId: 'action:missing-input-source',
+    decision: 'open-input-source',
+    payload: { targetModule: 'knowledge-inputs' },
+  }), /未接入 Lime App Server runtime/);
+  await assert.rejects(() => api.attachAgentPromptSessionInputSources({
+    workspacePath,
+    sessionId: 'browser-dev-session',
     inputSourceIds: [source.id],
     reason: 'manual-input-source-registered',
-  });
-  assert.equal(attached.inputSourceIds.includes(source.id), true);
-  assert.equal(attached.executionEvents?.some((event) => (
-    event.eventClass === 'evidence.changed' &&
-    event.evidenceRefs?.includes(`input-source:${source.id}`)
-  )), true);
-  assert.equal(attached.executionEvents?.at(-1)?.eventClass, 'snapshot.updated');
-  assert.deepEqual(attached.executionEvents?.at(-1)?.payload?.pendingActionIds, []);
-
-  const continued = await api.continueAgentPromptSession({
+  }), /未接入 Lime App Server runtime/);
+  await assert.rejects(() => api.continueAgentPromptSession({
     workspacePath,
-    sessionId: started.session.id,
+    sessionId: 'browser-dev-session',
     message: '资料已补齐，请继续。',
-  });
-  assert.equal(continued.session.id, started.session.id);
-  assert.equal(continued.session.messages.some((message) => (
-    message.kind === 'adjustment' &&
-    message.content.includes('资料已补齐')
-  )), true);
-  assert.equal(continued.session.executionEvents?.some((event) => event.eventClass === 'model.completed'), false);
-  assert.equal(continued.session.executionEvents?.at(-1)?.eventClass, 'snapshot.updated');
-  assert.equal(continued.session.executionEvents?.at(-1)?.payload?.messageCount, continued.session.messages.length);
-  assert.equal(continued.draft.versions.length, 2);
+  }), /未接入 Lime App Server runtime/);
+  assert.equal((await api.listAgentPromptSessions(workspacePath)).length, 0);
 });
 
 test('Prompt 生成服务不会把成功素材沉淀追溯源作为新输入源', async () => {
@@ -11371,7 +11503,8 @@ test('Lime Agent 边界审计会阻断 runtime/key/UI 协议回流', async () =>
     await mkdir(join(tmpRoot, 'src/renderer/src/components/agent'), { recursive: true });
     await mkdir(join(tmpRoot, 'src/renderer/src/components'), { recursive: true });
     const minimalFiles = {
-      'package.json': '{"dependencies":{"@limecloud/agent-runtime-ui":"0.1.0","@limecloud/agent-runtime-projection":"0.1.0"},"scripts":{"verify:lime-agent":"node scripts/lime-agent-boundary-audit.mjs"}}',
+      'package.json': '{"dependencies":{"@limecloud/agent-runtime-client":"0.1.1","@limecloud/agent-runtime-ui":"0.1.0","@limecloud/agent-runtime-projection":"0.1.0"},"scripts":{"verify:lime-agent":"node scripts/lime-agent-boundary-audit.mjs"}}',
+      'package-lock.json': '{"packages":{"":{"dependencies":{"@limecloud/agent-runtime-client":"0.1.1"}},"node_modules/@limecloud/agent-runtime-client":{"version":"0.1.1","resolved":"https://registry.npmjs.org/@limecloud/agent-runtime-client/-/agent-runtime-client-0.1.1.tgz","dependencies":{"@limecloud/app-server-client":"1.66.0"}},"node_modules/@limecloud/app-server-client":{"version":"1.66.0","resolved":"https://registry.npmjs.org/@limecloud/app-server-client/-/app-server-client-1.66.0.tgz"}}}',
       'src/shared/types.ts': 'export interface PlatformModelProviderConfig { id: string; displayName: string; apiKey?: string; apiKeyConfigured: boolean; }',
       'src/preload/index.ts': 'export const api = { savePlatformModelSettings() {} };',
       'src/main/ipc.ts': "ipcMain.handle('modelConfig:savePlatformModelSettings', () => undefined);",
@@ -11393,6 +11526,8 @@ test('Lime Agent 边界审计会阻断 runtime/key/UI 协议回流', async () =>
     assert.ok(failed.failures.some((item) => item.ruleId === 'no-public-platform-model-save'));
     assert.ok(failed.failures.some((item) => item.ruleId === 'platform-provider-projection-no-api-key'));
     assert.ok(failed.failures.some((item) => item.ruleId === 'prompt-agent-no-product-app-key'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agent-runtime-client-standard-session-gateway-import'));
+    assert.ok(failed.failures.some((item) => item.ruleId === 'agent-runtime-client-standard-session-gateway-factory'));
     assert.ok(failed.failures.some((item) => item.ruleId === 'agent-runtime-session-gateway-contract'));
     assert.ok(failed.failures.some((item) => item.ruleId === 'agent-runtime-gateway-start-turn-method'));
     assert.ok(failed.failures.some((item) => item.ruleId === 'agent-runtime-gateway-event-notification-method'));

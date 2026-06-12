@@ -9,10 +9,14 @@ import type {
   PlatformSettingsProjection,
   PlatformRuntimeBridgeDiscoveryDescriptor,
   PlatformRuntimeBridgeDescriptor,
+  PlatformRuntimeEvent,
 } from '../../shared/types';
 import { app } from 'electron';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createEmbeddedElectronPlatformHost } from '@limecloud/desktop-platform-electron-adapter';
+import type { EmbeddedElectronPlatformHost } from '@limecloud/desktop-platform-electron-adapter';
+import { getResourcesRoot } from './paths';
 
 interface BridgeResponse<T> {
   ok: boolean;
@@ -25,9 +29,27 @@ interface BridgeResponse<T> {
   };
 }
 
-type BridgeSource = 'env' | 'discovery';
+type BridgeSource = 'embedded' | 'env' | 'discovery';
 const BRIDGE_FETCH_TIMEOUT_MS = 1500;
+const BRIDGE_AGENT_FETCH_TIMEOUT_MS = 120_000;
+const BRIDGE_AGENT_EVENTS_FETCH_TIMEOUT_MS = 5000;
 const CONTENT_STUDIO_APP_ID = 'content-studio';
+const CONTENT_STUDIO_ENTRY_KEY = 'default';
+
+function resolveEmbeddedHostResourcesDir(): string {
+  return process.env.CONTENT_STUDIO_RESOURCES_DIR?.trim() || getResourcesRoot();
+}
+
+function resolveEmbeddedAppServerDataDir(): string | undefined {
+  const explicit =
+    process.env.CONTENT_STUDIO_APP_SERVER_DATA_DIR?.trim() ||
+    process.env.APP_SERVER_DATA_DIR?.trim();
+  if (explicit) return explicit;
+  if (process.env.ELECTRON_RENDERER_URL) {
+    return join(app.getPath('appData'), 'content-studio', 'app-server');
+  }
+  return undefined;
+}
 
 function parseJsonEnv<T>(name: string): T | undefined {
   const raw = process.env[name]?.trim();
@@ -105,9 +127,13 @@ function assertBridgeResponse<T>(payload: BridgeResponse<T>, fallbackMessage: st
   throw new Error(payload.error?.message || fallbackMessage);
 }
 
-async function bridgeFetch(url: string, init: RequestInit): Promise<Response> {
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+async function bridgeFetch(url: string, init: RequestInit, timeoutMs = BRIDGE_FETCH_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BRIDGE_FETCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       ...init,
@@ -119,33 +145,63 @@ async function bridgeFetch(url: string, init: RequestInit): Promise<Response> {
 }
 
 export class PlatformHostBridgeClient {
+  private readonly embeddedHost: EmbeddedElectronPlatformHost | undefined =
+    process.env.CONTENT_STUDIO_DISABLE_EMBEDDED_PLATFORM_HOST === '1'
+      ? undefined
+      : createEmbeddedElectronPlatformHost({
+        appId: CONTENT_STUDIO_APP_ID,
+        entryKey: CONTENT_STUDIO_ENTRY_KEY,
+        resourcesDir: resolveEmbeddedHostResourcesDir(),
+        appServerDataDir: resolveEmbeddedAppServerDataDir(),
+        publishRuntimeBridgeDiscovery: false,
+      });
   private descriptor = parseJsonEnv<PlatformRuntimeBridgeDescriptor>('LIME_RUNTIME_BRIDGE');
   private descriptorSource: BridgeSource | undefined = this.descriptor ? 'env' : undefined;
   private readonly injectedSnapshot = parseJsonEnv<PlatformHostSnapshot>('LIME_HOST_SNAPSHOT');
   private discoveredSnapshot: PlatformHostSnapshot | undefined;
+  private embeddedAppServerSidecar: PlatformHostBridgeStatus['appServerSidecar'] | undefined;
+  private loggedEmbeddedSidecarState: string | undefined;
   private lastError: string | undefined = process.env.LIME_RUNTIME_BRIDGE && !this.descriptor
     ? 'LIME_RUNTIME_BRIDGE 不是合法 runtime bridge descriptor。'
     : undefined;
 
   isAvailable(): boolean {
+    if (this.embeddedHost) return true;
     return isRuntimeBridgeDescriptor(this.descriptor) && !isExpired(this.descriptor.expiresAt);
   }
 
   async ensureConnected(): Promise<boolean> {
+    if (this.embeddedHost) {
+      try {
+        await this.embeddedHost.ensureConnected();
+        const status = this.embeddedHost.status();
+        this.embeddedAppServerSidecar = status.appServerSidecar;
+        this.logEmbeddedSidecarStatus(status.appServerSidecar);
+        this.discoveredSnapshot = await this.readEmbeddedSnapshot();
+        this.descriptorSource = 'embedded';
+        this.lastError = undefined;
+        return true;
+      } catch (error) {
+        this.lastError = errorMessage(error, '初始化 lime-desktop-platform embedded host 失败。');
+        return false;
+      }
+    }
+    if (await this.refreshDiscoveryDescriptorIfChanged()) return true;
     if (this.isAvailable()) return true;
     if (this.descriptorSource === 'env') return false;
-    const discovery = await this.readDiscoveryDescriptor();
-    if (!discovery) return false;
-    try {
-      const descriptor = await this.attachDiscovery(discovery);
-      this.descriptor = descriptor;
-      this.descriptorSource = 'discovery';
-      this.lastError = undefined;
-      this.discoveredSnapshot = await this.readSnapshot().catch(() => undefined);
-      return true;
-    } catch (error) {
-      this.lastError = error instanceof Error ? error.message : '连接 lime-desktop-platform runtime bridge 失败。';
-      return false;
+    return this.attachLatestDiscovery();
+  }
+
+  private logEmbeddedSidecarStatus(status: PlatformHostBridgeStatus['appServerSidecar'] | undefined): void {
+    const stateKey = status?.ok ? 'started' : `blocked:${status?.error ?? 'unknown reason'}`;
+    if (this.loggedEmbeddedSidecarState === stateKey) {
+      return;
+    }
+    this.loggedEmbeddedSidecarState = stateKey;
+    if (status?.ok) {
+      console.info('[content-studio] Lime App Server sidecar started with embedded lime-desktop-platform host.');
+    } else {
+      console.warn(`[content-studio] Lime App Server sidecar did not start: ${status?.error ?? 'unknown reason'}`);
     }
   }
 
@@ -161,17 +217,23 @@ export class PlatformHostBridgeClient {
     return {
       available: true,
       mode: 'lime-desktop-platform',
-      source: this.descriptorSource,
+      source: this.embeddedHost ? 'embedded' : this.descriptorSource,
       snapshot,
+      appServerSidecar: this.embeddedHost ? this.embeddedAppServerSidecar : undefined,
       bridge: redactDescriptor(this.descriptor),
     };
   }
 
   async readSnapshot(): Promise<PlatformHostSnapshot | undefined> {
+    if (this.embeddedHost) {
+      this.discoveredSnapshot = await this.readEmbeddedSnapshot();
+      return this.discoveredSnapshot;
+    }
     if (!this.descriptor) return this.injectedSnapshot;
-    const response = await bridgeFetch(`${this.descriptor.endpoint}/snapshot`, {
+    const descriptor = this.descriptor;
+    const response = await this.fetchWithDiscoveryRetry(descriptor, '/snapshot', {
       method: 'POST',
-      headers: bridgeFetchHeaders(this.descriptor),
+      headers: bridgeFetchHeaders(descriptor),
       body: '{}',
     });
     const payload = (await response.json().catch(() => ({}))) as BridgeResponse<never>;
@@ -183,19 +245,27 @@ export class PlatformHostBridgeClient {
   }
 
   async invokeCapability(input: Omit<PlatformCapabilityInvokeInput, 'appId' | 'entryKey'>): Promise<PlatformCapabilityInvokeResult> {
+    if (this.embeddedHost) {
+      return await this.embeddedHost.invokeCapability({
+        capability: input.capability,
+        operation: input.operation,
+        input: input.input,
+      }) as unknown as PlatformCapabilityInvokeResult;
+    }
     await this.ensureConnected();
     if (!this.descriptor) {
       throw new Error('未检测到 lime-desktop-platform runtime bridge。');
     }
-    const response = await bridgeFetch(`${this.descriptor.endpoint}/capability/invoke`, {
+    const descriptor = this.descriptor;
+    const response = await this.fetchWithDiscoveryRetry(descriptor, '/capability/invoke', {
       method: 'POST',
-      headers: bridgeFetchHeaders(this.descriptor),
+      headers: bridgeFetchHeaders(descriptor),
       body: JSON.stringify({
         capability: input.capability,
         operation: input.operation,
         input: input.input,
       }),
-    });
+    }, input.capability === 'lime.agent' ? BRIDGE_AGENT_FETCH_TIMEOUT_MS : BRIDGE_FETCH_TIMEOUT_MS);
     const payload = (await response.json().catch(() => ({}))) as BridgeResponse<PlatformCapabilityInvokeResult>;
     if (!response.ok) {
       throw new Error(payload.error?.message || `平台 capability 调用失败：HTTP ${response.status}`);
@@ -253,14 +323,51 @@ export class PlatformHostBridgeClient {
     return result.output as PlatformAgentRuntimeResult;
   }
 
-  async openIntent(input: PlatformNavigationIntent): Promise<PlatformNavigationResult> {
+  async readAgentEvents(input: {
+    sessionId?: string;
+    turnId?: string;
+    afterSequence?: number;
+  }): Promise<PlatformRuntimeEvent[]> {
+    if (this.embeddedHost && 'readAgentRuntimeEvents' in this.embeddedHost) {
+      const events = await (this.embeddedHost as EmbeddedElectronPlatformHost & {
+        readAgentRuntimeEvents: (input: {
+          sessionId?: string;
+          turnId?: string;
+          afterSequence?: number;
+        }) => PlatformRuntimeEvent[];
+      }).readAgentRuntimeEvents(input);
+      return events as unknown as PlatformRuntimeEvent[];
+    }
     await this.ensureConnected();
     if (!this.descriptor) {
       throw new Error('未检测到 lime-desktop-platform runtime bridge。');
     }
-    const response = await bridgeFetch(`${this.descriptor.endpoint}/intent/open`, {
+    const descriptor = this.descriptor;
+    const response = await this.fetchWithDiscoveryRetry(descriptor, '/agent/events', {
       method: 'POST',
-      headers: bridgeFetchHeaders(this.descriptor),
+      headers: bridgeFetchHeaders(descriptor),
+      body: JSON.stringify(input),
+    }, BRIDGE_AGENT_EVENTS_FETCH_TIMEOUT_MS);
+    const payload = (await response.json().catch(() => ({}))) as BridgeResponse<{ events?: PlatformRuntimeEvent[] }>;
+    if (!response.ok) {
+      throw new Error(payload.error?.message || `平台 Agent 事件读取失败：HTTP ${response.status}`);
+    }
+    const result = assertBridgeResponse(payload, '平台 Agent 事件读取失败。');
+    return Array.isArray(result.events) ? result.events : [];
+  }
+
+  async openIntent(input: PlatformNavigationIntent): Promise<PlatformNavigationResult> {
+    if (this.embeddedHost) {
+      return this.embeddedHost.openNavigationIntent(input as never) as unknown as PlatformNavigationResult;
+    }
+    await this.ensureConnected();
+    if (!this.descriptor) {
+      throw new Error('未检测到 lime-desktop-platform runtime bridge。');
+    }
+    const descriptor = this.descriptor;
+    const response = await this.fetchWithDiscoveryRetry(descriptor, '/intent/open', {
+      method: 'POST',
+      headers: bridgeFetchHeaders(descriptor),
       body: JSON.stringify(input),
     });
     const payload = (await response.json().catch(() => ({}))) as BridgeResponse<PlatformNavigationResult>;
@@ -271,6 +378,9 @@ export class PlatformHostBridgeClient {
   }
 
   async getPlatformSettings(): Promise<PlatformSettingsProjection> {
+    if (this.embeddedHost) {
+      return this.embeddedHost.getPlatformSettings() as unknown as PlatformSettingsProjection;
+    }
     const result = await this.invokeCapability({
       capability: 'lime.settings',
       operation: 'platform-settings/read',
@@ -289,6 +399,11 @@ export class PlatformHostBridgeClient {
   }
 
   async savePlatformSettings(settings: PlatformSettingsProjection): Promise<PlatformSettingsProjection> {
+    if (this.embeddedHost) {
+      const result = this.embeddedHost.savePlatformSettings(settings as never) as unknown as PlatformSettingsProjection;
+      this.discoveredSnapshot = await this.readEmbeddedSnapshot().catch(() => undefined);
+      return result;
+    }
     const result = await this.invokeCapability({
       capability: 'lime.settings',
       operation: 'platform-settings/save',
@@ -308,6 +423,10 @@ export class PlatformHostBridgeClient {
     return output as PlatformSettingsProjection;
   }
 
+  private async readEmbeddedSnapshot(): Promise<PlatformHostSnapshot> {
+    return this.embeddedHost!.readSnapshot() as unknown as PlatformHostSnapshot;
+  }
+
   private async readDiscoveryDescriptor(): Promise<PlatformRuntimeBridgeDiscoveryDescriptor | undefined> {
     try {
       const raw = await readFile(runtimeBridgeDiscoveryPath(), 'utf8');
@@ -325,6 +444,69 @@ export class PlatformHostBridgeClient {
       this.lastError = undefined;
       return undefined;
     }
+  }
+
+  private async refreshDiscoveryDescriptorIfChanged(): Promise<boolean> {
+    if (this.descriptorSource === 'env') return false;
+    if (!this.isAvailable()) return false;
+    const discovery = await this.readDiscoveryDescriptor();
+    if (!discovery || discovery.endpoint === this.descriptor?.endpoint) return false;
+    return this.attachLatestDiscovery(discovery);
+  }
+
+  private async attachLatestDiscovery(discovery?: PlatformRuntimeBridgeDiscoveryDescriptor): Promise<boolean> {
+    const nextDiscovery = discovery ?? await this.readDiscoveryDescriptor();
+    if (!nextDiscovery) return false;
+    try {
+      const descriptor = await this.attachDiscovery(nextDiscovery);
+      this.descriptor = descriptor;
+      this.descriptorSource = 'discovery';
+      this.lastError = undefined;
+      this.discoveredSnapshot = await this.readSnapshot().catch(() => undefined);
+      return true;
+    } catch (error) {
+      this.descriptor = undefined;
+      this.discoveredSnapshot = undefined;
+      this.lastError = errorMessage(error, '连接 lime-desktop-platform runtime bridge 失败。');
+      return false;
+    }
+  }
+
+  private async fetchWithDiscoveryRetry(
+    descriptor: PlatformRuntimeBridgeDescriptor,
+    path: string,
+    init: RequestInit,
+    timeoutMs = BRIDGE_FETCH_TIMEOUT_MS,
+  ): Promise<Response> {
+    try {
+      const response = await bridgeFetch(`${descriptor.endpoint}${path}`, init, timeoutMs);
+      if (response.status !== 401 || this.descriptorSource === 'env') {
+        return response;
+      }
+      const retried = await this.retryWithLatestDiscovery(path, init, timeoutMs);
+      return retried ?? response;
+    } catch (error) {
+      if (this.descriptorSource === 'env') throw error;
+      const retried = await this.retryWithLatestDiscovery(path, init, timeoutMs);
+      if (!retried) throw error;
+      return retried;
+    }
+  }
+
+  private async retryWithLatestDiscovery(
+    path: string,
+    init: RequestInit,
+    timeoutMs: number,
+  ): Promise<Response | undefined> {
+    this.descriptor = undefined;
+    this.discoveredSnapshot = undefined;
+    const reconnected = await this.attachLatestDiscovery();
+    const nextDescriptor = this.descriptor as PlatformRuntimeBridgeDescriptor | undefined;
+    if (!reconnected || !nextDescriptor) return undefined;
+    return bridgeFetch(`${nextDescriptor.endpoint}${path}`, {
+      ...init,
+      headers: bridgeFetchHeaders(nextDescriptor),
+    }, timeoutMs);
   }
 
   private async attachDiscovery(

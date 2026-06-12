@@ -40,20 +40,20 @@ function completeness(layers: IpKnowledgeBaseLayers): number {
   return Math.round((filled / values.length) * 100);
 }
 
-function localRecord(input: GenerateIpKnowledgeBaseInput, reason?: string): IpKnowledgeBaseRecord {
+function blockedRecord(input: GenerateIpKnowledgeBaseInput, reason: string): IpKnowledgeBaseRecord {
   const layers: IpKnowledgeBaseLayers = {
-    identity: compactText(undefined, '身份待补齐'),
-    values: compactText(undefined, '价值观待补齐'),
-    language: compactText(undefined, '语言风格待补齐'),
-    methodology: compactText(undefined, '判断方法待补齐'),
-    materials: compactText(undefined, '素材故事待补齐'),
-    engine: compactText(undefined, '创作引擎待补齐'),
+    identity: `生成服务未完成：${reason}`,
+    values: '生成服务接通后重新抽取',
+    language: '生成服务接通后重新抽取',
+    methodology: '生成服务接通后重新抽取',
+    materials: '生成服务接通后重新抽取',
+    engine: '生成服务接通后重新抽取',
   };
   return {
     id: randomUUID(),
     workspacePath: input.workspacePath,
     title: inferTitle(input.citations, input.title),
-    status: reason ? 'draft' : 'ready',
+    status: 'blocked',
     sourceKnowledgeBaseId: input.citations[0]?.knowledgeBaseId,
     sourceCitationIds: input.citations.map((citation) => `${citation.knowledgeBaseId}:${citation.sectionId}`),
     layers,
@@ -63,7 +63,7 @@ function localRecord(input: GenerateIpKnowledgeBaseInput, reason?: string): IpKn
       input.citations.filter((citation) => ['scenario-script', 'qa', 'story'].includes(citation.sectionType)).map((citation) => citation.excerpt),
       ['口播', '朋友圈', '私域回复'],
     ),
-    model: reason ? 'fallback:local-rule' : 'local-rule',
+    model: 'blocked:text-provider',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -165,7 +165,7 @@ export class IpKnowledgeBaseStore {
         : error instanceof TextProviderFailedError
           ? `文字模型生成失败：${error.message}`
           : `文字模型生成异常：${error instanceof Error ? error.message : String(error)}`;
-      const record = localRecord(input, reason);
+      const record = blockedRecord(input, reason);
       record.createdAt = now;
       record.updatedAt = now;
       return updateJsonFile<IpKnowledgeBaseRecord[], IpKnowledgeBaseRecord>(

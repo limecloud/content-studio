@@ -176,6 +176,86 @@ function compactModelNames(models: Array<string | undefined>): string[] {
   return uniqueModelNames(models.filter((model): model is string => Boolean(model)));
 }
 
+function createPendingAgentPromptSession(input: {
+  workspacePath: string;
+  title?: string;
+  purpose: PromptDraftPurpose;
+  userIntent: string;
+  inputSourceIds: string[];
+  sceneCardIds?: string[];
+  selectedSkills?: SkillRef[];
+  selectedSkillSlugs?: string[];
+  textModel?: string;
+}): AgentPromptSession {
+  const now = new Date().toISOString();
+  const id = `pending-agent-${Date.now()}`;
+  return {
+    id,
+    workspacePath: input.workspacePath,
+    title: input.title?.trim() || "AI Agent 正在处理",
+    purpose: input.purpose,
+    status: "active",
+    userIntent: input.userIntent.trim(),
+    inputSourceIds: input.inputSourceIds,
+    sceneCardIds: input.sceneCardIds ?? [],
+    selectedSkills: input.selectedSkills,
+    selectedSkillSlugs: input.selectedSkillSlugs,
+    promptDraftIds: [],
+    sourceSnapshots: [],
+    messages: [
+      {
+        id: `${id}:user`,
+        role: "user",
+        kind: "intent",
+        content: input.userIntent.trim(),
+        createdAt: now,
+      },
+      {
+        id: `${id}:assistant`,
+        role: "assistant",
+        kind: "note",
+        content: "正在连接 Lime Desktop Platform 并生成回复。",
+        model: input.textModel,
+        createdAt: now,
+      },
+    ],
+    executionEvents: [
+      {
+        id: `${id}:submitted`,
+        kind: "state",
+        status: "running",
+        eventClass: "turn.submitted",
+        owner: "runtime",
+        sequence: 1,
+        runtimeId: "content-studio-agent-prompt-runtime",
+        threadId: id,
+        phase: "submitted",
+        title: "请求已提交",
+        detail: "正在等待平台运行结果。",
+        model: input.textModel,
+        createdAt: now,
+      },
+    ],
+    model: input.textModel,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function upsertAgentPromptSession(
+  sessions: AgentPromptSession[],
+  nextSession: AgentPromptSession,
+  replaceId?: string,
+): AgentPromptSession[] {
+  return [
+    nextSession,
+    ...sessions.filter((session) => (
+      session.id !== nextSession.id &&
+      (!replaceId || session.id !== replaceId)
+    )),
+  ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 function paramsForImageGeneration(
   current: GlobalGenerationParams,
   imageModel?: string,
@@ -1239,6 +1319,33 @@ export function useContentStudioApp() {
   }, []);
 
   useEffect(() => {
+    const needsPlatformModelSettings =
+      modelConfig?.platformManaged && !(modelConfig.platformModelSettings?.providers.length);
+    if (modelConfig?.platformManaged && !needsPlatformModelSettings) return undefined;
+    let cancelled = false;
+    let refreshing = false;
+    const interval = window.setInterval(() => {
+      if (refreshing) return;
+      refreshing = true;
+      window.contentStudio.getModelConfig()
+        .then((nextModelConfig) => {
+          const nextHasPlatformProviders = Boolean(nextModelConfig.platformModelSettings?.providers.length);
+          if (!cancelled && (nextModelConfig.platformManaged || nextHasPlatformProviders)) {
+            void refresh();
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          refreshing = false;
+        });
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [modelConfig?.platformManaged, modelConfig?.platformModelSettings?.providers.length]);
+
+  useEffect(() => {
     workflowRunsRef.current = workflowRuns;
   }, [workflowRuns]);
 
@@ -1271,6 +1378,15 @@ export function useContentStudioApp() {
       if (event.log.kind === "image" && event.log.status !== "queued" && event.log.status !== "running") {
         void syncShotStatusFromLog(event.log);
       }
+    });
+    return () => unsubscribe();
+  }, [workspacePath]);
+
+  useEffect(() => {
+    const unsubscribe = window.contentStudio.onAgentPromptSessionEvent((event) => {
+      if (workspacePath && event.workspacePath !== workspacePath) return;
+      setAgentPromptSessions((current) => upsertAgentPromptSession(current, event.session));
+      setActiveAgentPromptSessionId((current) => current || event.session.id);
     });
     return () => unsubscribe();
   }, [workspacePath]);
@@ -1948,21 +2064,37 @@ export function useContentStudioApp() {
   async function startAgentPromptSession(input: PromptDraftCreateRequest): Promise<AgentPromptSession> {
     const workspace = requireWorkspace();
     const assetInputSourceIds = await ensureAgentAssetInputSources(workspace, input.productImageRefs, input.referenceImageRefs);
+    const inputSourceIds = Array.from(new Set([...input.inputSourceIds, ...assetInputSourceIds]));
+    const pendingSession = createPendingAgentPromptSession({
+      workspacePath: workspace,
+      title: input.title,
+      purpose: input.purpose,
+      userIntent: input.userIntent,
+      inputSourceIds,
+      sceneCardIds: input.sceneCardIds,
+      selectedSkills: input.selectedSkills,
+      selectedSkillSlugs: input.selectedSkillSlugs,
+      textModel: input.textModel ?? params.textModel,
+    });
+    setAgentPromptSessions((current) => upsertAgentPromptSession(current, pendingSession));
+    setActiveAgentPromptSessionId(pendingSession.id);
     const result = await window.contentStudio.startAgentPromptSession({
       workspacePath: workspace,
       title: input.title,
       purpose: input.purpose,
       userIntent: input.userIntent,
-      inputSourceIds: Array.from(new Set([...input.inputSourceIds, ...assetInputSourceIds])),
+      inputSourceIds,
       teamKnowledgeRelease: input.teamKnowledgeRelease,
       sceneCardIds: input.sceneCardIds,
       selectedSkills: input.selectedSkills,
       selectedSkillSlugs: input.selectedSkillSlugs,
       textModel: input.textModel ?? params.textModel,
     });
-    setPromptDrafts((current) => [result.draft, ...current.filter((item) => item.id !== result.draft.id)]);
-    setAgentPromptSessions((current) => [result.session, ...current.filter((item) => item.id !== result.session.id)]);
-    setActivePromptDraftId(result.draft.id);
+    if (result.draft) {
+      setPromptDrafts((current) => [result.draft!, ...current.filter((item) => item.id !== result.draft!.id)]);
+      setActivePromptDraftId(result.draft.id);
+    }
+    setAgentPromptSessions((current) => upsertAgentPromptSession(current, result.session, pendingSession.id));
     setActiveAgentPromptSessionId(result.session.id);
     await refresh(workspace);
     return result.session;
@@ -1980,11 +2112,11 @@ export function useContentStudioApp() {
       message: input.message,
       textModel: input.textModel ?? params.textModel,
     });
-    setPromptDrafts((current) => [result.draft, ...current.filter((item) => item.id !== result.draft.id)]);
-    setAgentPromptSessions((current) =>
-      [result.session, ...current.filter((item) => item.id !== result.session.id)],
-    );
-    setActivePromptDraftId(result.draft.id);
+    if (result.draft) {
+      setPromptDrafts((current) => [result.draft!, ...current.filter((item) => item.id !== result.draft!.id)]);
+      setActivePromptDraftId(result.draft.id);
+    }
+    setAgentPromptSessions((current) => upsertAgentPromptSession(current, result.session));
     setActiveAgentPromptSessionId(result.session.id);
     await refresh(workspace);
   }
@@ -1995,9 +2127,7 @@ export function useContentStudioApp() {
       workspacePath: workspace,
       ...input,
     });
-    setAgentPromptSessions((current) =>
-      [session, ...current.filter((item) => item.id !== session.id)],
-    );
+    setAgentPromptSessions((current) => upsertAgentPromptSession(current, session));
     setActiveAgentPromptSessionId(session.id);
     await refresh(workspace);
   }
@@ -2008,9 +2138,7 @@ export function useContentStudioApp() {
       workspacePath: workspace,
       ...input,
     });
-    setAgentPromptSessions((current) =>
-      [session, ...current.filter((item) => item.id !== session.id)],
-    );
+    setAgentPromptSessions((current) => upsertAgentPromptSession(current, session));
     setActiveAgentPromptSessionId(session.id);
     await refresh(workspace);
   }

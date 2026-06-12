@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "description": "布谷AI内容工厂桌面应用，用于知识库、提示词、图片、视频和文章生产。",
   "type": "module",
   "main": "out/main/index.js",
@@ -57,6 +57,7 @@
     "verify:local": "npm run typecheck && npm run content:v1:verify-readiness && npm run build && npm run verify:v2 && npm run verify:lime-agent && npm run test:functional && npm run smoke:electron && npm run test:e2e"
   },
   "dependencies": {
+    "@limecloud/agent-runtime-client": "0.1.1",
     "@limecloud/agent-runtime-projection": "^0.1.0",
     "@limecloud/agent-runtime-ui": "^0.1.0",
     "@types/yauzl": "^2.10.3",

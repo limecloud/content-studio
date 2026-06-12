@@ -22,6 +22,7 @@ import type { SkillRuntimeContext } from './skillRuntimeContext';
 import type { PlatformAgentRuntimeResult, PlatformRuntimeEvent } from '../../shared/types';
 
 const LIME_AGENT_SERVER_MODEL = 'lime-agent-server';
+const PLATFORM_AGENT_EVENT_POLL_MS = 300;
 
 function appServerProviderPreference(view: ModelConfigView): string {
   if (view.platformManaged && view.agentProviderPreference) return view.agentProviderPreference;
@@ -137,7 +138,38 @@ function markdownContent(result: AppServerPromptTurnResult): string {
     .map((artifact) => artifact.content?.trim())
     .find((content): content is string => Boolean(content));
   if (artifactContent) return verifiedArtifactContent(artifactContent);
+  const messageContent = finalMessageContent(result.events);
+  if (messageContent) return verifiedArtifactContent(messageContent);
   throw new Error('协作生成服务未返回可交付 Prompt。');
+}
+
+function finalMessageContent(events: AppServerRuntimeEvent[]): string {
+  const deltas = events
+    .filter((event) => event.type === 'message.delta_batch' || event.type === 'message.delta')
+    .map((event) => textFromPayload(event.payload))
+    .filter(Boolean);
+  if (deltas.length) return deltas.join('').trim();
+  return events
+    .filter((event) => event.type === 'message')
+    .map((event) => textFromMessagePayload(event.payload))
+    .filter(Boolean)
+    .join('')
+    .trim();
+}
+
+function textFromMessagePayload(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return '';
+  const record = payload as Record<string, unknown>;
+  const message = record.message;
+  if (!message || typeof message !== 'object') return textFromPayload(payload);
+  const content = (message as Record<string, unknown>).content;
+  if (typeof content === 'string') return content.trim();
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => part && typeof part === 'object' ? (part as Record<string, unknown>).text : undefined)
+    .filter((text): text is string => typeof text === 'string' && text.length > 0)
+    .join('')
+    .trim();
 }
 
 function verifiedArtifactContent(content: string): string {
@@ -251,7 +283,10 @@ function appServerEventFromPlatformEvent(event: PlatformRuntimeEvent): AppServer
   };
 }
 
-function promptTurnResultFromPlatform(result: PlatformAgentRuntimeResult): AppServerPromptTurnResult {
+async function promptTurnResultFromPlatform(
+  result: PlatformAgentRuntimeResult,
+  onRuntimeEvent?: (event: AppServerRuntimeEvent) => void | Promise<void>,
+): Promise<AppServerPromptTurnResult> {
   if (!result.ok) {
     throw new Error(result.message || result.readiness?.reasons[0]?.message || '平台 lime.agent runtime 当前不可用。');
   }
@@ -264,6 +299,7 @@ function promptTurnResultFromPlatform(result: PlatformAgentRuntimeResult): AppSe
     throw new Error('平台协作运行未返回运行事件，未生成可交付 Prompt。');
   }
   const events = (result.events ?? []).map(appServerEventFromPlatformEvent);
+  await emitRuntimeEvents(events, onRuntimeEvent);
   const artifacts = (result.events ?? [])
     .map(artifactFromPlatformEvent)
     .filter((artifact): artifact is AppServerTurnArtifact => Boolean(artifact));
@@ -286,13 +322,61 @@ function textFromPayload(payload: unknown): string {
     ?.trim() ?? '';
 }
 
+function nestedPayloadRecord(payload: unknown): Record<string, unknown> {
+  return payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+}
+
+function firstPayloadString(...values: unknown[]): string | undefined {
+  return values
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    ?.trim();
+}
+
+function classifyToolEvent(event: AppServerRuntimeEvent): Record<string, unknown> {
+  if (!event.type.startsWith('tool.')) return {};
+  const payload = nestedPayloadRecord(event.payload);
+  const metadata = nestedPayloadRecord(payload.metadata);
+  const rawToolName = firstPayloadString(
+    payload.toolName,
+    payload.tool_name,
+    payload.name,
+    payload.tool,
+    payload.functionName,
+    payload.function_name,
+    metadata.toolName,
+    metadata.tool_name,
+  );
+  const toolName = rawToolName ?? 'unknown-tool';
+  const normalized = toolName.toLowerCase();
+  const explicitFamily = firstPayloadString(payload.toolFamily, payload.tool_family, metadata.toolFamily, metadata.tool_family);
+  const isWebSearchTool = /(^|[._-])web[._-]?search($|[._-])/.test(normalized) || normalized === 'websearch';
+  const isWebFetchTool = /(^|[._-])web[._-]?fetch($|[._-])/.test(normalized) || normalized === 'webfetch';
+  const family = explicitFamily
+    ?? (isWebSearchTool ? 'webSearch'
+      : isWebFetchTool ? 'webFetch'
+        : normalized.startsWith('mcp__') ? 'mcp'
+          : normalized.includes('skill') || normalized.includes('loadskill') || normalized.includes('listskills') ? 'skill'
+            : 'tool');
+  const parts = toolName.split('__');
+  const mcpServer = normalized.startsWith('mcp__') && parts.length >= 3 ? parts[1] : undefined;
+  const skillSlug = family === 'skill'
+    ? firstPayloadString(payload.skillSlug, payload.skill_slug, metadata.skillSlug, metadata.skill_slug, payload.slug)
+    : undefined;
+  return {
+    toolName,
+    toolFamily: family,
+    ...(mcpServer ? { mcpServer } : {}),
+    ...(skillSlug ? { skillSlug } : {}),
+  };
+}
+
 function isFailedRuntimeEvent(event: AppServerRuntimeEvent): boolean {
   return event.type === 'turn.failed' || event.type.endsWith('.failed');
 }
 
 function providerEventClass(event: AppServerRuntimeEvent): TextProviderRuntimeEvent['eventClass'] {
-  if (event.type === 'turn.completed') return 'model.completed';
-  if (event.type === 'message.delta') return 'model.delta';
+  if (event.type === 'turn.final_done' || event.type === 'turn.completed') return 'model.completed';
+  if (event.type === 'message.delta' || event.type === 'message.delta_batch') return 'model.delta';
   if (event.type === 'artifact.snapshot') return 'artifact.changed';
   if (event.type === 'action.required') return 'action.required';
   if (event.type === 'action.resolved') return 'action.resolved';
@@ -318,7 +402,7 @@ function providerEventStatus(event: AppServerRuntimeEvent): TextProviderRuntimeE
 
 function providerEventPhase(event: AppServerRuntimeEvent): TextProviderRuntimeEvent['phase'] {
   if (event.type === 'action.required') return 'action_required';
-  if (event.type === 'message.delta') return 'streaming';
+  if (event.type === 'message.delta' || event.type === 'message.delta_batch') return 'streaming';
   if (isFailedRuntimeEvent(event)) return 'failed';
   if (event.type.startsWith('tool.')) return 'tool_running';
   return 'completed';
@@ -326,6 +410,9 @@ function providerEventPhase(event: AppServerRuntimeEvent): TextProviderRuntimeEv
 
 function providerEventTitle(event: AppServerRuntimeEvent): string {
   const eventClass = providerEventClass(event);
+  const tool = classifyToolEvent(event);
+  const toolName = typeof tool.toolName === 'string' ? tool.toolName : '';
+  const toolFamily = typeof tool.toolFamily === 'string' ? tool.toolFamily : '';
   if (eventClass === 'model.delta') return '生成内容返回中';
   if (eventClass === 'model.completed') return '模型生成完成';
   if (eventClass === 'model.failed') return '模型生成失败';
@@ -333,10 +420,18 @@ function providerEventTitle(event: AppServerRuntimeEvent): string {
   if (eventClass === 'action.required') return '需要人工处理';
   if (eventClass === 'action.resolved') return '人工处理完成';
   if (eventClass === 'evidence.changed') return '来源证据已更新';
-  if (eventClass === 'tool.started') return '工具开始处理';
-  if (eventClass === 'tool.result') return '工具处理完成';
-  if (eventClass === 'tool.failed') return '工具处理失败';
+  if (eventClass === 'tool.started') return `${toolFamilyLabel(toolFamily)}开始处理${toolName ? `：${toolName}` : ''}`;
+  if (eventClass === 'tool.result') return `${toolFamilyLabel(toolFamily)}处理完成${toolName ? `：${toolName}` : ''}`;
+  if (eventClass === 'tool.failed') return `${toolFamilyLabel(toolFamily)}处理失败${toolName ? `：${toolName}` : ''}`;
   return '协作状态已更新';
+}
+
+function toolFamilyLabel(family: string): string {
+  if (family === 'webSearch') return '网页搜索';
+  if (family === 'webFetch') return '网页读取';
+  if (family === 'mcp') return 'MCP 工具';
+  if (family === 'skill') return 'Skill';
+  return '工具';
 }
 
 function providerEventDetail(event: AppServerRuntimeEvent): string {
@@ -385,12 +480,66 @@ function providerEventsFromResult(result: AppServerPromptTurnResult, model: stri
           turnId: event.turnId ?? result.turnId,
           eventType: event.type,
           eventId: event.eventId,
+          ...classifyToolEvent(event),
           ...(artifactRef ? { artifactRef } : {}),
           rawPayload: event.payload,
         },
       };
     }),
   ];
+}
+
+function providerEventFromRuntimeEvent(event: AppServerRuntimeEvent, model: string): TextProviderRuntimeEvent {
+  const eventPayload = event.payload && typeof event.payload === 'object'
+    ? event.payload as Record<string, unknown>
+    : {};
+  const artifactRef = [eventPayload.artifactRef, eventPayload.artifactId, eventPayload.id, eventPayload.path]
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  return {
+    eventClass: providerEventClass(event),
+    kind: providerEventKind(event),
+    status: providerEventStatus(event),
+    phase: providerEventPhase(event),
+    title: providerEventTitle(event),
+    detail: providerEventDetail(event),
+    model,
+    payload: {
+      runtime: 'lime-agent-server',
+      sessionId: event.sessionId,
+      turnId: event.turnId,
+      eventType: event.type,
+      eventId: event.eventId,
+      ...classifyToolEvent(event),
+      ...(artifactRef ? { artifactRef } : {}),
+      rawPayload: event.payload,
+    },
+  };
+}
+
+async function emitProviderEvents(
+  events: TextProviderRuntimeEvent[],
+  onProviderEvent?: (event: TextProviderRuntimeEvent) => void | Promise<void>,
+): Promise<void> {
+  if (!onProviderEvent) return;
+  for (const event of events) {
+    await onProviderEvent(event);
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function emitRuntimeEvents(
+  events: AppServerRuntimeEvent[],
+  onRuntimeEvent?: (event: AppServerRuntimeEvent) => void | Promise<void>,
+): Promise<void> {
+  if (!onRuntimeEvent) return;
+  for (const event of events) {
+    await onRuntimeEvent(event);
+  }
 }
 
 function selectedSkillSlugs(input: { selectedSkillSlugs?: string[]; skillContext: SkillRuntimeContext }): string[] {
@@ -434,6 +583,7 @@ export interface GenerateAgentPromptDraftInput extends GeneratePromptDraftInput 
   selectedSources: InputSourceRecord[];
   skillContext: SkillRuntimeContext;
   textModel?: string;
+  onProviderEvent?: (event: TextProviderRuntimeEvent) => void | Promise<void>;
 }
 
 export interface GenerateAgentPromptDraftResult {
@@ -456,6 +606,7 @@ export interface GenerateAgentPromptRefinementInput {
   messages: AgentPromptMessage[];
   skillContext: SkillRuntimeContext;
   textModel?: string;
+  onProviderEvent?: (event: TextProviderRuntimeEvent) => void | Promise<void>;
 }
 
 export interface GenerateAgentPromptRefinementResult {
@@ -477,8 +628,8 @@ export class AppServerPromptAgentService {
     const blockedSources = input.selectedSources.filter((source) => source.status === 'blocked' || source.status === 'failed');
     const backendConfig = await this.resolveBackendConfig(input.textModel);
     const prompt = [
-      `你是${getOemRuntimeConfig().productName}内容工厂的 Prompt 生成 Agent。`,
-      '请基于用户意图、输入源、团队知识包和 skill 约束生成可直接复制到下游的 Markdown Prompt 草稿。',
+      `你是${getOemRuntimeConfig().productName}内容工厂的 AI Agent。`,
+      '你负责先判断用户本轮输入是否足以形成内容工厂交付物，再决定回复形态。',
       '只使用输入源中可追溯的信息，不编造功效、背书、品牌数据或用户案例。',
       '',
       `下游用途：${purposeLabel(input.purpose)}`,
@@ -493,9 +644,12 @@ export class AppServerPromptAgentService {
       sourceMaterialForModel(input.selectedSources),
       '',
       '输出要求：',
-      '- 直接输出完整 Markdown，不要解释生成过程。',
-      '- 必须包含目标、事实来源约束、主体/场景/动作/文案结构、风格、负面约束、需要人工确认的缺口。',
-      '- 如果输入源存在 blocked 或 failed，必须在“需要人工确认”中保留提醒。',
+      '- 如果用户只是寒暄、测试连通性，或只输入“你好 / hi / hello / 在吗”等内容：只用一句自然语言回应，并追问用户要处理的内容对象或目标；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿。',
+      '- 如果用户意图不足以生成可交付内容，例如缺少明确的内容对象、主题或交付物类型：只说明还缺什么并提出 1 到 3 个追问；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿。',
+      '- 如果用户已经给出明确的内容对象和交付物类型，只是缺少平台、风格、受众或素材细节，可以生成 Markdown Prompt 草稿，并把这些缺口放入“需要人工确认”。',
+      '- 只有当用户明确要求生成或改写内容工厂交付物，并且输入源 / 用户意图足够支撑结果时，才输出完整 Markdown Prompt 草稿。',
+      '- 生成 Markdown Prompt 草稿时必须包含目标、事实来源约束、主体/场景/动作/文案结构、风格、负面约束、需要人工确认的缺口。',
+      '- 如果输入源存在 blocked 或 failed，且本轮确实生成草稿，必须在“需要人工确认”中保留提醒。',
     ].filter(Boolean).join('\n');
     const result = await this.runPromptTurn({
       workspacePath: input.workspacePath,
@@ -515,8 +669,14 @@ export class AppServerPromptAgentService {
       businessObjectRef: promptDraftBusinessObjectRef(input),
       providerPreference: backendConfig.providerPreference,
       modelPreference: backendConfig.modelPreference,
+      platformManaged: backendConfig.platformManaged,
+      onRuntimeEvent: input.onProviderEvent
+        ? (event) => input.onProviderEvent?.(providerEventFromRuntimeEvent(event, backendConfig.model))
+        : undefined,
     });
     const model = modelFromResult(result);
+    const providerEvents = providerEventsFromResult(result, model);
+    await emitProviderEvents(providerEvents, input.onProviderEvent);
     return {
       title: titleFromArtifact(result),
       content: formatDraftContent(input, markdownContent(result)),
@@ -527,7 +687,7 @@ export class AppServerPromptAgentService {
       ].filter(Boolean).join('；'),
       model,
       protocol: undefined,
-      providerEvents: providerEventsFromResult(result, model),
+      providerEvents,
     };
   }
 
@@ -576,8 +736,14 @@ export class AppServerPromptAgentService {
       businessObjectRef: promptRefinementBusinessObjectRef(input),
       providerPreference: backendConfig.providerPreference,
       modelPreference: backendConfig.modelPreference,
+      platformManaged: backendConfig.platformManaged,
+      onRuntimeEvent: input.onProviderEvent
+        ? (event) => input.onProviderEvent?.(providerEventFromRuntimeEvent(event, backendConfig.model))
+        : undefined,
     });
     const model = modelFromResult(result);
+    const providerEvents = providerEventsFromResult(result, model);
+    await emitProviderEvents(providerEvents, input.onProviderEvent);
     return {
       content: formatRefinedContent(input, markdownContent(result)),
       note: [
@@ -586,7 +752,7 @@ export class AppServerPromptAgentService {
       ].filter(Boolean).join('；'),
       model,
       protocol: undefined,
-      providerEvents: providerEventsFromResult(result, model),
+      providerEvents,
     };
   }
 
@@ -595,9 +761,13 @@ export class AppServerPromptAgentService {
     model: string;
     providerPreference: string;
     modelPreference: string;
+    platformManaged: boolean;
   }> {
     const view = await this.modelConfig.readView();
     const model = resolvePromptAgentModel(view, textModel);
+    if (!view.platformManaged) {
+      throw new Error('AI Agent 对话必须先连接 lime-desktop-platform 模型设置 projection；已阻断 Content Studio 本地模型配置作为 Agent runtime 偏好。');
+    }
     if (view.platformManaged && !model) {
       throw new Error('平台文字模型未配置：请在平台模型设置中为文字 Provider 添加显式模型 ID 后再生成。');
     }
@@ -606,6 +776,7 @@ export class AppServerPromptAgentService {
       model,
       providerPreference: appServerProviderPreference(view),
       modelPreference: model,
+      platformManaged: Boolean(view.platformManaged),
     };
   }
 
@@ -618,13 +789,15 @@ export class AppServerPromptAgentService {
     capabilityId?: string;
     providerPreference?: string;
     modelPreference?: string;
+    platformManaged?: boolean;
     businessObjectRef?: AppServerBusinessObjectRef;
     timeoutMs?: number;
+    onRuntimeEvent?: (event: AppServerRuntimeEvent) => void | Promise<void>;
   }): Promise<AppServerPromptTurnResult> {
     const platformHost = this.platformHost;
     const connectedPlatformHost = platformHost && await platformHost.ensureConnected() ? platformHost : undefined;
     if (connectedPlatformHost) {
-      const result = await connectedPlatformHost.invokeAgent({
+      const invokePromise = connectedPlatformHost.invokeAgent({
         prompt: input.prompt,
         workspacePath: input.workspacePath,
         capabilityId: input.capabilityId ?? 'content.draft.generate',
@@ -641,9 +814,50 @@ export class AppServerPromptAgentService {
         selectedSkillSlugs: input.selectedSkillSlugs,
         businessObjectRef: input.businessObjectRef,
       });
-      const projected = promptTurnResultFromPlatform(result);
+      const result = input.onRuntimeEvent
+        ? await this.waitForPlatformAgentResultWithEvents(connectedPlatformHost, invokePromise, input.onRuntimeEvent)
+        : await invokePromise;
+      const projected = await promptTurnResultFromPlatform(result, input.onRuntimeEvent);
       return projected;
     }
-    return this.appServer.runPromptTurn(input);
+    throw new Error('AI Agent 对话必须通过 lime-desktop-platform runtime bridge 调用 lime.agent；已阻断 Content Studio 本地 sidecar / provider store 凭证回退。');
+  }
+
+  private async waitForPlatformAgentResultWithEvents(
+    platformHost: PlatformHostBridgeClient,
+    invokePromise: Promise<PlatformAgentRuntimeResult>,
+    onRuntimeEvent: (event: AppServerRuntimeEvent) => void | Promise<void>,
+  ): Promise<PlatformAgentRuntimeResult> {
+    let settled = false;
+    let canReadEvents = true;
+    let sessionId: string | undefined;
+    let turnId: string | undefined;
+    let afterSequence: number | undefined;
+    const seen = new Set<string>();
+    const guardedInvoke = invokePromise.finally(() => {
+      settled = true;
+    });
+
+    while (!settled && canReadEvents) {
+      await delay(PLATFORM_AGENT_EVENT_POLL_MS);
+      try {
+        const events = await platformHost.readAgentEvents({ sessionId, turnId, afterSequence });
+        for (const event of events.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))) {
+          const key = `${event.sessionId}:${event.turnId ?? ''}:${event.sequence ?? ''}:${event.type}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          sessionId ??= event.sessionId;
+          turnId ??= event.turnId;
+          if (typeof event.sequence === 'number') {
+            afterSequence = Math.max(afterSequence ?? event.sequence, event.sequence);
+          }
+          await onRuntimeEvent(appServerEventFromPlatformEvent(event));
+        }
+      } catch {
+        canReadEvents = false;
+      }
+    }
+
+    return guardedInvoke;
   }
 }

@@ -178,31 +178,13 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   await expect(breakdownBtn).toBeEnabled({ timeout: 10_000 });
   await breakdownBtn.click();
 
-  // Step 4: 首次上游 429 时只展示错误和手动重试，不自动再次请求
+  // Step 4: 平台托管模式下素材拆解不能读取 Product App 本地视觉 Key。
   await expect(page.locator('.ai-breakdown-error-state')).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator('.ai-breakdown-error-state')).toContainText('未自动重试');
-  expect(getRequestCount()).toBe(1);
-
-  await page.getByRole('button', { name: '重试生成' }).click();
-
-  // Step 5: 用户手动重试后等待拆解结果
-  await expect(page.locator('.ai-breakdown-analysis')).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator('.ai-breakdown-card-grid')).toBeVisible();
-  expect(getRequestCount()).toBe(2);
-
-  // 验证分析卡片出现（至少有构图和光线）
-  const cards = page.locator('.ai-breakdown-card');
-  await expect(cards.first()).toBeVisible();
-  const cardCount = await cards.count();
-  expect(cardCount).toBeGreaterThanOrEqual(2);
-
-  // 验证 Prompt 区域出现
-  await expect(page.locator('.ai-breakdown-prompt-textarea')).toBeVisible();
-  const promptValue = await page.locator('.ai-breakdown-prompt-textarea').inputValue();
-  expect(promptValue.length).toBeGreaterThan(20);
+  await expect(page.locator('.ai-breakdown-error-state')).toContainText('暂未接入平台 lime.agent 视觉理解 runtime');
+  expect(getRequestCount()).toBe(0);
 
   // 验证只交付 Prompt，不再暴露图片生成 / 审核入库动作
-  await expect(page.getByRole('button', { name: '复制到外部工具' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '复制到外部工具' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '生成图片' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '发送到图片生成' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '通过入库' })).toHaveCount(0);

@@ -116,6 +116,7 @@ jobs:
       CI: 'true'
       CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '1'
       LIME_APP_SERVER_REF: ${{ vars.LIME_APP_SERVER_REF || 'v1.65.0' }}
+      LIME_DESKTOP_PLATFORM_REF: ${{ vars.LIME_DESKTOP_PLATFORM_REF || 'v0.2.0' }}
     steps:
       - name: Checkout release ref
         uses: actions/checkout@v4
@@ -188,6 +189,18 @@ jobs:
             --binary "${{ steps.app_server_sidecar.outputs.binary }}" \
             --version "${LIME_APP_SERVER_REF#v}"
 
+      - name: Checkout Lime Desktop Platform source
+        uses: actions/checkout@v4
+        with:
+          repository: limecloud/lime-desktop-platform
+          ref: ${{ env.LIME_DESKTOP_PLATFORM_REF }}
+          path: .tmp/lime-desktop-platform
+
+      - name: Build Lime Desktop Platform packages
+        run: |
+          npm ci --prefix .tmp/lime-desktop-platform
+          npm run build:packages --prefix .tmp/lime-desktop-platform
+
       - name: Run release verification
         run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run verify:local
 
@@ -216,6 +229,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       OEM_BRAND: ${{ matrix.brand }}
       LIME_APP_SERVER_REF: ${{ vars.LIME_APP_SERVER_REF || 'v1.65.0' }}
+      LIME_DESKTOP_PLATFORM_REF: ${{ vars.LIME_DESKTOP_PLATFORM_REF || 'v0.2.0' }}
 
     steps:
       - name: Checkout release ref
@@ -240,6 +254,18 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Checkout Lime Desktop Platform source
+        uses: actions/checkout@v4
+        with:
+          repository: limecloud/lime-desktop-platform
+          ref: ${{ env.LIME_DESKTOP_PLATFORM_REF }}
+          path: .tmp/lime-desktop-platform
+
+      - name: Build Lime Desktop Platform packages
+        run: |
+          npm ci --prefix .tmp/lime-desktop-platform
+          npm run build:packages --prefix .tmp/lime-desktop-platform
 
       - name: Package renderer and main process
         run: npm run build

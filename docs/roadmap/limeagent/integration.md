@@ -11,7 +11,7 @@ content-studio 已经是成熟 Electron 应用，接入 Lime App Server **不改
 
 核心思路：保持 renderer 和 preload 的调用面不变，只替换 main 进程里的执行后端；renderer 仍只接收既有 `AgentEvent` / `AgentPromptSession` 投影。平台宿主下，Content Studio 通过 `LIME_RUNTIME_BRIDGE` 调 `/snapshot`、`/capability/invoke`、`/intent/open`，由 `lime-desktop-platform` 作为 Host Kit、Capability Gateway、Provider 设置 UI 和 App Server sidecar owner。生产包必须携带 Lime `app-server` 与 packaged external backend，`APP_SERVER_BIN` 只允许本地开发 / 测试显式覆盖。`AI agents` 主链必须使用支持 `--backend runtime` 和 `--data-dir` 的 App Server 版本。
 
-当前 App Server turn 主链已经抽出 `ContentStudioAgentRuntimeSessionGateway`，作为不改依赖前的标准 session gateway 过渡 owner；它只封装 `agentSession/*`、`artifact/read`、`evidence/export` 和 `agentSession/event` notification，不拥有 UI projection、Provider key 或工具状态机。`@limecloud/agent-runtime-client` 尚未安装到本仓库，真正替换为 `@limecloud/agent-runtime-client/sessionGateway` 需要单独修改 `package.json` / `package-lock.json` 并经过依赖变更确认。
+当前 App Server turn 主链已经抽出 `ContentStudioAgentRuntimeSessionGateway`，并固定安装 `@limecloud/agent-runtime-client@0.1.1`。本地 gateway 只封装 `agentSession/start`、`artifact/read` 以及现有 sidecar transport 适配；`startTurn/readThread/cancelTurn/respondAction/exportEvidence/nextEvent` 通过 `@limecloud/agent-runtime-client/sessionGateway` 的 `createAgentRuntimeClientFromSessionGateway(...)` 进入标准 `AgentRuntimeClient`。它不拥有 UI projection、Provider key 或工具状态机，也不能回退到无 scope `app-server-client`。
 
 ## 2. 现状锚点（已核实）
 
@@ -31,7 +31,7 @@ content-studio 已经是成熟 Electron 应用，接入 Lime App Server **不改
 | `不改` | renderer 业务组件 | 业务 UI 暂不接 sidecar，仍使用既有 Agent 投影 |
 | `不改` | `agent:run` / `agent:cancel` IPC 名、`agent:event:${taskId}` 事件名 | 合同稳定，内部委托 sidecar |
 | `current` | `src/main/services/appServerSidecarService.ts` | sidecar newline-delimited JSON-RPC 连接、health、Prompt Agent runtime backend、agent run/cancel compat |
-| `current` | `src/main/services/appServerAgentRuntimeGateway.ts` | standalone/dev App Server turn 主链的标准 session gateway 过渡 owner；封装 `agentSession/*`、`artifact/read`、`evidence/export` 和 `agentSession/event` notification |
+| `current` | `src/main/services/appServerAgentRuntimeGateway.ts` | standalone/dev App Server turn 主链的标准 runtime-client adapter；通过 `@limecloud/agent-runtime-client/sessionGateway` 包装现有 sidecar transport，本地只保留 `agentSession/start` 与 `artifact/read` 补充能力 |
 | `current` | `src/main/services/appServerPromptAgentService.ts` | `AI agents` 工作台 Prompt Agent 主链；只传 provider/model preference，不传 key |
 | `current` | `lime-desktop-platform` Host Kit / Capability Gateway / Provider 设置 UI / App Server sidecar owner | 平台宿主事实源，Content Studio 不复制平台设置和 sidecar lifecycle |
 | `current` | 平台宿主 `LIME_RUNTIME_BRIDGE` -> `/snapshot`、`/capability/invoke`、`/intent/open` | Product App 与宿主通信合同 |
@@ -42,7 +42,7 @@ content-studio 已经是成熟 Electron 应用，接入 Lime App Server **不改
 | `compat` | packaged external backend / `ModelConfigStore` 本地 text/image/video key | smoke、媒体、通用文字旧链路和一次性迁移 source；不作为 `AI agents` runtime key source |
 | `deprecated` | Prompt Agent 从 `ModelConfigStore.getTextApiKey()` 读 key 或通过 `backendEnv` 传 key | 已下线，不允许回流 |
 | `dead` | 客户端自带 SDK runtime / 第二套 runtime adapter / Product App 保存 Provider key 作为 Agent Runtime key source / Provider key 双存 | 不再保留 fallback 或新功能入口 |
-| `当前实现` | main 侧轻量 JSON-RPC client + `ContentStudioAgentRuntimeSessionGateway` | 直接消费 sidecar；后续如替换为 `@limecloud/agent-runtime-client/sessionGateway` 或官方 `app-server-client`，必须 pin 发布版本且不引入 Lime Rust workspace |
+| `当前实现` | main 侧轻量 JSON-RPC transport + `ContentStudioAgentRuntimeSessionGateway` + `@limecloud/agent-runtime-client/sessionGateway` | 直接消费 sidecar transport，标准 lifecycle 由 `@limecloud/agent-runtime-client@0.1.1` 拥有；不得安装无 scope `app-server-client`，不得引入 Lime Rust workspace |
 
 禁止方向（对齐 Lime `consumer-integration.md` §4）：
 
@@ -193,7 +193,7 @@ AppServerSidecarService.runCapabilityTurn
 | `nextEvent` | `agentSession/event` | 返回 JSON-RPC notification 形状，不能返回裸 runtime event。 |
 | `nextRuntimeEvent` | 内部 helper | 仅供本仓库 drain loop 消费裸 `RuntimeEvent`，不是标准 client API。 |
 
-下一刀接入 `@limecloud/agent-runtime-client/sessionGateway` 时，应删除或压薄本地 gateway 适配层，而不是继续扩展它。
+当前已经接入 `@limecloud/agent-runtime-client/sessionGateway`；后续只能继续压薄本地 gateway 适配层，把它限制在 session 创建、artifact read 和 sidecar transport，不得继续扩展成第二套 runtime client。
 
 ### 6.3 `runPromptTurn(...)`：AI agents current 主链
 
@@ -469,21 +469,20 @@ npm run start
 npm run platform-host:runtime:live -- --provider <providerId> --model <modelId>
 ```
 
-如果后续把 main 侧轻量 client 替换为 `app-server-client`，本地联调可用 `npm link` 或 `file:` 依赖；生产依赖必须 pin 到发布版本。禁止把 `/Users/...` 绝对路径写进 repo。
+标准包依赖已经固定：
 
-如果后续安装 `@limecloud/agent-runtime-client`：
-
-1. 同步 `package.json` / `package-lock.json`，并按本仓库高风险规则先确认依赖和锁文件改动。
-2. 使用 `@limecloud/agent-runtime-client/sessionGateway` 包装现有 gateway 或替换 `ContentStudioAgentRuntimeSessionGateway`。
-3. `nextEvent()` 必须继续返回 `agentSession/event` notification，不能为适配本地 drain loop 改成裸 event。
-4. `verify:lime-agent` 需要增加标准包导入守卫，确认产品 runtime client 真实来自 `@limecloud/agent-runtime-client`。
+1. `package.json` 固定 `@limecloud/agent-runtime-client: 0.1.1`，不使用 `^` 漂移、`file:`、本机绝对路径、tarball 临时路径或 `npm link` 作为完成证据。
+2. `package-lock.json` 必须解析到 `https://registry.npmjs.org/@limecloud/agent-runtime-client/-/agent-runtime-client-0.1.1.tgz`，并由它传递依赖 `@limecloud/app-server-client: 1.66.0`。
+3. `appServerAgentRuntimeGateway.ts` 必须从 `@limecloud/agent-runtime-client/sessionGateway` 导入 `createAgentRuntimeClientFromSessionGateway`，把现有 sidecar gateway 包装为标准 `AgentRuntimeClient`。
+4. `nextEvent()` 必须继续返回 `agentSession/event` notification，不能为适配本地 drain loop 改成裸 event。
+5. `verify:lime-agent` 已增加标准包导入和 lockfile 守卫，确认产品 runtime client 真实来自 `@limecloud/agent-runtime-client`。
 
 ## 10. 验收口径
 
 1. IPC 合同稳定：`agent:run` / `agent:cancel` 命令名与 `agent:event:${taskId}` 事件名不变。
 2. renderer 零改动：业务组件和 preload 调用面不触及。
 3. main 委托 sidecar：`agent:run` 默认走 App Server，不再直接调客户端自带 runtime，也不保留显式 fallback。
-4. 不 import Lime Rust crate：当前仅依赖 sidecar binary 和 main 进程 JSON-RPC client；如后续引入 `app-server-client`，必须 pin 到发布版本。
+4. 不 import Lime Rust crate：当前仅依赖 sidecar binary、main 进程 JSON-RPC transport 与 `@limecloud/agent-runtime-client` 标准 facade；不得引入无 scope `app-server-client`。
 5. sidecar 被 pin：生产包从 manifest 选 artifact 并校验 sha256。
 6. 生命周期完整：main 能 spawn / initialize / cancel / shutdown / restart。
 7. renderer 只拿投影：不直接 spawn sidecar、不读 stdout。

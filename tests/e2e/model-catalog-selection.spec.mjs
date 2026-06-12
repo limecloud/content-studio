@@ -139,7 +139,7 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     await expect(page.locator('.lime-theme-settings')).toContainText('外观模式');
     await page.getByRole('button', { name: '深色' }).click();
     await expect(page.locator('.app-shell')).toHaveAttribute('data-theme', 'dark');
-    await expect(page.locator('.lime-theme-status')).toContainText('当前窗口已预览');
+    await expect(page.locator('.lime-theme-status')).toContainText(/当前窗口已预览|主题设置已保存/);
     await page.getByRole('button', { name: /海洋/ }).click();
     await expect(page.locator('.app-shell')).toHaveAttribute('data-color', 'ocean');
     await expect(page.locator('.lime-theme-palette.active')).toContainText('海洋');
@@ -163,17 +163,14 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     expect(providerRows.join('\n')).not.toContain('OpenAI Compatible');
     expect(providerRows.join('\n')).not.toContain('Anthropic Compatible');
     expect(providerRows.join('\n')).not.toContain('Local Runtime');
-    await expect(page.locator('.lime-model-settings')).toContainText('未连接平台设置');
-    await expect(page.locator('.lime-model-settings')).toContainText('未连接平台设置 / 图片生成');
+    await expect(page.locator('.lime-model-settings')).toContainText('Content Studio 文字');
+    await expect(page.locator('.lime-model-settings')).toContainText('Content Studio 图片');
+    await expect(page.locator('.lime-model-settings')).toContainText('Content Studio 视频');
     await expect(page.locator('.lime-model-settings')).toContainText('provider 设置由平台统一保存');
     await page.getByRole('button', { name: '打开完整模型设置' }).click();
-    await expect(page.locator('.app-error-banner')).toContainText('当前窗口未连接平台设置中心，请从平台客户端打开内容工厂后再进入完整模型设置。');
-    await expect(page.locator('.app-error-banner')).not.toContainText('Error invoking remote method');
-    await expect(page.locator('.app-error-banner')).not.toContainText('platformHost:openModelSettings');
-    await expect(page.locator('.app-error-banner')).not.toContainText('runtime bridge');
-    await page.getByLabel('关闭错误提示').click();
+    await expect(page.locator('.app-error-banner')).toHaveCount(0);
 
-    await page.getByRole('button', { name: /未连接平台设置 \/ 图片生成/ }).click();
+    await page.getByRole('button', { name: /Content Studio 图片/ }).click();
     await page.getByLabel('API 密钥').fill('new-product-app-key');
     await page.locator('.lime-model-add-priority input').fill('new-product-app-model');
     await page.locator('.lime-model-add-priority button').click();
@@ -182,6 +179,7 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
 
     const persisted = await page.evaluate(() => window.contentStudio.getModelConfig());
     expect(persisted.imageModels[0]).toBe('saved-image-model');
+    expect(persisted.imageModels).not.toContain('new-product-app-model');
     expect(persisted.hasImageApiKey).toBe(true);
 
     await page.getByRole('button', { name: '账号', exact: true }).click();

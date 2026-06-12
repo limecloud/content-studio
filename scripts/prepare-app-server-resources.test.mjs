@@ -214,7 +214,7 @@ test('prepares resources from Lime dist-electron app-resource manifest url', asy
     const { sourceBinary, sha256 } = await writeFakeAppServerBinary(appServerDir, binaryName);
     const manifestPath = join(dir, 'app-server.release.json');
     await writeFile(manifestPath, `${JSON.stringify({
-      version: '1.65.0',
+      version: '1.66.0',
       protocolVersion: 'appserver.v0',
       artifacts: [
         { platform, url: `app-resource://app-server/${platform}/${binaryName}`, sha256 },
@@ -242,7 +242,7 @@ test('rejects app-resource artifact url from remote manifest', async () => {
     const binaryName = sidecarBinaryName(process.platform);
     const { sha256 } = await writeFakeAppServerBinary(dir, binaryName);
     const manifestBody = `${JSON.stringify({
-      version: '1.65.0',
+      version: '1.66.0',
       protocolVersion: 'appserver.v0',
       artifacts: [
         { platform, url: `app-resource://app-server/${platform}/${binaryName}`, sha256 },

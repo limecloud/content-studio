@@ -104,7 +104,7 @@ export function BrandKnowledgeModule({
   const [agentMessage, setAgentMessage] = useState('请基于当前品牌资料和知识库版本，检查卖点、合规边界和下一步场景库生成建议。');
   const activeSourceLabel = activeKnowledgeBase ? `${activeKnowledgeBase.title} · ${baseLabel(activeKnowledgeBase.baseType)}` : '当前未选知识库';
   const hasSource = citationCount > 0;
-  const hasBrandKnowledge = Boolean(activeBrandKnowledgeBase);
+  const hasBrandKnowledge = activeBrandKnowledgeBase?.status === 'ready';
   const relatedAgentSessions = useMemo(
     () => agentPromptSessions.filter((session) => (
       session.title.includes('品牌知识库 Agent') ||
@@ -227,8 +227,8 @@ export function BrandKnowledgeModule({
             key={record.id}
             className="prompt-draft-card"
             active={record.id === activeBrandKnowledgeBaseId}
-            status={record.status === 'ready' ? '已抽取' : '待确认'}
-            statusTone={record.status === 'ready' ? 'ready' : 'idle'}
+            status={record.status === 'ready' ? '已抽取' : record.status === 'blocked' ? '待配置' : '待确认'}
+            statusTone={record.status === 'ready' ? 'ready' : record.status === 'blocked' ? 'blocked' : 'idle'}
             title={record.title}
             meta={record.brandVoice}
             onClick={() => setActiveBrandKnowledgeBaseId(record.id)}

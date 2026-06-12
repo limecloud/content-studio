@@ -641,6 +641,7 @@ export class AppServerSidecarService {
         : []),
       ...(envPath && allowAppServerBinaryOverride() ? [envPath] : []),
       ...repoResourceCandidates('current', binaryName),
+      ...limeDevAppServerCandidates(binaryName),
     ];
     return candidates.find((candidate) => Boolean(candidate && existsSync(candidate))) ?? null;
   }
@@ -832,11 +833,24 @@ function repoResourceCandidates(...parts: string[]): string[] {
   return Array.from(new Set(roots.map((root) => join(root, 'resources', 'app-server', ...parts))));
 }
 
+function limeDevAppServerCandidates(binaryName: string): string[] {
+  const roots = [
+    process.env.LIME_APP_SERVER_REPO?.trim(),
+    resolve(process.cwd(), '..', '..', 'aiclientproxy', 'lime'),
+    resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'aiclientproxy', 'lime'),
+  ].filter((root): root is string => Boolean(root));
+  const platformKey = `${process.platform}-${process.arch}`;
+  return Array.from(new Set(roots.flatMap((root) => [
+    join(root, 'dist-electron', 'app-server', platformKey, binaryName),
+    join(root, 'lime-rs', 'target', 'debug', binaryName),
+  ])));
+}
+
 function missingAppServerMessage(): string {
   return [
     '未找到随包 app-server sidecar。',
     '生产包必须携带 resources/app-server/current/app-server(.exe)。',
-    '本地开发或测试如需覆盖，可设置 CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE=1 和 APP_SERVER_BIN。',
+    '本地开发会自动查找 ../../aiclientproxy/lime/dist-electron/app-server；也可设置 LIME_APP_SERVER_REPO，或设置 CONTENT_STUDIO_ALLOW_APP_SERVER_BIN_OVERRIDE=1 和 APP_SERVER_BIN。',
   ].join(' ');
 }
 

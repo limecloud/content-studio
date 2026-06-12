@@ -6,6 +6,7 @@ const projectRoot = resolve(process.cwd());
 
 const TARGET_FILES = [
   'package.json',
+  'package-lock.json',
   'src/shared/types.ts',
   'src/preload/index.ts',
   'src/main/ipc.ts',
@@ -15,6 +16,7 @@ const TARGET_FILES = [
   'src/main/services/platformHostBridgeClient.ts',
   'src/main/services/agentPromptSessionStore.ts',
   'src/main/services/modelConfigStore.ts',
+  'src/renderer/src/devContentStudioBridge.ts',
   'src/renderer/src/components/agents/AgentsWorkbench.tsx',
   'src/renderer/src/components/ModuleOutlet.tsx',
   'src/renderer/src/components/agent/AgentSessionPanel.tsx',
@@ -112,6 +114,7 @@ function runBoundaryChecks(files) {
   const platformLivePath = 'scripts/platform-host-runtime-live-check.mjs';
   const sessionStorePath = 'src/main/services/agentPromptSessionStore.ts';
   const modelStorePath = 'src/main/services/modelConfigStore.ts';
+  const devBridgePath = 'src/renderer/src/devContentStudioBridge.ts';
   const agentsPath = 'src/renderer/src/components/agents/AgentsWorkbench.tsx';
   const agentSessionPanelPath = 'src/renderer/src/components/agent/AgentSessionPanel.tsx';
   const projectionSurfacePath = 'src/renderer/src/components/agent/AgentUiProjectionSurface.tsx';
@@ -122,6 +125,71 @@ function runBoundaryChecks(files) {
   const settingsPath = 'src/renderer/src/components/SettingsDialogOutlet.tsx';
   const modulesCssPath = 'src/renderer/src/styles/modules.css';
   const shellCssPath = 'src/renderer/src/styles/shell.css';
+
+  assertMatches({
+    files,
+    failures,
+    path: 'package.json',
+    pattern: /"@limecloud\/agent-runtime-client"\s*:\s*"0\.1\.1"/,
+    ruleId: 'agent-runtime-client-scoped-dependency',
+    message: 'Content Studio 必须通过 limecloud organization scoped 包固定消费 @limecloud/agent-runtime-client@0.1.1。',
+  });
+  assertNotIncludes({
+    files,
+    failures,
+    path: 'package.json',
+    needle: '"app-server-client"',
+    ruleId: 'no-bare-app-server-client-dependency',
+    message: 'Content Studio 不能依赖无 scope app-server-client；标准 App Server client 必须来自 @limecloud/app-server-client。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: 'package-lock.json',
+    needle: 'node_modules/@limecloud/agent-runtime-client',
+    ruleId: 'agent-runtime-client-lockfile-registry-package',
+    message: 'lockfile 必须解析到 registry 版 @limecloud/agent-runtime-client。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: 'package-lock.json',
+    needle: 'https://registry.npmjs.org/@limecloud/agent-runtime-client/-/agent-runtime-client-0.1.1.tgz',
+    ruleId: 'agent-runtime-client-lockfile-registry-tarball',
+    message: 'lockfile 不能使用 file、tarball 本机路径或个人包；必须消费 registry 版 @limecloud/agent-runtime-client@0.1.1。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: 'package-lock.json',
+    needle: '"@limecloud/app-server-client": "1.66.0"',
+    ruleId: 'app-server-client-scoped-transitive-dependency',
+    message: '@limecloud/agent-runtime-client 必须传递依赖 @limecloud/app-server-client@1.66.0，不能回到无 scope 包。',
+  });
+  assertNotIncludes({
+    files,
+    failures,
+    path: 'package-lock.json',
+    needle: 'node_modules/app-server-client',
+    ruleId: 'no-bare-app-server-client-lockfile-package',
+    message: 'lockfile 不能解析无 scope app-server-client 包。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: runtimeGatewayPath,
+    needle: "from '@limecloud/agent-runtime-client/sessionGateway'",
+    ruleId: 'agent-runtime-client-standard-session-gateway-import',
+    message: 'Content Studio runtime gateway 必须消费 @limecloud/agent-runtime-client/sessionGateway 标准 adapter。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: runtimeGatewayPath,
+    needle: 'createAgentRuntimeClientFromSessionGateway',
+    ruleId: 'agent-runtime-client-standard-session-gateway-factory',
+    message: 'Content Studio runtime gateway 必须通过 createAgentRuntimeClientFromSessionGateway 接入标准 AgentRuntimeClient。',
+  });
 
   for (const path of [sharedPath, preloadPath, ipcPath, settingsPath]) {
     assertNotIncludes({
@@ -197,10 +265,42 @@ function runBoundaryChecks(files) {
   assertIncludes({
     files,
     failures,
+    path: promptAgentPath,
+    needle: 'AI Agent 对话必须通过 lime-desktop-platform runtime bridge 调用 lime.agent',
+    ruleId: 'prompt-agent-platform-bridge-required',
+    message: 'Prompt Agent 主链必须强制走 lime-desktop-platform runtime bridge，不能在直连启动时回退本地 sidecar/provider store。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: promptAgentPath,
+    needle: '已阻断 Content Studio 本地 sidecar / provider store 凭证回退',
+    ruleId: 'prompt-agent-no-local-sidecar-credential-fallback',
+    message: 'Prompt Agent 必须明确阻断 Content Studio 本地 sidecar/provider store 凭证回退。',
+  });
+  assertNotIncludes({
+    files,
+    failures,
+    path: promptAgentPath,
+    needle: 'return this.appServer.runPromptTurn(input)',
+    ruleId: 'prompt-agent-no-product-app-sidecar-return',
+    message: 'Product App Prompt Agent 不能直接 return 本地 App Server sidecar 结果。',
+  });
+  assertIncludes({
+    files,
+    failures,
     path: platformBridgePath,
     needle: 'modelPreference: input.modelPreference ?? input.modelId',
     ruleId: 'platform-bridge-model-preference',
     message: '平台 Host Bridge 调 lime.agent 时必须显式传 modelPreference，不能只传 modelId。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: platformBridgePath,
+    needle: 'BRIDGE_AGENT_FETCH_TIMEOUT_MS',
+    ruleId: 'platform-bridge-agent-timeout',
+    message: '平台 lime.agent 调用必须使用长超时，不能复用短连接 discovery/settings 超时。',
   });
   assertIncludes({
     files,
@@ -244,7 +344,7 @@ function runBoundaryChecks(files) {
       path: runtimeGatewayPath,
       needle,
       ruleId: 'agent-runtime-session-gateway-contract',
-      message: 'Content Studio App Server runtime 必须先收敛到标准 session gateway 形状，后续才能替换为 @limecloud/agent-runtime-client/sessionGateway。',
+      message: 'Content Studio App Server runtime 必须保持标准 session gateway 形状，并由 @limecloud/agent-runtime-client/sessionGateway 包装成 AgentRuntimeClient。',
     });
   }
   assertIncludes({
@@ -291,9 +391,9 @@ function runBoundaryChecks(files) {
     files,
     failures,
     path: runtimeGatewayPath,
-    needle: 'gateway.nextRuntimeEvent',
+    needle: 'runtimeClient.nextEvent',
     ruleId: 'agent-runtime-gateway-internal-runtime-event-helper',
-    message: '内部 turn drain 可以消费 runtime event helper，但标准 nextEvent 必须保留 notification 形状。',
+    message: '内部 turn drain 必须通过标准 AgentRuntimeClient.nextEvent 消费 notification，再由本地 guard 提取 runtime event。',
   });
   assertIncludes({
     files,
@@ -502,21 +602,45 @@ function runBoundaryChecks(files) {
     ruleId: 'agents-model-settings-projection-export',
     message: '必须保留 agents 专用模型设置 projection。',
   });
-  assertIncludes({
+  assertNotIncludes({
     files,
     failures,
     path: modelProjectionPath,
-    needle: 'return { providers: [] };',
-    ruleId: 'agents-model-settings-standalone-empty',
-    message: 'standalone 下 agents 不能把 Content Studio 本地模型伪装成平台模型。',
+    needle: 'content-studio-standalone-agent',
+    ruleId: 'agents-model-settings-no-standalone-agent-provider',
+    message: 'standalone 下 agents 不能暴露本地 Agent Runtime provider；Prompt Agent 必须通过 lime-desktop-platform runtime bridge。',
+  });
+  assertNotIncludes({
+    files,
+    failures,
+    path: modelProjectionPath,
+    needle: 'App Server provider store 执行 Agent turn',
+    ruleId: 'agents-model-settings-no-provider-store-copy',
+    message: 'Agent 模型菜单文案不能暗示 Content Studio 独立运行时可通过本地 provider store 执行 Agent turn。',
   });
   assertIncludes({
     files,
     failures,
     path: modelProjectionPath,
-    needle: 'providers: selectedProvider ? [selectedProvider] : []',
-    ruleId: 'agents-model-settings-single-agent-provider',
-    message: 'agents 模型菜单只能暴露当前 Agent provider 的文本模型，避免跨 provider 选择。',
+    needle: 'providers: [],',
+    ruleId: 'agents-model-settings-empty-standalone',
+    message: 'standalone 下 agents 必须返回空 provider，避免把本地模型伪装成可执行 Agent runtime。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: modelProjectionPath,
+    needle: 'const agentModels = uniqueModels(textProviders.flatMap((provider) => provider.models))',
+    ruleId: 'agents-model-settings-provider-union',
+    message: '平台托管 agents 模型菜单必须暴露平台 provider store 投影中的所有可用文字模型。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: modelProjectionPath,
+    needle: "id: 'lime-platform-agent-text'",
+    ruleId: 'agents-model-settings-synthetic-provider',
+    message: '平台托管 agents 必须使用合成只读 provider 承载模型并集，避免 UI 组件隐藏其它 provider 的模型。',
   });
 
   assertIncludes({
@@ -595,7 +719,7 @@ function runBoundaryChecks(files) {
     files,
     failures,
     path: sessionStorePath,
-    needle: "event.kind === 'draft' ? 'artifact'",
+    needle: 'function runtimeFactOwner',
     ruleId: 'runtime-artifact-owner-projected',
     message: '上游 artifact runtime fact 必须保留 artifact owner，不能只降成本地 UI 事件。',
   });
@@ -603,9 +727,9 @@ function runBoundaryChecks(files) {
     files,
     failures,
     path: sessionStorePath,
-    needle: "owner: 'ui'",
-    ruleId: 'local-events-marked-ui-compat',
-    message: '本地合成事件必须标记 owner=ui，避免冒充 runtime fact。',
+    needle: "if (kind === 'draft') return 'artifact';",
+    ruleId: 'runtime-draft-kind-maps-artifact-owner',
+    message: 'App Server provider event 的 draft kind 必须投影为 artifact owner。',
   });
   assertIncludes({
     files,
@@ -615,6 +739,60 @@ function runBoundaryChecks(files) {
     ruleId: 'runtime-snapshot-fact-present',
     message: '会话投影必须包含 snapshot.updated 事实，供共享 AgentUI 汇总。',
   });
+  for (const needle of [
+    'buildStartExecutionEvents',
+    'buildContinueExecutionEvents',
+    'blockedProviderEvents',
+    'providerRuntimeFactExecutionEvents',
+    'compactProviderEvents',
+    'resolvedActionTitle',
+    'resolvedActionDetail',
+    "owner: 'ui'",
+    'Prompt 草稿未生成',
+    '处理状态：',
+    '恢复路径：',
+  ]) {
+    assertNotIncludes({
+      files,
+      failures,
+      path: sessionStorePath,
+      needle,
+      ruleId: 'no-local-agent-runtime-facts',
+      message: 'Agent runtime facts 只能来自 Lime App Server provider events，不能保留本地合成事件、工具、证据或假草稿。',
+    });
+  }
+  for (const needle of [
+    'browser-dev-event',
+    'browser-dev-runtime',
+    'DEV_RUNTIME_SCHEMA_VERSION',
+    'DEV_RUNTIME_ID',
+    'devRuntimeEvent',
+    'devSnapshotEvent',
+    'owner: \'ui\'',
+  ]) {
+    assertNotIncludes({
+      files,
+      failures,
+      path: devBridgePath,
+      needle,
+      ruleId: 'no-browser-dev-agent-runtime-mock',
+      message: '浏览器开发桥接不能伪造 Agent runtime facts；未接入 App Server 时必须 fail closed。',
+    });
+  }
+  for (const needle of [
+    '不能创建 agents 会话',
+    '不能继续 agents 会话',
+    'Content Studio 不再本地伪造',
+  ]) {
+    assertIncludes({
+      files,
+      failures,
+      path: devBridgePath,
+      needle,
+      ruleId: 'browser-dev-agent-runtime-fails-closed',
+      message: '浏览器开发桥接未接入 App Server runtime 时必须明确 fail closed。',
+    });
+  }
 
   assertNotMatches({
     files,

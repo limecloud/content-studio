@@ -403,7 +403,11 @@ function platformModelConfigView(
   const imageProvider = selectPlatformProvider(settings, 'image');
   const videoProvider = selectPlatformProvider(settings, 'video');
   const snapshot = bridge.status().snapshot;
-  const textModels = uniqueModels(textProvider?.models ?? []);
+  const textModels = uniqueModels(
+    settings.providers
+      .filter((provider) => provider.enabled && provider.capabilityKinds.includes('text'))
+      .flatMap((provider) => provider.models),
+  );
   const imageModels = uniqueModels(imageProvider?.models ?? []);
   const videoModels = uniqueModels(videoProvider?.models ?? []);
   const textModel = platformDefaultModel(settings.defaultTextModelId, textModels);
@@ -633,8 +637,12 @@ export class ModelConfigStore {
       textApiEndpoint,
       hasTextApiKey,
       textApiKeyStatus,
+      agentProviderPreference: undefined,
       textModel: config.textModel ?? DEFAULT_CONFIG.textModel,
-      textModels: compactModels(config.textModels, DEFAULT_CONFIG.textModels),
+      textModels: compactModels([
+        ...(config.textModels ?? []),
+        ...(config.videoModels ?? []),
+      ], DEFAULT_CONFIG.textModels),
       imageProvider,
       imageProtocol,
       imageApiEndpoint: config.imageApiEndpoint ?? DEFAULT_CONFIG.imageApiEndpoint,
