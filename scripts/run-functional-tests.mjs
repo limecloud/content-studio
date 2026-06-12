@@ -1,13 +1,30 @@
-import { mkdir, rm } from 'node:fs/promises';
+import { access, mkdir, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import * as esbuild from 'esbuild';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const desktopPlatformDir = resolve(projectRoot, '../lime-desktop-platform');
+const desktopPlatformCandidates = [
+  resolve(projectRoot, '.tmp/lime-desktop-platform'),
+  resolve(projectRoot, '../lime-desktop-platform'),
+];
 const outDir = join(projectRoot, '.tmp', 'functional-tests');
 const outFile = join(outDir, 'content-flow.test.mjs');
+
+async function resolveFirstExistingPath(paths) {
+  for (const path of paths) {
+    try {
+      await access(path);
+      return path;
+    } catch {
+      // Try the next known checkout location.
+    }
+  }
+  throw new Error(`Cannot find lime-desktop-platform checkout. Tried: ${paths.join(', ')}`);
+}
+
+const desktopPlatformDir = await resolveFirstExistingPath(desktopPlatformCandidates);
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
