@@ -9,6 +9,10 @@ interface StoredSkillSelection {
 }
 
 const DEFAULT_ENABLED: SkillRef[] = [
+  { slug: 'copywriting-master', source: 'builtin' },
+  { slug: 'article-typesetting-master', source: 'builtin' },
+  { slug: 'moments-copywriter', source: 'builtin' },
+  { slug: 'ip-knowledge-base-builder', source: 'builtin' },
   { slug: 'knowledge-citation-picker', source: 'builtin' },
   { slug: 'prompt-pack-builder', source: 'builtin' },
   { slug: 'scene-library-builder', source: 'builtin' },
