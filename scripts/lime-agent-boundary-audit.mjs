@@ -200,6 +200,14 @@ function runBoundaryChecks(files) {
     files,
     failures,
     path: electronVitePath,
+    needle: "if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') return false;",
+    ruleId: 'lime-package-alias-ci-disabled',
+    message: 'CI / release verification 必须强制禁用 Lime packages 本地 alias，确保生产构建走 npm registry 包。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: electronVitePath,
     needle: "|| process.env.CONTENT_STUDIO_LOCAL_BUILD === '1';",
     ruleId: 'lime-package-alias-serve-dev-only',
     message: '本地 Lime packages alias 只能在 npm run dev / 本地 build 验证启用，生产 build/dist 必须走 npm registry 包。',

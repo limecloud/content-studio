@@ -49,6 +49,7 @@ const limeAgentPackageAliases = [
 ];
 
 function shouldUseLimeAgentPackageAliases(command: 'build' | 'serve'): boolean {
+  if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') return false;
   return (command === 'serve' && process.env.npm_lifecycle_event === 'dev')
     || process.env.CONTENT_STUDIO_LOCAL_BUILD === '1';
 }

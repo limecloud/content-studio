@@ -116,7 +116,7 @@ jobs:
       CI: 'true'
       CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '1'
       LIME_APP_SERVER_REF: ${{ vars.LIME_APP_SERVER_REF || 'v1.66.0' }}
-      LIME_DESKTOP_PLATFORM_REF: ${{ vars.LIME_DESKTOP_PLATFORM_REF || 'v0.2.1' }}
+      LIME_DESKTOP_PLATFORM_REF: ${{ vars.LIME_DESKTOP_PLATFORM_REF || '5f5befb' }}
     steps:
       - name: Checkout release ref
         uses: actions/checkout@v4
@@ -229,7 +229,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       OEM_BRAND: ${{ matrix.brand }}
       LIME_APP_SERVER_REF: ${{ vars.LIME_APP_SERVER_REF || 'v1.66.0' }}
-      LIME_DESKTOP_PLATFORM_REF: ${{ vars.LIME_DESKTOP_PLATFORM_REF || 'v0.2.1' }}
+      LIME_DESKTOP_PLATFORM_REF: ${{ vars.LIME_DESKTOP_PLATFORM_REF || '5f5befb' }}
 
     steps:
       - name: Checkout release ref
