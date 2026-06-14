@@ -18,6 +18,14 @@ const electronArgs = process.env.CI === 'true' && process.platform === 'linux' ?
 const ONE_PIXEL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
 const realModelConfigPath = process.env.CONTENT_STUDIO_E2E_MODEL_CONFIG
   || join(homedir(), 'Library', 'Application Support', 'content-studio', 'model-config.json');
+const liveGeminiEnabled = process.env.CONTENT_STUDIO_E2E_LIVE_GEMINI === '1';
+const liveGeminiProviderId = process.env.CONTENT_STUDIO_E2E_LIVE_PROVIDER
+  || 'custom-e8e8f6b8-460b-4e74-9421-db92a177c8bf';
+const liveGeminiModelId = process.env.CONTENT_STUDIO_E2E_LIVE_MODEL || 'gemini-2.5-flash';
+const liveGeminiAppServerDataDir = process.env.CONTENT_STUDIO_E2E_APP_SERVER_DATA_DIR
+  || join(homedir(), 'Library', 'Application Support', 'content-studio', 'app-server');
+const appServerBinaryName = process.platform === 'win32' ? 'app-server.exe' : 'app-server';
+const platformKey = `${process.platform}-${process.arch}`;
 const COMMAND_CENTER_MAX_HEIGHT = {
   compact: 120,
   managed: 195,
@@ -185,6 +193,14 @@ async function launchContentStudio(testInfo, options = {}) {
     }
     await copyFile(options.modelConfigPath, join(userDataDir, 'model-config.json'));
   }
+  if (options.platformModelSettings) {
+    await mkdir(join(userDataDir, 'state'), { recursive: true });
+    await writeFile(
+      join(userDataDir, 'state', 'model-settings.json'),
+      `${JSON.stringify(options.platformModelSettings, null, 2)}\n`,
+      'utf8',
+    );
+  }
   const diagnostics = [];
 
   const electronApp = await electron.launch({
@@ -203,6 +219,7 @@ async function launchContentStudio(testInfo, options = {}) {
         video: [e2eVideoAssetPath],
         audio: [e2eAudioAssetPath],
       }),
+      CONTENT_STUDIO_USER_DATA_DIR: userDataDir,
       CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: options.requireExplicitTextKey === false ? '0' : '1',
       CONTENT_STUDIO_RESOURCES_DIR: resourcesDir,
       CONTENT_STUDIO_DISABLE_EMBEDDED_PLATFORM_HOST: options.useEmbeddedPlatformHost ? '0' : '1',
@@ -268,7 +285,7 @@ async function closeHttpServer(server) {
 }
 
 function createAppServerRpcClient(dataDir) {
-  const binaryPath = join(resourcesDir, 'app-server', 'current', process.platform === 'win32' ? 'app-server.exe' : 'app-server');
+  const binaryPath = resolveE2eAppServerBinary();
   const child = spawn(binaryPath, ['--stdio', '--backend', 'runtime', '--data-dir', dataDir], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -325,6 +342,21 @@ function createAppServerRpcClient(dataDir) {
       child.kill('SIGTERM');
     },
   };
+}
+
+function resolveE2eAppServerBinary() {
+  const candidates = [
+    process.env.APP_SERVER_BIN,
+    join(resourcesDir, 'app-server', 'current', appServerBinaryName),
+    join(resourcesDir, 'app-server', platformKey, appServerBinaryName),
+    join(projectRoot, '..', '..', 'aiclientproxy', 'lime', 'dist-electron', 'app-server', platformKey, appServerBinaryName),
+    join(projectRoot, '..', '..', 'aiclientproxy', 'lime', 'lime-rs', 'target', 'debug', appServerBinaryName),
+  ].filter(Boolean);
+  const binaryPath = candidates.find((candidate) => existsSync(candidate));
+  if (!binaryPath) {
+    throw new Error(`缺少 E2E App Server binary，已检查：${candidates.join(', ')}`);
+  }
+  return binaryPath;
 }
 
 async function seedOpenAIProviderStore({ dataDir, baseUrl, model = 'test-text-model', apiKey = 'test-text-key' }) {
@@ -853,6 +885,44 @@ async function startFakePlatformRuntimeBridge(options = {}) {
                 readiness: { state: 'ready', reasons: [], setupActions: [] },
                 runtimeContext: { modelProfile: { modelId } },
                 events: agentEvents,
+                bridgeProfile: { mode: 'fake-host-bridge' },
+              },
+              event: {},
+            },
+          });
+          return;
+        }
+
+        if (payload.capability === 'lime.agent' && payload.operation === 'agentSession/action/respond') {
+          const input = payload.input ?? {};
+          const actionId = input.actionId || input.requestId || 'runtime-action-add-source';
+          writeJson(response, 200, {
+            ok: true,
+            result: {
+              ok: true,
+              requestId: 'agent-action-respond',
+              output: {
+                ok: true,
+                state: 'completed',
+                sessionId: input.sessionId || 'platform-session-e2e',
+                threadId: 'platform-thread-e2e',
+                turnId: 'platform-turn-e2e',
+                bridge: 'app-server-json-rpc',
+                message: 'platform action responded',
+                readiness: { state: 'ready', reasons: [], setupActions: [] },
+                runtimeContext: { modelProfile: { modelId: 'test-text-model' } },
+                events: [{
+                  sessionId: input.sessionId || 'platform-session-e2e',
+                  threadId: 'platform-thread-e2e',
+                  turnId: 'platform-turn-e2e',
+                  sequence: 100,
+                  type: 'action.resolved',
+                  payload: {
+                    actionId,
+                    decision: input.decision,
+                    message: '平台已确认人工处理结果',
+                  },
+                }],
                 bridgeProfile: { mode: 'fake-host-bridge' },
               },
               event: {},
@@ -4223,6 +4293,178 @@ test('内容知识地图能开始真实对话', async ({}, testInfo) => {
   }
 });
 
+test('agents 平台默认 Gemini 时不会把旧 Claude 参数传给 lime.agent', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const geminiModel = 'gemini-2.5-flash';
+  const legacyClaudeModel = 'claude-sonnet-4-5';
+  const bridge = await startFakePlatformRuntimeBridge({
+    modelSettings: {
+      version: 'e2e-platform-default-gemini',
+      updatedAt: '2026-06-13T00:00:00.000Z',
+      defaultAgentProviderId: 'platform-gemini',
+      defaultTextModelId: geminiModel,
+      providers: [{
+        id: 'platform-legacy-anthropic',
+        displayName: 'Platform Legacy Anthropic',
+        protocol: 'anthropic-compatible',
+        capabilityKinds: ['text'],
+        enabled: true,
+        apiKeyConfigured: true,
+        authType: 'api-key',
+        baseUrl: 'https://api.anthropic.example/v1',
+        models: [legacyClaudeModel],
+      }, {
+        id: 'platform-gemini',
+        displayName: 'Platform Gemini',
+        protocol: 'gemini-native',
+        capabilityKinds: ['text'],
+        enabled: true,
+        apiKeyConfigured: true,
+        authType: 'api-key',
+        baseUrl: 'https://generativelanguage.googleapis.com',
+        models: [geminiModel],
+      }],
+    },
+  });
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async ({ workspacePath }) => {
+        await window.contentStudio.saveSettings({ workspacePath });
+      }, { workspacePath: workspaceDir });
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待 agents 平台 Gemini 模型回归测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, 'agents');
+      await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).toContainText(geminiModel);
+      await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).not.toContainText(legacyClaudeModel);
+
+      const userIntent = 'E2E agents 平台默认模型回归：基于产品图生成真实生活场景图片 Prompt。';
+      await page.locator('.agents-entry-composer textarea').fill(userIntent);
+      await page.locator('.agents-entry-composer textarea').press('Enter');
+      await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-thread')).toContainText(userIntent, { timeout: 20_000 });
+
+      await expect.poll(
+        async () => {
+          const request = bridge.requests.find((item) =>
+            item.body.capability === 'lime.agent' && item.body.operation === 'agentSession/turn/start'
+          );
+          return request?.body.input?.runtimeOptions?.modelId ?? '';
+        },
+        { message: '等待 lime.agent 使用平台默认 Gemini 模型', timeout: 20_000 },
+      ).toBe(geminiModel);
+
+      const agentRequest = bridge.requests.find((item) =>
+        item.body.capability === 'lime.agent' && item.body.operation === 'agentSession/turn/start'
+      );
+      expect(agentRequest, JSON.stringify(bridge.requests)).toBeTruthy();
+      expect(agentRequest.body.input.runtimeOptions.providerPreference).toBe('platform-gemini');
+      expect(agentRequest.body.input.runtimeOptions.modelPreference).toBe(geminiModel);
+      expect(agentRequest.body.input.modelPolicy.preferredModelId).toBe(geminiModel);
+      expect(JSON.stringify(agentRequest.body)).not.toContain(legacyClaudeModel);
+      expect(JSON.stringify(agentRequest.body)).not.toMatch(/apiKey|api_key|token|secret|password|credential|authorization|cookie/i);
+
+      const persistedTrace = await page.evaluate(async ({ workspacePath, intent }) => {
+        const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+        const session = sessions.find((item) => item.userIntent === intent);
+        return {
+          found: Boolean(session),
+          model: session?.model ?? '',
+          serialized: JSON.stringify(session ?? {}),
+        };
+      }, { workspacePath: workspaceDir, intent: userIntent });
+      expect(persistedTrace.found, JSON.stringify(persistedTrace)).toBe(true);
+      expect(persistedTrace.model, JSON.stringify(persistedTrace)).toContain(geminiModel);
+      expect(persistedTrace.model, JSON.stringify(persistedTrace)).not.toContain(legacyClaudeModel);
+      expect(persistedTrace.serialized).not.toMatch(/apiKey|api_key|token|secret|password|credential|authorization|cookie/i);
+    }, {
+      env: {
+        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
+        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
+      },
+      requireExplicitTextKey: false,
+    });
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('agents 平台模型未授权时不显示 Gemini 且不调用 lime.agent', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const geminiModel = 'gemini-2.5-flash';
+  const legacyClaudeModel = 'claude-sonnet-4-5';
+  const bridge = await startFakePlatformRuntimeBridge({
+    modelSettings: {
+      version: 'e2e-platform-unauthorized-models',
+      updatedAt: '2026-06-13T00:00:00.000Z',
+      defaultAgentProviderId: 'platform-gemini',
+      defaultTextModelId: geminiModel,
+      providers: [{
+        id: 'platform-openai',
+        displayName: 'Platform OpenAI',
+        protocol: 'openai-compatible',
+        capabilityKinds: ['text'],
+        enabled: true,
+        apiKeyConfigured: false,
+        authType: 'api-key',
+        baseUrl: 'https://api.openai.example/v1',
+        models: [legacyClaudeModel],
+      }, {
+        id: 'platform-gemini',
+        displayName: 'Platform Gemini',
+        protocol: 'gemini-native',
+        capabilityKinds: ['text'],
+        enabled: true,
+        apiKeyConfigured: false,
+        authType: 'api-key',
+        baseUrl: 'https://generativelanguage.googleapis.com',
+        models: [geminiModel],
+      }],
+    },
+  });
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async ({ workspacePath }) => {
+        await window.contentStudio.saveSettings({ workspacePath });
+      }, { workspacePath: workspaceDir });
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待 agents 未授权模型测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, 'agents');
+      await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).not.toContainText(geminiModel);
+      await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).not.toContainText(legacyClaudeModel);
+      await page.locator('.agents-entry .lime-runtime-model-trigger').click();
+      await expect(page.locator('.agents-entry .lime-runtime-model-popover')).toContainText(/未配置可用模型|未连接 Lime Desktop Platform/);
+      await page.locator('.agents-entry .lime-runtime-model-trigger').click();
+
+      const userIntent = 'E2E agents 未授权模型回归：不要调用平台 Agent。';
+      await page.locator('.agents-entry-composer textarea').fill(userIntent);
+      await page.locator('.agents-entry-composer textarea').press('Enter');
+      await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-thread')).toContainText('平台文字模型未配置或未授权', { timeout: 20_000 });
+      expect(bridge.requests.some((item) => item.body.capability === 'lime.agent'), JSON.stringify(bridge.requests)).toBe(false);
+    }, {
+      env: {
+        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
+        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
+      },
+      requireExplicitTextKey: false,
+    });
+  } finally {
+    await bridge.close();
+  }
+});
+
 test('agents 入口页启动后会绑定真实图片输入源并进入线程', async ({}, testInfo) => {
   test.setTimeout(90_000);
 
@@ -4244,7 +4486,7 @@ test('agents 入口页启动后会绑定真实图片输入源并进入线程', a
       await expect(page.locator('.agents-workbench')).toHaveCount(0);
       await expect(page.locator('.params-panel')).toHaveCount(0);
       await expect(page.locator('[aria-label="语音输入"]')).toHaveCount(0);
-      await expect(page.locator('.agents-entry')).toContainText('我们应该在 agents 中构建什么？');
+      await expect(page.locator('.agents-entry')).toContainText('今天要完成什么内容任务？');
       await expect(page.locator('.agents-entry-composer textarea')).toHaveAttribute('placeholder', '说明要检查的产品、平台、资料缺口和交付物');
       await expectAgentsProductImageCount(page, 0);
       await expect(page.locator('.agents-entry')).toContainText('完全访问');
@@ -4554,16 +4796,15 @@ test('agents 寒暄对话保持普通回复且不显示 Prompt 交付面板', as
 
       await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.agents-thread')).toContainText('你好！我可以帮你处理内容任务', { timeout: 20_000 });
-      await expect(page.locator('.agents-thread-summary')).toContainText('内容协作');
-      await expect(page.locator('.agents-thread-summary')).not.toContainText('图片 Prompt');
+      await expect(page.locator('.agents-thread-summary')).toHaveCount(0);
       await expect(page.locator('.agents-artifact-panel')).toHaveCount(0);
       await expect(page.locator('.agents-thread-scroll .agent-runtime-event')).toHaveCount(0);
-      await expect(page.locator('.agents-runtime-inline')).toBeHidden();
+      await expect(page.locator('.agents-runtime-inline')).toHaveCount(0);
       const threadLayout = await page.evaluate(() => {
         const thread = document.querySelector('.agents-thread');
         const main = document.querySelector('.agents-thread-main');
         const runtime = document.querySelector('.agents-runtime-panel');
-        const composer = document.querySelector('.agents-dialog-composer .agents-composer-frame');
+        const composer = document.querySelector('.agents-dialog-composer .agents-thread-composer-frame');
         const threadStyle = thread ? getComputedStyle(thread) : null;
         const runtimeStyle = runtime ? getComputedStyle(runtime) : null;
         const threadRect = thread?.getBoundingClientRect();
@@ -4571,7 +4812,7 @@ test('agents 寒暄对话保持普通回复且不显示 Prompt 交付面板', as
         const composerRect = composer?.getBoundingClientRect();
         return {
           gridColumns: threadStyle?.gridTemplateColumns ?? '',
-          runtimeHidden: runtimeStyle?.display === 'none',
+          runtimeHidden: !runtime || runtimeStyle?.display === 'none',
           mainCentered: Boolean(threadRect && mainRect && mainRect.left > threadRect.left && mainRect.right < threadRect.right),
           composerInside: Boolean(threadRect && composerRect && composerRect.left >= threadRect.left && composerRect.right <= threadRect.right),
           overflowX: Boolean(thread && thread.scrollWidth > thread.clientWidth + 1),
@@ -4583,7 +4824,14 @@ test('agents 寒暄对话保持普通回复且不显示 Prompt 交付面板', as
       expect(threadLayout.composerInside, JSON.stringify(threadLayout)).toBe(true);
       expect(threadLayout.overflowX, JSON.stringify(threadLayout)).toBe(false);
 
-      const trace = await page.evaluate(async ({ workspacePath }) => {
+      const threadTextarea = page.locator('.agents-thread-composer-frame textarea');
+      await threadTextarea.fill('你好');
+      await threadTextarea.press('Enter');
+      await expect(page.locator('.agents-thread')).toContainText('你好！我可以帮你处理内容任务', { timeout: 20_000 });
+      await expect(page.locator('.agents-thread')).not.toContainText('AI Agent 对话未启动');
+      await expect(page.locator('.agents-thread')).not.toContainText('不能用本地草稿继续');
+
+      const readTrace = () => page.evaluate(async ({ workspacePath }) => {
         const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
         const session = sessions.find((item) => item.userIntent === '你好');
         return {
@@ -4592,15 +4840,22 @@ test('agents 寒暄对话保持普通回复且不显示 Prompt 交付面板', as
           purpose: session?.purpose,
           status: session?.status,
           promptDraftIds: session?.promptDraftIds ?? [],
+          content: session?.messages.map((message) => message.content).join('\n') ?? '',
         };
       }, { workspacePath: workspaceDir });
-      expect(trace, JSON.stringify(trace)).toMatchObject({
+      await expect.poll(readTrace, {
+        message: '等待 agents 寒暄第二轮完成并回到 waiting-user',
+        timeout: 20_000,
+      }).toMatchObject({
         found: true,
         title: '内容协作',
         purpose: 'content-task',
         status: 'waiting-user',
         promptDraftIds: [],
       });
+      const trace = await readTrace();
+      expect(trace.content, JSON.stringify(trace)).not.toContain('AI Agent 对话未启动');
+      expect(trace.content, JSON.stringify(trace)).not.toContain('不能用本地草稿继续');
     }, {
       env: {
         LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
@@ -4837,8 +5092,6 @@ test('agents 会阻断 Lime 回显内部 Prompt 片段且不展示内部事实',
       await expect(page.locator('.agents-entry')).toHaveCount(0);
       await expect(page.locator('.agents-thread')).toContainText(/AI Agent 对话未启动|未返回可交付 Prompt|交付物线索/, { timeout: 20_000 });
       const runtimePanel = page.locator('.agents-runtime-inline');
-      await expect(runtimePanel).toBeHidden();
-      await page.locator('.agents-thread-tool[aria-label="运行详情"]').click();
       await expect(runtimePanel).toBeVisible({ timeout: 20_000 });
 
       await expectAgentsUiHidesInternalTerms(page);
@@ -4889,35 +5142,167 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
     agentArtifactTitle: 'E2E agents runtime facts draft',
     agentRuntimeEvents: [
       {
+        type: 'tool.started',
+        payload: {
+          toolCallId: 'tool-input-read',
+          toolName: 'input-source.read',
+          message: '准备读取输入源',
+        },
+      },
+      {
         type: 'tool.failed',
         payload: {
+          toolCallId: 'tool-input-read',
           toolName: 'input-source.read',
           message: '资料读取工具需要人工补源',
           evidenceRefs: ['evidence-runtime-input'],
         },
       },
       {
+        type: 'tool.started',
+        payload: {
+          toolCallId: 'tool-web-search',
+          toolName: 'web.search',
+          toolFamily: 'webSearch',
+          message: '准备执行网页搜索',
+        },
+      },
+      {
         type: 'tool.result',
         payload: {
+          toolCallId: 'tool-web-search',
           toolName: 'web.search',
           toolFamily: 'webSearch',
           message: '网页搜索已返回可追溯线索',
         },
       },
       {
-        type: 'tool.result',
+        type: 'tool.started',
         payload: {
+          toolCallId: 'tool-mcp-workspace-read',
           toolName: 'mcp__workspace__read_file',
-          message: 'MCP 工作区读取完成',
+          message: '准备读取 MCP 工作区文件',
         },
       },
       {
         type: 'tool.result',
         payload: {
+          toolCallId: 'tool-mcp-workspace-read',
+          toolName: 'mcp__workspace__read_file',
+          message: 'MCP 工作区读取完成',
+        },
+      },
+      {
+        type: 'tool.started',
+        payload: {
+          toolCallId: 'tool-mcp-failed-result',
+          toolName: 'mcp__github__search_code',
+          message: '准备执行 GitHub MCP 搜索',
+        },
+      },
+      {
+        type: 'tool.result',
+        payload: {
+          toolCallId: 'tool-mcp-failed-result',
+          toolName: 'mcp__github__search_code',
+          success: false,
+          failureCategory: 'tool_error',
+          error: 'GitHub MCP 搜索失败',
+          output: 'partial search output',
+          evidenceRefs: ['evidence-runtime-mcp-failure'],
+          message: 'MCP success=false 工具失败',
+        },
+      },
+      {
+        type: 'tool.started',
+        payload: {
+          tool_call_id: 'tool-mcp-snake-case',
+          tool_name: 'mcp__github__search_code',
+          message: '准备执行 snake_case MCP 搜索',
+        },
+      },
+      {
+        type: 'tool.result',
+        payload: {
+          tool_call_id: 'tool-mcp-snake-case',
+          tool_name: 'mcp__github__search_code',
+          mcp_server: 'github',
+          evidence_refs: ['evidence-runtime-snake-mcp'],
+          message: 'MCP snake_case 搜索完成',
+        },
+      },
+      {
+        type: 'tool.started',
+        payload: {
+          toolCallId: 'tool-skill-load',
+          toolName: 'skill.load',
+          toolFamily: 'skill',
+          skillSlug: 'copywriting-master',
+          message: '准备加载 Skill 上下文',
+        },
+      },
+      {
+        type: 'tool.result',
+        payload: {
+          toolCallId: 'tool-skill-load',
           toolName: 'skill.load',
           toolFamily: 'skill',
           skillSlug: 'copywriting-master',
           message: 'Skill 上下文加载完成',
+        },
+      },
+      {
+        type: 'tool.started',
+        payload: {
+          tool_call_id: 'tool-skill-snake-case',
+          tool_name: 'lime_run_service_skill',
+          tool_family: 'skill',
+          skill_slug: 'snake-case-skill',
+          message: '准备执行 snake_case Skill',
+        },
+      },
+      {
+        type: 'tool.result',
+        payload: {
+          tool_call_id: 'tool-skill-snake-case',
+          tool_name: 'lime_run_service_skill',
+          tool_family: 'skill',
+          skill_slug: 'snake-case-skill',
+          artifact_refs: ['artifact-runtime-snake-skill'],
+          message: 'Skill snake_case 输出完成',
+        },
+      },
+      {
+        type: 'tool.result',
+        payload: {
+          toolCallId: 'tool-orphan-result',
+          toolName: 'mcp__workspace__read_file',
+          message: '孤立工具结果不能进入成功工具事实',
+        },
+      },
+      {
+        type: 'tool.started',
+        payload: {
+          toolCallId: 'tool-approval-write',
+          toolName: 'workspace.write_file',
+          message: '准备写入文件',
+        },
+      },
+      {
+        type: 'action.required',
+        payload: {
+          actionId: 'runtime-action-approval-write',
+          toolCallId: 'tool-approval-write',
+          actionKind: 'approve',
+          message: '需要批准写入文件',
+        },
+      },
+      {
+        type: 'tool.result',
+        payload: {
+          toolCallId: 'tool-approval-write',
+          toolName: 'workspace.write_file',
+          message: '未批准时不允许成功结果',
         },
       },
       {
@@ -4936,6 +5321,165 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
           targetModule: 'knowledge-inputs',
           message: '需要补充输入源后继续',
           evidenceRefs: ['evidence-runtime-input'],
+        },
+      },
+      {
+        type: 'action.required',
+        payload: {
+          action_id: 'runtime-action-snake-input-source',
+          action_kind: 'add-input-source',
+          target_module: 'knowledge-inputs',
+          message: 'snake_case 动作需要补输入源',
+          evidence_refs: ['evidence-runtime-snake-mcp'],
+        },
+      },
+      {
+        type: 'action.required',
+        payload: {
+          actionId: 'runtime-action-approval-cancelled',
+          actionKind: 'approve',
+          message: '需要确认高风险工具批准',
+        },
+      },
+      {
+        type: 'action.cancelled',
+        payload: {
+          actionId: 'runtime-action-approval-cancelled',
+          actionKind: 'approve',
+          message: '用户取消了高风险工具批准',
+        },
+      },
+      {
+        type: 'action.required',
+        payload: {
+          actionId: 'runtime-action-plan-expired',
+          actionKind: 'plan-review',
+          message: '需要审核执行计划',
+        },
+      },
+      {
+        type: 'action.expired',
+        payload: {
+          actionId: 'runtime-action-plan-expired',
+          actionKind: 'plan-review',
+          message: '计划审核等待超时',
+        },
+      },
+      {
+        type: 'task.started',
+        payload: {
+          taskId: 'runtime-task-source-audit',
+          message: '输入源审计子任务已启动',
+        },
+      },
+      {
+        type: 'task.completed',
+        payload: {
+          taskId: 'runtime-task-source-audit',
+          message: '输入源审计子任务已完成',
+        },
+      },
+      {
+        type: 'subagent.started',
+        payload: {
+          subagentId: 'runtime-subagent-copywriter',
+          message: '文案协作代理已加入',
+        },
+      },
+      {
+        type: 'subagent.started',
+        payload: {
+          subagent_id: 'runtime-subagent-snake-researcher',
+          message: 'snake_case 研究代理已加入',
+        },
+      },
+      {
+        type: 'subagent.completed',
+        payload: {
+          subagentId: 'runtime-subagent-copywriter',
+          message: '文案协作代理已完成',
+        },
+      },
+      {
+        type: 'subagent.failed',
+        payload: {
+          subagentId: 'runtime-subagent-reviewer',
+          message: '审核协作代理执行失败',
+        },
+      },
+      {
+        type: 'handoff.requested',
+        payload: {
+          handoffId: 'runtime-handoff-review',
+          message: '已请求转交审核代理',
+        },
+      },
+      {
+        type: 'handoff.requested',
+        payload: {
+          handoff_id: 'runtime-handoff-snake-research',
+          message: 'snake_case 已请求转交研究代理',
+        },
+      },
+      {
+        type: 'handoff.completed',
+        payload: {
+          handoffId: 'runtime-handoff-review',
+          message: '审核代理移交已完成',
+        },
+      },
+      {
+        type: 'handoff.failed',
+        payload: {
+          handoffId: 'runtime-handoff-video',
+          message: '视频代理移交失败',
+        },
+      },
+      {
+        type: 'review.verdict',
+        payload: {
+          reviewId: 'runtime-review-sources',
+          message: '审核结论：需要补充产品事实来源',
+        },
+      },
+      {
+        type: 'review.verdict',
+        payload: {
+          review_id: 'runtime-review-snake-sources',
+          message: 'snake_case 审核结论：输入源可继续',
+        },
+      },
+      {
+        type: 'permission.requested',
+        payload: {
+          permissionId: 'runtime-permission-read',
+          message: '需要确认读取当前工作区素材',
+        },
+      },
+      {
+        type: 'permission.denied',
+        payload: {
+          permissionId: 'runtime-permission-network',
+          message: '网络访问未获授权',
+        },
+      },
+      {
+        type: 'sandbox.blocked',
+        payload: {
+          policyId: 'workspace-write-policy',
+          message: '沙箱策略阻断了越界写入',
+        },
+      },
+      {
+        type: 'runtime.warning',
+        payload: {
+          message: '运行时降级为只读资料检查',
+        },
+      },
+      {
+        type: 'runtime.error',
+        payload: {
+          message: '运行时诊断错误已记录',
         },
       },
     ],
@@ -4957,34 +5501,123 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
       await page.locator('.agents-entry-composer textarea').press('Enter');
 
       await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+      const agentUiConversation = page.locator('.agents-workbench .agent-ui-projection.agent-ui-conversation-only');
+      await expect(agentUiConversation).toBeVisible({ timeout: 20_000 });
+      await expect(agentUiConversation.locator('.agent-ui-main[data-agent-ui-surface="conversation"]')).toBeVisible();
+      await expect(agentUiConversation.locator('.agent-ui-sidecar[data-agent-ui-surface="runtime"]')).toHaveCount(0);
       const inlineFacts = page.locator('.agents-thread-scroll .agent-inline-runtime-facts');
-      await expect(inlineFacts).toBeVisible({ timeout: 20_000 });
-      await expect(inlineFacts.locator('[data-tool-family="tool"][data-tool-name="input-source.read"]').first()).toContainText('input-source.read');
-      await expect(inlineFacts.locator('[data-tool-family="webSearch"][data-tool-name="web.search"]').first()).toContainText('web.search');
-      await expect(inlineFacts.locator('[data-tool-family="mcp"][data-tool-name="mcp__workspace__read_file"]').first()).toContainText('mcp__workspace__read_file');
-      await expect(inlineFacts.locator('[data-tool-family="skill"][data-tool-name="skill.load"][data-skill-slug="copywriting-master"]').first()).toContainText('skill.load');
+      await expect(inlineFacts).toHaveCount(0);
       const runtimePanel = page.locator('.agents-runtime-inline');
-      await expect(runtimePanel).toBeHidden();
-      await page.locator('.agents-thread-tool[aria-label="运行详情"]').click();
       await expect(runtimePanel).toBeVisible({ timeout: 20_000 });
+      await expect(runtimePanel).toHaveClass(/agent-ui-projection/);
+      await expect(runtimePanel).toHaveClass(/agent-ui-runtime-only/);
+      await expect(runtimePanel.locator('.agent-ui-sidecar[data-agent-ui-surface="runtime"]')).toBeVisible();
+      await expect(runtimePanel.locator('.agent-ui-main[data-agent-ui-surface="conversation"]')).toHaveCount(0);
+      const runtimeLayout = await page.evaluate(() => {
+        const thread = document.querySelector('.agents-thread');
+        const main = document.querySelector('.agents-thread-main');
+        const runtime = document.querySelector('.agents-runtime-panel');
+        const threadRect = thread?.getBoundingClientRect();
+        const mainRect = main?.getBoundingClientRect();
+        const runtimeRect = runtime?.getBoundingClientRect();
+        const style = thread ? getComputedStyle(thread) : null;
+        const runtimeStyle = runtime ? getComputedStyle(runtime) : null;
+        return {
+          dataRuntime: thread?.getAttribute('data-runtime'),
+          gridColumnCount: style?.gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length ?? 0,
+          runtimeVisible: runtimeStyle?.display !== 'none',
+          runtimeRightOfMain: Boolean(mainRect && runtimeRect && runtimeRect.left > mainRect.right),
+          noHorizontalOverflow: Boolean(thread && thread.scrollWidth <= thread.clientWidth + 1),
+          mainInsideThread: Boolean(threadRect && mainRect && mainRect.left >= threadRect.left && mainRect.right <= threadRect.right),
+        };
+      });
+      expect(runtimeLayout, JSON.stringify(runtimeLayout)).toMatchObject({
+        dataRuntime: 'open',
+        gridColumnCount: 2,
+        runtimeVisible: true,
+        runtimeRightOfMain: true,
+        noHorizontalOverflow: true,
+        mainInsideThread: true,
+      });
       await expect(runtimePanel.locator('.agent-runtime-summary [data-summary-kind="actions"] strong')).not.toHaveText('0');
       await expect(runtimePanel.locator('.agent-runtime-summary [data-summary-kind="artifacts"] strong')).not.toHaveText('0');
       await expect(runtimePanel.locator('.agent-runtime-summary [data-summary-kind="evidence"] strong')).not.toHaveText('0');
       await expect(runtimePanel.locator('.agent-tool-facts [data-tool-family="tool"][data-tool-name="input-source.read"]').first()).toContainText('input-source.read');
       await expect(runtimePanel.locator('.agent-tool-facts [data-tool-family="webSearch"][data-tool-name="web.search"]').first()).toContainText('web.search');
       await expect(runtimePanel.locator('.agent-tool-facts [data-tool-family="mcp"][data-tool-name="mcp__workspace__read_file"]').first()).toContainText('mcp__workspace__read_file');
+      await expect(runtimePanel.locator('.agent-tool-facts [data-event-class="tool.failed"][data-tool-name="mcp__github__search_code"][data-tool-call-id="tool-mcp-failed-result"][data-failure-category="tool_error"]').first()).toContainText('MCP success=false 工具失败');
+      await expect(runtimePanel.locator('.agent-tool-facts [data-event-class="tool.failed"][data-tool-name="mcp__github__search_code"][data-tool-call-id="tool-mcp-failed-result"]').first()).toContainText('失败');
+      await expect(runtimePanel.locator('.agent-tool-facts [data-tool-family="mcp"][data-tool-name="mcp__github__search_code"][data-tool-call-id="tool-mcp-snake-case"][data-mcp-server="github"]').first()).toContainText('MCP snake_case 搜索完成');
       await expect(runtimePanel.locator('.agent-tool-facts [data-tool-family="skill"][data-tool-name="skill.load"][data-skill-slug="copywriting-master"]').first()).toContainText('skill.load');
-      await expect(runtimePanel.locator('.agent-execution-events [data-event-class="tool.failed"]')).toContainText('资料读取工具需要人工补源');
-      await expect(runtimePanel.locator('.agent-execution-events [data-event-class="evidence.changed"]')).toContainText('平台返回来源证据已更新');
+      await expect(runtimePanel.locator('.agent-tool-facts [data-tool-family="skill"][data-tool-name="lime_run_service_skill"][data-skill-slug="snake-case-skill"]').first()).toContainText('snake_case 输出完成');
+      await expect(runtimePanel.locator('.agent-tool-facts [data-event-class="tool.failed"][data-tool-name="input-source.read"]').first()).toContainText('资料读取工具需要人工补源');
+      await expect(runtimePanel.locator('.agent-tool-facts [data-tool-name="input-source.read"][data-evidence-count="1"]').first()).toBeVisible();
+      await expect(runtimePanel.locator('.agent-tool-facts [data-tool-name="mcp__github__search_code"][data-evidence-count="1"]').first()).toBeVisible();
+      await expect(runtimePanel.locator('.agent-tool-facts [data-tool-name="lime_run_service_skill"][data-artifact-count="1"]').first()).toBeVisible();
+      await expect(runtimePanel.locator('.agent-tool-facts [data-tool-call-id="tool-orphan-result"][data-event-class="tool.result"]')).toHaveCount(0);
+      await expect(runtimePanel.locator('.agent-tool-facts [data-tool-call-id="tool-approval-write"][data-event-class="tool.result"]')).toHaveCount(0);
+      const evidenceRefCard = runtimePanel.locator('.agent-evidence-refs [data-ref-kind="evidence"][data-ref-id="evidence-runtime-input"]').first();
+      const artifactRefCard = runtimePanel.locator('.agent-artifact-refs [data-ref-kind="artifact"][data-ref-id="e2e-agents-artifact"]').first();
+      await expect(evidenceRefCard).toBeVisible();
+      await expect(artifactRefCard).toBeVisible();
+      await evidenceRefCard.click();
+      const evidenceDetail = runtimePanel.locator('.agent-runtime-ref-detail[data-ref-kind="evidence"][data-ref-id="evidence-runtime-input"]');
+      await expect(evidenceDetail).toBeVisible({ timeout: 20_000 });
+      await expect(evidenceDetail).toContainText('依据详情');
+      await expect(evidenceDetail).toContainText('evidence-runtime-input');
+      await expect(evidenceDetail.locator('.agent-runtime-ref-events [data-event-class="evidence.changed"]').first()).toContainText('平台返回来源证据已更新');
+      await artifactRefCard.click();
+      const artifactDetail = runtimePanel.locator('.agent-runtime-ref-detail[data-ref-kind="artifact"][data-ref-id="e2e-agents-artifact"]');
+      await expect(artifactDetail).toBeVisible({ timeout: 20_000 });
+      await expect(artifactDetail).toContainText('交付物详情');
+      await expect(artifactDetail).toContainText('e2e-agents-artifact');
+      await expect(artifactDetail.locator('.agent-runtime-ref-events [data-event-class="artifact.changed"]').first()).toContainText('交付草稿已更新');
       const platformAction = runtimePanel
-        .locator('.agent-execution-events [data-event-class="action.required"][data-action-kind="add-input-source"]')
+        .locator('.agent-action-facts [data-event-class="action.required"][data-action-kind="add-input-source"]')
         .filter({ hasText: '需要补充输入源后继续' })
         .first();
       await expect(platformAction).toBeVisible({ timeout: 20_000 });
       await expect(platformAction.locator('.agent-event-action')).toHaveText('补输入源');
+      const snakeCaseAction = runtimePanel
+        .locator('.agent-action-facts [data-event-class="action.required"][data-action-kind="add-input-source"]')
+        .filter({ hasText: 'snake_case 动作需要补输入源' })
+        .first();
+      await expect(snakeCaseAction).toBeVisible({ timeout: 20_000 });
+      await expect(snakeCaseAction.locator('.agent-event-action')).toHaveText('补输入源');
+      await expect(runtimePanel.locator('.agent-action-facts [data-event-class="action.cancelled"][data-action-resolved="true"]').first()).toContainText('用户取消了高风险工具批准');
+      await expect(runtimePanel.locator('.agent-action-facts [data-event-class="action.expired"][data-action-resolved="true"]').first()).toContainText('计划审核等待超时');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="task.started"][data-task-id="runtime-task-source-audit"]').first()).toContainText('输入源审计子任务已启动');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="task.completed"][data-task-id="runtime-task-source-audit"]').first()).toContainText('输入源审计子任务已完成');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="subagent.started"][data-subagent-id="runtime-subagent-copywriter"]').first()).toContainText('文案协作代理已加入');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="subagent.started"][data-subagent-id="runtime-subagent-snake-researcher"]').first()).toContainText('snake_case 研究代理已加入');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="subagent.completed"][data-subagent-id="runtime-subagent-copywriter"]').first()).toContainText('文案协作代理已完成');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="subagent.failed"][data-subagent-id="runtime-subagent-reviewer"]').first()).toContainText('审核协作代理执行失败');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="handoff.requested"][data-handoff-id="runtime-handoff-review"]').first()).toContainText('已请求转交审核代理');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="handoff.requested"][data-handoff-id="runtime-handoff-snake-research"]').first()).toContainText('snake_case 已请求转交研究代理');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="handoff.completed"][data-handoff-id="runtime-handoff-review"]').first()).toContainText('审核代理移交已完成');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="handoff.failed"][data-handoff-id="runtime-handoff-video"]').first()).toContainText('视频代理移交失败');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="review.verdict"][data-review-id="runtime-review-sources"]').first()).toContainText('审核结论：需要补充产品事实来源');
+      await expect(runtimePanel.locator('.agent-collaboration-facts [data-event-class="review.verdict"][data-review-id="runtime-review-snake-sources"]').first()).toContainText('snake_case 审核结论：输入源可继续');
+      await expect(runtimePanel.locator('.agent-diagnostic-facts [data-event-class="permission.requested"]').first()).toContainText('需要确认读取当前工作区素材');
+      await expect(runtimePanel.locator('.agent-diagnostic-facts [data-event-class="permission.denied"]').first()).toContainText('网络访问未获授权');
+      await expect(runtimePanel.locator('.agent-diagnostic-facts [data-event-class="sandbox.blocked"]').first()).toContainText('沙箱策略阻断了越界写入');
+      await expect(runtimePanel.locator('.agent-diagnostic-facts [data-event-class="runtime.warning"]').first()).toContainText('运行时降级为只读资料检查');
+      await expect(runtimePanel.locator('.agent-diagnostic-facts [data-event-class="runtime.error"]').filter({ hasText: '运行时诊断错误已记录' }).first()).toContainText('运行时诊断错误已记录');
+      await expect(runtimePanel.locator('.agent-diagnostic-facts [data-event-class="runtime.error"]').filter({ hasText: '工具事件缺少匹配的 tool.started' }).first()).toContainText('工具事件缺少匹配的 tool.started');
+      await expect(runtimePanel.locator('.agent-diagnostic-facts [data-event-class="runtime.error"]').filter({ hasText: '工具仍在等待人工处理' }).first()).toContainText('工具仍在等待人工处理');
+      await expect(runtimePanel.locator('.agent-execution-events [data-event-class="task.started"]')).toHaveCount(0);
+      await expect(runtimePanel.locator('.agent-execution-events [data-event-class="subagent.started"]')).toHaveCount(0);
+      await expect(runtimePanel.locator('.agent-execution-events [data-event-class="handoff.requested"]')).toHaveCount(0);
+      await expect(runtimePanel.locator('.agent-execution-events [data-event-class="review.verdict"]')).toHaveCount(0);
 
       await expect(page.locator('.agents-thread-scroll .agent-turn').filter({ hasText: '资料读取工具需要人工补源' })).toHaveCount(0);
       await expect(page.locator('.agents-thread-scroll .agent-turn').filter({ hasText: 'MCP 工作区读取完成' })).toHaveCount(0);
+      await expect(page.locator('.agents-thread-scroll .agent-turn').filter({ hasText: 'MCP success=false 工具失败' })).toHaveCount(0);
+      await expect(page.locator('.agents-thread-scroll .agent-turn').filter({ hasText: '孤立工具结果不能进入成功工具事实' })).toHaveCount(0);
+      await expect(page.locator('.agents-thread-scroll .agent-turn').filter({ hasText: '未批准时不允许成功结果' })).toHaveCount(0);
+      await expect(page.locator('.agents-thread-scroll .agent-turn').filter({ hasText: '沙箱策略阻断了越界写入' })).toHaveCount(0);
+      await expect(page.locator('.agents-thread-scroll .agent-turn').filter({ hasText: '审核协作代理执行失败' })).toHaveCount(0);
+      await expect(page.locator('.agents-thread-scroll .agent-turn').filter({ hasText: '视频代理移交失败' })).toHaveCount(0);
 
       const runtimeTrace = await page.evaluate(async ({ workspacePath, intent }) => {
         const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
@@ -5004,6 +5637,73 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
             event.eventClass === 'evidence.changed' &&
             event.evidenceRefs?.includes('evidence-runtime-input')
           ))),
+          hasSubagentFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'subagent.completed' &&
+            event.payload?.subagentId === 'runtime-subagent-copywriter'
+          ))),
+          hasSnakeCaseToolFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'tool.result' &&
+            event.toolCallId === 'tool-mcp-snake-case' &&
+            event.payload?.toolName === 'mcp__github__search_code' &&
+            event.payload?.mcpServer === 'github' &&
+            event.evidenceRefs?.includes('evidence-runtime-snake-mcp')
+          ))),
+          hasFailedToolResultFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'tool.failed' &&
+            event.status === 'failed' &&
+            event.toolCallId === 'tool-mcp-failed-result' &&
+            event.payload?.eventType === 'tool.failed' &&
+            event.payload?.rawEventType === 'tool.result' &&
+            event.payload?.success === false &&
+            event.payload?.failureCategory === 'tool_error' &&
+            event.payload?.error === 'GitHub MCP 搜索失败' &&
+            event.payload?.output === 'partial search output' &&
+            event.evidenceRefs?.includes('evidence-runtime-mcp-failure')
+          ))),
+          hasFailedToolResultAsSuccess: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'tool.result' &&
+            event.toolCallId === 'tool-mcp-failed-result'
+          ))),
+          hasSequenceGateDiagnostic: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'runtime.error' &&
+            event.kind === 'diagnostic' &&
+            (
+              event.payload?.violationCode === 'tool_result_without_start' ||
+              event.payload?.violationCode === 'tool_event_while_action_pending'
+            )
+          ))),
+          hasOrphanResultAsSuccess: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'tool.result' &&
+            event.toolCallId === 'tool-orphan-result'
+          ))),
+          hasPendingActionResultAsSuccess: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'tool.result' &&
+            event.toolCallId === 'tool-approval-write'
+          ))),
+          hasSnakeCaseActionFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'action.required' &&
+            event.actionId === 'runtime-action-snake-input-source'
+          ))),
+          hasSnakeCaseSubagentFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'subagent.started' &&
+            event.payload?.subagentId === 'runtime-subagent-snake-researcher'
+          ))),
+          hasHandoffFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'handoff.failed' &&
+            event.payload?.handoffId === 'runtime-handoff-video'
+          ))),
+          hasSnakeCaseHandoffFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'handoff.requested' &&
+            event.payload?.handoffId === 'runtime-handoff-snake-research'
+          ))),
+          hasReviewFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'review.verdict' &&
+            event.payload?.reviewId === 'runtime-review-sources'
+          ))),
+          hasSnakeCaseReviewFact: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'review.verdict' &&
+            event.payload?.reviewId === 'runtime-review-snake-sources'
+          ))),
           hasArtifactFact: Boolean(session?.executionEvents?.some((event) => (
             event.eventClass === 'artifact.changed' &&
             event.artifactRefs?.includes('e2e-agents-artifact')
@@ -5011,7 +5711,18 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
           messageLeaksRuntimeFact: Boolean(session?.messages.some((message) => (
             message.content.includes('资料读取工具需要人工补源') ||
             message.content.includes('runtime-action-add-source') ||
-            message.content.includes('evidence-runtime-input')
+            message.content.includes('evidence-runtime-input') ||
+            message.content.includes('沙箱策略阻断了越界写入') ||
+            message.content.includes('运行时诊断错误已记录') ||
+            message.content.includes('MCP success=false 工具失败') ||
+            message.content.includes('孤立工具结果不能进入成功工具事实') ||
+            message.content.includes('未批准时不允许成功结果') ||
+            message.content.includes('文案协作代理已完成') ||
+            message.content.includes('视频代理移交失败') ||
+            message.content.includes('审核结论：需要补充产品事实来源') ||
+            message.content.includes('MCP snake_case 搜索完成') ||
+            message.content.includes('Skill snake_case 输出完成') ||
+            message.content.includes('snake_case 研究代理已加入')
           ))),
         };
       }, { workspacePath: workspaceDir, intent: userIntent });
@@ -5020,6 +5731,19 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
         hasToolFact: true,
         hasActionFact: true,
         hasEvidenceFact: true,
+        hasSubagentFact: true,
+        hasSnakeCaseToolFact: true,
+        hasFailedToolResultFact: true,
+        hasFailedToolResultAsSuccess: false,
+        hasSequenceGateDiagnostic: true,
+        hasOrphanResultAsSuccess: false,
+        hasPendingActionResultAsSuccess: false,
+        hasSnakeCaseActionFact: true,
+        hasSnakeCaseSubagentFact: true,
+        hasHandoffFact: true,
+        hasSnakeCaseHandoffFact: true,
+        hasReviewFact: true,
+        hasSnakeCaseReviewFact: true,
         hasArtifactFact: true,
         messageLeaksRuntimeFact: false,
       });
@@ -5035,14 +5759,32 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
               event.eventClass === 'action.required' &&
               event.actionId === 'runtime-action-add-source'
             ))),
-            hasLocalResolved: Boolean(session?.executionEvents?.some((event) => (
+            hasPlatformResolved: Boolean(session?.executionEvents?.some((event) => (
               event.eventClass === 'action.resolved' &&
-              event.actionId === 'runtime-action-add-source'
+              event.actionId === 'runtime-action-add-source' &&
+              event.detail?.includes('平台已确认人工处理结果')
+            ))),
+            hasLocalOnlyResolved: Boolean(session?.executionEvents?.some((event) => (
+              event.eventClass === 'action.resolved' &&
+              event.actionId === 'runtime-action-add-source' &&
+              event.payload?.responseScope === 'local-navigation'
             ))),
           };
         }, { workspacePath: workspaceDir, intent: userIntent }),
-        { message: '等待平台运行事实待办动作保持为 runtime fact', timeout: 20_000 },
-      ).toMatchObject({ hasRequired: true, hasLocalResolved: false });
+        { message: '等待平台运行事实待办动作回写到 runtime', timeout: 20_000 },
+      ).toMatchObject({ hasRequired: true, hasPlatformResolved: true, hasLocalOnlyResolved: false });
+      const actionRespondRequest = bridge.requests.find((request) => (
+        request.body.capability === 'lime.agent' &&
+        request.body.operation === 'agentSession/action/respond'
+      ));
+      expect(actionRespondRequest, JSON.stringify(bridge.requests)).toBeTruthy();
+      expect(actionRespondRequest.body.input).toMatchObject({
+        sessionId: 'platform-session-e2e',
+        actionId: 'runtime-action-add-source',
+        decision: 'open-input-source',
+      });
+      await expect(page.locator('body')).toContainText('输入源 / 文档转换', { timeout: 20_000 });
+      await expect(page.locator('body')).toContainText('登记输入源', { timeout: 20_000 });
     }, {
       env: {
         LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
@@ -5053,6 +5795,152 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
   } finally {
     await bridge.close();
   }
+});
+
+test('agents 通过 embedded 平台宿主真实调用 Gemini provider store 并投影到 UI', async ({}, testInfo) => {
+  test.skip(!liveGeminiEnabled, '需要 CONTENT_STUDIO_E2E_LIVE_GEMINI=1 才调用真实 Gemini provider store。');
+  test.setTimeout(180_000);
+
+  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+    await page.evaluate(async ({ workspacePath }) => {
+      await window.contentStudio.saveSettings({ workspacePath });
+    }, { workspacePath: workspaceDir });
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待 embedded 平台宿主工作区重新加载', timeout: 30_000 },
+    ).toBe(true);
+
+    const modelProjection = await page.evaluate(async () => {
+      const config = await window.contentStudio.getModelConfig();
+      return {
+        platformManaged: config.platformManaged,
+        source: config.source,
+        providerId: config.agentProviderPreference,
+        textModel: config.textModel,
+        textModels: config.textModels,
+        providers: config.platformModelSettings?.providers.map((provider) => ({
+          id: provider.id,
+          apiKeyConfigured: provider.apiKeyConfigured,
+          models: provider.models,
+        })) ?? [],
+        sensitiveLeak: JSON.stringify(config).match(/"apiKey"\s*:|"api_key"\s*:|"secret"\s*:|"token"\s*:|"authorization"\s*:|"credential"\s*:/i)?.[0] ?? '',
+      };
+    });
+    expect(modelProjection, JSON.stringify(modelProjection)).toMatchObject({
+      platformManaged: true,
+      source: 'lime-desktop-platform',
+      providerId: liveGeminiProviderId,
+      textModel: liveGeminiModelId,
+    });
+    expect(modelProjection.textModels, JSON.stringify(modelProjection)).toContain(liveGeminiModelId);
+    expect(modelProjection.providers, JSON.stringify(modelProjection)).toContainEqual(expect.objectContaining({
+      id: liveGeminiProviderId,
+      apiKeyConfigured: true,
+      models: expect.arrayContaining([liveGeminiModelId]),
+    }));
+    expect(modelProjection.sensitiveLeak, JSON.stringify(modelProjection)).toBe('');
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待 embedded 平台模型 projection 刷新到 React 状态', timeout: 30_000 },
+    ).toBe(true);
+
+    await clickNavItem(page, 'agents');
+    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).toContainText(liveGeminiModelId);
+    const userIntent = [
+      '真实 Gemini UI 验收：请用三句话生成布谷AI内容工厂 Agents provider store 验收回复。',
+      '必须明确说明这是一次真实模型调用，并保留可追溯运行事实。',
+    ].join('\n');
+    await page.locator('.agents-entry-composer textarea').fill(userIntent);
+    await page.locator('.agents-entry-composer textarea').press('Enter');
+
+    await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('.agents-thread')).toContainText('真实 Gemini UI 验收', { timeout: 20_000 });
+    await expect(page.locator('.agents-thread')).toContainText(/真实模型调用|Gemini|provider store|验收/, { timeout: 120_000 });
+    await expect(page.locator('.agents-thread-summary')).toHaveCount(0);
+    await expectAgentsUiHidesInternalTerms(page);
+
+    const readLiveTrace = () => page.evaluate(async ({ workspacePath, intent }) => {
+      const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
+      const session = sessions.find((item) => item.userIntent === intent);
+      const messages = session?.messages.map((message) => message.content).join('\n') ?? '';
+      const events = session?.executionEvents ?? [];
+      return {
+        found: Boolean(session),
+        status: session?.status,
+        model: session?.model,
+        turnIds: [...new Set(events.map((event) => event.turnId).filter(Boolean))],
+        runtimeSessionIds: [...new Set(events
+          .map((event) => typeof event.payload?.sessionId === 'string' ? event.payload.sessionId : undefined)
+          .filter(Boolean))],
+        eventClasses: events.map((event) => event.eventClass),
+        hasArtifactFact: events.some((event) => event.eventClass === 'artifact.changed'),
+        hasMessageFact: events.some((event) => event.eventClass === 'model.delta' || event.eventClass === 'model.completed'),
+        hasGeminiReply: /真实模型调用|Gemini|provider store|验收/.test(messages),
+        messageLeakedRuntimeFact: /artifact\.snapshot|turn\.started|turn\.completed|routing\.decision/.test(messages),
+        sensitiveLeak:
+          JSON.stringify(session).match(/"apiKey"\s*:|"api_key"\s*:|"secret"\s*:|"token"\s*:|"authorization"\s*:|"credential"\s*:/i)?.[0] ?? '',
+      };
+    }, { workspacePath: workspaceDir, intent: userIntent });
+    await expect.poll(readLiveTrace, {
+      message: '等待真实 Gemini 运行结果写回 Agent session store',
+      timeout: 60_000,
+    }).toMatchObject({
+      found: true,
+      model: expect.stringContaining(liveGeminiModelId),
+      hasGeminiReply: true,
+    });
+    const liveTrace = await readLiveTrace();
+    expect(liveTrace.found, JSON.stringify(liveTrace)).toBe(true);
+    expect(liveTrace.turnIds.length, JSON.stringify(liveTrace)).toBeGreaterThan(0);
+    expect(liveTrace.model, JSON.stringify(liveTrace)).toContain(liveGeminiModelId);
+    expect(liveTrace.hasGeminiReply, JSON.stringify(liveTrace)).toBe(true);
+    expect(
+      liveTrace.hasArtifactFact || liveTrace.hasMessageFact || liveTrace.eventClasses.includes('turn.submitted'),
+      JSON.stringify(liveTrace),
+    ).toBe(true);
+    expect(liveTrace.messageLeakedRuntimeFact, JSON.stringify(liveTrace)).toBe(false);
+    expect(liveTrace.sensitiveLeak, JSON.stringify(liveTrace)).toBe('');
+    const runtimePanel = page.locator('.agents-runtime-inline');
+    if (liveTrace.hasArtifactFact) {
+      await expect(runtimePanel).toBeVisible({ timeout: 20_000 });
+      await expect(runtimePanel).toHaveClass(/agent-ui-runtime-only/);
+      await expect(runtimePanel.locator('.agent-ui-sidecar[data-agent-ui-surface="runtime"]')).toBeVisible();
+      await expect(runtimePanel.locator('.agent-runtime-summary [data-summary-kind="artifacts"] strong')).not.toHaveText('0');
+    } else {
+      await expect(runtimePanel).toHaveCount(0);
+    }
+
+    await page.screenshot({
+      path: join(projectRoot, '.playwright-real-agent-gemini.png'),
+      fullPage: true,
+    });
+  }, {
+    useEmbeddedPlatformHost: true,
+    requireExplicitTextKey: false,
+    env: {
+      CONTENT_STUDIO_APP_SERVER_DATA_DIR: liveGeminiAppServerDataDir,
+      CONTENT_STUDIO_RUNTIME_LIVE_TIMEOUT_MS: '180000',
+    },
+    platformModelSettings: {
+      version: '1',
+      updatedAt: new Date().toISOString(),
+      defaultAgentProviderId: liveGeminiProviderId,
+      defaultTextModelId: liveGeminiModelId,
+      providers: [{
+        id: liveGeminiProviderId,
+        displayName: 'Content Studio Gemini Live Stale Cache',
+        protocol: 'gemini-native',
+        capabilityKinds: ['text'],
+        enabled: true,
+        apiKeyConfigured: false,
+        authType: 'api-key',
+        models: [liveGeminiModelId],
+      }],
+    },
+  });
 });
 
 test('内容知识地图 v1 真实工作台支持下钻和素材回写', async ({}, testInfo) => {
@@ -5840,11 +6728,9 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
     expect(promptSessionId).toBeTruthy();
 
     const actionButton = agentPanel.locator(
-      '.agent-execution-events [data-event-class="action.required"][data-action-kind="add-input-source"] .agent-event-action',
+      '.agent-action-facts [data-event-class="action.required"][data-action-kind="add-input-source"] .agent-event-action',
     );
     const runtimePanel = agentPanel.locator('.agents-runtime-inline');
-    await expect(runtimePanel).toBeHidden();
-    await agentPanel.locator('.agents-thread-tool[aria-label="运行详情"]').click();
     await expect(runtimePanel).toBeVisible({ timeout: 20_000 });
     await expect(actionButton).toHaveText('补输入源', { timeout: 20_000 });
     await expect(actionButton).toBeVisible({ timeout: 20_000 });
@@ -5858,14 +6744,30 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
             event.eventClass === 'action.required' &&
             event.actionId === 'runtime-action-add-source'
           ))),
-          hasLocalResolved: Boolean(session?.executionEvents?.some((event) => (
+          hasPlatformResolved: Boolean(session?.executionEvents?.some((event) => (
             event.eventClass === 'action.resolved' &&
-            event.actionId === 'runtime-action-add-source'
+            event.actionId === 'runtime-action-add-source' &&
+            event.detail?.includes('平台已确认人工处理结果')
+          ))),
+          hasLocalOnlyResolved: Boolean(session?.executionEvents?.some((event) => (
+            event.eventClass === 'action.resolved' &&
+            event.actionId === 'runtime-action-add-source' &&
+            event.payload?.responseScope === 'local-navigation'
           ))),
         };
       }, { workspacePath: workspaceDir, sessionId: promptSessionId }),
-      { message: '等待平台 action fact 保留且不本地伪造 resolved', timeout: 20_000 },
-    ).toEqual({ hasRequired: true, hasLocalResolved: false });
+      { message: '等待平台 action fact 回写 runtime', timeout: 20_000 },
+    ).toEqual({ hasRequired: true, hasPlatformResolved: true, hasLocalOnlyResolved: false });
+    const actionRespondRequest = bridge.requests.find((request) => (
+      request.body.capability === 'lime.agent' &&
+      request.body.operation === 'agentSession/action/respond'
+    ));
+    expect(actionRespondRequest, JSON.stringify(bridge.requests)).toBeTruthy();
+    expect(actionRespondRequest.body.input).toMatchObject({
+      sessionId: 'platform-session-e2e',
+      actionId: 'runtime-action-add-source',
+      decision: 'open-input-source',
+    });
     }, {
       requireExplicitTextKey: false,
       env: {

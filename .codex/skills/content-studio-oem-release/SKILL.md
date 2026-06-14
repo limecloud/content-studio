@@ -9,6 +9,7 @@ description: 发布或修复 content-studio OEM 桌面包分发链路。Use when
 
 - 先读 `AGENTS.md` 的高风险确认规则；任何真实写生产控制面、GitHub Release、Cloudflare R2、GitHub Actions workflow 的动作都必须先中文确认。
 - 同时读 `docs/aiprompts/oem-release.md`；该文档是发布意图触发、排查顺序和验证命令的 Agent 事实源。
+- 如果本次 OEM 包涉及 Lime App Server sidecar、`resources/app-server/`、runtime provider store 或 Agents runtime/UI 回归，先使用 `.codex/skills/content-studio-app-server/` 并完成 `docs/aiprompts/app-server-workflow.md` 的验证门禁，再继续分发。
 - 默认目标是完整分发闭环：GitHub Release 产物存在 -> 控制面 latest -> R2 分平台 latest -> R2 全局 `_manifests/latest.json` -> 官网/API/下载链接验证。
 - 不再手工拼临时 Worker；优先使用仓库脚本和 `Publish OEM Distribution` workflow。
 - 不要只更新单品牌全局 manifest。`_manifests/latest.json` 必须保留 bugu + seenx 的完整 build 集合，或用脚本自动 merge。
@@ -37,6 +38,7 @@ description: 发布或修复 content-studio OEM 桌面包分发链路。Use when
      -f dry_run=false
    ```
 5. 发布后必须验证 `downloads.bugu.run`、`downloads.limeai.run`、`api.bugu.run/api/v1/public/download-manifest`、控制面 latest API，并用 Playwright 看 `bugu.run` / `seenx.run` 页面。
+6. 若问题表现为“包能下载但 Agents 二轮报未启动 / App Server 没启动 / provider store 不可用”，不要只刷新 R2 或 latest；回到 `.codex/skills/content-studio-app-server/` 检查随包 App Server resources、runtime 预检和 Agents 状态机门禁。
 
 ## 收尾
 

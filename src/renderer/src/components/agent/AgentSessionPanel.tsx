@@ -171,7 +171,6 @@ export function AgentSessionPanel({
                 readModel={runtimeReadModel}
                 messages={session?.messages}
                 empty={empty}
-                runningLabel={runningLabel}
                 messageTitle={messageTitle}
                 messageMeta={messageMeta}
                 messagePreview={messagePreview}
@@ -242,7 +241,6 @@ export function AgentSessionPanel({
               readModel={runtimeReadModel}
               messages={session?.messages}
               empty={empty}
-              runningLabel={runningLabel}
               messageTitle={messageTitle}
               messageMeta={messageMeta}
               messagePreview={messagePreview}

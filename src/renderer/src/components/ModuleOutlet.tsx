@@ -24,18 +24,32 @@ import { SkillsModule } from './modules/SkillsModule';
 import { V2FeatureModule } from './modules/V2FeatureModule';
 import { VideoModule } from './modules/VideoModule';
 import { isV2FeatureModule } from '../app/v2FeatureRegistry';
-import { createAgentModelSettingsProjection, createModelSettingsProjection } from '../app/platformModelSettingsProjection';
+import {
+  createAgentModelSettingsProjection,
+  createModelSettingsProjection,
+  selectUsableTextModel,
+} from '../app/platformModelSettingsProjection';
 import type { AgentActionResolver } from './agent/AgentSessionPanel';
 import { projectAgentRuntimeAction } from './agent/agentRuntimeProjection';
+import type { AgentPromptActionDecision } from '../../../shared/types';
 
 interface ModuleOutletProps {
   app: ContentStudioAppController;
   onOpenSkillPackage: (packagePath: string) => void;
 }
 
+function agentPromptActionDecision(decision: string): AgentPromptActionDecision {
+  if (decision === 'open-input-source' || decision === 'open-model-settings') return decision;
+  return 'acknowledge';
+}
+
 export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
   const modelSettings = createModelSettingsProjection(app);
   const agentModelSettings = createAgentModelSettingsProjection(app);
+  const agentTextModel = selectUsableTextModel(
+    agentModelSettings,
+    app.params.textModel,
+  );
   const brandName = app.authState?.bootstrap?.branding?.shortName
     || app.authState?.bootstrap?.branding?.appName
     || app.authState?.bootstrap?.tenant?.name
@@ -55,7 +69,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           await app.respondAgentPromptAction({
             sessionId,
             actionId: event.actionId!,
-            decision: action.decision,
+            decision: agentPromptActionDecision(action.decision),
             payload: {
               actionKind: action.actionKind,
               targetModule: action.targetModule,
@@ -128,7 +142,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         recentWorkspacePaths={app.settings?.recentWorkspacePaths ?? []}
         productImageRefs={app.productImageRefs}
         referenceImageRefs={app.referenceImageRefs}
-        textModel={agentModelSettings.defaultTextModelId ?? app.params.textModel}
+        textModel={agentTextModel}
         textProviderId={agentModelSettings.defaultAgentProviderId}
         modelSettings={agentModelSettings}
         skills={app.skills}
@@ -146,14 +160,21 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
         onSelectAgentSession={app.setActiveAgentPromptSessionId}
         onSelectTextModel={(selection) => {
-          if (!selection.modelId) return;
-          app.setParams((current) => ({ ...current, textModel: selection.modelId }));
+          const modelId = selectUsableTextModel(agentModelSettings, selection.modelId);
+          if (!modelId) return;
+          app.setParams((current) => ({ ...current, textModel: modelId }));
         }}
         onStartAgentSession={(input) =>
-          app.runAction(() => app.startAgentPromptSession(input), '正在开始图片提示词协作')
+          app.runAction(() => app.startAgentPromptSession({
+            ...input,
+            textModel: input.textModel ?? agentTextModel,
+          }), '正在开始图片提示词协作')
         }
         onContinueAgentSession={(input) =>
-          app.runAction(() => app.continueAgentPromptSession(input), '正在继续 agents 协作')
+          app.runAction(() => app.continueAgentPromptSession({
+            ...input,
+            textModel: input.textModel ?? agentTextModel,
+          }), '正在继续 agents 协作')
         }
         onUsePromptInImage={app.useShowcasePromptInImage}
         onGenerateImage={(input) => app.runAction((context) => app.generateShowcaseImage(input, context), '正在生成图片候选')}

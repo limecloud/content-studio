@@ -160,10 +160,23 @@ function modelFromOptions(
 function platformModelFromOptions(
   currentModel: string,
   models: string[],
+  preferredModel?: string,
+  previousDefaultModel?: string,
 ): string {
   const normalized = uniqueModelNames(models);
-  if (currentModel && normalized.includes(currentModel)) return currentModel;
+  const current = currentModel.trim();
+  const preferred = preferredModel?.trim() ?? "";
+  const previousDefault = previousDefaultModel?.trim() ?? "";
+  if (current && normalized.includes(current) && previousDefault && current !== previousDefault) return current;
+  if (preferred && normalized.includes(preferred)) return preferred;
+  if (current && normalized.includes(current)) return current;
   return normalized[0] ?? "";
+}
+
+function requestedModelFromOptions(model: string | undefined, models: string[]): string | undefined {
+  const requested = model?.trim();
+  const normalized = uniqueModelNames(models);
+  return requested && normalized.includes(requested) ? requested : undefined;
 }
 
 function uniqueModelNames(models: string[]): string[] {
@@ -1176,13 +1189,13 @@ export function useContentStudioApp() {
     setParams((current) => ({
       ...current,
       textModel: nextModelConfig.platformManaged
-        ? platformModelFromOptions(current.textModel, nextTextModels)
+        ? platformModelFromOptions(current.textModel, nextTextModels, nextModelConfig.textModel, modelConfig?.textModel)
         : modelFromOptions(current.textModel, nextTextModels),
       imageModel: nextModelConfig.platformManaged
-        ? platformModelFromOptions(current.imageModel, nextImageModels)
+        ? platformModelFromOptions(current.imageModel, nextImageModels, nextModelConfig.imageOuterModel, modelConfig?.imageOuterModel)
         : imageModelFromConfig(current.imageModel, nextImageModels),
       videoModel: nextModelConfig.platformManaged
-        ? platformModelFromOptions(current.videoModel, nextVideoModels)
+        ? platformModelFromOptions(current.videoModel, nextVideoModels, nextModelConfig.videoModel, modelConfig?.videoModel)
         : modelFromOptions(current.videoModel, nextVideoModels),
     }));
 
@@ -2065,6 +2078,7 @@ export function useContentStudioApp() {
     const workspace = requireWorkspace();
     const assetInputSourceIds = await ensureAgentAssetInputSources(workspace, input.productImageRefs, input.referenceImageRefs);
     const inputSourceIds = Array.from(new Set([...input.inputSourceIds, ...assetInputSourceIds]));
+    const agentTextModel = requestedModelFromOptions(input.textModel, textModelOptions);
     const pendingSession = createPendingAgentPromptSession({
       workspacePath: workspace,
       title: input.title,
@@ -2074,7 +2088,7 @@ export function useContentStudioApp() {
       sceneCardIds: input.sceneCardIds,
       selectedSkills: input.selectedSkills,
       selectedSkillSlugs: input.selectedSkillSlugs,
-      textModel: input.textModel ?? params.textModel,
+      textModel: agentTextModel,
     });
     setAgentPromptSessions((current) => upsertAgentPromptSession(current, pendingSession));
     setActiveAgentPromptSessionId(pendingSession.id);
@@ -2088,7 +2102,7 @@ export function useContentStudioApp() {
       sceneCardIds: input.sceneCardIds,
       selectedSkills: input.selectedSkills,
       selectedSkillSlugs: input.selectedSkillSlugs,
-      textModel: input.textModel ?? params.textModel,
+      textModel: agentTextModel,
     });
     if (result.draft) {
       setPromptDrafts((current) => [result.draft!, ...current.filter((item) => item.id !== result.draft!.id)]);
@@ -2106,11 +2120,12 @@ export function useContentStudioApp() {
     textModel?: string;
   }): Promise<void> {
     const workspace = requireWorkspace();
+    const agentTextModel = requestedModelFromOptions(input.textModel, textModelOptions);
     const result = await window.contentStudio.continueAgentPromptSession({
       workspacePath: workspace,
       sessionId: input.sessionId,
       message: input.message,
-      textModel: input.textModel ?? params.textModel,
+      textModel: agentTextModel,
     });
     if (result.draft) {
       setPromptDrafts((current) => [result.draft!, ...current.filter((item) => item.id !== result.draft!.id)]);

@@ -5,8 +5,15 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = resolve(process.cwd());
 
 const TARGET_FILES = [
+  'electron.vite.config.ts',
   'package.json',
   'package-lock.json',
+  'scripts/assert-agent-runtime-packages.mjs',
+  'scripts/assert-local-lime-agent-runtime-tarballs.mjs',
+  'scripts/check-lime-agent-runtime-npm-publish-readiness.mjs',
+  'scripts/assert-desktop-platform-packages.mjs',
+  'scripts/build-local.mjs',
+  'scripts/build-production.mjs',
   'src/shared/types.ts',
   'src/preload/index.ts',
   'src/main/ipc.ts',
@@ -106,6 +113,13 @@ function interfaceBody(text, interfaceName) {
 function runBoundaryChecks(files) {
   const failures = [];
   const sharedPath = 'src/shared/types.ts';
+  const electronVitePath = 'electron.vite.config.ts';
+  const agentRuntimeAssertPath = 'scripts/assert-agent-runtime-packages.mjs';
+  const localAgentRuntimeTarballAssertPath = 'scripts/assert-local-lime-agent-runtime-tarballs.mjs';
+  const agentRuntimePublishReadinessPath = 'scripts/check-lime-agent-runtime-npm-publish-readiness.mjs';
+  const desktopPlatformAssertPath = 'scripts/assert-desktop-platform-packages.mjs';
+  const buildLocalPath = 'scripts/build-local.mjs';
+  const buildProductionPath = 'scripts/build-production.mjs';
   const preloadPath = 'src/preload/index.ts';
   const ipcPath = 'src/main/ipc.ts';
   const promptAgentPath = 'src/main/services/appServerPromptAgentService.ts';
@@ -174,6 +188,92 @@ function runBoundaryChecks(files) {
     ruleId: 'no-bare-app-server-client-lockfile-package',
     message: 'lockfile 不能解析无 scope app-server-client 包。',
   });
+  assertIncludes({
+    files,
+    failures,
+    path: electronVitePath,
+    needle: "function shouldUseLimeAgentPackageAliases(command: 'build' | 'serve'): boolean",
+    ruleId: 'lime-package-alias-dev-only-helper',
+    message: 'Lime packages 本地 alias 必须集中在开发 helper 内控制。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: electronVitePath,
+    needle: "|| process.env.CONTENT_STUDIO_LOCAL_BUILD === '1';",
+    ruleId: 'lime-package-alias-serve-dev-only',
+    message: '本地 Lime packages alias 只能在 npm run dev / 本地 build 验证启用，生产 build/dist 必须走 npm registry 包。',
+  });
+  assertNotIncludes({
+    files,
+    failures,
+    path: electronVitePath,
+    needle: 'CONTENT_STUDIO_USE_LIME_PACKAGES_ALIAS',
+    ruleId: 'lime-package-alias-no-build-env-escape',
+    message: '不能用环境变量让生产 build/dist 改走本地 Lime packages alias。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: electronVitePath,
+    needle: "function shouldUseDesktopPlatformPackageAliases(command: 'build' | 'serve'): boolean",
+    ruleId: 'desktop-platform-alias-dev-helper',
+    message: 'desktop-platform 本地 alias 必须集中在开发 helper 内控制。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: electronVitePath,
+    needle: "if (process.env.CONTENT_STUDIO_USE_NPM_DESKTOP_PLATFORM === '1') return false;",
+    ruleId: 'desktop-platform-alias-production-disable',
+    message: '生产构建必须能强制禁用 desktop-platform 本地 alias。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: electronVitePath,
+    needle: "return command === 'serve' || process.env.CONTENT_STUDIO_LOCAL_BUILD === '1';",
+    ruleId: 'desktop-platform-alias-local-only',
+    message: 'desktop-platform 本地 alias 只能用于 dev / 本地 build 验证，不能默认进入生产 build/dist。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: 'package.json',
+    needle: '"build:production": "node scripts/build-production.mjs"',
+    ruleId: 'desktop-platform-production-build-gate',
+    message: '生产 build/dist 必须先校验 @limecloud/desktop-platform-* npm 包并禁用本地 alias。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: buildLocalPath,
+    needle: "CONTENT_STUDIO_LOCAL_BUILD: '1'",
+    ruleId: 'desktop-platform-local-build-alias-enabled',
+    message: '本地 build 验证必须显式开启 desktop-platform 本地 alias，避免误用生产 npm 缺失状态。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: buildProductionPath,
+    needle: "CONTENT_STUDIO_USE_NPM_DESKTOP_PLATFORM: '1'",
+    ruleId: 'desktop-platform-production-build-alias-disabled',
+    message: '生产 build 必须显式禁用 desktop-platform 本地 alias。',
+  });
+  for (const packageName of [
+    '@limecloud/desktop-platform-contracts',
+    '@limecloud/desktop-platform-react',
+    '@limecloud/desktop-platform-electron-adapter',
+  ]) {
+    assertIncludes({
+      files,
+      failures,
+      path: desktopPlatformAssertPath,
+      needle: packageName,
+      ruleId: 'desktop-platform-required-npm-package',
+      message: 'desktop-platform 生产包必须来自 @limecloud scoped npm 包。',
+    });
+  }
   assertIncludes({
     files,
     failures,
@@ -441,6 +541,92 @@ function runBoundaryChecks(files) {
     files,
     failures,
     path: 'package.json',
+    needle: '"assert:agent-runtime-packages": "node scripts/assert-agent-runtime-packages.mjs"',
+    ruleId: 'agent-runtime-production-export-gate-script',
+    message: '生产 build/dist 必须先校验 @limecloud/agent-runtime-* npm 包已发布标准 AgentUI runtime exports。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: 'package.json',
+    needle: '"assert:local-lime-agent-runtime-tarballs": "node scripts/assert-local-lime-agent-runtime-tarballs.mjs"',
+    ruleId: 'agent-runtime-local-tarball-export-gate-script',
+    message: '发布 npmjs 前必须能用本地 Lime packages tarball 验证标准 AgentUI runtime exports。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: 'package.json',
+    needle: '"check:lime-agent-runtime-npm-publish-readiness": "node scripts/check-lime-agent-runtime-npm-publish-readiness.mjs"',
+    ruleId: 'agent-runtime-npm-publish-readiness-script',
+    message: '发布 npmjs 前必须只读检查 @limecloud/agent-runtime-* 版本号是否可发布。',
+  });
+  assertIncludes({
+    files,
+    failures,
+    path: buildProductionPath,
+    needle: "[command('npm'), ['run', 'assert:agent-runtime-packages']]",
+    ruleId: 'agent-runtime-production-build-export-gate',
+    message: '生产 build 必须先跑 @limecloud/agent-runtime-* 标准导出 gate，不能靠本地 Lime packages alias 通过。',
+  });
+  for (const needle of [
+    '@limecloud/agent-runtime-ui',
+    '@limecloud/agent-runtime-projection',
+    'AgentUiProjectionView',
+    'projectAgentUiState',
+  ]) {
+    assertIncludes({
+      files,
+      failures,
+      path: agentRuntimeAssertPath,
+      needle,
+      ruleId: 'agent-runtime-required-npm-export',
+      message: 'Agent runtime 生产包必须从 npmjs 暴露标准 AgentUI projection surface。',
+    });
+  }
+  for (const needle of [
+    '@limecloud/agent-ui-contracts',
+    '@limecloud/agent-runtime-ui',
+    '@limecloud/agent-runtime-projection',
+    'npm',
+    'pack',
+    'AgentUiProjectionView',
+    'ProcessTimelineView',
+    'ExecutionGraphView',
+    'SubagentsView',
+    'projectAgentUiState',
+  ]) {
+    assertIncludes({
+      files,
+      failures,
+      path: localAgentRuntimeTarballAssertPath,
+      needle,
+      ruleId: 'agent-runtime-local-tarball-required-export',
+      message: '本地 Lime packages tarball 预检必须覆盖生产 npmjs gate 需要的标准 AgentUI exports。',
+    });
+  }
+  for (const needle of [
+    '@limecloud/agent-ui-contracts',
+    '@limecloud/agent-runtime-ui',
+    '@limecloud/agent-runtime-projection',
+    'npm',
+    'view',
+    'version already exists on npmjs',
+    '不执行 npm publish',
+  ]) {
+    assertIncludes({
+      files,
+      failures,
+      path: agentRuntimePublishReadinessPath,
+      needle,
+      ruleId: 'agent-runtime-npm-publish-readiness-contract',
+      message: 'npmjs 发布 readiness 必须只读检查标准 AgentUI packages 的版本占用，不能执行 publish。',
+    });
+  }
+  assertIncludes({
+    files,
+    failures,
+    path: 'package.json',
     needle: '@limecloud/agent-runtime-projection',
     ruleId: 'shared-agentui-projection-dependency',
     message: 'agents 工作台必须复用共享 AgentUI projection 依赖。',
@@ -464,7 +650,8 @@ function runBoundaryChecks(files) {
   for (const needle of [
     '@limecloud/agent-runtime-ui',
     'AgentTimeline',
-    'RuntimeFactsPanel',
+    'AgentUiProjectionView',
+    'projectAgentUiState',
     'AgentRuntimeRefLists',
     'agent-ui-projection',
     'agent-ui-main',

@@ -94,9 +94,10 @@ interface CopywritingTask {
   requiredSkillSlugs: string[];
 }
 
-type ActiveMenu = "add" | "access" | "project" | null;
+type ActiveMenu = "add" | "access" | null;
 type WorkbenchView = "entry" | "thread";
 type ThreadToolbarMenu = "workspace" | "task" | null;
+type ComposerSubmitMode = "start" | "send" | "queue";
 
 type IconName =
   | "add"
@@ -303,23 +304,11 @@ function titleForIntent(intentId: QuickIntentId): string {
   return "图片 Prompt 协作";
 }
 
-function projectLabelFromPath(path?: string): string {
-  if (!path) return "不使用项目";
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
-}
-
-function compactProjectPath(path?: string): string {
-  if (!path) return "启动前选择或新建项目";
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  if (parts.length <= 2) return path;
-  return `.../${parts.slice(-2).join("/")}`;
-}
-
 function messageTitle(message: AgentPromptMessage): string {
   if (message.role === "user") return message.kind === "adjustment" ? "你的调整" : "你的任务";
   if (message.role === "assistant") {
     if (isBlockedModel(message.model)) return "未完成";
-    return message.kind === "draft" ? "草稿结果" : "AI Agent";
+    return message.kind === "draft" ? "草稿结果" : "助手";
   }
   return "系统记录";
 }
@@ -404,12 +393,49 @@ function outputPurposeForIntent(intentId: QuickIntentId): string {
   return "图片 Prompt";
 }
 
+function compactLine(value: string, fallback = "未选择"): string {
+  const text = value.trim().replace(/\s+/g, " ");
+  return text || fallback;
+}
+
+function pushComposerHistory(history: string[], next: string): string[] {
+  const value = compactLine(next, "");
+  if (!value) return history;
+  return [value, ...history.filter((item) => item !== value)].slice(0, 12);
+}
+
+function runtimeToolEventCount(readModel: ReturnType<typeof projectAgentRuntimeReadModel>): number {
+  return readModel.events.filter((event) => event.surface === "tool").length;
+}
+
+function hasSidecarRuntimeFacts(readModel: ReturnType<typeof projectAgentRuntimeReadModel>): boolean {
+  return readModel.events.some((event) => {
+    const eventClass = event.source.eventClass ?? "";
+    return (
+      event.surface === "tool" ||
+      event.surface === "human-action" ||
+      eventClass.startsWith("tool.") ||
+      eventClass.startsWith("action.") ||
+      eventClass.startsWith("task.") ||
+      eventClass.startsWith("subagent.") ||
+      eventClass.startsWith("handoff.") ||
+      eventClass.startsWith("review.") ||
+      eventClass.startsWith("artifact.") ||
+      eventClass.startsWith("evidence.") ||
+      eventClass.startsWith("runtime.") ||
+      eventClass.startsWith("permission.") ||
+      event.status === "blocked" ||
+      event.status === "failed"
+    );
+  });
+}
+
 function sanitizeRuntimeProjectionEvent(event: AgentRuntimeEventProjection): AgentRuntimeEventProjection {
   return {
     ...event,
     title: sanitizeUserFacingMessage(event.title),
     detail: event.detail ? sanitizeUserFacingMessage(event.detail) : undefined,
-    displayStatus: sanitizeUserFacingMessage(event.displayStatus),
+    displayStatus: event.displayStatus ? sanitizeUserFacingMessage(event.displayStatus) : event.displayStatus,
   };
 }
 
@@ -534,7 +560,6 @@ export function AgentsWorkbench({
   busy,
   workspaceReady,
   workspacePath,
-  recentWorkspacePaths,
   productImageRefs,
   referenceImageRefs,
   textModel,
@@ -545,9 +570,6 @@ export function AgentsWorkbench({
   promptDrafts,
   agentPromptSessions,
   activeSessionId,
-  onSelectWorkspacePath,
-  onChooseWorkspace,
-  onClearWorkspace,
   onSelectProductImages,
   onSelectReferenceImages,
   onSelectAgentSession,
@@ -570,28 +592,14 @@ export function AgentsWorkbench({
   const [openedSessionId, setOpenedSessionId] = useState("");
   const [selectedSkillKeys, setSelectedSkillKeys] = useState<string[]>(() => defaultSkillKeys(skills, enabledSkillKeys));
   const [threadToolbarMenu, setThreadToolbarMenu] = useState<ThreadToolbarMenu>(null);
-  const [runtimeOpen, setRuntimeOpen] = useState(false);
+  const [runtimePanelCollapsed, setRuntimePanelCollapsed] = useState(false);
+  const [composerHistory, setComposerHistory] = useState<string[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<number | null>(null);
+  const [queuedPrompt, setQueuedPrompt] = useState("");
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const activeSession = openedSessionId
     ? agentPromptSessions.find((session) => session.id === openedSessionId)
     : undefined;
-  const projectOptions = useMemo(() => {
-    const paths = new Set<string>();
-    if (workspacePath) paths.add(workspacePath);
-    recentWorkspacePaths.forEach((path) => {
-      if (path.trim()) paths.add(path);
-    });
-    agentPromptSessions.forEach((session) => {
-      if (session.workspacePath) paths.add(session.workspacePath);
-    });
-    return [...paths].map((path) => ({
-      path,
-      label: projectLabelFromPath(path),
-      detail: compactProjectPath(path),
-    }));
-  }, [agentPromptSessions, recentWorkspacePaths, workspacePath]);
-  const currentProjectLabel = projectLabelFromPath(workspacePath);
-  const currentProjectDetail = compactProjectPath(workspacePath);
   const recentSessions = agentPromptSessions
     .filter((session) => !workspacePath || session.workspacePath === workspacePath)
     .slice(0, 4);
@@ -651,17 +659,21 @@ export function AgentsWorkbench({
     () => sanitizeRuntimeReadModel(projectAgentRuntimeReadModel(activeSession)),
     [activeSession],
   );
-  const hasRuntimeFacts = Boolean(
-    runtimeReadModel.events.length ||
-    runtimeReadModel.sourceCount ||
-    runtimeReadModel.pendingActions.length ||
-    runtimeReadModel.artifactRefs.length ||
-    runtimeReadModel.evidenceRefs.length,
-  );
+  const hasRuntimeFacts = hasSidecarRuntimeFacts(runtimeReadModel);
+  const runtimePanelOpen = hasRuntimeFacts && !runtimePanelCollapsed;
   const agentIsRunning = busy && activeSession?.status === "active";
-  const primaryDisabled = busy || !workspaceReady || !prompt.trim() || (view === "thread" && !activeSession);
   const sourceCount = runtimeReadModel.sourceCount + productImageRefs.length + referenceImageRefs.length;
   const artifactCount = runtimeReadModel.artifactRefs.length + (activeArtifactContent ? 1 : 0);
+  const pendingActionCount = runtimeReadModel.pendingActions.length;
+  const toolEventCount = runtimeToolEventCount(runtimeReadModel);
+  const submitMode: ComposerSubmitMode =
+    view === "thread" && activeSession ? busy ? "queue" : "send" : "start";
+  const canQueuePrompt = submitMode === "queue" && workspaceReady && Boolean(activeSession) && prompt.trim().length > 0;
+  const primaryDisabled =
+    !workspaceReady ||
+    !prompt.trim() ||
+    (view === "thread" && !activeSession) ||
+    (busy && !canQueuePrompt);
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -671,6 +683,7 @@ export function AgentsWorkbench({
     }
     setOpenedSessionId(activeSessionId);
     setView("thread");
+    setRuntimePanelCollapsed(false);
   }, [activeSessionId]);
 
   useEffect(() => {
@@ -681,6 +694,19 @@ export function AgentsWorkbench({
     });
   }, [enabledSkillKeys, skills, visibleSkills]);
 
+  useEffect(() => {
+    if (busy || !queuedPrompt || !activeSession?.id || view !== "thread") return;
+    const message = queuedPrompt;
+    setQueuedPrompt("");
+    void Promise.resolve(onContinueAgentSession({
+      sessionId: activeSession.id,
+      message,
+      textModel,
+    })).catch(() => {
+      setQueuedPrompt(message);
+    });
+  }, [activeSession?.id, busy, onContinueAgentSession, queuedPrompt, textModel, view]);
+
   function selectQuickIntent(intentId: QuickIntentId): void {
     setSelectedQuickIntentId(intentId);
     setActiveMenu(null);
@@ -689,6 +715,8 @@ export function AgentsWorkbench({
   async function startAgentSession(intentId: QuickIntentId = selectedQuickIntentId): Promise<void> {
     const userIntent = prompt.trim();
     if (!userIntent) return;
+    setComposerHistory((current) => pushComposerHistory(current, userIntent));
+    setHistoryCursor(null);
     const selectedSkillRefs = runSkills.map(skillRefFromLoaded);
     setOpenedSessionId("");
     const session = await onStartAgentSession({
@@ -714,6 +742,14 @@ export function AgentsWorkbench({
     if (view === "thread" && activeSession) {
       const message = prompt.trim();
       if (!message) return;
+      setComposerHistory((current) => pushComposerHistory(current, message));
+      setHistoryCursor(null);
+      if (busy) {
+        setQueuedPrompt(message);
+        setPrompt("");
+        setActiveMenu(null);
+        return;
+      }
       await onContinueAgentSession({
         sessionId: activeSession.id,
         message,
@@ -737,30 +773,69 @@ export function AgentsWorkbench({
     composerInputRef.current?.focus();
   }
 
-  function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>): void {
+  function queueCurrentPrompt(): void {
+    if (!canQueuePrompt) return;
+    const message = prompt.trim();
+    setComposerHistory((current) => pushComposerHistory(current, message));
+    setHistoryCursor(null);
+    setQueuedPrompt(message);
+    setPrompt("");
+    setActiveMenu(null);
+  }
+
+  function handlePromptChange(value: string): void {
+    setPrompt(value);
+    setHistoryCursor(null);
+  }
+
+  function restoreComposerHistory(direction: "previous" | "next"): void {
+    if (!composerHistory.length) return;
+    if (direction === "previous") {
+      const nextCursor = historyCursor === null ? 0 : Math.min(historyCursor + 1, composerHistory.length - 1);
+      setHistoryCursor(nextCursor);
+      setPrompt(composerHistory[nextCursor]);
+      return;
+    }
+
+    if (historyCursor === null) return;
+    const nextCursor = historyCursor - 1;
+    if (nextCursor < 0) {
+      setHistoryCursor(null);
+      setPrompt("");
+      return;
+    }
+    setHistoryCursor(nextCursor);
+    setPrompt(composerHistory[nextCursor]);
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     if (!primaryDisabled) void runPrimaryAction();
   }
 
+  function handleComposerNavigation(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "Tab" && canQueuePrompt) {
+      event.preventDefault();
+      queueCurrentPrompt();
+      return;
+    }
+    if (event.key === "ArrowUp" && !prompt.trim()) {
+      event.preventDefault();
+      restoreComposerHistory("previous");
+      return;
+    }
+    if (event.key === "ArrowDown" && historyCursor !== null) {
+      event.preventDefault();
+      restoreComposerHistory("next");
+      return;
+    }
+    handleComposerKeyDown(event);
+  }
+
   function toggleMenu(menu: ActiveMenu): void {
     setActiveMenu((current) => current === menu ? null : menu);
-  }
-
-  async function chooseWorkspaceFromComposer(): Promise<void> {
-    setActiveMenu(null);
-    await onChooseWorkspace();
-  }
-
-  async function selectWorkspaceFromComposer(path: string): Promise<void> {
-    setActiveMenu(null);
-    if (path === workspacePath) return;
-    await onSelectWorkspacePath(path);
-  }
-
-  async function clearWorkspaceFromComposer(): Promise<void> {
-    setActiveMenu(null);
-    await onClearWorkspace();
   }
 
   function toggleThreadToolbarMenu(menu: ThreadToolbarMenu): void {
@@ -862,11 +937,13 @@ export function AgentsWorkbench({
 
         <button
           type="button"
-          className={`agents-thread-tool ${runtimeOpen ? "active" : ""}`}
+          className={`agents-thread-tool ${runtimePanelOpen ? "active" : ""}`}
           aria-label="运行详情"
-          title="运行详情"
+          title={runtimePanelOpen ? "收起运行详情" : "运行详情"}
           onClick={() => {
-            setRuntimeOpen((current) => !current);
+            if (hasRuntimeFacts) {
+              setRuntimePanelCollapsed((current) => !current);
+            }
             setThreadToolbarMenu(null);
           }}
         >
@@ -876,254 +953,195 @@ export function AgentsWorkbench({
     );
   }
 
-  function renderComposerSurface(mode: WorkbenchView, className = "") {
-    const label = mode === "entry" ? "启动 agents 协作" : "agents 对话输入";
-    const sendLabel = busy ? "处理中" : mode === "thread" && activeSession ? "发送" : "开始协作";
-    const placeholder = selectedQuickIntent.placeholder;
+  function renderComposerControls(mode: WorkbenchView) {
+    const sendLabel = submitMode === "queue" ? "排队" : submitMode === "send" ? "发送" : "开始协作";
 
     return (
-      <section className={`agents-composer-frame ${className}`.trim()} aria-label={label}>
-        <textarea
-          ref={composerInputRef}
-          aria-label="agents 输入"
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          onKeyDown={submitOnEnter}
-          placeholder={placeholder}
-          rows={mode === "entry" ? 5 : 4}
-        />
-        <div className="agents-composer-controls">
-          <div className="agents-composer-left">
-            <div className="agents-menu-anchor">
-              <button
-                type="button"
-                className="agents-icon-button"
-                aria-label="添加输入"
-                title="添加输入"
-                onClick={() => toggleMenu("add")}
-              >
-                <Icon name="add" />
-              </button>
-              {activeMenu === "add" ? (
-                <div className="agents-floating-menu agents-add-menu">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectProductImages();
-                      setActiveMenu(null);
-                    }}
-                  >
-                    <Icon name="image" />
-                    <span>
-                      添加照片和文件
-                      <small>产品图 {productImageRefs.length}</small>
-                      <i className="agents-sr-only">添加产品图</i>
-                    </span>
-                    <em>{productImageRefs.length}</em>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectReferenceImages();
-                      setActiveMenu(null);
-                    }}
-                  >
-                    <Icon name="file" />
-                    <span>
-                      添加参考图
-                      <small>参考图 {referenceImageRefs.length}</small>
-                      <i className="agents-sr-only">添加参考图</i>
-                    </span>
-                    <em>{referenceImageRefs.length}</em>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onOpenSkills();
-                      setActiveMenu(null);
-                    }}
-                  >
-                    <Icon name="grid" />
-                    <span>
-                      skills 管理
-                      <small>管理内容能力</small>
-                    </span>
-                    <em>{selectedSkills.length}</em>
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            <label className="agents-intent-control agents-intent-control-hidden">
-              <select
-                aria-label="协作目标"
-                value={selectedQuickIntentId}
-                onChange={(event) => selectQuickIntent(event.target.value as QuickIntentId)}
-              >
-                {QUICK_INTENTS.map((intent) => (
-                  <option key={intent.id} value={intent.id}>{intent.label}</option>
-                ))}
-              </select>
-            </label>
-            <div className="agents-menu-anchor">
-              <button
-                type="button"
-                className="agents-composer-chip"
-                aria-label="权限设置"
-                onClick={() => toggleMenu("access")}
-              >
-                <span>{selectedAccessOption.id === "full" ? "完全访问" : selectedAccessOption.label}</span>
-                <Icon name="chevronDown" />
-              </button>
-              {activeMenu === "access" ? (
-                <div className="agents-floating-menu agents-access-menu">
-                  {ACCESS_OPTIONS.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className={option.id === accessMode ? "active" : ""}
-                      onClick={() => {
-                        setAccessMode(option.id);
-                        setActiveMenu(null);
-                      }}
-                    >
-                      <Icon name={option.id === "custom" ? "settings" : "panel"} />
-                      <span>
-                        {option.label}
-                        <small>{option.detail}</small>
-                      </span>
-                      <em>{option.id === accessMode ? "当前" : ""}</em>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-          <div className="agents-composer-right">
-            <PlatformRuntimeModelMenu
-              modelSettings={modelSettings}
-              capability="text"
-              value={textModel}
-              providerId={textProviderId}
-              label="模型"
-              contextLabel="模型设置"
-              placement={mode === "entry" ? "bottom" : "top"}
-              className="agents-platform-model-menu"
-              emptyLabel={modelMenuEmptyLabel}
-              leadingIcon={null}
-              onChange={onSelectTextModel}
-              onOpenChange={(open) => {
-                if (open) setActiveMenu(null);
-              }}
-              onOpenModelSettings={onOpenModelSettings}
-            />
-            <button
-              type="button"
-              className="agents-send-button"
-              aria-label={sendLabel}
-              title={sendLabel}
-              onClick={runPrimaryAction}
-              disabled={primaryDisabled}
-            >
-              <Icon name="arrowUp" />
-            </button>
-          </div>
-        </div>
-        <div className="agents-composer-project-rail" aria-label="项目上下文">
+      <div className="agents-composer-controls">
+        <div className="agents-composer-left">
           <div className="agents-menu-anchor">
             <button
               type="button"
-              className={`agents-project-chip ${activeMenu === "project" ? "active" : ""}`}
-              aria-label="选择项目"
-              title={currentProjectDetail}
-              onClick={() => toggleMenu("project")}
+              className="agents-icon-button"
+              aria-label="添加输入"
+              title="添加输入"
+              onClick={() => toggleMenu("add")}
             >
-              <Icon name="folder" />
-              <span>{currentProjectLabel}</span>
-              <Icon name="chevronDown" />
+              <Icon name="add" />
             </button>
-            {activeMenu === "project" ? (
-              <div className="agents-floating-menu agents-project-menu">
-                <div className="agents-project-search">
-                  <Icon name="search" />
-                  <span>搜索项目</span>
-                </div>
-                {projectOptions.map((project) => (
-                  <button
-                    key={project.path}
-                    type="button"
-                    className={project.path === workspacePath ? "active" : ""}
-                    onClick={() => void selectWorkspaceFromComposer(project.path)}
-                  >
-                    <Icon name="folder" />
-                    <span>
-                      {project.label}
-                      <small>{project.detail}</small>
-                    </span>
-                    <em>{project.path === workspacePath ? "✓" : ""}</em>
-                  </button>
-                ))}
-                <div className="agents-menu-divider" />
-                <div className="agents-project-add">
-                  <button type="button" className="agents-project-add-row">
-                    <Icon name="add" />
-                    <span>添加新项目</span>
-                    <em>›</em>
-                  </button>
-                  <div className="agents-project-submenu">
-                    <button type="button" onClick={chooseWorkspaceFromComposer}>
-                      <Icon name="add" />
-                      <span>新建空白项目</span>
-                    </button>
-                    <button type="button" onClick={chooseWorkspaceFromComposer}>
-                      <Icon name="folder" />
-                      <span>使用现有文件夹</span>
-                    </button>
-                  </div>
-                </div>
-                <button type="button" onClick={clearWorkspaceFromComposer}>
-                  <Icon name="folder" />
-                  <span>不使用项目</span>
+            {activeMenu === "add" ? (
+              <div className="agents-floating-menu agents-add-menu">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectProductImages();
+                    setActiveMenu(null);
+                  }}
+                >
+                  <Icon name="image" />
+                  <span>
+                    添加照片和文件
+                    <small>产品图 {productImageRefs.length}</small>
+                    <i className="agents-sr-only">添加产品图</i>
+                  </span>
+                  <em>{productImageRefs.length}</em>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectReferenceImages();
+                    setActiveMenu(null);
+                  }}
+                >
+                  <Icon name="file" />
+                  <span>
+                    添加参考图
+                    <small>参考图 {referenceImageRefs.length}</small>
+                    <i className="agents-sr-only">添加参考图</i>
+                  </span>
+                  <em>{referenceImageRefs.length}</em>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenSkills();
+                    setActiveMenu(null);
+                  }}
+                >
+                  <Icon name="grid" />
+                  <span>
+                    skills 管理
+                    <small>管理内容能力</small>
+                  </span>
+                  <em>{selectedSkills.length}</em>
                 </button>
               </div>
             ) : null}
           </div>
-          <span className="agents-project-mode">本地模式</span>
-          <span className="agents-project-mode">main</span>
+          <label className="agents-intent-control agents-intent-control-hidden">
+            <select
+              aria-label="协作目标"
+              value={selectedQuickIntentId}
+              onChange={(event) => selectQuickIntent(event.target.value as QuickIntentId)}
+            >
+              {QUICK_INTENTS.map((intent) => (
+                <option key={intent.id} value={intent.id}>{intent.label}</option>
+              ))}
+            </select>
+          </label>
+          <div className="agents-menu-anchor">
+            <button
+              type="button"
+              className="agents-composer-chip"
+              aria-label="权限设置"
+              onClick={() => toggleMenu("access")}
+            >
+              <span>{selectedAccessOption.id === "full" ? "完全访问" : selectedAccessOption.label}</span>
+              <Icon name="chevronDown" />
+            </button>
+            {activeMenu === "access" ? (
+              <div className="agents-floating-menu agents-access-menu">
+                {ACCESS_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={option.id === accessMode ? "active" : ""}
+                    onClick={() => {
+                      setAccessMode(option.id);
+                      setActiveMenu(null);
+                    }}
+                  >
+                    <Icon name={option.id === "custom" ? "settings" : "panel"} />
+                    <span>
+                      {option.label}
+                      <small>{option.detail}</small>
+                    </span>
+                    <em>{option.id === accessMode ? "当前" : ""}</em>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
+        <div className="agents-composer-right">
+          <PlatformRuntimeModelMenu
+            modelSettings={modelSettings}
+            capability="text"
+            value={textModel}
+            providerId={textProviderId}
+            label="模型"
+            contextLabel="模型设置"
+            placement={mode === "entry" ? "bottom" : "top"}
+            className="agents-platform-model-menu"
+            emptyLabel={modelMenuEmptyLabel}
+            leadingIcon={null}
+            onChange={onSelectTextModel}
+            onOpenChange={(open) => {
+              if (open) setActiveMenu(null);
+            }}
+            onOpenModelSettings={onOpenModelSettings}
+          />
+          <button
+            type="button"
+            className="agents-send-button"
+            aria-label={sendLabel}
+            title={sendLabel}
+            onClick={runPrimaryAction}
+            disabled={primaryDisabled}
+          >
+            <Icon name="arrowUp" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderComposerQueue() {
+    if (!queuedPrompt) return null;
+    return (
+      <div className="agents-composer-queue" aria-label="已排队消息">
+        <span>已排队</span>
+        <strong>{queuedPrompt}</strong>
+        <button type="button" onClick={() => setQueuedPrompt("")}>取消</button>
+      </div>
+    );
+  }
+
+  function renderEntryComposer() {
+    return (
+      <section className="agents-composer-frame agents-entry-composer agents-entry-launch" aria-label="启动 agents 协作">
+        <textarea
+          ref={composerInputRef}
+          aria-label="agents 输入"
+          value={prompt}
+          onChange={(event) => handlePromptChange(event.target.value)}
+          onKeyDown={handleComposerNavigation}
+          placeholder={selectedQuickIntent.placeholder}
+          rows={5}
+        />
+        {renderComposerQueue()}
+        {renderComposerControls("entry")}
       </section>
     );
   }
 
-  function renderComposer(mode: WorkbenchView) {
+  function renderThreadComposer() {
     return (
-      <footer className={`agents-dialog-composer ${mode}`}>
-        {renderComposerSurface(mode)}
+      <footer className="agents-dialog-composer thread">
+        <section className="agents-thread-composer-frame" aria-label="agents 对话输入">
+          <textarea
+            ref={composerInputRef}
+            aria-label="agents 输入"
+            value={prompt}
+            onChange={(event) => handlePromptChange(event.target.value)}
+            onKeyDown={handleComposerNavigation}
+            placeholder="要求后续变更"
+            rows={2}
+          />
+          {renderComposerQueue()}
+          {renderComposerControls("thread")}
+        </section>
       </footer>
-    );
-  }
-
-  function renderEntryLaunch() {
-    return renderComposerSurface("entry", "agents-entry-composer agents-entry-launch");
-  }
-
-  function renderThreadSummary() {
-    const taskTitle = activeSession?.title?.trim() || titleForIntent(selectedQuickIntentId);
-    const outputPurpose = outputPurposeForIntent(selectedQuickIntentId);
-
-    return (
-      <section className="agents-thread-summary" aria-label="当前任务上下文">
-        <div className="agents-thread-summary-title">
-          <span>{activeSession ? statusLabel(activeSession.status) : "待启动"}</span>
-          <strong>{taskTitle}</strong>
-          <em title={currentProjectDetail}>{currentProjectLabel}</em>
-        </div>
-        <div className="agents-thread-summary-chips" aria-label="输入与交付统计">
-          <span>{outputPurpose}</span>
-          <span>输入源 {sourceCount}</span>
-          <span>运行依据 {runtimeReadModel.evidenceRefs.length}</span>
-          <span>交付物 {artifactCount}</span>
-        </div>
-      </section>
     );
   }
 
@@ -1139,6 +1157,9 @@ export function AgentsWorkbench({
           <span>{isBlockedModel(activeSession?.model) ? "未完成记录" : "交付物"}</span>
           <strong>{isBlockedModel(activeSession?.model) ? "待配置恢复" : "Prompt 草稿"}</strong>
         </header>
+        {isBlockedModel(activeSession?.model) ? (
+          <p className="agents-artifact-recovery">需要先到模型设置补齐生成服务，再回到当前对话继续处理；这条记录只保留输入、草稿和恢复路径。</p>
+        ) : null}
         <div className="agents-artifact-actions" aria-label="交付动作">
           <button type="button" onClick={onOpenImageProduction}>
             <Icon name="image" />
@@ -1163,26 +1184,27 @@ export function AgentsWorkbench({
   }
 
   function renderRuntimePanel() {
+    if (!runtimePanelOpen) return null;
+
     return (
-      <aside className={`agents-runtime-panel ${runtimeOpen ? "open" : ""}`} aria-label="运行事实">
+      <aside className={`agents-runtime-panel ${runtimePanelOpen ? "open" : ""}`} aria-label="运行事实">
         <header className="agents-panel-head">
           <span>运行事实</span>
-          <strong>{hasRuntimeFacts ? "来源 / 工具 / 交付" : "暂无运行记录"}</strong>
+          <strong>来源 / 工具 / 交付</strong>
         </header>
-        {hasRuntimeFacts ? (
-          <AgentUiProjectionSurface
-            mode="runtime"
-            className="agents-runtime-inline"
-            readModel={runtimeReadModel}
-            showRuntimeWhenEmpty={false}
-            onResolveAction={onResolveAgentAction ? (event) => onResolveAgentAction(event) : undefined}
-          />
-        ) : (
-          <div className="agents-runtime-empty">
-            <strong>暂无运行记录</strong>
-            <span>等待本轮协作开始。</span>
-          </div>
-        )}
+        <div className="agents-runtime-fact-strip" aria-label="运行事实摘要">
+          <span><strong>{runtimeReadModel.sourceCount}</strong><small>来源</small></span>
+          <span><strong>{toolEventCount}</strong><small>工具</small></span>
+          <span><strong>{pendingActionCount}</strong><small>待处理</small></span>
+          <span><strong>{artifactCount}</strong><small>交付物</small></span>
+        </div>
+        <AgentUiProjectionSurface
+          mode="runtime"
+          className="agents-runtime-inline"
+          readModel={runtimeReadModel}
+          showRuntimeWhenEmpty={false}
+          onResolveAction={onResolveAgentAction ? (event) => onResolveAgentAction(event) : undefined}
+        />
       </aside>
     );
   }
@@ -1193,7 +1215,7 @@ export function AgentsWorkbench({
         <div className="agents-entry-shell">
           <main className="agents-entry-main" aria-label="agents 入口">
             <section className="agents-entry-hero">
-              <h3>我们应该在 agents 中构建什么？</h3>
+              <h3>今天要完成什么内容任务？</h3>
               <div className="agents-entry-hero-actions">
                 <button
                   type="button"
@@ -1206,7 +1228,7 @@ export function AgentsWorkbench({
               </div>
             </section>
 
-            {renderEntryLaunch()}
+            {renderEntryComposer()}
 
             <section className="agents-entry-board" aria-label="协作任务入口">
               {entryIntents.map((intent) => (
@@ -1263,9 +1285,8 @@ export function AgentsWorkbench({
     <section className="agents-workbench">
       <div className="agents-dialog-shell">
         {renderThreadToolbar()}
-        <main className="agents-thread" aria-label="Agent 对话工作台" data-runtime={runtimeOpen ? "open" : "closed"}>
+        <main className="agents-thread" aria-label="Agent 对话工作台" data-runtime={runtimePanelOpen ? "open" : "closed"}>
           <section className="agents-thread-main" aria-label="Agent 多轮对话">
-            {renderThreadSummary()}
             <div className="agents-thread-scroll" aria-label="协作对话">
               <AgentUiProjectionSurface
                 mode="conversation"
@@ -1277,7 +1298,6 @@ export function AgentsWorkbench({
                     <span>{agentIsRunning ? "收到协作消息和交付物后会显示在这里。" : "返回入口输入任务后开始协作。"}</span>
                   </div>
                 )}
-                runningLabel={agentIsRunning ? "AI Agent 正在处理" : undefined}
                 messageTitle={messageTitle}
                 messageMeta={(message) => new Date(message.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
                 messagePreview={(message) => message.content}
@@ -1288,7 +1308,7 @@ export function AgentsWorkbench({
           {renderRuntimePanel()}
         </main>
 
-        {renderComposer("thread")}
+        {renderThreadComposer()}
       </div>
     </section>
   );

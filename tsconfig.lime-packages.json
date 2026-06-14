@@ -1,0 +1,40 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@limecloud/desktop-platform-contracts": [
+        ".tmp/lime-desktop-platform/packages/contracts/dist/index.d.ts",
+        "../lime-desktop-platform/packages/contracts/dist/index.d.ts"
+      ],
+      "@limecloud/desktop-platform-react": [
+        ".tmp/lime-desktop-platform/packages/react/dist/index.d.ts",
+        "../lime-desktop-platform/packages/react/dist/index.d.ts"
+      ],
+      "@limecloud/desktop-platform-electron-adapter": [
+        ".tmp/lime-desktop-platform/packages/electron-adapter/dist/packages/electron-adapter/src/index.d.ts",
+        "../lime-desktop-platform/packages/electron-adapter/dist/packages/electron-adapter/src/index.d.ts"
+      ],
+      "@limecloud/agent-ui-contracts": [
+        "../../aiclientproxy/lime/packages/agent-ui-contracts/dist/index.d.ts"
+      ],
+      "@limecloud/agent-runtime-projection": [
+        "../../aiclientproxy/lime/packages/agent-runtime-projection/dist/index.d.ts"
+      ],
+      "@limecloud/agent-runtime-ui": [
+        "../../aiclientproxy/lime/packages/agent-runtime-ui/dist/index.d.ts"
+      ],
+      "@limecloud/agent-runtime-client": [
+        "../../aiclientproxy/lime/packages/agent-runtime-client/dist/index.d.ts"
+      ],
+      "@limecloud/agent-runtime-client/sessionGateway": [
+        "../../aiclientproxy/lime/packages/agent-runtime-client/dist/sessionGateway.d.ts"
+      ],
+      "@limecloud/app-server-client": [
+        "../../aiclientproxy/lime/packages/app-server-client/dist/index.d.ts"
+      ],
+      "react": [
+        "./node_modules/@types/react"
+      ]
+    }
+  }
+}

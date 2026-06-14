@@ -13,6 +13,7 @@
 ## 按场景导航
 
 - `business-ux-contract.md` - 桌面端业务型 UI 契约、反功能平铺门禁和原型生成提示词。
+- `app-server-workflow.md` - Lime App Server sidecar、runtime provider store、Agents 状态机 / UI 和发布资源门禁。
 - `platform-host-runtime.md` - Content Studio 通过 `lime-desktop-platform` 调 Lime App Server runtime provider store 的真实联调流程。
 - `oem-release.md` - bugu / seenx 桌面包发布、R2 latest、download-manifest、官网仍显示旧版本的处理流程。
 - `../roadmap/v2/README.md` - v2 内容工厂主线路线图。
@@ -21,6 +22,8 @@
 ## 对应 Codex Skills
 
 - `.codex/skills/bugu-product-design-cheatsheet/` - PRD 驱动的布谷AI桌面端产品原型和业务 UI 设计。
+- `.codex/skills/content-studio-app-server/` - Lime App Server sidecar、runtime provider store、Agents 工作台继续对话和资源发布门禁。
+- `.codex/skills/content-studio-release-workflow/` - Content Studio 通用版本发布、发布说明、验证门禁和 tag / push 确认。
 - `.codex/skills/content-studio-oem-release/` - OEM 桌面包分发发布与旧版本排查。
 
 ## 维护规则

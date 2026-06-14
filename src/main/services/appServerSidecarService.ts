@@ -33,6 +33,7 @@ import {
   type AppServerArtifactReadResponse,
   type AppServerEvidenceExportResponse,
 } from './appServerAgentRuntimeGateway';
+import { buildAgentRuntimeToolPolicy } from './agentRuntimeToolPolicy';
 
 const DEFAULT_RPC_TIMEOUT_MS = 5000;
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000;
@@ -486,6 +487,7 @@ export class AppServerSidecarService {
 
       task.sessionId = `content_studio_${taskId}`;
       task.turnId = `turn_${taskId}`;
+      const toolPolicy = buildAgentRuntimeToolPolicy(input);
       await task.sidecar.request<AppServerSessionStartResponse>(APP_SERVER_AGENT_SESSION_METHODS.startSession, {
         sessionId: task.sessionId,
         threadId: `thread_${taskId}`,
@@ -510,8 +512,9 @@ export class AppServerSidecarService {
           stream: true,
           capabilityId: DEFAULT_AGENT_RUNTIME_CAPABILITY_ID,
           metadata: {
-            selectedSkillSlugs: input.selectedSkillSlugs ?? [],
-            permissionMode: input.permissionMode,
+            selectedSkillSlugs: toolPolicy.selectedSkillSlugs,
+            permissionMode: toolPolicy.permissionMode,
+            toolPolicy,
           },
         },
         queueIfBusy: true,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Content Studio App Server"
+  short_description: "Lime App Server 与 Agents runtime 发布门禁。"
+  default_prompt: "使用 $content-studio-app-server 更新 Content Studio 的 Lime App Server sidecar 资源并验证 Agents runtime。"

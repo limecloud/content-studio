@@ -1,7 +1,7 @@
 interface:
   display_name: "Content Studio 发版流程"
-  short_description: "执行 Content Studio 版本号、发布说明、验证门禁与 tag 推送。"
-  default_prompt: "使用 $content-studio-release-workflow 准备一次 Content Studio 发版，更新版本和发布说明，运行必要门禁，并处理 commit / tag / push 确认。"
+  short_description: "执行版本发布，并联动 App Server/Agents 门禁。"
+  default_prompt: "使用 $content-studio-release-workflow 准备一次 Content Studio 发版；若涉及 App Server 或 Agents runtime，请同时联动 $content-studio-app-server 完成门禁。"
 
 policy:
   allow_implicit_invocation: true

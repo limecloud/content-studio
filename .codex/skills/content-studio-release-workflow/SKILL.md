@@ -1,6 +1,6 @@
 ---
 name: content-studio-release-workflow
-description: 准备并执行 content-studio 通用版本发布流程。适用于用户要求更新 Content Studio / 布谷AI 版本号、同步 package.json / package-lock.json / RELEASE_NOTES.md、运行发布前验证门禁、构建桌面包、创建 commit 或 tag、推送 tag 到 GitHub，或从中断的版本发布流程恢复；不处理 bugu/seenx OEM latest、R2、download-manifest 或官网下载卡片分发。
+description: 准备并执行 content-studio 通用版本发布流程。适用于用户要求更新 Content Studio / 布谷AI 版本号、同步 package.json / package-lock.json / RELEASE_NOTES.md、运行发布前验证门禁、构建桌面包、创建 commit 或 tag、推送 tag 到 GitHub，或从中断的版本发布流程恢复；发版涉及 Lime App Server sidecar、resources/app-server、runtime provider store、Agents 状态机/UI 时联动 content-studio-app-server；不处理 bugu/seenx OEM latest、R2、download-manifest 或官网下载卡片分发。
 ---
 
 # Content Studio 通用发版流程
@@ -8,6 +8,7 @@ description: 准备并执行 content-studio 通用版本发布流程。适用于
 ## 边界
 
 - 本 skill 只处理仓库版本发布：版本号、发布说明、本地门禁、桌面包构建、commit / tag / push 确认和 Release workflow 跟进。
+- 发版涉及 Lime App Server sidecar、`resources/app-server/`、runtime provider store、Agents 工作台继续对话、`AI Agent 对话未启动` 或 Agents UI 回归时，先使用 `.codex/skills/content-studio-app-server/` 并读取 `docs/aiprompts/app-server-workflow.md`。
 - bugu / seenx 的 stable、latest、R2、download-manifest、官网下载卡片和控制面 latest 继续使用 `.codex/skills/content-studio-oem-release/`。
 - 发版属于高风险流程。`git commit`、`git tag`、`git push`、GitHub Release 创建 / 更新、删除文件、覆盖 tag、真实调用生产 API 前，必须按 `AGENTS.md` 的中文危险操作格式确认。
 - 如果工作区已有大量未提交改动，先声明本轮写集；只修改发版事实源，不回滚、不覆盖用户改动。
@@ -17,6 +18,7 @@ description: 准备并执行 content-studio 通用版本发布流程。适用于
 1. 先读：
    - `AGENTS.md`
    - `.codex/skills/README.md`
+   - `docs/aiprompts/app-server-workflow.md`（仅当本次发布涉及 App Server / Agents runtime）
    - `package.json`
    - `RELEASE_NOTES.md`
 2. 盘点现状：
@@ -48,6 +50,7 @@ rg -n '旧版本|目标版本' "package.json" "package-lock.json" "RELEASE_NOTES
 
 - `electron-builder.yml` 和 `forge.config.mjs` 目前不硬编码应用版本；只在发布相关配置变更时修改。
 - `resources/app-server/app-server.release.json` 默认是本地 sidecar manifest，不等同桌面应用版本；只有发布任务明确涉及 App Server sidecar 资源时才修改。
+- 修改 `resources/app-server/` 或 App Server manifest 时，必须按 `docs/aiprompts/app-server-workflow.md` 记录 manifest / binary 来源、sha256、`--data-dir` 与 `modelProvider/list` 预检结果。
 - 锁文件优先用 `npm version --no-git-tag-version X.Y.Z` 或结构化 JSON 更新，避免手工漏改。
 
 ## Release Notes
@@ -93,6 +96,7 @@ npm run dist:mac
 npm run dist:win
 npm run dist:linux
 npm run smoke:app-server
+npm run app-server:prepare:test
 npm run app-server:backend:test
 ```
 
@@ -102,6 +106,8 @@ npm run app-server:backend:test
 - 可交付功能变更跑 `npm run build`。
 - 主工作台 / preload / IPC 主链改动优先补跑 `npm run smoke:electron`。
 - 打包、图标、release 配置改动跑对应 `npm run dist:*`；macOS 本地优先 `npm run dist:mac`。
+- App Server sidecar / resources / runtime provider store 改动必须补跑 `npm run app-server:prepare:test`、`npm run app-server:backend:test`、`npm run smoke:app-server`；真实 provider store 或平台宿主链路按场景补跑 `npm run app-server:runtime:live` 或 `npm run platform-host:runtime:live`。
+- Agents 工作台状态机或 UI 改动必须补跑 `node scripts/run-functional-tests.mjs --test-name-pattern "等待用户补充的 agents 普通对话可以继续"` 和 `npm run test:e2e -- --grep "agents 寒暄对话保持普通回复"`；不得发布会把第二轮普通对话误判为 `AI Agent 对话未启动` 的版本。
 - GUI / E2E 失败必须修真实用户路径；不能通过跳过测试、放宽断言或无意义等待绕过。
 
 ## Commit / Tag / Push

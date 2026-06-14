@@ -11,6 +11,7 @@ import {
   type PlatformModelSettings,
   type SaveModelConfigInput,
 } from '../../shared/types';
+import { compactUsableModelIds, isInternalPlatformModelRecordId } from '../../shared/modelIds';
 import { resolveAuthorizationHeader } from '../providers/multimodalProviderUtils';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 import type { PlatformHostBridgeClient } from './platformHostBridgeClient';
@@ -136,7 +137,7 @@ function clearSecret(config: StoredModelConfig, prefix: SecretPrefix): void {
 }
 
 function compactModels(models: string[] | undefined, fallback: string[]): string[] {
-  const normalized = (models ?? []).map((item) => item.trim()).filter(Boolean);
+  const normalized = compactUsableModelIds(models);
   return normalized.length ? Array.from(new Set(normalized)) : fallback;
 }
 
@@ -300,9 +301,9 @@ function modelSettingsFromCapability(result: PlatformCapabilityInvokeResult): Pl
 
 function sanitizePlatformModelSettings(settings: PlatformModelSettings): PlatformModelSettings {
   const modelsForCapability = (capability: PlatformModelCapabilityKind) =>
-    uniqueModels(
+    compactUsableModelIds(
       settings.providers
-        .filter((provider) => provider.enabled && provider.capabilityKinds.includes(capability))
+        .filter((provider) => providerReadyForCapability(provider, capability))
         .flatMap((provider) => provider.models),
     );
   const validDefaultModel = (modelId: string | undefined, capability: PlatformModelCapabilityKind) =>
@@ -314,7 +315,10 @@ function sanitizePlatformModelSettings(settings: PlatformModelSettings): Platfor
     defaultVideoModelId: validDefaultModel(settings.defaultVideoModelId, 'video'),
     providers: settings.providers.map((provider) => {
       const { apiKey: _apiKey, ...projection } = provider as PlatformModelSettings['providers'][number] & { apiKey?: string };
-      return projection;
+      return {
+        ...projection,
+        models: compactUsableModelIds(projection.models),
+      };
     }),
   };
 }
@@ -330,6 +334,19 @@ function selectPlatformProvider(
   return candidates.find((provider) => provider.id === preferredProviderId) ?? candidates[0];
 }
 
+function selectReadyPlatformProvider(
+  settings: PlatformModelSettings,
+  capability: 'text' | 'image' | 'video',
+  preferredProviderId?: string,
+): PlatformModelSettings['providers'][number] | undefined {
+  const candidates = settings.providers.filter((provider) => providerReadyForCapability(provider, capability));
+  return candidates.find((provider) => provider.id === preferredProviderId) ?? candidates[0];
+}
+
+function platformProviderModels(provider: PlatformModelSettings['providers'][number] | undefined): string[] {
+  return compactUsableModelIds(provider?.models ?? []);
+}
+
 function configuredStatus(configured: boolean, authType?: 'api-key' | 'oauth' | 'none'): ModelSecretStatus {
   if (authType === 'none') return 'available';
   return configured ? 'available' : 'missing';
@@ -338,6 +355,16 @@ function configuredStatus(configured: boolean, authType?: 'api-key' | 'oauth' | 
 function platformProviderConfigured(provider: PlatformModelSettings['providers'][number] | undefined): boolean {
   if (!provider) return false;
   return provider.authType === 'none' || provider.apiKeyConfigured;
+}
+
+function providerReadyForCapability(
+  provider: PlatformModelSettings['providers'][number],
+  capability: PlatformModelCapabilityKind,
+): boolean {
+  return provider.enabled &&
+    provider.capabilityKinds.includes(capability) &&
+    platformProviderConfigured(provider) &&
+    platformProviderModels(provider).length > 0;
 }
 
 function platformDefaultModel(defaultModelId: string | undefined, models: string[]): string {
@@ -402,17 +429,25 @@ function platformModelConfigView(
   const textProvider = selectPlatformProvider(settings, 'text', settings.defaultAgentProviderId);
   const imageProvider = selectPlatformProvider(settings, 'image');
   const videoProvider = selectPlatformProvider(settings, 'video');
+  const readyTextProvider = selectReadyPlatformProvider(settings, 'text', settings.defaultAgentProviderId);
+  const readyImageProvider = selectReadyPlatformProvider(settings, 'image');
+  const readyVideoProvider = selectReadyPlatformProvider(settings, 'video');
   const snapshot = bridge.status().snapshot;
-  const textModels = uniqueModels(
+  const textProviderModels = platformProviderModels(textProvider);
+  const readyTextProviderModels = platformProviderModels(readyTextProvider);
+  const textModels = compactUsableModelIds(
     settings.providers
-      .filter((provider) => provider.enabled && provider.capabilityKinds.includes('text'))
+      .filter((provider) => providerReadyForCapability(provider, 'text'))
       .flatMap((provider) => provider.models),
   );
-  const imageModels = uniqueModels(imageProvider?.models ?? []);
-  const videoModels = uniqueModels(videoProvider?.models ?? []);
-  const textModel = platformDefaultModel(settings.defaultTextModelId, textModels);
+  const imageModels = platformProviderModels(readyImageProvider);
+  const videoModels = platformProviderModels(readyVideoProvider);
+  const textModel = platformDefaultModel(settings.defaultTextModelId, readyTextProviderModels.length ? readyTextProviderModels : textModels);
   const imageModel = platformDefaultModel(settings.defaultImageModelId, imageModels);
   const videoModel = platformDefaultModel(settings.defaultVideoModelId, videoModels);
+  const selectedTextProvider = readyTextProvider ?? textProvider;
+  const selectedImageProvider = readyImageProvider ?? imageProvider;
+  const selectedVideoProvider = readyVideoProvider ?? videoProvider;
   const bridgeStatus = bridge.status();
   const bridgeDescriptor = bridgeStatus.bridge;
 
@@ -421,10 +456,10 @@ function platformModelConfigView(
     source: 'lime-desktop-platform',
     platformManaged: true,
     platformModelSettings: settings,
-    agentProviderPreference: textProvider?.id,
-    imageProviderPreference: imageProvider?.id,
-    videoProviderPreference: videoProvider?.id,
-    platformReadiness: platformReadiness(textProvider, textModels),
+    agentProviderPreference: selectedTextProvider?.id,
+    imageProviderPreference: selectedImageProvider?.id,
+    videoProviderPreference: selectedVideoProvider?.id,
+    platformReadiness: platformReadiness(textProvider, textProviderModels),
     platformHost: bridgeDescriptor
       ? {
         appId: bridgeDescriptor.appId,
@@ -434,9 +469,9 @@ function platformModelConfigView(
         snapshot,
       }
       : undefined,
-    textProtocol: textProvider ? textProtocolFromPlatformProtocol(textProvider.protocol) : fallback.textProtocol,
-    textApiEndpoint: textProvider?.baseUrl ?? '',
-    apiEndpoint: textProvider?.baseUrl ?? '',
+    textProtocol: selectedTextProvider ? textProtocolFromPlatformProtocol(selectedTextProvider.protocol) : fallback.textProtocol,
+    textApiEndpoint: selectedTextProvider?.baseUrl ?? '',
+    apiEndpoint: selectedTextProvider?.baseUrl ?? '',
     hasTextApiKey: platformProviderConfigured(textProvider),
     hasApiKey: platformProviderConfigured(textProvider),
     textApiKeyStatus: textProvider
@@ -444,17 +479,17 @@ function platformModelConfigView(
       : 'missing',
     textModel,
     textModels,
-    imageProvider: imageProvider ? 'openai-responses' : 'disabled',
-    imageProtocol: imageProvider ? imageProtocolFromPlatformProtocol(imageProvider.protocol) : fallback.imageProtocol,
-    imageApiEndpoint: imageProvider?.baseUrl ?? '',
+    imageProvider: selectedImageProvider ? 'openai-responses' : 'disabled',
+    imageProtocol: selectedImageProvider ? imageProtocolFromPlatformProtocol(selectedImageProvider.protocol) : fallback.imageProtocol,
+    imageApiEndpoint: selectedImageProvider?.baseUrl ?? '',
     imageOuterModel: imageModel,
     hasImageApiKey: platformProviderConfigured(imageProvider),
     imageApiKeyStatus: imageProvider
       ? configuredStatus(imageProvider.apiKeyConfigured, imageProvider.authType)
       : 'missing',
     imageModels,
-    videoProvider: videoProvider ? 'generic-http' : 'disabled',
-    videoApiEndpoint: videoProvider?.baseUrl ?? '',
+    videoProvider: selectedVideoProvider ? 'generic-http' : 'disabled',
+    videoApiEndpoint: selectedVideoProvider?.baseUrl ?? '',
     hasVideoApiKey: platformProviderConfigured(videoProvider),
     videoApiKeyStatus: videoProvider
       ? configuredStatus(videoProvider.apiKeyConfigured, videoProvider.authType)
@@ -468,19 +503,19 @@ function platformModelConfigView(
 function platformCatalog(settings: PlatformModelSettings): ModelCatalogView {
   const textModels = uniqueModels(
     settings.providers
-      .filter((provider) => provider.enabled && provider.capabilityKinds.includes('text'))
+      .filter((provider) => providerReadyForCapability(provider, 'text'))
       .flatMap((provider) => provider.models),
-  );
+  ).filter((model) => !isInternalPlatformModelRecordId(model));
   const imageModels = uniqueModels(
     settings.providers
-      .filter((provider) => provider.enabled && provider.capabilityKinds.includes('image'))
+      .filter((provider) => providerReadyForCapability(provider, 'image'))
       .flatMap((provider) => provider.models),
-  );
+  ).filter((model) => !isInternalPlatformModelRecordId(model));
   const videoModels = uniqueModels(
     settings.providers
-      .filter((provider) => provider.enabled && provider.capabilityKinds.includes('video'))
+      .filter((provider) => providerReadyForCapability(provider, 'video'))
       .flatMap((provider) => provider.models),
-  );
+  ).filter((model) => !isInternalPlatformModelRecordId(model));
   return {
     textModels,
     imageModels,
@@ -639,10 +674,7 @@ export class ModelConfigStore {
       textApiKeyStatus,
       agentProviderPreference: undefined,
       textModel: config.textModel ?? DEFAULT_CONFIG.textModel,
-      textModels: compactModels([
-        ...(config.textModels ?? []),
-        ...(config.videoModels ?? []),
-      ], DEFAULT_CONFIG.textModels),
+      textModels: compactModels(config.textModels, DEFAULT_CONFIG.textModels),
       imageProvider,
       imageProtocol,
       imageApiEndpoint: config.imageApiEndpoint ?? DEFAULT_CONFIG.imageApiEndpoint,

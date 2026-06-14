@@ -1,4 +1,5 @@
 import type { PlatformModelProviderProjection, PlatformModelSettingsProjection } from '@limecloud/desktop-platform-react';
+import { compactUsableModelIds } from '../../../shared/modelIds';
 import type { ContentStudioAppController } from './useContentStudioApp';
 
 export function createModelSettingsProjection(app: ContentStudioAppController): PlatformModelSettingsProjection {
@@ -101,9 +102,9 @@ export function createAgentModelSettingsProjection(app: ContentStudioAppControll
       : undefined;
     const defaultTextModelId = selectModel(
       provider,
-      app.params.textModel,
       config?.textModel,
       settings.defaultTextModelId,
+      app.params.textModel,
     );
     return {
       ...settings,
@@ -115,39 +116,15 @@ export function createAgentModelSettingsProjection(app: ContentStudioAppControll
 
   const textProviders = settings.providers
     .filter((provider) => provider.enabled !== false)
+    .filter((provider) => provider.authType === 'none' || provider.apiKeyConfigured)
     .filter((provider) => !provider.capabilityKinds || provider.capabilityKinds.includes('text'))
     .filter((provider) => provider.models.length > 0);
   if (!textProviders.length) {
-    const agentModels = uniqueModels([
-      ...(config?.textModels ?? []),
-      config?.textModel,
-      app.params.textModel,
-    ]);
-    const provider: PlatformModelProviderProjection | undefined = agentModels.length
-      ? {
-        id: config?.agentProviderPreference ?? 'lime-platform-agent-text',
-        displayName: '平台模型设置 / Agent Runtime',
-        description: '由 lime-desktop-platform 模型设置中心提供的 Agent 可用文字模型。',
-        protocol: config?.textProtocol ?? 'openai-compatible',
-        capabilityKinds: ['text'],
-        enabled: true,
-        apiKeyConfigured: Boolean(config?.hasTextApiKey),
-        authType: 'api-key',
-        baseUrl: config?.textApiEndpoint,
-        models: agentModels,
-      }
-      : undefined;
-    const defaultTextModelId = selectModel(
-      provider,
-      app.params.textModel,
-      config?.textModel,
-      settings.defaultTextModelId,
-    );
     return {
       ...settings,
-      defaultAgentProviderId: provider?.id ?? settings.defaultAgentProviderId,
-      defaultTextModelId,
-      providers: provider ? [provider] : [],
+      defaultAgentProviderId: undefined,
+      defaultTextModelId: undefined,
+      providers: [],
     };
   }
   const selectedProvider =
@@ -159,7 +136,7 @@ export function createAgentModelSettingsProjection(app: ContentStudioAppControll
     ? {
       id: 'lime-platform-agent-text',
       displayName: selectedProvider?.displayName ?? '平台模型设置 / Agent Runtime',
-      description: selectedProvider?.description ?? '由 lime-desktop-platform 模型设置中心提供的 Agent 可用文字模型。',
+      description: '由 lime-desktop-platform 模型设置中心提供的 Agent 可用文字模型。',
       protocol: selectedProvider?.protocol ?? 'openai-compatible',
       capabilityKinds: ['text'],
       enabled: textProviders.some((item) => item.enabled !== false),
@@ -185,16 +162,35 @@ export function createAgentModelSettingsProjection(app: ContentStudioAppControll
   };
 }
 
+export function selectUsableTextModel(
+  settings: PlatformModelSettingsProjection,
+  requestedModel?: string,
+): string | undefined {
+  const textProviders = settings.providers
+    .filter((provider) => provider.enabled !== false)
+    .filter((provider) => !provider.capabilityKinds || provider.capabilityKinds.includes('text'));
+  const selectedProvider =
+    textProviders.find((provider) => provider.id === settings.defaultAgentProviderId)
+    ?? textProviders[0];
+  const selectedModels = compactUsableModelIds(selectedProvider?.models ?? []);
+  const allModels = compactUsableModelIds(textProviders.flatMap((provider) => provider.models));
+  const candidates = [requestedModel, settings.defaultTextModelId].map((model) => model?.trim()).filter(Boolean) as string[];
+  return candidates.find((model) => selectedModels.includes(model))
+    ?? selectedModels[0]
+    ?? candidates.find((model) => allModels.includes(model))
+    ?? allModels[0];
+}
+
 function projectProvider(provider: PlatformModelProviderProjection & { apiKey?: string }): PlatformModelProviderProjection {
   const { apiKey: _apiKey, ...projection } = provider;
   return {
     ...projection,
-    models: uniqueModels(projection.models),
+    models: compactUsableModelIds(projection.models),
   };
 }
 
-function uniqueModels(models: string[] | undefined): string[] {
-  return Array.from(new Set((models ?? []).map((model) => model.trim()).filter(Boolean)));
+function uniqueModels(models: Array<string | undefined> | undefined): string[] {
+  return compactUsableModelIds(models);
 }
 
 function selectModel(

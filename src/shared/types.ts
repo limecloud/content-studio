@@ -1879,6 +1879,8 @@ export type AgentPromptExecutionEventKind =
   | 'source'
   | 'skill'
   | 'tool'
+  | 'task'
+  | 'subagent'
   | 'permission'
   | 'sandbox'
   | 'state'
@@ -1887,25 +1889,35 @@ export type AgentPromptExecutionEventKind =
   | 'handoff'
   | 'action'
   | 'evidence'
-  | 'note';
-export type AgentPromptExecutionEventStatus = 'pending' | 'running' | 'completed' | 'blocked' | 'failed';
+  | 'review'
+  | 'diagnostic'
+  | 'note'
+  | (string & {});
+export type AgentPromptExecutionEventStatus = 'pending' | 'running' | 'waiting' | 'completed' | 'blocked' | 'failed' | 'canceled' | (string & {});
 export type AgentRuntimeEventClass =
   | 'session.created'
   | 'turn.submitted'
   | 'turn.started'
   | 'turn.completed'
   | 'turn.failed'
+  | 'turn.canceled'
   | 'run.status'
   | 'context.resolved'
   | 'tool.started'
+  | 'tool.args'
+  | 'tool.args.delta'
+  | 'tool.progress'
+  | 'tool.output.delta'
   | 'tool.result'
   | 'tool.failed'
   | 'tool.catalog.resolved'
   | 'permission.evaluated'
   | 'permission.requested'
   | 'permission.resolved'
+  | 'permission.denied'
   | 'sandbox.applied'
   | 'sandbox.violation'
+  | 'sandbox.blocked'
   | 'model.requested'
   | 'model.delta'
   | 'model.completed'
@@ -1913,9 +1925,26 @@ export type AgentRuntimeEventClass =
   | 'artifact.changed'
   | 'action.required'
   | 'action.resolved'
+  | 'action.denied'
+  | 'action.cancelled'
+  | 'action.canceled'
+  | 'action.expired'
+  | 'runtime.warning'
   | 'runtime.error'
   | 'evidence.changed'
-  | 'snapshot.updated';
+  | 'review.verdict'
+  | 'task.created'
+  | 'task.started'
+  | 'task.completed'
+  | 'task.failed'
+  | 'subagent.started'
+  | 'subagent.completed'
+  | 'subagent.failed'
+  | 'handoff.requested'
+  | 'handoff.completed'
+  | 'handoff.failed'
+  | 'snapshot.updated'
+  | (string & {});
 export type AgentRuntimeFactOwner = 'runtime' | 'artifact' | 'evidence' | 'ui';
 export type AgentRuntimePhase =
   | 'submitted'
@@ -1927,7 +1956,9 @@ export type AgentRuntimePhase =
   | 'action_required'
   | 'failed'
   | 'completed'
-  | 'blocked';
+  | 'blocked'
+  | 'canceled'
+  | (string & {});
 
 export interface AgentPromptSourceSnapshot {
   sourceId: string;

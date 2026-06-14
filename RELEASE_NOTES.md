@@ -1,5 +1,33 @@
 # Release Notes
 
+## v0.23.0 - 2026-06-14
+
+### Lime Agent Runtime 标准包发布
+
+- Agents 工作台接入 npmjs 发布的 `@limecloud/agent-runtime-projection@0.1.1` 和 `@limecloud/agent-runtime-ui@0.1.1`，生产构建不再依赖本地 workspace alias。
+- 新增 Agent runtime npm 发布门禁，校验 runtime UI / projection 包来源、版本和依赖关系，确保发布包可从 npmjs 解析。
+- 补齐本地 Lime runtime tarball 与 production package gate，避免开发态 alias 泄漏到正式桌面包。
+
+### AgentUI Facts 与运行能力投影
+
+- Agents UI 继续对齐 Lime 标准表面，把 tools、MCP、skills、subagents、artifact、evidence 和 human-in-the-loop action 投影到专用 runtime facts 区域。
+- 运行详情和对话消息进一步分离，普通 assistant 正文只承载对话内容，工具结果、审批、证据和交付物不再重复输出进消息气泡。
+- 补齐运行事实引用列表、artifact / evidence 展示和 blocked 恢复路径，保持 Content Studio 业务对象与 Lime runtime facts 一致。
+
+### Gemini Provider 与 App Server 主链
+
+- 修复 Content Studio 通过平台 provider store 使用 Gemini 模型时的模型列表、默认模型和真实调用链路，保持 key 只存在于 Lime App Server provider store。
+- Agents 第二轮普通对话继续走 `continueConversation`，不会因为无 Prompt 草稿误报 `AI Agent 对话未启动`。
+- 发布门禁覆盖 `Content Studio agents -> LIME_RUNTIME_BRIDGE -> lime.agent -> app-server --backend runtime --data-dir -> provider store -> LLM -> events/artifacts` 主链，不恢复第二套 runtime adapter。
+
+### 验证
+
+- `npm run verify:local`
+- `npm run assert:agent-runtime-packages`
+- `npm run assert:local-lime-agent-runtime-tarballs`
+- `npm run verify:lime-agent`
+- `CONTENT_STUDIO_E2E_LIVE_GEMINI=1 npm run test:e2e -- --grep "embedded 平台宿主真实调用 Gemini"`
+
 ## v0.22.0 - 2026-06-12
 
 ### Lime App Server 与 Desktop Platform 一体化

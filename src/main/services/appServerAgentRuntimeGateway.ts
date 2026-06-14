@@ -24,6 +24,7 @@ import type {
   AppServerRuntimeEvent,
   PermissionMode,
 } from '../../shared/types';
+import { buildAgentRuntimeToolPolicy } from './agentRuntimeToolPolicy';
 
 const AGENT_RUNTIME_EVENT_POLL_MS = 1000;
 
@@ -225,6 +226,7 @@ export async function runContentStudioAgentRuntimeTurn(
   const sessionPrefix = input.sessionIdPrefix?.trim() || 'content_studio_capability';
   const sessionId = `${sessionPrefix}_${randomUUID()}`;
   const turnId = `turn_${randomUUID()}`;
+  const toolPolicy = buildAgentRuntimeToolPolicy(input);
 
   await gateway.startSession({
     sessionId,
@@ -244,8 +246,9 @@ export async function runContentStudioAgentRuntimeTurn(
       providerPreference: input.providerPreference,
       modelPreference: input.modelPreference,
       metadata: {
-        selectedSkillSlugs: input.selectedSkillSlugs ?? [],
-        permissionMode: input.permissionMode ?? 'ask',
+        selectedSkillSlugs: toolPolicy.selectedSkillSlugs,
+        permissionMode: toolPolicy.permissionMode,
+        toolPolicy,
         ...(input.metadata ?? {}),
       },
     },

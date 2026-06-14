@@ -1,6 +1,5 @@
 import {
   agentEventActionKind,
-  agentEventDisplayStatus,
   agentEventStatusLabel,
   agentEventSurface,
   agentEventTargetModule,
@@ -19,7 +18,6 @@ import type { AgentPromptExecutionEvent, AgentPromptSession } from '../../../../
 
 export {
   agentEventActionKind,
-  agentEventDisplayStatus,
   agentEventStatusLabel,
   agentEventSurface,
   agentEventTargetModule,
@@ -31,6 +29,17 @@ export {
 
 export type AgentRuntimeEventProjection = SharedAgentRuntimeEventProjection<AgentPromptExecutionEvent>;
 export type AgentRuntimeReadModel = SharedAgentRuntimeReadModel<AgentPromptExecutionEvent>;
+
+export function agentEventDisplayStatus(event: AgentPromptExecutionEvent): string {
+  if (event.eventClass === 'action.required') return '需要处理';
+  if (event.eventClass === 'action.resolved' || event.eventClass === 'action.denied' || event.eventClass === 'action.cancelled' || event.eventClass === 'action.canceled') return '已处理';
+  if (event.status === 'completed') return '已完成';
+  if (event.status === 'running') return '执行中';
+  if (event.status === 'blocked') return '已阻断';
+  if (event.status === 'failed') return '失败';
+  if (event.status === 'canceled') return '已取消';
+  return '待处理';
+}
 
 export function projectAgentRuntimeAction(event: AgentPromptExecutionEvent): AgentRuntimeActionProjection {
   return projectSharedAgentRuntimeAction(event);
@@ -51,7 +60,7 @@ export function projectAgentRuntimeReadModel(session?: AgentPromptSession): Agen
     ...readModel,
     events,
     visibleEvents: events
-      .filter((event) => visibleEventIds.has(event.id) || event.surface === 'tool')
+      .filter((event) => isVisibleRuntimeFact(event) && (visibleEventIds.has(event.id) || event.surface === 'tool'))
       .slice(-12),
   };
 }
@@ -80,6 +89,18 @@ function dedupeRuntimeEvents(events: AgentRuntimeEventProjection[]): AgentRuntim
     seen.add(key);
     return true;
   });
+}
+
+function isVisibleRuntimeFact(event: AgentRuntimeEventProjection): boolean {
+  const eventClass = event.source.eventClass;
+  if (!eventClass) return true;
+  return ![
+    'model.delta',
+    'model.requested',
+    'run.status',
+    'snapshot.updated',
+    'turn.submitted',
+  ].includes(eventClass);
 }
 
 export function isAgentInputSourceRecoveryEvent(event: AgentPromptExecutionEvent): boolean {

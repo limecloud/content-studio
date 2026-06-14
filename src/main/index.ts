@@ -9,7 +9,13 @@ let mainWindow: BrowserWindow | null = null;
 const pendingSkillPackages: string[] = [];
 let rendererAcceptsSkillPackages = false;
 
-function configureDevelopmentUserDataDir(): void {
+function configureUserDataDir(): void {
+  const explicitUserDataDir = process.env.CONTENT_STUDIO_USER_DATA_DIR?.trim();
+  if (explicitUserDataDir) {
+    app.setPath('userData', explicitUserDataDir);
+    console.info(`[content-studio] userData=${explicitUserDataDir}`);
+    return;
+  }
   if (!process.env.ELECTRON_RENDERER_URL || app.commandLine.hasSwitch('user-data-dir')) {
     return;
   }
@@ -166,7 +172,7 @@ if (!singleInstanceLock) {
     flushPendingSkillPackages();
   });
 
-  configureDevelopmentUserDataDir();
+  configureUserDataDir();
   app.whenReady().then(() => {
     protocol.handle('local-asset', (request) => {
       const filePath = decodeURIComponent(new URL(request.url).pathname);

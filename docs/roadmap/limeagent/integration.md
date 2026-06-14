@@ -476,6 +476,7 @@ npm run platform-host:runtime:live -- --provider <providerId> --model <modelId>
 3. `appServerAgentRuntimeGateway.ts` 必须从 `@limecloud/agent-runtime-client/sessionGateway` 导入 `createAgentRuntimeClientFromSessionGateway`，把现有 sidecar gateway 包装为标准 `AgentRuntimeClient`。
 4. `nextEvent()` 必须继续返回 `agentSession/event` notification，不能为适配本地 drain loop 改成裸 event。
 5. `verify:lime-agent` 已增加标准包导入和 lockfile 守卫，确认产品 runtime client 真实来自 `@limecloud/agent-runtime-client`。
+6. 开发环境只允许 `npm run dev` / `electron-vite serve` 通过 Vite alias 指向 `/Users/coso/Documents/dev/ai/aiclientproxy/lime/packages` 做兼容跟进；`npm run build`、`dist:*`、release 和 lockfile 验收必须走 npm registry 包，不能通过环境变量切到本地 packages。
 
 ## 10. 验收口径
 

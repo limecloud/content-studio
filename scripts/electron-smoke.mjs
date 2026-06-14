@@ -176,6 +176,7 @@ const child = spawn(electronPath, electronArgs, {
     ELECTRON_ENABLE_LOGGING: '1',
     CONTENT_STUDIO_SMOKE: '1',
     CONTENT_STUDIO_TEST_SILENT: headed ? '0' : '1',
+    CONTENT_STUDIO_USER_DATA_DIR: userDataDir,
     CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '1',
   },
   stdio: ['ignore', 'pipe', 'pipe'],

@@ -24,10 +24,14 @@ import { PromptDraftStore } from './promptDraftStore';
 import { SkillManager } from './skillManager';
 import { buildSkillRuntimeContext, type SkillRuntimeContext } from './skillRuntimeContext';
 import type {
+  ContinueAgentConversationInput,
+  ContinueAgentConversationResult,
   GenerateAgentPromptDraftInput,
   GenerateAgentPromptDraftResult,
   GenerateAgentPromptRefinementInput,
   GenerateAgentPromptRefinementResult,
+  RespondAgentRuntimeActionInput,
+  RespondAgentRuntimeActionResult,
 } from './appServerPromptAgentService';
 import type { TextProviderRuntimeEvent } from '../providers/textGenerationProvider';
 
@@ -107,9 +111,20 @@ function reusableSessionModel(model?: string): string | undefined {
   return trimmed;
 }
 
+interface LimeAgentServerFailure {
+  title: string;
+  summary: string;
+  recoveryHint: string;
+  reason: string;
+}
+
 function limeAgentServerErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (/lime-desktop-platform|runtime bridge|provider store|sidecar/i.test(message)) {
+  if (
+    /lime-desktop-platform|runtime bridge|provider store|sidecar/i.test(message) &&
+    !isModelInvocationFailureMessage(message) &&
+    !isModelSetupFailureMessage(message)
+  ) {
     return '未连接 Lime Desktop Platform，无法读取统一模型设置并启动 AI Agent 对话。请先启动平台宿主后重试。';
   }
   const sanitized = message
@@ -127,6 +142,54 @@ function limeAgentServerErrorMessage(error: unknown): string {
   return sanitized;
 }
 
+function isModelInvocationFailureMessage(message: string): boolean {
+  return /Authentication failed|Model not available|Status:\s*40[13]|403 Forbidden|401 Unauthorized|unauthorized|forbidden|鉴权失败|模型不可用/i.test(message);
+}
+
+function isModelSetupFailureMessage(message: string): boolean {
+  return /平台文字模型未配置|未配置或未授权|Provider Key|可用凭据|显式模型 ID/i.test(message);
+}
+
+function limeAgentServerFailure(errorOrReason: unknown): LimeAgentServerFailure {
+  const reason = typeof errorOrReason === 'string'
+    ? errorOrReason
+    : limeAgentServerErrorMessage(errorOrReason);
+  if (isModelSetupFailureMessage(reason)) {
+    return {
+      title: 'AI Agent 模型未配置或未授权',
+      summary: [
+        'AI Agent 已连接平台，但当前没有可用文字模型或 Provider 凭据。',
+        reason,
+        '当前不会生成本地 Prompt 草稿、工具记录或证据链；请在平台模型设置中启用文字 Provider、添加模型 ID 或重新授权后重试。',
+      ].join('\n'),
+      recoveryHint: '请在平台模型设置中启用文字 Provider、添加模型 ID 或重新授权后重试。',
+      reason,
+    };
+  }
+  if (isModelInvocationFailureMessage(reason)) {
+    return {
+      title: 'AI Agent 模型调用失败',
+      summary: [
+        'AI Agent 已连接平台，但模型服务返回鉴权失败或模型不可用。',
+        reason,
+        '当前不会生成本地 Prompt 草稿、工具记录或证据链；请在平台模型设置中切换可用模型或重新授权后重试。',
+      ].join('\n'),
+      recoveryHint: '请在平台模型设置中切换可用模型或重新授权后重试。',
+      reason,
+    };
+  }
+  return {
+    title: 'AI Agent 对话未启动',
+    summary: [
+      'AI Agent 对话未启动。',
+      reason,
+      '当前不会生成本地 Prompt 草稿、工具记录或证据链；请连接 Lime Desktop Platform 后重试。',
+    ].join('\n'),
+    recoveryHint: '请连接 Lime Desktop Platform 后重试。',
+    reason,
+  };
+}
+
 function blockedAgentSession(input: {
   workspacePath: string;
   workflowRunId?: string;
@@ -139,23 +202,19 @@ function blockedAgentSession(input: {
   selectedSkills?: AgentPromptSession['selectedSkills'];
   selectedSkillSlugs?: string[];
   sourceSnapshots: AgentPromptSourceSnapshot[];
-  reason: string;
+  failure: LimeAgentServerFailure;
   createdAt?: string;
 }): AgentPromptSession {
   const now = input.createdAt ?? new Date().toISOString();
   const sessionId = randomUUID();
   const turnId = randomUUID();
-  const message = [
-    'AI Agent 对话未启动。',
-    input.reason,
-    '当前不会生成本地 Prompt 草稿、工具记录或证据链；请连接 Lime Desktop Platform 后重试。',
-  ].filter(Boolean).join('\n');
+  const message = input.failure.summary;
   return {
     id: sessionId,
     workspacePath: input.workspacePath,
     workflowRunId: input.workflowRunId,
     teamKnowledgeRelease: input.teamKnowledgeRelease,
-    title: input.title?.trim() || 'AI Agent 未接通',
+    title: input.title?.trim() || input.failure.title,
     purpose: input.purpose,
     status: 'blocked',
     userIntent: input.userIntent.trim(),
@@ -195,11 +254,12 @@ function blockedAgentSession(input: {
         taskId: `task:${sessionId}:app-server-runtime`,
         runId: `run:${sessionId}:app-server-runtime`,
         stepId: 'runtime:error',
-        title: 'AI Agent 对话未启动',
-        detail: input.reason,
+        title: input.failure.title,
+        detail: input.failure.reason,
         payload: {
           runtime: 'lime-agent-server',
-          blockedReason: input.reason,
+          blockedReason: input.failure.reason,
+          recoveryHint: input.failure.recoveryHint,
         },
         model: 'blocked:lime-agent-server',
         createdAt: now,
@@ -214,7 +274,7 @@ function blockedAgentSession(input: {
 function appendBlockedSessionNote(
   session: AgentPromptSession,
   userMessage: string,
-  reason: string,
+  failure: LimeAgentServerFailure,
 ): AgentPromptSession {
   const now = new Date().toISOString();
   const turnId = randomUUID();
@@ -236,11 +296,7 @@ function appendBlockedSessionNote(
         id: randomUUID(),
         role: 'system' as const,
         kind: 'note' as const,
-        content: [
-          'AI Agent 对话未启动。',
-          reason,
-          '当前不会生成本地 Prompt 草稿、工具记录或证据链；请连接 Lime Desktop Platform 后重试。',
-        ].join('\n'),
+        content: failure.summary,
         model: 'blocked:lime-agent-server',
         createdAt: now,
       },
@@ -259,11 +315,12 @@ function appendBlockedSessionNote(
         taskId: `task:${session.id}:app-server-runtime`,
         runId,
         stepId: `runtime:error:${turnId}`,
-        title: 'AI Agent 对话未启动',
-        detail: reason,
+        title: failure.title,
+        detail: failure.reason,
         payload: {
           runtime: 'lime-agent-server',
-          blockedReason: reason,
+          blockedReason: failure.reason,
+          recoveryHint: failure.recoveryHint,
         },
         model: 'blocked:lime-agent-server',
         createdAt: now,
@@ -367,6 +424,128 @@ function snapshotUpdatedEvent(input: {
   });
 }
 
+function nextEventSequence(session: AgentPromptSession): number {
+  return (session.executionEvents?.length ?? 0) + 1;
+}
+
+function unresolvedActionIds(events: AgentPromptExecutionEvent[]): Set<string> {
+  const resolvedActionIds = new Set(
+    events
+      .filter((event) => event.eventClass === 'action.resolved' && event.actionId)
+      .map((event) => event.actionId as string),
+  );
+  return new Set(
+    events
+      .filter((event) => event.eventClass === 'action.required' && event.actionId && !resolvedActionIds.has(event.actionId))
+      .map((event) => event.actionId as string),
+  );
+}
+
+function actionResponseDetail(input: RespondAgentPromptActionInput): string {
+  if (input.note?.trim()) return input.note.trim();
+  if (input.decision === 'open-input-source') return '用户已打开输入源补充入口。';
+  if (input.decision === 'open-model-settings') return '用户已打开模型设置入口。';
+  return '用户已确认该动作。';
+}
+
+function actionResolvedEvent(input: {
+  session: AgentPromptSession;
+  response: RespondAgentPromptActionInput;
+  now: string;
+  scope?: 'runtime' | 'local-navigation';
+}): AgentPromptExecutionEvent {
+  return executionEvent({
+    kind: 'action',
+    status: 'completed',
+    eventClass: 'action.resolved',
+    owner: 'runtime',
+    phase: 'completed',
+    sequence: nextEventSequence(input.session),
+    threadId: input.session.id,
+    actionId: input.response.actionId,
+    stepId: `action:${input.response.actionId}:resolved`,
+    title: '人工确认已处理',
+    detail: actionResponseDetail(input.response),
+    payload: {
+      decision: input.response.decision,
+      response: input.response.payload ?? {},
+      responseScope: input.scope ?? 'runtime',
+    },
+    createdAt: input.now,
+  });
+}
+
+function actionRequiredEvent(
+  session: AgentPromptSession,
+  actionId: string,
+): AgentPromptExecutionEvent | undefined {
+  return (session.executionEvents ?? []).find((event) => (
+    event.eventClass === 'action.required' &&
+    event.actionId === actionId
+  ));
+}
+
+function runtimeSessionIdForAction(session: AgentPromptSession, actionId: string): string | undefined {
+  const actionEvent = actionRequiredEvent(session, actionId);
+  const payload = payloadRecord(actionEvent?.payload);
+  const rawPayload = payloadRecord(payload.rawPayload);
+  return firstPayloadString(payload, rawPayload, 'sessionId', 'runtimeSessionId');
+}
+
+function isLocalNavigationAction(input: RespondAgentPromptActionInput): boolean {
+  return input.decision === 'open-input-source' || input.decision === 'open-model-settings';
+}
+
+function mergeInputSourceIds(
+  existingIds: string[],
+  nextIds: string[],
+): string[] {
+  return Array.from(new Set([...existingIds, ...nextIds]));
+}
+
+function inputSourcesAttachedEvents(input: {
+  session: AgentPromptSession;
+  sources: InputSourceRecord[];
+  reason?: string;
+  now: string;
+}): AgentPromptExecutionEvent[] {
+  const sourceIds = input.sources.map((source) => source.id);
+  const titles = input.sources.map((source) => source.title);
+  const baseSequence = nextEventSequence(input.session);
+  const contextEvent = executionEvent({
+    kind: 'context',
+    status: 'completed',
+    eventClass: 'context.resolved',
+    owner: 'runtime',
+    phase: 'completed',
+    sequence: baseSequence,
+    threadId: input.session.id,
+    stepId: `context:${input.session.id}:input-sources-attached`,
+    title: '输入源已补充',
+    detail: titles.length ? `已补充 ${titles.length} 个输入源：${titles.join('、')}` : '输入源已补充。',
+    refIds: sourceIds,
+    evidenceRefs: sourceIds.map((sourceId) => `input-source:${sourceId}`),
+    payload: {
+      reason: input.reason,
+      inputSourceIds: sourceIds,
+      sourceTitles: titles,
+    },
+    createdAt: input.now,
+  });
+  return [
+    contextEvent,
+    snapshotUpdatedEvent({
+      now: input.now,
+      sequence: baseSequence + 1,
+      sessionId: input.session.id,
+      status: input.session.status,
+      events: [...(input.session.executionEvents ?? []), contextEvent],
+      messageCount: input.session.messages.length,
+      draftIds: input.session.promptDraftIds,
+    }),
+  ];
+}
+
 function payloadRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -376,10 +555,93 @@ function payloadString(payload: Record<string, unknown>, rawPayload: Record<stri
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function payloadStringArray(payload: Record<string, unknown>, rawPayload: Record<string, unknown>, field: string): string[] {
-  const value = payload[field] ?? rawPayload[field];
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+function payloadStringArray(payload: Record<string, unknown>, rawPayload: Record<string, unknown>, ...fields: string[]): string[] {
+  const values = fields.flatMap((field) => [payload[field], rawPayload[field]]);
+  return Array.from(new Set(values.flatMap((value) => (
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : []
+  ))));
+}
+
+function firstPayloadString(
+  payload: Record<string, unknown>,
+  rawPayload: Record<string, unknown>,
+  ...fields: string[]
+): string | undefined {
+  return fields
+    .map((field) => payloadString(payload, rawPayload, field))
+    .find((value): value is string => Boolean(value));
+}
+
+function streamingDeltaText(event: TextProviderRuntimeEvent): string {
+  if (event.eventClass !== 'model.delta') return '';
+  const payload = payloadRecord(event.payload);
+  const rawPayload = payloadRecord(payload.rawPayload);
+  const explicitText = firstPayloadString(payload, rawPayload, 'text', 'content', 'message', 'summary');
+  if (explicitText) return explicitText;
+  const detail = event.detail?.trim();
+  if (!detail || detail === event.title.trim()) return '';
+  if (/^(生成内容返回中|Lime App Server message\.delta|message\.delta)$/i.test(detail)) return '';
+  return detail;
+}
+
+function isActionEventClass(eventClass?: string): boolean {
+  return Boolean(eventClass?.startsWith('action.'));
+}
+
+function isToolEventClass(eventClass?: string): boolean {
+  return Boolean(eventClass?.startsWith('tool.'));
+}
+
+function runtimeEventArtifactRefs(payload: Record<string, unknown>, rawPayload: Record<string, unknown>): string[] {
+  const refs = [
+    ...payloadStringArray(payload, rawPayload, 'artifactRefs', 'artifact_refs'),
+    firstPayloadString(payload, rawPayload, 'artifactRef', 'artifact_ref', 'artifactId', 'artifact_id', 'path'),
+  ].filter((value): value is string => Boolean(value));
+  return Array.from(new Set(refs));
+}
+
+function runtimeEventEvidenceRefs(payload: Record<string, unknown>, rawPayload: Record<string, unknown>): string[] {
+  const refs = [
+    ...payloadStringArray(payload, rawPayload, 'evidenceRefs', 'evidence_refs'),
+    firstPayloadString(payload, rawPayload, 'evidenceRef', 'evidence_ref', 'evidenceId', 'evidence_id'),
+  ].filter((value): value is string => Boolean(value));
+  return Array.from(new Set(refs));
+}
+
+function runtimeEventToolCallId(input: {
+  payload: Record<string, unknown>;
+  rawPayload: Record<string, unknown>;
+  event: TextProviderRuntimeEvent;
+  sessionId: string;
+  turnId: string;
+  operation: 'draft' | 'refine' | 'conversation';
+  index: number;
+}): string | undefined {
+  const explicit = firstPayloadString(
+    input.payload,
+    input.rawPayload,
+    'toolCallId',
+    'tool_call_id',
+    'callId',
+    'call_id',
+  );
+  if (explicit) return explicit;
+  if (!isToolEventClass(input.event.eventClass)) return undefined;
+  const toolName = firstPayloadString(input.payload, input.rawPayload, 'toolName', 'tool_name', 'name', 'tool');
+  const eventId = firstPayloadString(input.payload, input.rawPayload, 'eventId', 'id');
+  const sequence = input.payload.sequence ?? input.rawPayload.sequence;
+  const stablePart = eventId || sequence || toolName || input.index;
+  return `tool:${input.sessionId}:${input.turnId}:${input.operation}:${stablePart}`;
+}
+
+function runtimeEventTaskId(
+  payload: Record<string, unknown>,
+  rawPayload: Record<string, unknown>,
+  fallbackTaskId: string,
+): string {
+  return firstPayloadString(payload, rawPayload, 'taskId', 'task_id') ?? fallbackTaskId;
 }
 
 function runtimeFactOwner(kind: AgentPromptExecutionEvent['kind']): AgentPromptExecutionEvent['owner'] {
@@ -395,7 +657,7 @@ function isWaitingForUserOutput(content: string): boolean {
     return true;
   }
   const hasQuestion = /[？?]|请您|请提供|需要您|为了更好|无法直接|目前无法|信息不足|信息有限|未选择|补充|确认|请明确|请告诉我/.test(normalized);
-  const hasDraftMarkers = /###\s*目标|##\s*.+Prompt|Prompt\s*结构|负面约束|事实来源约束|镜头要点|主体[\/／]场景[\/／]动作/.test(normalized);
+  const hasDraftMarkers = /###\s*目标|##\s*.+Prompt|Prompt\s*(结构|正文)|负面约束|事实来源约束|镜头要点|主体[\/／]场景[\/／]动作/.test(normalized);
   return hasQuestion && !hasDraftMarkers;
 }
 
@@ -410,6 +672,10 @@ function isConversationalUserIntent(content: string): boolean {
 
 function updatedSessionStatus(model: string): AgentPromptSession['status'] {
   return model.startsWith('blocked:') ? 'blocked' : 'draft-created';
+}
+
+function isBlockedModel(model?: string): boolean {
+  return Boolean(model?.startsWith('blocked:') || model?.startsWith('fallback:'));
 }
 
 function assistantVisibleContent(content: string): string {
@@ -436,7 +702,7 @@ function appServerProviderExecutionEvents(input: {
   sessionId: string;
   turnId: string;
   runId: string;
-  operation: 'draft' | 'refine';
+  operation: 'draft' | 'refine' | 'conversation';
   status: AgentPromptSession['status'];
   messageCount?: number;
   draftIds?: string[];
@@ -453,17 +719,24 @@ function appServerProviderExecutionEvents(input: {
     const payload = payloadRecord(event.payload);
     const rawPayload = payloadRecord(payload.rawPayload);
     const actionId =
-      payloadString(payload, rawPayload, 'actionId') ??
-      (event.eventClass === 'action.required' || event.eventClass === 'action.resolved'
+      firstPayloadString(payload, rawPayload, 'actionId', 'action_id') ??
+      (isActionEventClass(event.eventClass)
         ? `action:${input.sessionId}:app-server:${index}`
         : undefined);
-    const artifactRef =
-      payloadString(payload, rawPayload, 'artifactRef') ??
-      payloadString(payload, rawPayload, 'artifactId') ??
-      payloadString(payload, rawPayload, 'path');
-    const evidenceRefs = payloadStringArray(payload, rawPayload, 'evidenceRefs');
-    const evidenceRef = payloadString(payload, rawPayload, 'evidenceRef') ?? payloadString(payload, rawPayload, 'evidenceId');
+    const artifactRefs = runtimeEventArtifactRefs(payload, rawPayload);
+    const evidenceRefs = runtimeEventEvidenceRefs(payload, rawPayload);
+    const toolCallId = runtimeEventToolCallId({
+      payload,
+      rawPayload,
+      event,
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      operation: input.operation,
+      index,
+    });
+    const taskId = runtimeEventTaskId(payload, rawPayload, common.taskId);
     return executionEvent({
+      ...common,
       kind: event.kind,
       status: event.status,
       eventClass: event.eventClass,
@@ -473,17 +746,24 @@ function appServerProviderExecutionEvents(input: {
       title: event.title.replace(/^Lime Agent Server\s+/, 'Lime App Server '),
       detail: event.detail,
       model: event.model,
+      taskId,
+      toolCallId,
       actionId,
-      artifactRefs: artifactRef ? [artifactRef] : undefined,
-      evidenceRefs: evidenceRefs.length ? evidenceRefs : evidenceRef ? [evidenceRef] : undefined,
-      stepId: `app-server:${input.operation}:${event.eventClass}:${index}`,
+      artifactId: artifactRefs[0],
+      evidenceId: evidenceRefs[0],
+      artifactRefs: artifactRefs.length ? artifactRefs : undefined,
+      evidenceRefs: evidenceRefs.length ? evidenceRefs : undefined,
+      stepId: `app-server:${input.operation}:${event.eventClass}:${toolCallId ?? actionId ?? artifactRefs[0] ?? evidenceRefs[0] ?? taskId ?? index}`,
       payload: {
         ...payload,
-        actionKind: payloadString(payload, rawPayload, 'actionKind'),
-        targetModule: payloadString(payload, rawPayload, 'targetModule'),
+        actionKind: firstPayloadString(payload, rawPayload, 'actionKind', 'action_kind'),
+        targetModule: firstPayloadString(payload, rawPayload, 'targetModule', 'target_module'),
+        taskId: firstPayloadString(payload, rawPayload, 'taskId', 'task_id') ?? taskId,
+        subagentId: firstPayloadString(payload, rawPayload, 'subagentId', 'subagent_id'),
+        handoffId: firstPayloadString(payload, rawPayload, 'handoffId', 'handoff_id'),
+        reviewId: firstPayloadString(payload, rawPayload, 'reviewId', 'review_id'),
       },
       createdAt: input.now,
-      ...common,
     });
   });
   const runtimeEvents = events.length ? events : [
@@ -544,6 +824,8 @@ function appServerProviderExecutionEvents(input: {
 interface AgentPromptModelService {
   generatePromptDraft(input: GenerateAgentPromptDraftInput): Promise<GenerateAgentPromptDraftResult>;
   generateRefinedPrompt(input: GenerateAgentPromptRefinementInput): Promise<GenerateAgentPromptRefinementResult>;
+  continueConversation(input: ContinueAgentConversationInput): Promise<ContinueAgentConversationResult>;
+  respondAction?(input: RespondAgentRuntimeActionInput): Promise<RespondAgentRuntimeActionResult>;
 }
 
 export class AgentPromptSessionStore {
@@ -611,7 +893,7 @@ export class AgentPromptSessionStore {
         },
       });
     } catch (error) {
-      const reason = limeAgentServerErrorMessage(error);
+      const failure = limeAgentServerFailure(error);
       const session = blockedAgentSession({
         workspacePath: input.workspacePath,
         workflowRunId: input.workflowRunId,
@@ -624,7 +906,7 @@ export class AgentPromptSessionStore {
         selectedSkills: skillContext.skillRefs,
         selectedSkillSlugs: skillContext.skillRefs.map((skill) => skill.slug),
         sourceSnapshots,
-        reason,
+        failure,
       });
       await this.upsertSession(input.workspacePath, session, sessionId);
       this.publish(session, 'blocked');
@@ -735,18 +1017,26 @@ export class AgentPromptSessionStore {
     if (!session) throw new Error(`对话不存在: ${input.sessionId}`);
     const draftId = session.promptDraftIds[session.promptDraftIds.length - 1];
     if (!draftId) {
-      const reason = '当前会话没有 Lime App Server 交付物，不能用本地草稿继续。';
-      const updatedSession = appendBlockedSessionNote(session, adjustment, reason);
-      await writeJsonFile(
-        sessionsFilePath(input.workspacePath),
-        sessions.map((item) => (item.id === session.id ? updatedSession : item)),
-      );
-      return { session: updatedSession };
+      if (session.status === 'blocked' || isBlockedModel(session.model)) {
+        const failure = limeAgentServerFailure('当前会话未接通生成服务，请先恢复模型服务后重新开始。');
+        const updatedSession = appendBlockedSessionNote(session, adjustment, failure);
+        await writeJsonFile(
+          sessionsFilePath(input.workspacePath),
+          sessions.map((item) => (item.id === session.id ? updatedSession : item)),
+        );
+        return { session: updatedSession };
+      }
+      return this.continueWithoutDraft({
+        workspacePath: input.workspacePath,
+        session,
+        adjustment,
+        textModel: input.textModel,
+      });
     }
     const draft = (await this.promptDrafts.list(input.workspacePath)).find((item) => item.id === draftId);
     if (!draft) {
-      const reason = `对话关联的 Prompt 草稿不存在: ${draftId}`;
-      const updatedSession = appendBlockedSessionNote(session, adjustment, reason);
+      const failure = limeAgentServerFailure(`对话关联的 Prompt 草稿不存在: ${draftId}`);
+      const updatedSession = appendBlockedSessionNote(session, adjustment, failure);
       await writeJsonFile(
         sessionsFilePath(input.workspacePath),
         sessions.map((item) => (item.id === session.id ? updatedSession : item)),
@@ -788,8 +1078,8 @@ export class AgentPromptSessionStore {
         },
       });
     } catch (error) {
-      const reason = limeAgentServerErrorMessage(error);
-      const updatedSession = appendBlockedSessionNote(session, adjustment, reason);
+      const failure = limeAgentServerFailure(error);
+      const updatedSession = appendBlockedSessionNote(session, adjustment, failure);
       await this.upsertSession(input.workspacePath, updatedSession);
       this.publish(updatedSession, 'blocked');
       return { session: updatedSession };
@@ -857,18 +1147,259 @@ export class AgentPromptSessionStore {
     return { session: updatedSession, draft: updatedDraft };
   }
 
+  private async continueWithoutDraft(input: {
+    workspacePath: string;
+    session: AgentPromptSession;
+    adjustment: string;
+    textModel?: string;
+  }): Promise<AgentPromptSessionResult> {
+    const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, {
+      selectedSkills: input.session.selectedSkills ?? [],
+      selectedSkillSlugs: input.session.selectedSkillSlugs ?? [],
+    });
+    const turnId = randomUUID();
+    const runId = randomUUID();
+    let liveSession = this.appendUserTurnPending(
+      input.session,
+      input.adjustment,
+      turnId,
+      runId,
+      input.textModel ?? reusableSessionModel(input.session.model),
+      'conversation',
+    );
+    await this.upsertSession(input.workspacePath, liveSession);
+    this.publish(liveSession, 'upsert');
+
+    let generated: ContinueAgentConversationResult;
+    try {
+      generated = await this.promptAgent.continueConversation({
+        workspacePath: input.workspacePath,
+        sessionId: input.session.id,
+        purpose: input.session.purpose,
+        userIntent: input.session.userIntent,
+        adjustment: input.adjustment,
+        sourceSnapshots: input.session.sourceSnapshots,
+        messages: input.session.messages,
+        skillContext,
+        textModel: input.textModel ?? reusableSessionModel(input.session.model),
+        onProviderEvent: async (event) => {
+          liveSession = await this.applyProviderEvent({
+            workspacePath: input.workspacePath,
+            session: liveSession,
+            event,
+            operation: 'conversation',
+            turnId,
+            runId,
+          });
+        },
+      });
+    } catch (error) {
+      const failure = limeAgentServerFailure(error);
+      const updatedSession = appendBlockedSessionNote(input.session, input.adjustment, failure);
+      await this.upsertSession(input.workspacePath, updatedSession);
+      this.publish(updatedSession, 'blocked');
+      return { session: updatedSession };
+    }
+
+    const now = new Date().toISOString();
+    const waitingForUser = isConversationalUserIntent(input.adjustment) || isWaitingForUserOutput(generated.content);
+    const draft = waitingForUser
+      ? undefined
+      : await this.promptDrafts.createFromContent({
+        workspacePath: input.workspacePath,
+        workflowRunId: input.session.workflowRunId,
+        teamKnowledgeRelease: input.session.teamKnowledgeRelease,
+        title: input.session.title?.trim() || generated.title || '模型生成 Prompt 草稿',
+        purpose: input.session.purpose,
+        userIntent: [input.session.userIntent, input.adjustment].filter(Boolean).join('\n'),
+        inputSourceIds: input.session.inputSourceIds,
+        sceneCardIds: input.session.sceneCardIds ?? [],
+        selectedSkills: skillContext.skillRefs,
+        content: generated.content,
+        note: generated.note,
+        model: generated.model,
+        textProtocol: generated.protocol,
+      });
+    const status: AgentPromptSession['status'] = waitingForUser
+      ? 'waiting-user'
+      : updatedSessionStatus(generated.model);
+    const promptDraftIds = draft ? [draft.id] : input.session.promptDraftIds;
+    const updatedSession: AgentPromptSession = {
+      ...liveSession,
+      status,
+      promptDraftIds,
+      messages: [
+        ...input.session.messages,
+        {
+          id: randomUUID(),
+          role: 'user' as const,
+          kind: 'adjustment' as const,
+          content: input.adjustment,
+          promptDraftId: draft?.id,
+          createdAt: now,
+        },
+        {
+          id: randomUUID(),
+          role: 'assistant' as const,
+          kind: waitingForUser ? 'note' as const : 'draft' as const,
+          content: waitingForUser
+            ? assistantSummaryFromContent(generated.content, '需要补充更多信息后才能生成可交付 Prompt 草稿。')
+            : '已生成 Prompt 草稿。完整内容已放入交付物区域，可继续调整或交付到下游。',
+          model: generated.model,
+          promptDraftId: draft?.id,
+          createdAt: now,
+        },
+      ].slice(-80),
+      executionEvents: [
+        ...mergeExecutionEvents(
+          liveSession.executionEvents ?? [],
+          appServerProviderExecutionEvents({
+            now,
+            sessionId: input.session.id,
+            turnId,
+            runId,
+            operation: 'conversation',
+            status,
+            providerEvents: generated.providerEvents,
+            baseSequence: liveSession.executionEvents?.length ?? 0,
+            messageCount: input.session.messages.length + 2,
+            draftIds: promptDraftIds,
+          }),
+        ),
+      ].slice(-120),
+      model: generated.model,
+      textProtocol: draft?.textProtocol ?? input.session.textProtocol,
+      updatedAt: now,
+    };
+    await this.upsertSession(input.workspacePath, updatedSession);
+    this.publish(updatedSession, updatedSession.status === 'blocked' ? 'blocked' : 'completed');
+    return { session: updatedSession, draft };
+  }
+
   async respondAction(input: RespondAgentPromptActionInput): Promise<AgentPromptSession> {
     const sessions = await this.list(input.workspacePath);
     const session = sessions.find((item) => item.id === input.sessionId);
     if (!session) throw new Error(`对话不存在: ${input.sessionId}`);
-    throw new Error('当前 actions 必须由 Lime App Server runtime 处理，Content Studio 不再本地伪造 action.resolved。');
+    const actionIds = unresolvedActionIds(session.executionEvents ?? []);
+    if (!actionIds.has(input.actionId)) {
+      throw new Error(`待处理动作不存在或已处理: ${input.actionId}`);
+    }
+    const now = new Date().toISOString();
+    const runtimeSessionId = runtimeSessionIdForAction(session, input.actionId);
+    if (runtimeSessionId && this.promptAgent.respondAction) {
+      let liveSession = session;
+      const result = await this.promptAgent.respondAction({
+        workspacePath: input.workspacePath,
+        runtimeSessionId,
+        actionId: input.actionId,
+        decision: input.decision,
+        note: input.note,
+        payload: input.payload,
+        textModel: reusableSessionModel(session.model),
+        onProviderEvent: async (event) => {
+          liveSession = await this.applyProviderEvent({
+            workspacePath: input.workspacePath,
+            session: liveSession,
+            event,
+            operation: 'conversation',
+            turnId: event.payload && typeof event.payload === 'object' && typeof event.payload.turnId === 'string'
+              ? event.payload.turnId
+              : session.executionEvents?.find((item) => item.actionId === input.actionId)?.turnId ?? '',
+            runId: `run:${input.sessionId}:action-respond`,
+          });
+        },
+      });
+      const responseEvents = appServerProviderExecutionEvents({
+        now,
+        sessionId: session.id,
+        turnId: session.executionEvents?.find((event) => event.actionId === input.actionId)?.turnId ?? `turn:${input.actionId}:respond`,
+        runId: `run:${input.sessionId}:action-respond`,
+        operation: 'conversation',
+        status: session.status,
+        providerEvents: result.providerEvents,
+        baseSequence: liveSession.executionEvents?.length ?? 0,
+        messageCount: session.messages.length,
+        draftIds: session.promptDraftIds,
+      });
+      const updatedSession: AgentPromptSession = {
+        ...liveSession,
+        executionEvents: mergeExecutionEvents(liveSession.executionEvents ?? [], responseEvents),
+        model: result.model || session.model,
+        updatedAt: now,
+      };
+      await this.upsertSession(input.workspacePath, updatedSession);
+      this.publish(updatedSession, 'upsert');
+      return updatedSession;
+    }
+    if (runtimeSessionId && !this.promptAgent.respondAction) {
+      throw new Error('当前 Agent runtime 不支持 action/respond 回写，已阻断本地伪造完成。');
+    }
+    if (!isLocalNavigationAction(input)) {
+      throw new Error('该待处理动作缺少 runtime 会话事实，不能本地伪造完成。');
+    }
+    const resolvedEvent = actionResolvedEvent({ session, response: input, now, scope: 'local-navigation' });
+    const eventsBeforeSnapshot = mergeExecutionEvents(session.executionEvents ?? [], [resolvedEvent]);
+    const updatedSession: AgentPromptSession = {
+      ...session,
+      executionEvents: mergeExecutionEvents(eventsBeforeSnapshot, [
+        snapshotUpdatedEvent({
+          now,
+          sequence: eventsBeforeSnapshot.length + 1,
+          sessionId: session.id,
+          status: session.status,
+          events: eventsBeforeSnapshot,
+          messageCount: session.messages.length,
+          draftIds: session.promptDraftIds,
+        }),
+      ]),
+      updatedAt: now,
+    };
+    await this.upsertSession(input.workspacePath, updatedSession);
+    this.publish(updatedSession, 'upsert');
+    return updatedSession;
   }
 
   async attachInputSources(input: AttachAgentPromptSessionInputSourcesInput): Promise<AgentPromptSession> {
     const sessions = await this.list(input.workspacePath);
     const session = sessions.find((item) => item.id === input.sessionId);
     if (!session) throw new Error(`对话不存在: ${input.sessionId}`);
-    throw new Error('当前输入源补充必须重新提交到 Lime App Server runtime，Content Studio 不再本地伪造 context/evidence facts。');
+    const allSources = await this.inputSources.list(input.workspacePath);
+    const selectedSources = allSources.filter((source) => input.inputSourceIds.includes(source.id) && isReusablePromptInputSource(source));
+    if (!selectedSources.length) throw new Error('没有可用于 Agent 对话的输入源。');
+    const now = new Date().toISOString();
+    const inputSourceIds = mergeInputSourceIds(session.inputSourceIds, selectedSources.map((source) => source.id));
+    const sourceSnapshots = [
+      ...session.sourceSnapshots.filter((snapshot) => !inputSourceIds.includes(snapshot.sourceId)),
+      ...allSources
+        .filter((source) => inputSourceIds.includes(source.id) && isReusablePromptInputSource(source))
+        .map(snapshotSource),
+    ];
+    const attachEvents = inputSourcesAttachedEvents({
+      session,
+      sources: selectedSources,
+      reason: input.reason,
+      now,
+    });
+    const updatedSession: AgentPromptSession = {
+      ...session,
+      inputSourceIds,
+      sourceSnapshots,
+      executionEvents: mergeExecutionEvents(session.executionEvents ?? [], attachEvents),
+      updatedAt: now,
+    };
+    await this.upsertSession(input.workspacePath, updatedSession);
+    this.publish(updatedSession, 'upsert');
+    const continued = await this.continue({
+      workspacePath: input.workspacePath,
+      sessionId: updatedSession.id,
+      message: [
+        input.reason?.trim() || '已补充输入源，请基于新资料继续处理当前任务。',
+        '',
+        '新增输入源：',
+        sourceSnapshotText(selectedSources.map(snapshotSource)),
+      ].join('\n'),
+    });
+    return continued.session;
   }
 
   private createActiveSession(input: {
@@ -951,6 +1482,7 @@ export class AgentPromptSessionStore {
     turnId: string,
     runId: string,
     model?: string,
+    operation: 'refine' | 'conversation' = 'refine',
   ): AgentPromptSession {
     const now = new Date().toISOString();
     const nextMessages: AgentPromptMessage[] = [
@@ -986,9 +1518,9 @@ export class AgentPromptSessionStore {
           sequence: (session.executionEvents?.length ?? 0) + 1,
           threadId: session.id,
           turnId,
-          taskId: `task:${session.id}:app-server-refine`,
+          taskId: `task:${session.id}:app-server-${operation}`,
           runId,
-          stepId: `app-server:refine:submitted:${turnId}`,
+          stepId: `app-server:${operation}:submitted:${turnId}`,
           title: '请求已提交',
           detail: '正在等待 Lime App Server runtime 返回事件。',
           model,
@@ -1004,7 +1536,7 @@ export class AgentPromptSessionStore {
     workspacePath: string;
     session: AgentPromptSession;
     event: TextProviderRuntimeEvent;
-    operation: 'draft' | 'refine';
+    operation: 'draft' | 'refine' | 'conversation';
     turnId: string;
     runId: string;
   }): Promise<AgentPromptSession> {
@@ -1029,22 +1561,25 @@ export class AgentPromptSessionStore {
       model: input.event.model ?? input.session.model,
       updatedAt: now,
     };
-    await this.upsertSession(input.workspacePath, nextSession);
-    this.publish(nextSession, nextSession.status === 'blocked' ? 'blocked' : 'upsert');
-    return nextSession;
+    const persistedSession = await this.upsertSession(input.workspacePath, nextSession);
+    this.publish(persistedSession, persistedSession.status === 'blocked' ? 'blocked' : 'upsert');
+    return persistedSession;
   }
 
   private async upsertSession(
     workspacePath: string,
     session: AgentPromptSession,
     replaceSessionId = session.id,
-  ): Promise<void> {
+  ): Promise<AgentPromptSession> {
     const existing = await this.list(workspacePath);
+    const current = existing.find((item) => item.id === replaceSessionId || item.id === session.id);
+    const nextSession = mergeSessionForUpsert(current, session);
     const next = [
-      session,
+      nextSession,
       ...existing.filter((item) => item.id !== replaceSessionId && item.id !== session.id),
     ].slice(0, 120);
     await writeJsonFile(sessionsFilePath(workspacePath), next);
+    return nextSession;
   }
 
   private publish(session: AgentPromptSession, type: AgentPromptSessionEvent['type']): void {
@@ -1081,12 +1616,44 @@ function mergeExecutionEvents(
     .slice(-120);
 }
 
+function mergeSessionForUpsert(
+  existing: AgentPromptSession | undefined,
+  incoming: AgentPromptSession,
+): AgentPromptSession {
+  if (!existing || existing.id !== incoming.id) return incoming;
+  if (shouldPreserveExistingResolvedSession(existing, incoming)) {
+    return {
+      ...existing,
+      executionEvents: mergeExecutionEvents(existing.executionEvents ?? [], incoming.executionEvents ?? []),
+      updatedAt: laterIsoTimestamp(existing.updatedAt, incoming.updatedAt),
+    };
+  }
+  return {
+    ...incoming,
+    executionEvents: mergeExecutionEvents(existing.executionEvents ?? [], incoming.executionEvents ?? []),
+  };
+}
+
+function shouldPreserveExistingResolvedSession(
+  existing: AgentPromptSession,
+  incoming: AgentPromptSession,
+): boolean {
+  if (incoming.status !== 'active') return false;
+  if (existing.status === 'active') return false;
+  if (incoming.messages.length > existing.messages.length) return false;
+  return true;
+}
+
+function laterIsoTimestamp(left: string, right: string): string {
+  return left.localeCompare(right) >= 0 ? left : right;
+}
+
 function updateStreamingAssistantMessage(
   messages: AgentPromptMessage[],
   event: TextProviderRuntimeEvent,
 ): AgentPromptMessage[] {
-  if (event.eventClass !== 'model.delta') return messages;
-  const chunk = event.detail?.trim();
+  if (event.kind !== 'model' || event.eventClass !== 'model.delta') return messages;
+  const chunk = streamingDeltaText(event);
   if (!chunk) return messages;
   const next = [...messages];
   const index = findLastAssistantMessageIndex(next);

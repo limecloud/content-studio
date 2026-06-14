@@ -12,10 +12,13 @@ import type {
   PlatformRuntimeEvent,
 } from '../../shared/types';
 import { app } from 'electron';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createEmbeddedElectronPlatformHost } from '@limecloud/desktop-platform-electron-adapter';
 import type { EmbeddedElectronPlatformHost } from '@limecloud/desktop-platform-electron-adapter';
+import { buildAgentRuntimeToolPolicy } from './agentRuntimeToolPolicy';
 import { getResourcesRoot } from './paths';
 
 interface BridgeResponse<T> {
@@ -35,6 +38,18 @@ const BRIDGE_AGENT_FETCH_TIMEOUT_MS = 120_000;
 const BRIDGE_AGENT_EVENTS_FETCH_TIMEOUT_MS = 5000;
 const CONTENT_STUDIO_APP_ID = 'content-studio';
 const CONTENT_STUDIO_ENTRY_KEY = 'default';
+const APP_SERVER_BINARY_NAME = process.platform === 'win32' ? 'app-server.exe' : 'app-server';
+const PLATFORM_KEY = `${process.platform}-${process.arch}`;
+const CURRENT_FILE = fileURLToPath(import.meta.url);
+const PROJECT_ROOT = resolve(dirname(CURRENT_FILE), '..', '..', '..');
+
+export function resolveEmbeddedHostResourcesDirForTest(): string {
+  return resolveEmbeddedHostResourcesDir();
+}
+
+export function resolveEmbeddedAppServerBinForTest(resourcesDir = resolveEmbeddedHostResourcesDir()): string | undefined {
+  return resolveEmbeddedAppServerBinaryOverride(resourcesDir);
+}
 
 function resolveEmbeddedHostResourcesDir(): string {
   return process.env.CONTENT_STUDIO_RESOURCES_DIR?.trim() || getResourcesRoot();
@@ -49,6 +64,72 @@ function resolveEmbeddedAppServerDataDir(): string | undefined {
     return join(app.getPath('appData'), 'content-studio', 'app-server');
   }
   return undefined;
+}
+
+function resolveEmbeddedAppServerBinaryOverride(resourcesDir: string): string | undefined {
+  if (process.env.APP_SERVER_BIN?.trim()) return undefined;
+  if (embeddedHostCurrentAppServerBinaryExists(resourcesDir)) return undefined;
+  return embeddedHostPlatformAppServerBinary(resourcesDir) ?? limeDevEmbeddedAppServerBinary();
+}
+
+function embeddedHostCurrentAppServerBinaryExists(resourcesDir: string): boolean {
+  return Boolean(resourcesDir && existsSync(join(resourcesDir, 'app-server', 'current', APP_SERVER_BINARY_NAME)));
+}
+
+function embeddedHostPlatformAppServerBinary(resourcesDir: string): string | undefined {
+  if (!resourcesDir) return undefined;
+  const binaryPath = join(resourcesDir, 'app-server', PLATFORM_KEY, APP_SERVER_BINARY_NAME);
+  return existsSync(binaryPath) ? binaryPath : undefined;
+}
+
+function limeDevEmbeddedAppServerBinary(): string | undefined {
+  const roots = [
+    process.env.LIME_APP_SERVER_REPO?.trim(),
+    resolve(process.cwd(), '..', '..', 'aiclientproxy', 'lime'),
+    resolve(PROJECT_ROOT, '..', '..', 'aiclientproxy', 'lime'),
+  ].filter((root): root is string => Boolean(root));
+  return Array.from(new Set(roots)).flatMap((root) => [
+    join(root, 'dist-electron', 'app-server', PLATFORM_KEY, APP_SERVER_BINARY_NAME),
+    join(root, 'lime-rs', 'target', 'debug', APP_SERVER_BINARY_NAME),
+  ]).find((binaryPath) => existsSync(binaryPath));
+}
+
+function createEmbeddedAppServerArgs(resourcesDir: string, dataDir: string | undefined): string {
+  const args = [
+    '--backend',
+    'runtime',
+    '--app-policy',
+    join(resourcesDir, 'app-server', 'content-studio.policy.example.json'),
+  ];
+  if (dataDir) {
+    args.push(`--data-dir=${dataDir}`);
+  }
+  return args.join('\n');
+}
+
+function withEmbeddedAppServerBinOverride<T>(
+  resourcesDir: string,
+  dataDir: string | undefined,
+  create: () => T,
+): T {
+  const binaryOverride = resolveEmbeddedAppServerBinaryOverride(resourcesDir);
+  if (!binaryOverride) return create();
+  const previous = {
+    APP_SERVER_BIN: process.env.APP_SERVER_BIN,
+    APP_SERVER_ARGS: process.env.APP_SERVER_ARGS,
+  };
+  process.env.APP_SERVER_BIN = binaryOverride;
+  if (!process.env.APP_SERVER_ARGS) {
+    process.env.APP_SERVER_ARGS = createEmbeddedAppServerArgs(resourcesDir, dataDir);
+  }
+  try {
+    return create();
+  } finally {
+    if (previous.APP_SERVER_BIN === undefined) delete process.env.APP_SERVER_BIN;
+    else process.env.APP_SERVER_BIN = previous.APP_SERVER_BIN;
+    if (previous.APP_SERVER_ARGS === undefined) delete process.env.APP_SERVER_ARGS;
+    else process.env.APP_SERVER_ARGS = previous.APP_SERVER_ARGS;
+  }
 }
 
 function parseJsonEnv<T>(name: string): T | undefined {
@@ -148,13 +229,18 @@ export class PlatformHostBridgeClient {
   private readonly embeddedHost: EmbeddedElectronPlatformHost | undefined =
     process.env.CONTENT_STUDIO_DISABLE_EMBEDDED_PLATFORM_HOST === '1'
       ? undefined
-      : createEmbeddedElectronPlatformHost({
-        appId: CONTENT_STUDIO_APP_ID,
-        entryKey: CONTENT_STUDIO_ENTRY_KEY,
-        resourcesDir: resolveEmbeddedHostResourcesDir(),
-        appServerDataDir: resolveEmbeddedAppServerDataDir(),
-        publishRuntimeBridgeDiscovery: false,
-      });
+      : (() => {
+        const resourcesDir = resolveEmbeddedHostResourcesDir();
+        const binaryOverride = resolveEmbeddedAppServerBinaryOverride(resourcesDir);
+        const appServerDataDir = resolveEmbeddedAppServerDataDir();
+        return withEmbeddedAppServerBinOverride(resourcesDir, appServerDataDir, () => createEmbeddedElectronPlatformHost({
+          appId: CONTENT_STUDIO_APP_ID,
+          entryKey: CONTENT_STUDIO_ENTRY_KEY,
+          resourcesDir: binaryOverride ? undefined : resourcesDir,
+          appServerDataDir,
+          publishRuntimeBridgeDiscovery: false,
+        }));
+      })();
   private descriptor = parseJsonEnv<PlatformRuntimeBridgeDescriptor>('LIME_RUNTIME_BRIDGE');
   private descriptorSource: BridgeSource | undefined = this.descriptor ? 'env' : undefined;
   private readonly injectedSnapshot = parseJsonEnv<PlatformHostSnapshot>('LIME_HOST_SNAPSHOT');
@@ -305,10 +391,7 @@ export class PlatformHostBridgeClient {
           preferredModelId: input.modelId,
           capability: 'agent',
         },
-        toolPolicy: {
-          allowedToolIds: input.selectedSkillSlugs,
-          permissionMode: input.permissionMode ?? 'ask',
-        },
+        toolPolicy: buildAgentRuntimeToolPolicy(input),
         metadata: {
           workspacePath: input.workspacePath,
           selectedSkillSlugs: input.selectedSkillSlugs ?? [],
@@ -319,6 +402,31 @@ export class PlatformHostBridgeClient {
     });
     if (!result.ok) {
       throw new Error(result.error?.message || '平台 lime.agent 调用被阻断。');
+    }
+    return result.output as PlatformAgentRuntimeResult;
+  }
+
+  async respondAgentAction(input: {
+    sessionId: string;
+    actionId: string;
+    decision: string;
+    response?: Record<string, unknown>;
+    note?: string;
+  }): Promise<PlatformAgentRuntimeResult> {
+    const result = await this.invokeCapability({
+      capability: 'lime.agent',
+      operation: 'agentSession/action/respond',
+      input: {
+        sessionId: input.sessionId,
+        actionId: input.actionId,
+        requestId: input.actionId,
+        decision: input.decision,
+        response: input.response ?? {},
+        note: input.note,
+      },
+    });
+    if (!result.ok) {
+      throw new Error(result.error?.message || '平台 lime.agent action/respond 调用被阻断。');
     }
     return result.output as PlatformAgentRuntimeResult;
   }
