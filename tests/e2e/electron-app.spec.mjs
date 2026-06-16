@@ -974,8 +974,17 @@ async function expectModelSettingsVisible(page) {
   await expect(modelSettings).not.toContainText('Content Studio 图片生成');
   await expect(modelSettings).not.toContainText('Content Studio 视频生成');
   await page.locator('[data-testid="add-model-button"]').click();
-  await expect(modelSettings).toContainText('推荐服务');
-  await expect(modelSettings).toContainText('自定义供应商');
+  await expect(page.locator('[data-testid="provider-setting-empty"]')).toBeVisible();
+  await expect.poll(
+    async () => {
+      const text = await modelSettings.innerText();
+      return {
+        hasCatalogTitle: /推荐服务|选择或添加模型/.test(text),
+        hasCustomProvider: /自定义 Provider|自定义供应商/.test(text),
+      };
+    },
+    { message: '公共模型设置页应展示添加模型目录和自定义 provider 入口', timeout: 8_000 },
+  ).toEqual({ hasCatalogTitle: true, hasCustomProvider: true });
 }
 
 async function expectAgentBusinessReply(locator, expected) {

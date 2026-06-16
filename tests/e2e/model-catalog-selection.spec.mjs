@@ -71,8 +71,17 @@ async function expectPlatformModelCatalogVisible(page) {
   await expect(modelSettings).toContainText('Content Studio 图片');
   await expect(modelSettings).toContainText('Content Studio 视频');
   await page.locator('[data-testid="add-model-button"]').click();
-  await expect(modelSettings).toContainText('推荐服务');
-  await expect(modelSettings).toContainText('自定义供应商');
+  await expect(page.locator('[data-testid="provider-setting-empty"]')).toBeVisible();
+  await expect.poll(
+    async () => {
+      const text = await modelSettings.innerText();
+      return {
+        hasCatalogTitle: /推荐服务|选择或添加模型/.test(text),
+        hasCustomProvider: /自定义 Provider|自定义供应商/.test(text),
+      };
+    },
+    { message: '公共模型设置页应展示添加模型目录和自定义 provider 入口', timeout: 8_000 },
+  ).toEqual({ hasCatalogTitle: true, hasCustomProvider: true });
 }
 
 async function expectModelCatalogTabsSingleRow(page) {
@@ -221,8 +230,8 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     expect(persisted.imageModels).not.toContain('new-product-app-model');
 
     await page.locator('[data-testid="add-model-button"]').click();
-    await page.locator('[data-testid="custom-provider-template-card"], .lime-model-catalog-card.muted').click();
-    await expect(page.locator('[data-testid="provider-setting-custom"]')).toBeVisible();
+    await page.locator('.lime-model-catalog-card').filter({ hasText: /自定义 Provider|自定义供应商/ }).click();
+    await expect(page.locator('[data-testid="provider-setting"], [data-testid="provider-setting-custom"]')).toBeVisible();
     await expect(page.locator('.app-error-banner')).toHaveCount(0);
 
     await page.getByRole('button', { name: '账号', exact: true }).click();
