@@ -134,7 +134,7 @@ v1 普通用户界面不是功能入口合集，也不是“本体论编辑器�
 ## 8. 工程验收
 
 - UI 文案扫描不能在普通用户模块中命中禁用工程词。
-- `ContentKnowledgeMapModule`、`ContentReviewTasksModule`、`BrandCommandCenterModule` 必须只消费 View Model 和业务记录，不写矩阵构建、审核迁移或发布检查算法。
+- 当前矩阵消费层、素材库和 BrandCommandCenter 相关模块必须只消费 View Model 和业务记录，不写矩阵构建、审核迁移或发布检查算法；独立知识地图与审核任务页面已退役。
 - 作战分组的品牌战情室、目标树、作战编组、执行队列和行动记录入口必须投影真实 `BrandCommandCenterRecord`、内容知识地图、执行队列和行动记录；空态只能提示恢复路径，不能用 mock 数据填充页面。
 - IPC 只暴露粗粒度业务动作，不能把本地 JSON 结构或服务端 URL 泄漏到 renderer。
 - Bugu 团队事实源未接入时，团队动作只能显示“未同步到团队”或“本机预览”，不能显示已发布。

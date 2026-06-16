@@ -16,8 +16,6 @@ import { AppServerSidecarService } from '../../src/main/services/appServerSideca
 import { AssetReviewStore } from '../../src/main/services/assetReviewStore.ts';
 import { AutoUpdateService } from '../../src/main/services/autoUpdateService.ts';
 import { BrandKnowledgeBaseStore } from '../../src/main/services/brandKnowledgeBaseStore.ts';
-import { ContentBatchApplicationService } from '../../src/main/services/contentBatchApplicationService.ts';
-import { ContentBatchStore } from '../../src/main/services/contentBatchStore.ts';
 import { GenerationLogStore } from '../../src/main/services/generationLogStore.ts';
 import { ImageProductionTaskStore } from '../../src/main/services/imageProductionTaskStore.ts';
 import { ImageSkillGenerationService } from '../../src/main/services/imageSkillGenerationService.ts';
@@ -64,11 +62,6 @@ import { formatImageTemplateInputs, formatImageTemplatePromptContext } from '../
 import { isReusablePromptInputSource } from '../../src/shared/inputSourcePolicy.ts';
 import { buildIntakeMaturitySummary } from '../../src/shared/intakeMaturity.ts';
 import { buildManufacturingPlanProjection } from '../../src/shared/manufacturingPlan.ts';
-import {
-  buildOntologyV2BatchContractReport,
-  projectContentBatchToOntologyV2,
-  runOntologyV2HarnessCases,
-} from '../../src/shared/ontologyV2.ts';
 import { buildProductPlanProjection } from '../../src/shared/productPlanning.ts';
 import { stripInternalTraceLinesFromPrompt } from '../../src/shared/promptTraceText.ts';
 import { buildProductBriefPromptPlan, structureProductBriefSources } from '../../src/shared/productBrief.ts';
@@ -3217,14 +3210,10 @@ test('Ontology v1 readiness gate 区分本地就绪和生产报告缺失', async
   assert.ok(localReadiness.checks.some((check) => (
     check.id === 'v1-user-facing-copy-gate'
     && check.status === 'passed'
-    && check.files === 4
-    && check.rules >= 6
-    && check.message.includes('知识地图、审核台和 agents')
+    && check.files === 2
+    && check.rules === 5
+    && check.message.includes('Prompt 工作台和 agents')
   )));
-  assert.ok(localReadiness.checks.some((check) => check.id === 'team-knowledge-refresh-gate' && check.status === 'passed'));
-  assert.ok(localReadiness.checks.some((check) => check.id === 'build-run-detail-gate' && check.status === 'passed'));
-  assert.ok(localReadiness.checks.some((check) => check.id === 'matrix-row-primary-action-gate' && check.status === 'passed'));
-  assert.ok(localReadiness.checks.some((check) => check.id === 'content-knowledge-map-model-click-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'asset-library-material-task-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'team-sync-conflict-resolution-gate' && check.status === 'passed'));
   assert.ok(localReadiness.checks.some((check) => check.id === 'team-offline-change-import-gate' && check.status === 'passed'));
@@ -9672,6 +9661,8 @@ test('平台 Prompt Agent 过滤平台内部模型记录 ID 并使用真实文�
       if (body.capability === 'lime.agent') {
         assert.equal(body.input.runtimeOptions.modelId, 'claude-sonnet-4-5');
         assert.equal(body.input.runtimeOptions.modelPreference, 'claude-sonnet-4-5');
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.web_search, true);
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.search_mode, 'allowed');
         return {
           ok: true,
           requestId: 'agent-turn-internal-id',
@@ -9801,6 +9792,8 @@ test('平台 Prompt Agent 按所选模型反查 Provider 并过滤 tid 内部记
         assert.equal(body.input.runtimeOptions.modelId, expectedModel);
         assert.equal(body.input.runtimeOptions.modelPreference, expectedModel);
         assert.equal(body.input.modelPolicy.preferredModelId, expectedModel);
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.web_search, true);
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.search_mode, 'allowed');
         const serializedAgentRequest = JSON.stringify(body);
         assert.equal(serializedAgentRequest.includes(internalTidModelId), false);
         return {
@@ -9912,6 +9905,99 @@ test('平台 Prompt Agent 按所选模型反查 Provider 并过滤 tid 内部记
       assert.ok(geminiRequest);
       assert.equal(geminiRequest.input.runtimeOptions.modelPreference, geminiModel);
     });
+  });
+});
+
+test('平台 Prompt Agent 对今日新闻类请求强制打开 Web Search 工具策略', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const requests = [];
+    await withPlatformRuntimeBridge(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      requests.push(body);
+      if (body.capability === 'lime.modelSettings') {
+        return {
+          ok: true,
+          requestId: 'model-settings-news-web-search',
+          output: {
+            version: 'news-web-search',
+            updatedAt: '2026-06-15T00:00:00.000Z',
+            defaultAgentProviderId: 'platform-gemini',
+            defaultTextModelId: 'gemini-2.5-flash',
+            providers: [{
+              id: 'platform-gemini',
+              displayName: 'Platform Gemini',
+              protocol: 'gemini-native',
+              capabilityKinds: ['text'],
+              enabled: true,
+              apiKeyConfigured: true,
+              authType: 'api-key',
+              baseUrl: 'https://generativelanguage.googleapis.com',
+              models: ['gemini-2.5-flash'],
+            }],
+          },
+          event: {},
+        };
+      }
+      if (body.capability === 'lime.agent') {
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.web_search, true);
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.search_mode, 'required');
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.turn_config.web_search, true);
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.turn_config.search_mode, 'required');
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.turn_config.provider_preference, 'platform-gemini');
+        assert.equal(body.input.runtimeOptions.hostOptions.asterChatRequest.turn_config.model_preference, 'gemini-2.5-flash');
+        assert.equal(JSON.stringify(body).match(/apiKey|api_key|token|secret|password|credential|authorization|cookie/i), null);
+        return {
+          ok: true,
+          requestId: 'agent-turn-news-web-search',
+          output: {
+            ok: true,
+            state: 'started',
+            sessionId: 'platform-news-session',
+            threadId: 'platform-news-thread',
+            turnId: 'platform-news-turn',
+            readiness: { state: 'ready', reasons: [], setupActions: [] },
+            runtimeContext: { modelProfile: { modelId: 'gemini-2.5-flash' } },
+            events: [{
+              sessionId: 'platform-news-session',
+              threadId: 'platform-news-thread',
+              turnId: 'platform-news-turn',
+              sequence: 1,
+              type: 'message.delta',
+              payload: {
+                text: '我会先联网检索今天德国相关新闻，再给你结构化分析。',
+                model: 'gemini-2.5-flash',
+              },
+            }],
+          },
+          event: {},
+        };
+      }
+      throw new Error(`unexpected capability ${body.capability}`);
+    }, async () => {
+      const platformHost = new PlatformHostBridgeClient();
+      const modelConfig = new ModelConfigStore(platformHost);
+      const promptAgent = new AppServerPromptAgentService(new AppServerSidecarService(), modelConfig, platformHost);
+      await promptAgent.generatePromptDraft({
+        workspacePath,
+        title: '德国新闻分析',
+        purpose: 'content-task',
+        userIntent: '你帮我分析一下今天的德国新闻',
+        inputSourceIds: [],
+        sceneCardIds: [],
+        selectedSources: [],
+        skillContext: {
+          skillRefs: [],
+          selectedSkills: [],
+          promptText: '',
+          summaryText: '未选择 skill。',
+          sdkSkillNames: [],
+          additionalDirectories: [],
+        },
+        textModel: 'gemini-2.5-flash',
+      });
+    });
+    const agentRequest = requests.find((item) => item.capability === 'lime.agent');
+    assert.ok(agentRequest);
   });
 });
 
@@ -14944,190 +15030,6 @@ test('品牌和 IP 知识库可以从知识引用生成并落盘', async () => {
   });
 });
 
-test('内容制造批次审核阶段会把候选素材导向审核入库和回炉', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const inputSources = new InputSourceStore();
-    const knowledgeMaps = new ContentKnowledgeMapStore();
-
-    const reviewTasks = new ContentReviewTaskStore();
-    const assetReviews = new AssetReviewStore();
-    const logs = new GenerationLogStore();
-    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
-    const batches = new ContentBatchApplicationService(
-      new ContentBatchStore(),
-      inputSources,
-      knowledgeMaps,
-      reviewTasks,
-      assetReviews,
-      logs,
-      promptDrafts,
-    );
-
-    const source = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'product-brief',
-      title: '便携条包产品资料',
-      text: '产品：便携条包。场景：早餐后、办公室抽屉、通勤包。',
-    });
-    const assetPath = join(workspacePath, 'candidate.png');
-    await writeFile(assetPath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
-    const log = await logs.append({
-      workspacePath,
-      kind: 'image',
-      status: 'succeeded',
-      title: '早餐桌候选图',
-      summary: '本批制造阶段生成的待审候选图。',
-      model: 'test-image-model',
-      artifactRefs: [assetPath],
-      input: { sourceId: source.id },
-      output: { prompt: '早餐桌自然光，便携条包主体清晰。' },
-    });
-
-    const built = await batches.build({
-      workspacePath,
-      title: '便携条包短视频制造批次',
-      objective: '把产品资料和候选素材推进到审核入库。',
-    });
-    const projectedReview = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'review',
-    });
-    const reviewStage = projectedReview.stageRuns.find((stage) => stage.stageId === 'review');
-    assert.ok(reviewStage, '应存在审核阶段');
-    assert.ok(reviewStage.gateResults.some((gate) => gate.title === '制造产物待送审'));
-    assert.equal(
-      [...reviewStage.inputRefs, ...reviewStage.outputRefs, ...reviewStage.agentRunRefs].some((ref) => /\bblocked\b/.test(ref.summary)),
-      false,
-    );
-    assert.ok(reviewStage.recoveryTasks.some((task) =>
-      task.targetModule === 'assets' &&
-      task.title === '打开素材库审核候选素材' &&
-      task.message.includes('通过并入库') &&
-      task.message.includes('回炉重做') &&
-      task.sourceRef?.id === log.id
-    ));
-
-    await assetReviews.review({
-      workspacePath,
-      assetKey: `generated:${log.id}:0:${assetPath}`,
-      kind: 'image',
-      sourceType: 'generation-log',
-      sourceId: log.id,
-      path: assetPath,
-      title: 'candidate.png',
-      status: 'pending',
-      note: '等待审核人员判断是否通过并入库。',
-      tags: ['批次审核'],
-    });
-    const pendingReview = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'review',
-    });
-    const pendingStage = pendingReview.stageRuns.find((stage) => stage.stageId === 'review');
-    assert.ok(pendingStage?.gateResults.some((gate) => gate.title === '候选素材待审核'));
-    assert.ok(pendingStage?.recoveryTasks.some((task) =>
-      task.title === '审核 candidate.png' &&
-      task.targetModule === 'assets' &&
-      task.message.includes('通过并入库')
-    ));
-
-    await assetReviews.review({
-      workspacePath,
-      assetKey: `generated:${log.id}:0:${assetPath}`,
-      kind: 'image',
-      sourceType: 'generation-log',
-      sourceId: log.id,
-      path: assetPath,
-      title: 'candidate.png',
-      status: 'rejected',
-      note: '主体不清晰，需要回炉重做。',
-      tags: ['批次审核', '回炉'],
-    });
-    const rejectedReview = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'review',
-    });
-    const rejectedStage = rejectedReview.stageRuns.find((stage) => stage.stageId === 'review');
-    assert.equal(rejectedStage?.status, 'blocked');
-    assert.ok(rejectedStage?.gateResults.some((gate) => gate.title === '有素材被驳回'));
-    assert.ok(rejectedStage?.recoveryTasks.some((task) =>
-      task.title === '回炉 candidate.png' &&
-      task.targetModule === 'assets' &&
-      task.message.includes('回炉重做')
-    ));
-  });
-});
-
-test('内容制造批次制造阶段会把视频 Prompt 草稿投影为制造产物', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const inputSources = new InputSourceStore();
-    const knowledgeMaps = new ContentKnowledgeMapStore();
-
-    const reviewTasks = new ContentReviewTaskStore();
-    const assetReviews = new AssetReviewStore();
-    const logs = new GenerationLogStore();
-    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
-    const batches = new ContentBatchApplicationService(
-      new ContentBatchStore(),
-      inputSources,
-      knowledgeMaps,
-      reviewTasks,
-      assetReviews,
-      logs,
-      promptDrafts,
-    );
-
-    const source = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'product-brief',
-      title: '便携风扇产品资料',
-      text: '便携风扇，桌面和通勤场景，强调轻量和安全边界。',
-    });
-    const draft = await promptDrafts.createFromContent({
-      workspacePath,
-      title: '便携风扇短视频制造单',
-      purpose: 'video',
-      userIntent: '把批次制造阶段转成可复制到第三方视频平台的视频 Prompt。',
-      inputSourceIds: [source.id],
-      content: [
-        '# 便携风扇短视频制造单',
-        '只生成可审核的视频 Prompt，不伪造成片成功。',
-        '成片需要由用户手动导入并进入素材审核。',
-      ].join('\n'),
-      note: 'functional test',
-      model: 'local-content-batch-manufacturing-handoff',
-      status: 'confirmed',
-    });
-
-    const built = await batches.build({
-      workspacePath,
-      title: '便携风扇短视频制造批次',
-      objective: '把产品资料推进到视频 Prompt 制造交接。',
-    });
-    const projected = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'manufacturing',
-    });
-    const manufacturingStage = projected.stageRuns.find((stage) => stage.stageId === 'manufacturing');
-    assert.ok(manufacturingStage, '应存在制造阶段');
-    assert.equal(manufacturingStage.status, 'approved');
-    assert.ok(manufacturingStage.outputRefs.some((ref) =>
-      ref.kind === 'prompt-draft' &&
-      ref.id === draft.id &&
-      ref.targetModule === 'video-prompt' &&
-      ref.summary.includes('便携风扇短视频制造单')
-    ));
-    assert.ok(manufacturingStage.gateResults.some((gate) => gate.status === 'passed'));
-    assert.equal(manufacturingStage.recoveryTasks.length, 0);
-  });
-});
-
 test('Ontology v2 制造能力会把数据成熟度投影成档位和可执行工具池', async () => {
   await withWorkspace(async (workspacePath) => {
     const inputSources = new InputSourceStore();
@@ -15171,7 +15073,7 @@ test('Ontology v2 制造能力会把数据成熟度投影成档位和可执行�
       inputSourceIds: [productSource.id],
       content: '只生成视频 Prompt，不创建外部视频任务。',
       note: 'functional test',
-      model: 'local-content-batch-manufacturing-handoff',
+      model: 'local-manufacturing-handoff',
       status: 'confirmed',
     });
     const approvedAsset = await assetReviews.review({
@@ -15183,7 +15085,7 @@ test('Ontology v2 制造能力会把数据成熟度投影成档位和可执行�
       title: '低噪桌面图',
       status: 'approved',
       note: '已通过素材审核。',
-      tags: ['content-batch'],
+      tags: ['manufacturing'],
     });
     const knowledgeMap = {
       id: 'manufacturing-map-1',
@@ -15320,385 +15222,6 @@ test('Ontology v2 商品规划会为 SKU 表全量分配制造档位和推广波
   });
 });
 
-test('Ontology v2 本地模型校验器会覆盖正例、边界、负例和人工确认例外', () => {
-  const results = runOntologyV2HarnessCases();
-  assert.equal(results.length, 4);
-  assert.equal(results.every((result) => result.passed), true, JSON.stringify(results, null, 2));
-  assert.ok(results.some((result) => result.kind === 'negative' && result.expectedOk === false && result.actualOk === false));
-  assert.ok(results.some((result) => result.kind === 'exception' && result.actualOk === true));
-});
-
-test('内容制造批次调优阶段会要求投放表现和行动复盘', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const inputSources = new InputSourceStore();
-    const knowledgeMaps = new ContentKnowledgeMapStore();
-    const reviewTasks = new ContentReviewTaskStore();
-    const assetReviews = new AssetReviewStore();
-    const logs = new GenerationLogStore();
-    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
-    const batches = new ContentBatchApplicationService(
-      new ContentBatchStore(),
-      inputSources,
-      knowledgeMaps,
-      reviewTasks,
-      assetReviews,
-      logs,
-      promptDrafts,
-    );
-
-    await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'product-brief',
-      title: '便携风扇产品资料',
-      text: '便携风扇，桌面和通勤场景，强调低噪与安全边界。',
-    });
-
-    const built = await batches.build({
-      workspacePath,
-      title: '便携风扇短视频制造批次',
-      objective: '根据制造、审核和投放表现调优下一轮素材方向。',
-    });
-    const missingProjection = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'optimization',
-    });
-    const missingStage = missingProjection.stageRuns.find((stage) => stage.stageId === 'optimization');
-    assert.ok(missingStage, '应存在调优阶段');
-    assert.equal(missingStage.status, 'needs-human');
-    assert.ok(missingStage.gateResults.some((gate) => gate.title === '缺投放表现'));
-    assert.ok(missingStage.gateResults.some((gate) => gate.title === '缺运行复盘'));
-    assert.ok(missingStage.recoveryTasks.some((task) =>
-      task.title === '登记投放表现' &&
-      task.targetModule === 'knowledge-inputs'
-    ));
-    assert.ok(missingStage.recoveryTasks.some((task) =>
-      task.title === '写入运行复盘' &&
-      task.targetModule === 'assets'
-    ));
-
-    const performanceSource = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'user-feedback',
-      title: '投放表现日报',
-      text: 'CTR 3.2%，ROI 1.8，评论集中反馈桌面低噪和通勤便携。',
-      tags: ['投放', 'ROI', 'CTR'],
-    });
-    const performanceProjection = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'optimization',
-    });
-    const performanceStage = performanceProjection.stageRuns.find((stage) => stage.stageId === 'optimization');
-    assert.ok(performanceStage, '应存在调优阶段');
-    assert.equal(performanceStage.gateResults.some((gate) => gate.title === '缺投放表现'), false);
-    assert.ok(performanceStage.gateResults.some((gate) => gate.title === '缺运行复盘'));
-    assert.ok(performanceStage.outputRefs.some((ref) =>
-      ref.kind === 'input-source' &&
-      ref.id === performanceSource.id &&
-      ref.targetModule === 'knowledge-inputs'
-    ));
-
-    const reviewLog = await logs.append({
-      workspacePath,
-      kind: 'article',
-      status: 'succeeded',
-      title: '批次调优复盘',
-      summary: '汇总投放表现、素材审核结果和评论信号，下一轮优先补桌面低噪镜头和通勤收纳镜头。',
-      model: 'functional-run-review',
-      input: { sourceIds: [performanceSource.id] },
-      output: { nextSignals: ['桌面低噪镜头', '通勤收纳镜头'] },
-    });
-    const readyProjection = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'optimization',
-    });
-    const readyStage = readyProjection.stageRuns.find((stage) => stage.stageId === 'optimization');
-    assert.ok(readyStage, '应存在调优阶段');
-    assert.equal(readyStage.status, 'approved');
-    assert.equal(readyStage.gateResults.some((gate) => gate.title === '缺运行复盘'), false);
-    assert.ok(readyStage.outputRefs.some((ref) =>
-      ref.kind === 'generation-log' &&
-      ref.id === reviewLog.id &&
-      ref.summary.includes('已生成') &&
-      ref.targetModule === 'assets'
-    ));
-  });
-});
-
-test('内容制造批次复盘阶段会要求素材覆盖回写和成功素材沉淀', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const inputSources = new InputSourceStore();
-    const knowledgeMaps = new ContentKnowledgeMapStore();
-
-    const reviewTasks = new ContentReviewTaskStore();
-    const assetReviews = new AssetReviewStore();
-    const logs = new GenerationLogStore();
-    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
-    const batches = new ContentBatchApplicationService(
-      new ContentBatchStore(),
-      inputSources,
-      knowledgeMaps,
-      reviewTasks,
-      assetReviews,
-      logs,
-      promptDrafts,
-    );
-    const now = '2026-06-01T00:00:00.000Z';
-
-    const source = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'product-brief',
-      title: '便携风扇产品资料',
-      text: '便携风扇，桌面低噪和通勤收纳场景。',
-    });
-    const row = {
-      id: 'row-feedback-1',
-      title: '桌面低噪使用场景',
-      summary: '办公室桌面低噪使用，产品主体清晰。',
-      tags: ['桌面', '低噪', '办公室'],
-      sourceRefs: [`input-source:${source.id}`],
-      evidenceRefs: ['evidence-feedback-1'],
-      materialStatus: 'missing',
-      materialRefs: [],
-      confidence: 88,
-      status: 'ready',
-    };
-    const map = await knowledgeMaps.save({
-      id: 'map-feedback-batch-1',
-      workspacePath,
-      title: '便携风扇内容知识地图',
-      status: 'ready',
-      syncStatus: 'local-only',
-      teamSync: {
-        backend: 'bugu',
-        status: 'local-only',
-        message: '本机草稿。',
-      },
-      sourceInputSourceIds: [source.id],
-      brandKnowledgeBaseIds: [],
-      ipKnowledgeBaseIds: [],
-      sceneCardIds: [],
-      promptDraftIds: [],
-      sellingPoints: [row],
-      painPoints: [],
-      scenarios: [],
-      evidence: [{
-        id: 'evidence-feedback-1',
-        sourceType: 'input-source',
-        sourceId: source.id,
-        sourceTitle: source.title,
-        claim: '便携风扇适合办公室桌面低噪使用。',
-        excerpt: '桌面低噪和通勤收纳场景。',
-        status: 'ready',
-      }],
-      constraints: ['不承诺绝对静音。'],
-      gaps: [],
-      coverage: {
-        inputSourceCount: 1,
-        brandKnowledgeBaseCount: 0,
-        ipKnowledgeBaseCount: 0,
-        skuRowCount: 0,
-        competitorObservationCount: 0,
-        assetReviewCount: 0,
-        sceneCardCount: 0,
-        promptDraftCount: 0,
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 100,
-      },
-      model: 'functional-test',
-      createdAt: now,
-      updatedAt: now,
-    });
-    const assetPath = join(workspacePath, 'office-desk-fan.mp4');
-    await writeFile(assetPath, TEST_VIDEO);
-    const approvedAsset = await assetReviews.review({
-      workspacePath,
-      assetKey: `imported:${source.id}:0:${assetPath}`,
-      kind: 'video',
-      sourceType: 'input-source',
-      sourceId: source.id,
-      path: assetPath,
-      title: '办公室桌面低噪实拍',
-      status: 'approved',
-      note: '覆盖办公室桌面低噪使用场景，可作为成功素材沉淀。',
-      tags: ['桌面', '低噪', '办公室', '高转化'],
-    });
-
-    const built = await batches.build({
-      workspacePath,
-      contentKnowledgeMapId: map.id,
-      title: '便携风扇短视频制造批次',
-      objective: '把已通过素材回写知识地图，并沉淀下一批可复用 Prompt。',
-    });
-    const missingProjection = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'feedback',
-    });
-    const missingStage = missingProjection.stageRuns.find((stage) => stage.stageId === 'feedback');
-    assert.ok(missingStage, '应存在复盘阶段');
-    assert.equal(missingStage.status, 'needs-human');
-    assert.ok(missingStage.gateResults.some((gate) => gate.title === '素材覆盖待回写'));
-    assert.ok(missingStage.gateResults.some((gate) => gate.title === '成功素材待沉淀'));
-    assert.ok(missingStage.recoveryTasks.some((task) =>
-      task.title === '回写素材覆盖' &&
-      task.targetModule === 'knowledge-map' &&
-      task.sourceRef?.id === approvedAsset.id
-    ));
-    assert.ok(missingStage.recoveryTasks.some((task) =>
-      task.title === '沉淀成功素材 Prompt' &&
-      task.targetModule === 'assets' &&
-      task.sourceRef?.id === approvedAsset.id
-    ));
-
-    await knowledgeMaps.update({
-      ...map,
-      sellingPoints: [{
-        ...row,
-        materialStatus: 'approved',
-        materialRefs: [approvedAsset.id],
-        performanceTags: ['高转化'],
-      }],
-      coverage: {
-        ...map.coverage,
-        assetReviewCount: 1,
-      },
-    });
-    const distilled = await promptDrafts.createFromContent({
-      workspacePath,
-      contentKnowledgeMapId: map.id,
-      contentKnowledgeMapTitle: map.title,
-      coverageRowIds: [row.id],
-      sourceRefs: [`content-knowledge-map:${map.id}`, `asset-review:${approvedAsset.id}`],
-      title: '办公室桌面低噪成功素材 Prompt',
-      purpose: 'video',
-      userIntent: '把已通过素材沉淀为下一批可复用的视频 Prompt。',
-      inputSourceIds: [source.id],
-      content: '办公室桌面低噪使用场景，产品主体清晰，口播克制，不承诺绝对静音。',
-      note: 'functional test',
-      model: 'local-successful-asset-distiller',
-      status: 'materialized',
-    });
-    const readyProjection = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'feedback',
-    });
-    const readyStage = readyProjection.stageRuns.find((stage) => stage.stageId === 'feedback');
-    assert.ok(readyStage, '应存在复盘阶段');
-    assert.equal(readyStage.status, 'approved');
-    assert.equal(readyStage.gateResults.some((gate) => gate.title === '素材覆盖待回写'), false);
-    assert.equal(readyStage.gateResults.some((gate) => gate.title === '成功素材待沉淀'), false);
-    assert.ok(readyStage.outputRefs.some((ref) =>
-      ref.kind === 'prompt-draft' &&
-      ref.id === distilled.id &&
-      ref.summary.includes('已沉淀') &&
-      !/confirmed|materialized/.test(ref.summary)
-    ));
-    assert.ok(readyStage.outputRefs.some((ref) =>
-      ref.kind === 'asset-review' &&
-      ref.id === approvedAsset.id &&
-      ref.summary.includes('已通过并入库')
-    ));
-  });
-});
-
-test('内容制造批次审核阶段会把第三方成品视频排入素材审核', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const inputSources = new InputSourceStore();
-    const knowledgeMaps = new ContentKnowledgeMapStore();
-
-    const reviewTasks = new ContentReviewTaskStore();
-    const assetReviews = new AssetReviewStore();
-    const logs = new GenerationLogStore();
-    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
-    const batches = new ContentBatchApplicationService(
-      new ContentBatchStore(),
-      inputSources,
-      knowledgeMaps,
-      reviewTasks,
-      assetReviews,
-      logs,
-      promptDrafts,
-    );
-
-    const productSource = await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'product-brief',
-      title: '便携风扇产品资料',
-      text: '便携风扇，桌面和通勤场景，强调轻量和安全边界。',
-    });
-    const draft = await promptDrafts.createFromContent({
-      workspacePath,
-      title: '便携风扇短视频制造单',
-      purpose: 'video',
-      userIntent: '复制到第三方平台生成成品视频。',
-      inputSourceIds: [productSource.id],
-      content: '只生成可审核的视频 Prompt，不伪造成片成功。',
-      status: 'confirmed',
-    });
-    const videoPath = join(workspacePath, 'third-party-finished-video.mp4');
-    await writeFile(videoPath, TEST_VIDEO);
-    const finishedVideo = await inputSources.importFile(workspacePath, videoPath, 'successful-asset', {
-      relatedPromptDraftId: draft.id,
-      tags: ['第三方生成', '成品视频'],
-    });
-
-    const built = await batches.build({
-      workspacePath,
-      title: '便携风扇短视频制造批次',
-      objective: '把第三方成品视频推进到人工素材审核。',
-    });
-    const projected = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'review',
-    });
-    const reviewStage = projected.stageRuns.find((stage) => stage.stageId === 'review');
-    assert.ok(reviewStage?.gateResults.some((gate) => gate.title === '成品视频待审核'));
-    assert.ok(reviewStage?.recoveryTasks.some((task) =>
-      task.targetModule === 'assets' &&
-      task.title.includes(finishedVideo.title) &&
-      task.message.includes('通过并入库')
-    ));
-
-    const assetKey = `imported:${finishedVideo.id}:0:${finishedVideo.sourcePath}`;
-    const queued = await assetReviews.review({
-      workspacePath,
-      assetKey,
-      kind: 'video',
-      sourceType: 'input-source',
-      sourceId: finishedVideo.id,
-      path: finishedVideo.sourcePath,
-      title: finishedVideo.title,
-      status: 'pending',
-      note: '由批次审核阶段排队。',
-      tags: ['content-batch', '批次审核', ...finishedVideo.tags],
-    });
-    assert.equal(queued.status, 'pending');
-    assert.equal(queued.sourceId, finishedVideo.id);
-
-    const pendingProjected = await batches.advanceStage({
-      workspacePath,
-      batchId: built.id,
-      stageId: 'review',
-    });
-    const pendingStage = pendingProjected.stageRuns.find((stage) => stage.stageId === 'review');
-    assert.ok(pendingStage?.gateResults.some((gate) => gate.title === '候选素材待审核'));
-    assert.ok(pendingStage?.recoveryTasks.some((task) =>
-      task.targetModule === 'assets' &&
-      task.sourceRef?.id === queued.id
-    ));
-  });
-});
-
 test('Ontology v2 接入成熟度会从现有输入源投影 L0 L1 L2 与质量瓶颈', async () => {
   await withWorkspace(async (workspacePath) => {
     const inputSources = new InputSourceStore();
@@ -15735,95 +15258,6 @@ test('Ontology v2 接入成熟度会从现有输入源投影 L0 L1 L2 与质量�
     assert.equal(summary.projections.some((source) => source.name === '素材与证据' && source.coverage === 0 && source.health === 'bad'), true);
     assert.ok(summary.averageCoverage > 0 && summary.averageCoverage < 100);
     assert.ok(summary.bottleneckCount >= 1);
-  });
-});
-
-test('内容制造批次摘要会使用 Ontology v2 接入成熟度和瓶颈恢复任务', async () => {
-  await withWorkspace(async (workspacePath) => {
-    const inputSources = new InputSourceStore();
-    const knowledgeMaps = new ContentKnowledgeMapStore();
-
-    const reviewTasks = new ContentReviewTaskStore();
-    const assetReviews = new AssetReviewStore();
-    const logs = new GenerationLogStore();
-    const promptDrafts = new PromptDraftStore(inputSources, new FakeTextGenerationService());
-    const batches = new ContentBatchApplicationService(
-      new ContentBatchStore(),
-      inputSources,
-      knowledgeMaps,
-      reviewTasks,
-      assetReviews,
-      logs,
-      promptDrafts,
-    );
-
-    await inputSources.register({
-      workspacePath,
-      kind: 'manual-note',
-      purpose: 'product-brief',
-      title: '便携风扇产品资料',
-      text: '产品名：便携风扇。卖点：低噪、轻便、安全边界。',
-    });
-    await inputSources.register({
-      workspacePath,
-      kind: 'image',
-      purpose: 'reference',
-      title: '参考素材包',
-      sourcePath: join(workspacePath, 'reference.png'),
-      summary: '只登记了图片原文件，待视觉理解。',
-    });
-
-    const projected = await batches.build({
-      workspacePath,
-      title: '便携风扇短视频制造批次',
-      objective: '验证接入成熟度进入批次摘要。',
-    });
-    assert.ok(projected.intakeSummary.maturity, '应包含接入成熟度摘要');
-    assert.ok(projected.intakeSummary.productPlan, '应包含商品规划投影');
-    assert.ok(projected.intakeSummary.manufacturing, '应包含制造能力投影');
-    assert.equal(projected.intakeSummary.coveragePercent, projected.intakeSummary.maturity.averageCoverage);
-    assert.equal(projected.intakeSummary.maturity.sourceCount, 6);
-    assert.ok(projected.intakeSummary.maturity.bottleneckCount >= 1);
-    assert.equal(projected.intakeSummary.productPlan.mode, 'brand-full-coverage');
-    assert.equal(projected.intakeSummary.productPlan.allCovered, true);
-    assert.equal(projected.intakeSummary.productPlan.plannedCount, projected.intakeSummary.productPlan.candidateCount);
-    assert.equal(projected.intakeSummary.manufacturing.capabilities.some((capability) =>
-      capability.id === 'video-prompt' &&
-      capability.targetModule === 'video-prompt'
-    ), true);
-    const selectionStage = projected.stageRuns.find((stage) => stage.stageId === 'selection');
-    assert.ok(selectionStage?.outputRefs.some((ref) =>
-      ref.kind === 'product-plan' &&
-      ref.targetModule === 'content-batch'
-    ));
-    const manufacturingStage = projected.stageRuns.find((stage) => stage.stageId === 'manufacturing');
-    assert.ok(manufacturingStage?.outputRefs.some((ref) =>
-      ref.kind === 'manufacturing-plan' &&
-      ref.targetModule === 'content-batch'
-    ));
-    assert.ok(projected.intakeSummary.missingInputs.some((task) =>
-      task.title.includes('投放与流量') ||
-      task.title.includes('搜索与评论') ||
-      task.title.includes('平台与品牌规则')
-    ));
-    assert.equal(projected.intakeSummary.missingInputs.some((task) => /L0|L1|L2/.test(`${task.message} ${task.recoveryAction}`)), false);
-    assert.ok(projected.intakeSummary.missingInputs.some((task) => /手动补齐|文件映射|自动接入/.test(task.message)));
-
-    const ontologyBatch = projectContentBatchToOntologyV2(projected);
-    assert.equal(ontologyBatch.stageRuns.length, 9);
-    assert.equal(ontologyBatch.stageRuns.some((stage) => stage.stageId === 'manufacturing'), true);
-    const contractReport = buildOntologyV2BatchContractReport(projected);
-    assert.equal(contractReport.ok, true, JSON.stringify(contractReport.issues, null, 2));
-    assert.equal(contractReport.stageReports.some((stage) =>
-      stage.stageId === 'selection' &&
-      stage.primaryObject === 'ProductPlan / SelectionScore' &&
-      stage.outputCoverage > 0
-    ), true);
-    assert.equal(contractReport.stageReports.some((stage) =>
-      stage.stageId === 'manufacturing' &&
-      stage.primaryObject === 'VideoManufacturingJob' &&
-      stage.outputCoverage > 0
-    ), true);
   });
 });
 

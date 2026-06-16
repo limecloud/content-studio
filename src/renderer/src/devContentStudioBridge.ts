@@ -6,11 +6,8 @@ import type {
   AgentPromptSession,
   AppSettingsView,
   AutoUpdateState,
-  BuildContentBatchInput,
   BuguAuthState,
   BuildContentKnowledgeMapInput,
-  ContentBatchRecord,
-  ContentBatchStageId,
   ContentKnowledgeReleaseReference,
   ContentKnowledgeMapBuildRunRecord,
   ContentKnowledgeMapRecord,
@@ -155,7 +152,6 @@ const devContentKnowledgeMaps: ContentKnowledgeMapRecord[] = [];
 const devContentKnowledgeMapBuildRuns: ContentKnowledgeMapBuildRunRecord[] = [];
 const devContentDraftChanges: Awaited<ReturnType<ContentStudioApi["listContentDraftChanges"]>> = [];
 const devContentKnowledgeReleases: Awaited<ReturnType<ContentStudioApi["listContentKnowledgeReleases"]>> = [];
-const devContentBatches: ContentBatchRecord[] = [];
 const devContentReviewTasks: ContentReviewTask[] = [];
 const devAssetReviews: Awaited<ReturnType<ContentStudioApi["listAssetReviews"]>> = [];
 
@@ -444,179 +440,6 @@ function contentKnowledgeMapBuildRun(record: ContentKnowledgeMapRecord): Content
     ],
     startedAt: now,
     completedAt: now,
-    updatedAt: now,
-  };
-}
-
-const DEV_BATCH_STAGES: ContentBatchStageId[] = [
-  "selection",
-  "intent",
-  "modeling",
-  "selling",
-  "matrix",
-  "manufacturing",
-  "review",
-  "optimization",
-  "feedback",
-];
-
-function contentBatch(input: BuildContentBatchInput): ContentBatchRecord {
-  const now = new Date().toISOString();
-  const map = input.contentKnowledgeMapId
-    ? devContentKnowledgeMaps.find((item) => item.id === input.contentKnowledgeMapId)
-    : devContentKnowledgeMaps[0];
-  const batchId = `browser-dev-batch-${Date.now()}`;
-  const hasProductSource = devInputSources.some((source) => source.purpose === "product-brief" || source.kind === "sku-table");
-  const hasFeedbackSource = devInputSources.some((source) => source.purpose === "user-feedback");
-  const manufacturingDrafts = devPromptDrafts.filter((draft) => draft.purpose === "video" || draft.purpose === "image" || draft.purpose === "green-screen");
-  const convertedCount = devInputSources.filter((source) => source.status === "converted").length;
-
-  const gateFor = (stageId: ContentBatchStageId) => {
-    if (stageId === "selection" && !hasProductSource) {
-      return {
-        status: "needs-input" as const,
-        title: "缺商品资料",
-        message: "浏览器开发模式还没有产品资料或 SKU 表。",
-        recoveryAction: "去输入源登记产品 brief 或 SKU 表。",
-      };
-    }
-    if (stageId === "intent" && !hasFeedbackSource) {
-      return {
-        status: "needs-input" as const,
-        title: "缺流量意图",
-        message: "还没有评论、客服问答或搜索词输入。",
-        recoveryAction: "去输入源登记用户反馈。",
-      };
-    }
-    if (stageId === "modeling" && !map) {
-      return {
-        status: "needs-input" as const,
-        title: "缺内容知识地图",
-        message: "先把输入源整理成卖点、痛点、场景和证据矩阵。",
-        recoveryAction: "打开内容知识地图生成事实层。",
-      };
-    }
-    if (stageId === "matrix" && !map && !manufacturingDrafts.length) {
-      return {
-        status: "needs-input" as const,
-        title: "缺矩阵交接",
-        message: "还没有把卖点、证据、场景和素材排成 Prompt、场景卡和补资源任务。",
-        recoveryAction: "打开 agents 或场景库处理矩阵交接。",
-      };
-    }
-    if (stageId === "manufacturing" && !manufacturingDrafts.length) {
-      return {
-        status: "needs-input" as const,
-        title: "缺制造产物",
-        message: "还没有图片候选、视频 Prompt、绿幕文案图或混剪素材。",
-        recoveryAction: "打开制造工具生成可审核素材。",
-      };
-    }
-    return {
-      status: "passed" as const,
-      title: "阶段门禁",
-      message: "浏览器开发模式当前没有阻断项。",
-    };
-  };
-
-  const currentStageId: ContentBatchStageId = !hasProductSource
-    ? "selection"
-    : !hasFeedbackSource
-      ? "intent"
-      : !map
-        ? "modeling"
-        : "manufacturing";
-
-  return {
-    id: batchId,
-    workspacePath: input.workspacePath,
-    title: input.title || map?.title?.replace(/内容知识地图$/g, "制造批次") || "浏览器开发制造批次",
-    objective: input.objective || "把当前输入源、知识地图、Prompt 草稿、工作流和素材审核记录组织成九阶段内容制造批次。",
-    ownerIds: [],
-    status: "active",
-    currentStageId,
-    sourceKnowledgeMapId: map?.id,
-    sourceKnowledgeMapTitle: map?.title,
-    intakeSummary: {
-      inputSourceCount: devInputSources.length,
-      convertedCount,
-      blockedCount: devInputSources.filter((source) => source.status === "blocked").length,
-      coveragePercent: devInputSources.length ? Math.round((convertedCount / devInputSources.length) * 100) : 0,
-      missingInputs: [],
-    },
-    stageRuns: DEV_BATCH_STAGES.map((stageId, index) => {
-      const gate = gateFor(stageId);
-      const isCurrent = stageId === currentStageId;
-      const stageIndex = DEV_BATCH_STAGES.indexOf(currentStageId);
-      const targetModule = stageId === "manufacturing"
-        ? "video-prompt"
-          : stageId === "modeling"
-            ? "knowledge-map"
-            : stageId === "matrix"
-              ? "agents"
-              : "knowledge-inputs";
-      const recoveryTasks = gate.status === "passed" ? [] : [{
-        id: `${batchId}:${stageId}:recovery`,
-        stageId,
-        status: "open" as const,
-        title: gate.title,
-        message: gate.message,
-        recoveryAction: gate.recoveryAction || "处理阶段缺口。",
-        targetModule,
-        ownerLabel: "运营确认",
-        createdAt: now,
-      }];
-      return {
-        id: `${batchId}:${stageId}`,
-        batchId,
-        stageId,
-        status: gate.status !== "passed" ? "needs-human" : index < stageIndex ? "approved" : isCurrent ? "ready" : "draft",
-        inputRefs: devInputSources.slice(0, 3).map((source) => ({
-          kind: "input-source",
-          id: source.id,
-          summary: `${source.title} · ${source.status === "converted" ? "已解析" : "待处理"}`,
-          path: source.sourcePath,
-          targetModule: "knowledge-inputs",
-        })),
-        outputRefs: [
-          ...(map && (stageId === "modeling" || stageId === "selling") ? [{
-            kind: "content-knowledge-map",
-            id: map.id,
-            summary: `${map.title} · ${map.coverage.readyPercent}% 就绪`,
-            targetModule: "knowledge-map",
-          }] : []),
-          ...(map && stageId === "matrix" ? [{
-            kind: "matrix-handoff",
-            id: `${map.id}:matrix`,
-            summary: `${map.title} · ${map.sellingPoints.length + map.painPoints.length + map.scenarios.length} 个事实行可交接`,
-            targetModule: "agents",
-          }] : []),
-          ...(stageId === "manufacturing" ? manufacturingDrafts.slice(0, 6).map((draft) => ({
-            kind: "prompt-draft",
-            id: draft.id,
-            summary: `${draft.title} · ${draft.status}`,
-            targetModule: draft.purpose === "video" ? "video-prompt" : draft.purpose === "green-screen" ? "image-green-screen" : "agents",
-          })) : []),
-        ],
-        gateResults: [{
-          id: `${batchId}:${stageId}:gate`,
-          stageId,
-          status: gate.status,
-          title: gate.title,
-          message: gate.message,
-          recoveryAction: gate.recoveryAction,
-        }],
-        recoveryTasks,
-        agentRunRefs: stageId === "manufacturing" ? manufacturingDrafts.slice(0, 3).map((draft) => ({
-          kind: "prompt-draft",
-          id: draft.id,
-          summary: `${draft.title} · ${draft.status}`,
-          targetModule: draft.purpose === "video" ? "video-prompt" : draft.purpose === "green-screen" ? "image-green-screen" : "agents",
-        })) : [],
-        updatedAt: now,
-      };
-    }),
-    createdAt: now,
     updatedAt: now,
   };
 }
@@ -1039,38 +862,6 @@ export function createDevBridge(): ContentStudioApi {
       };
       devContentKnowledgeReleases.unshift(release);
       return { status: "blocked" as const, issues: release.issues, release };
-    },
-    listContentBatches: async (workspacePath) => {
-      if (devContentBatches.length) return devContentBatches;
-      const record = contentBatch({ workspacePath });
-      devContentBatches.splice(0, devContentBatches.length, record);
-      return devContentBatches;
-    },
-    buildContentBatch: async (input) => {
-      const record = contentBatch(input);
-      devContentBatches.splice(0, devContentBatches.length, record, ...devContentBatches.filter((item) => item.id !== record.id));
-      return record;
-    },
-    advanceContentBatchStage: async (input) => {
-      const record = devContentBatches.find((item) => item.id === input.batchId) ?? contentBatch({ workspacePath: input.workspacePath });
-      const currentIndex = DEV_BATCH_STAGES.indexOf(record.currentStageId);
-      const nextStageId = input.stageId ?? DEV_BATCH_STAGES[Math.min(currentIndex + 1, DEV_BATCH_STAGES.length - 1)];
-      const updated = {
-        ...record,
-        currentStageId: nextStageId,
-        updatedAt: new Date().toISOString(),
-        stageRuns: record.stageRuns.map((stage, index) => ({
-          ...stage,
-          status: stage.stageId === nextStageId
-            ? "ready" as const
-            : index < DEV_BATCH_STAGES.indexOf(nextStageId)
-              ? "approved" as const
-              : stage.status,
-          updatedAt: new Date().toISOString(),
-        })),
-      };
-      devContentBatches.splice(0, devContentBatches.length, updated, ...devContentBatches.filter((item) => item.id !== updated.id));
-      return updated;
     },
     exportContentKnowledgePack: async (input) => contentKnowledgePackExport(input),
     readContentKnowledgePackFile: async (input) => ({

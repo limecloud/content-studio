@@ -291,43 +291,28 @@
   height: calc(100vh - 40px);
 }
 
-.app-shell:has(.scene-prompt-workbench),
 .app-shell:has(.prompt-workbench),
-.app-shell:has(.video-prompt-workbench),
-.app-shell:has(.content-review-workbench),
-.app-shell:has(.input-sources-workbench) {
+.app-shell:has(.video-prompt-workbench) {
   grid-template-columns: 245px minmax(0, 1fr);
   height: 100vh;
   min-height: 100vh;
   overflow: hidden;
 }
 
-.app-shell[data-sidebar="collapsed"]:has(.scene-prompt-workbench),
 .app-shell[data-sidebar="collapsed"]:has(.prompt-workbench),
-.app-shell[data-sidebar="collapsed"]:has(.video-prompt-workbench),
-.app-shell[data-sidebar="collapsed"]:has(.content-review-workbench),
-.app-shell[data-sidebar="collapsed"]:has(.input-sources-workbench) {
+.app-shell[data-sidebar="collapsed"]:has(.video-prompt-workbench) {
   grid-template-columns: 40px minmax(0, 1fr);
 }
 
-.app-shell:has(.scene-prompt-workbench) > .params-panel,
 .app-shell:has(.prompt-workbench) > .params-panel,
-.app-shell:has(.video-prompt-workbench) > .params-panel,
-.app-shell:has(.content-review-workbench) > .params-panel,
-.app-shell:has(.input-sources-workbench) > .params-panel {
+.app-shell:has(.video-prompt-workbench) > .params-panel {
   display: none;
 }
 
-.app-shell:has(.scene-prompt-workbench) > .stage,
-.app-shell:has(.scene-prompt-workbench) .stage-module-surface,
 .app-shell:has(.prompt-workbench) > .stage,
 .app-shell:has(.prompt-workbench) .stage-module-surface,
 .app-shell:has(.video-prompt-workbench) > .stage,
-.app-shell:has(.video-prompt-workbench) .stage-module-surface,
-.app-shell:has(.content-review-workbench) > .stage,
-.app-shell:has(.content-review-workbench) .stage-module-surface,
-.app-shell:has(.input-sources-workbench) > .stage,
-.app-shell:has(.input-sources-workbench) .stage-module-surface {
+.app-shell:has(.video-prompt-workbench) .stage-module-surface {
   height: calc(100vh - 40px);
   min-height: 0;
   overflow: hidden;
@@ -1600,25 +1585,6 @@ p {
     var(--shadow-sm),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
-.nav-advanced-toggle {
-  margin-top: 4px;
-}
-.nav-item-advanced {
-  margin-left: 12px;
-  width: calc(100% - 12px);
-  border-left-color: color-mix(in srgb, var(--cyan) 20%, transparent);
-}
-.nav-item.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  transform: none !important;
-}
-.nav-item.disabled:hover {
-  background: transparent;
-  color: var(--text-secondary);
-  border-color: transparent;
-}
-
 .header-actions,
 .modal-actions,
 .skill-actions {

@@ -36,21 +36,15 @@ const NAV_BUTTON_LABELS = new Set([
   '图片生成',
   'AI 生图',
   '拆解素材',
-  '场景提示词',
   '绿幕文案图',
   '视频生成',
   'AI 视频',
   '视频脚本',
   '视频 Prompt',
+  '成品视频导入',
   '混剪包导出',
-  '内容制造',
   '成型知识库',
-  '内容知识地图',
-  '审核任务',
   '品牌 / 产品知识库',
-  '场景库',
-  'IP 知识库',
-  '输入源 / 文档转换',
   '素材库',
   'skills 管理',
 ]);
@@ -488,6 +482,13 @@ async function expectNavLabelAbsent(page, label) {
 async function expectNavLabelVisible(page, label) {
   if (label === 'agents') {
     await expect(page.locator('.nav-stack .agent-nav-root'), 'agents 一级入口应存在').toBeVisible();
+    return;
+  }
+  if (label === 'skills 管理') {
+    await expect(
+      page.locator('.nav-stack button.agent-nav-action[title="skills 管理"]').first(),
+      'skills 管理入口应存在',
+    ).toBeVisible();
     return;
   }
   await expect.poll(
@@ -965,12 +966,18 @@ async function startFakePlatformRuntimeBridge(options = {}) {
 
 async function expectModelSettingsVisible(page) {
   await expect(page.locator('.lime-settings-dialog')).toBeVisible();
-  await expect(page.locator('.lime-model-settings')).toBeVisible();
-  await expect(page.locator('.lime-model-settings')).not.toContainText('Content Studio 文案生成');
-  await expect(page.locator('.lime-model-settings')).not.toContainText('Content Studio 图片生成');
-  await expect(page.locator('.lime-model-settings')).not.toContainText('Content Studio 视频生成');
-  await expect(page.locator('.lime-model-settings')).toContainText('provider 设置由平台统一保存');
-  await expect(page.locator('.lime-model-settings')).toContainText('打开完整模型设置');
+  const modelSettings = page.locator('.lime-model-settings');
+  await expect(modelSettings).toBeVisible();
+  await expect(modelSettings).toContainText('启用的模型');
+  await expect(modelSettings).toContainText('添加模型');
+  await expect(modelSettings).not.toContainText('Content Studio 文案生成');
+  await expect(modelSettings).not.toContainText('Content Studio 图片生成');
+  await expect(modelSettings).not.toContainText('Content Studio 视频生成');
+  await expect(modelSettings).not.toContainText('provider 设置由平台统一保存');
+  await expect(modelSettings).not.toContainText('打开完整模型设置');
+  await page.locator('[data-testid="add-model-button"]').click();
+  await expect(modelSettings).toContainText('推荐服务');
+  await expect(modelSettings).toContainText('自定义供应商');
 }
 
 async function expectAgentBusinessReply(locator, expected) {
@@ -2228,7 +2235,7 @@ test('模型密钥不可解密时进入统一授权处理', async ({}, testInfo)
       await expect(page.locator('.model-reauthorization-banner')).toContainText('文字、图片、视频访问凭据');
       await expect(page.locator('.lime-settings-dialog')).toBeVisible();
       await expectModelSettingsVisible(page);
-      await expect(page.locator('.lime-model-status')).toContainText('provider 设置由平台统一保存');
+      await expect(page.locator('.lime-model-status')).toContainText('选择服务商，填写密钥和模型后完成配置。');
 
       await clickButton(page, '关闭设置');
       await expect(page.locator('.lime-settings-dialog')).toHaveCount(0);
@@ -2838,10 +2845,38 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
   );
 });
 
-test('v2 新增入口能落到真实工作流动作，不再只是静态说明页', async ({}, testInfo) => {
+test('当前入口能落到真实工作流动作，已删除入口不会回流', async ({}, testInfo) => {
   test.setTimeout(120_000);
 
-  await withContentStudio(testInfo, async ({ page }) => {
+  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+    const seedTrace = await page.evaluate(async (workspacePath) => {
+      const api = window.contentStudio;
+      await api.saveSettings({ workspacePath });
+      const source = await api.registerInputSource({
+        workspacePath,
+        kind: 'manual-note',
+        purpose: 'product-brief',
+        title: '便携条包产品资料',
+        text: [
+          '产品名称：便携营养条包',
+          '卖点：早餐后和办公室抽屉随手取用',
+          '规格：15g * 20 条',
+          '适用场景：早餐后、办公室抽屉、通勤包',
+          '禁用表达：不得承诺治疗、见效或替代专业建议',
+        ].join('\n'),
+        summary: '便携营养条包产品资料',
+        tags: ['v2-current-nav', '产品资料'],
+      });
+      return { sourceId: source.id };
+    }, workspaceDir);
+    expect(seedTrace.sourceId).toBeTruthy();
+
+    await page.reload();
+    await expect.poll(
+      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+      { message: '等待当前入口测试工作区重新加载', timeout: 20_000 },
+    ).toBe(true);
+
     await expectDefaultNavGroupCollapse(page);
     await expandAllNavGroups(page);
 
@@ -2850,23 +2885,31 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
       '图片生成',
       'AI 生图',
       '拆解素材',
-      '场景提示词',
       '绿幕文案图',
-      '合规检测',
-      '图片精修',
+      '视频生成',
+      'AI 视频',
+      '视频 Prompt',
       '视频脚本',
       '成品视频导入',
-      '内容制造',
-      '内容知识地图',
-      '审核任务',
-      '输入源 / 文档转换',
-      '场景库',
+      '混剪包导出',
+      '成型知识库',
+      '品牌 / 产品知识库',
       '素材库',
+      'skills 管理',
     ]) {
       await expectNavLabelVisible(page, label);
     }
 
     for (const label of [
+      '场景提示词',
+      '合规检测',
+      '图片精修',
+      '内容制造',
+      '内容知识地图',
+      '审核任务',
+      '输入源 / 文档转换',
+      '场景库',
+      'IP 知识库',
       '创意视频',
       '自定义视频',
       '批次工作台',
@@ -2889,117 +2932,6 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expect(page.locator('.agents-entry-board')).toContainText('标题生成');
     await expect(page.locator('.agents-entry-board')).toContainText('脚本生成');
 
-    await clickNavItem(page, '内容制造');
-    await expect(page.locator('.content-batch-workbench, .content-batch-empty')).toBeVisible();
-    await expect(page.locator('.content-batch-workbench, .content-batch-empty')).toContainText('内容制造批次');
-    await expect(page.locator('.content-batch-workbench, .content-batch-empty')).toContainText(/选品|创建第一个批次/);
-    await expectNotStaticV2Page(page);
-
-    await clickNavItem(page, '审核任务');
-    await expect(page.locator('.content-review-workbench')).toBeVisible();
-    await expectCommandCenter(page, '.content-review-workbench > .module-command-center', 'compact');
-    await expect(page.locator('.content-review-workbench > .user-journey-guide')).toHaveCount(0);
-    await expect(page.locator('.content-review-workbench > .agent-session-panel')).toBeVisible();
-    await expect(page.locator('.content-review-workbench > .agent-session-panel .agent-session-footer')).toContainText('生成审核任务');
-    const reviewAgentLayout = await page.evaluate(() => {
-      const workbench = document.querySelector('.content-review-workbench');
-      const panel = document.querySelector('.content-review-workbench > .agent-session-panel');
-      const surface = document.querySelector('.stage-module-surface');
-      const params = document.querySelector('.params-panel');
-      if (!workbench || !panel || !surface || !params) return null;
-      const workbenchRect = workbench.getBoundingClientRect();
-      const panelRect = panel.getBoundingClientRect();
-      const surfaceRect = surface.getBoundingClientRect();
-      return {
-        panelHeight: Math.round(panelRect.height),
-        panelWidth: Math.round(panelRect.width),
-        paramsDisplay: window.getComputedStyle(params).display,
-        surfaceWidth: Math.round(surfaceRect.width),
-        workbenchHeight: Math.round(workbenchRect.height),
-      };
-    });
-    expect(reviewAgentLayout?.paramsDisplay, JSON.stringify(reviewAgentLayout)).toBe('none');
-    expect(reviewAgentLayout?.panelWidth ?? 0, JSON.stringify(reviewAgentLayout)).toBeGreaterThanOrEqual((reviewAgentLayout?.surfaceWidth ?? 0) - 40);
-    expect(reviewAgentLayout?.panelHeight ?? 0, JSON.stringify(reviewAgentLayout)).toBeGreaterThanOrEqual((reviewAgentLayout?.workbenchHeight ?? 0) * 0.58);
-    await expectNotStaticV2Page(page);
-
-    await clickNavItem(page, '输入源 / 文档转换');
-    await expect(page.locator('.input-sources-workbench')).toBeVisible();
-    await expectCommandCenter(page, '.input-sources-workbench > .module-command-center', 'compact');
-    await expect(page.locator('.input-sources-workbench > .v2-feature-hero')).toHaveCount(0);
-    await expect(page.locator('.input-sources-workbench > .user-journey-guide')).toHaveCount(0);
-    await expect(page.locator('.input-sources-workbench > .agent-session-panel')).toBeVisible();
-    await expect(page.locator('.input-sources-workbench > .agent-session-panel .agent-session-footer')).toContainText('登记文本输入源');
-    const intakePanel = page.locator('.intake-maturity-panel');
-    await expect(intakePanel).toContainText('数据接入成熟度');
-    await expect(intakePanel).toContainText('输入接入与恢复工作台');
-    await expect(intakePanel).toContainText('商品与库存');
-    await expect(intakePanel).toContainText('投放与流量');
-    await expect(intakePanel).toContainText('字段映射');
-    const inputSourceAgentLayout = await page.evaluate(() => {
-      const workbench = document.querySelector('.input-sources-workbench');
-      const panel = document.querySelector('.input-sources-workbench > .agent-session-panel');
-      const surface = document.querySelector('.stage-module-surface');
-      const params = document.querySelector('.params-panel');
-      if (!workbench || !panel || !surface || !params) return null;
-      const workbenchRect = workbench.getBoundingClientRect();
-      const panelRect = panel.getBoundingClientRect();
-      const surfaceRect = surface.getBoundingClientRect();
-      return {
-        panelHeight: Math.round(panelRect.height),
-        panelWidth: Math.round(panelRect.width),
-        paramsDisplay: window.getComputedStyle(params).display,
-        surfaceWidth: Math.round(surfaceRect.width),
-        workbenchHeight: Math.round(workbenchRect.height),
-      };
-    });
-    expect(inputSourceAgentLayout?.paramsDisplay, JSON.stringify(inputSourceAgentLayout)).toBe('none');
-    expect(inputSourceAgentLayout?.panelWidth ?? 0, JSON.stringify(inputSourceAgentLayout)).toBeGreaterThanOrEqual((inputSourceAgentLayout?.surfaceWidth ?? 0) - 40);
-    expect(inputSourceAgentLayout?.panelHeight ?? 0, JSON.stringify(inputSourceAgentLayout)).toBeGreaterThanOrEqual((inputSourceAgentLayout?.workbenchHeight ?? 0) * 0.58);
-    await expectNotStaticV2Page(page);
-    await page.locator('.input-source-register-panel select').first().selectOption('product-brief');
-    await page.locator('.input-source-register-panel input').first().fill('便携条包产品资料');
-    await page.locator('.input-source-register-panel textarea').fill([
-      '产品名称：便携营养条包',
-      '卖点：早餐后和办公室抽屉随手取用',
-      '规格：15g * 20 条',
-      '适用场景：早餐后、办公室抽屉、通勤包',
-      '禁用表达：不得承诺治疗、见效或替代专业建议',
-    ].join('\n'));
-    await clickButton(page, '登记文本输入源');
-    await expect(page.locator('.input-source-list')).toContainText('便携条包产品资料');
-    await expect(intakePanel).toContainText('商品与库存');
-    await expect(intakePanel).toContainText('手动补齐');
-    const productBriefPanel = page.locator('.product-brief-structure-panel');
-    await expect(productBriefPanel).toContainText('产品变量表');
-    await expect(productBriefPanel).toContainText('便携营养条包');
-    await expect(productBriefPanel).toContainText('早餐后和办公室抽屉随手取用');
-    await expect(productBriefPanel).toContainText('不得承诺治疗');
-    await expect(productBriefPanel).toContainText('可进入生产');
-    await expect(productBriefPanel).toContainText('下游 Prompt 交付');
-    await expect(productBriefPanel).toContainText('主图 Prompt');
-    await expect(productBriefPanel).toContainText('卖点图 Prompt');
-    await expect(productBriefPanel).toContainText('详情页模块 Prompt');
-    await expect(productBriefPanel.locator('button').filter({ hasText: '去图片生成' })).toBeEnabled();
-    await page.locator('.input-source-register-panel select').first().selectOption('user-feedback');
-    await page.locator('.input-source-register-panel input').first().fill('评论和客服问题');
-    await page.locator('.input-source-register-panel input').nth(1).fill('评论, 客服问题');
-    await page.locator('.input-source-register-panel textarea').fill([
-      '用户：价格有点贵，值不值这个钱？',
-      '差评：早上总是忘记吃，坚持不下来。',
-      '客服：孩子能不能吃？有没有禁忌？',
-      '评论：办公室加班时能不能放抽屉里？',
-    ].join('\n'));
-    await clickButton(page, '登记文本输入源');
-    const feedbackPanel = page.locator('.feedback-insight-panel');
-    await expect(feedbackPanel).toContainText('用户问题矩阵');
-    await expect(feedbackPanel).toContainText('价格和信任顾虑');
-    await expect(feedbackPanel).toContainText('使用门槛和坚持成本');
-    await expect(feedbackPanel).toContainText('适用人群和禁忌边界');
-    await expect(feedbackPanel).toContainText('客服异议处理');
-    await expect(feedbackPanel).toContainText('人工复核');
-    await expect(feedbackPanel.locator('button').filter({ hasText: '去标题生成' })).toBeEnabled();
-
     await clickNavItem(page, '拆解素材');
     await expect(page.locator('.ai-breakdown-shell')).toBeVisible();
     await expectNotStaticV2Page(page);
@@ -3012,34 +2944,6 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.agents-thread')).toContainText(agentsIntent, { timeout: 20_000 });
     await expect(page.locator('.agents-thread')).toContainText(/Prompt 草稿|交付草稿已更新|交付物线索/, { timeout: 20_000 });
-
-    await clickNavItem(page, '场景提示词');
-    await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
-    await expectCommandCenter(page, '.scene-prompt-workbench > .module-command-center', 'compact');
-    await expect(page.locator('.scene-prompt-workbench > .v2-feature-flow')).toHaveCount(0);
-    await expect(page.locator('.scene-prompt-workbench .agent-session-footer')).toBeVisible();
-    await expect(page.locator('.scene-prompt-workbench .agent-session-panel')).toBeVisible();
-    const sceneAgentLayout = await page.evaluate(() => {
-      const workbench = document.querySelector('.scene-prompt-workbench');
-      const panel = document.querySelector('.scene-prompt-workbench .agent-session-panel');
-      const surface = document.querySelector('.stage-module-surface');
-      const params = document.querySelector('.params-panel');
-      if (!workbench || !panel || !surface || !params) return null;
-      const workbenchRect = workbench.getBoundingClientRect();
-      const panelRect = panel.getBoundingClientRect();
-      const surfaceRect = surface.getBoundingClientRect();
-      return {
-        panelHeight: Math.round(panelRect.height),
-        panelWidth: Math.round(panelRect.width),
-        paramsDisplay: window.getComputedStyle(params).display,
-        surfaceWidth: Math.round(surfaceRect.width),
-        workbenchHeight: Math.round(workbenchRect.height),
-      };
-    });
-    expect(sceneAgentLayout?.paramsDisplay, JSON.stringify(sceneAgentLayout)).toBe('none');
-    expect(sceneAgentLayout?.panelWidth ?? 0, JSON.stringify(sceneAgentLayout)).toBeGreaterThanOrEqual((sceneAgentLayout?.surfaceWidth ?? 0) - 40);
-    expect(sceneAgentLayout?.panelHeight ?? 0, JSON.stringify(sceneAgentLayout)).toBeGreaterThanOrEqual((sceneAgentLayout?.workbenchHeight ?? 0) * 0.72);
-    await expectNotStaticV2Page(page);
 
     await clickNavItem(page, '视频 Prompt');
     await expect(page.locator('.video-prompt-workbench')).toBeVisible();
@@ -3126,1171 +3030,12 @@ test('v2 新增入口能落到真实工作流动作，不再只是静态说明�
     await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer')).toContainText('抽取品牌知识库');
     await expect(page.locator('.knowledge-brand-workbench > .user-journey-guide')).toHaveCount(0);
     await expect(page.locator('.knowledge-brand-workbench > .v2-feature-hero')).toHaveCount(0);
-    await clickNavItem(page, 'IP 知识库');
-    await expectCommandCenter(page, '.knowledge-brand-workbench > .module-command-center', 'compact');
-    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel')).toBeVisible();
-    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer textarea')).toBeVisible();
-    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer')).toContainText('开始判断');
-    await expect(page.locator('.knowledge-brand-workbench > .agent-session-panel .agent-session-footer')).toContainText('构建 IP 知识库');
-    await expect(page.locator('.knowledge-brand-workbench > .user-journey-guide')).toHaveCount(0);
-    await expect(page.locator('.knowledge-brand-workbench > .v2-feature-hero')).toHaveCount(0);
-
-    await clickNavItem(page, '内容知识地图');
-    await expectCommandCenter(page, '.content-map-workbench > .module-command-center', 'compact');
-    await expect(page.locator('.content-map-workbench > .agent-session-panel')).toBeVisible();
-    await expect(page.locator('.content-map-workbench > .agent-session-panel .agent-session-footer textarea')).toBeVisible();
-    await expect(page.locator('.content-map-workbench > .agent-session-panel .agent-session-footer')).toContainText('开始生成');
-    await expect(page.locator('.content-map-workbench > .agent-session-panel .agent-session-footer')).toContainText('生成内容知识地图');
-    await expect(page.locator('.content-map-workbench > .user-journey-guide')).toHaveCount(0);
 
     await clickNavItem(page, '成型知识库');
     await expectCommandCenter(page, '.knowledge-workbench > .module-command-center', 'managed');
     await expect(page.locator('.module-command-center .knowledge-tab-bar')).toBeVisible();
     await expect(page.locator('.knowledge-workbench > .knowledge-tab-bar')).toHaveCount(0);
   });
-});
-
-test('审核任务 Agent 支持人工决策并生成 Prompt 草稿', async ({}, testInfo) => {
-  test.setTimeout(90_000);
-
-  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-    await page.evaluate(async (workspacePath) => {
-      const now = new Date().toISOString();
-      await window.contentStudio.saveSettings({ workspacePath });
-      const source = await window.contentStudio.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'product-brief',
-        title: '防晒产品审核资料',
-        text: '敏感肌表达只能基于斑贴测试摘要，不得承诺适合所有敏感肌。',
-        summary: '防晒产品审核资料',
-        tags: ['review-agent'],
-      });
-      const baseMap = await window.contentStudio.buildContentKnowledgeMap({
-        workspacePath,
-        title: '防晒产品审核地图',
-        inputSourceIds: [source.id],
-      });
-      await window.contentStudio.updateContentKnowledgeMap({
-        ...baseMap,
-        workspacePath,
-        title: '防晒产品审核地图',
-        status: 'needs-review',
-        syncStatus: 'local-only',
-        teamSync: {
-          backend: 'bugu',
-          status: 'local-only',
-          message: '本机审核验证。',
-        },
-        sourceInputSourceIds: [source.id],
-        brandKnowledgeBaseIds: [],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        sellingPoints: [{
-          id: 'selling-sensitive-skin',
-          title: '敏感肌安心可用',
-          summary: '需要确认敏感肌表达是否有测试证据支撑。',
-          tags: ['卖点', '审核'],
-          sourceRefs: ['manual:review-agent'],
-          evidenceRefs: ['evidence-sensitive-skin'],
-          confidence: 58,
-          status: 'needs-review',
-        }],
-        painPoints: [],
-        scenarios: [],
-        evidence: [{
-          id: 'evidence-sensitive-skin',
-          sourceType: 'manual',
-          sourceTitle: '人工上传检测摘要',
-          claim: '敏感肌安心可用',
-          excerpt: '斑贴测试摘要显示目标样本未见明显刺激反馈，仅可表达为测试场景下温和。',
-          status: 'ready',
-        }],
-        constraints: ['不得承诺适合所有敏感肌。'],
-        gaps: [],
-        coverage: {
-          inputSourceCount: 0,
-          brandKnowledgeBaseCount: 0,
-          sceneCardCount: 0,
-          promptDraftCount: 0,
-          evidenceCount: 1,
-          gapCount: 0,
-          readyPercent: 68,
-        },
-        model: 'e2e-review-agent',
-        createdAt: now,
-        updatedAt: now,
-      });
-    }, workspaceDir);
-
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待审核任务 Agent 测试工作区重新加载', timeout: 20_000 },
-    ).toBe(true);
-
-    await clickNavItem(page, '审核任务');
-    await expect(page.locator('.content-review-workbench > .agent-session-panel')).toBeVisible();
-    await page.locator('.content-review-workbench .agent-session-panel button').filter({ hasText: '生成审核任务' }).first().click();
-    const taskCard = page.locator('.content-review-agent-queue .record-card').filter({ hasText: '敏感肌安心可用' }).first();
-    await expect(taskCard).toBeVisible({ timeout: 20_000 });
-    await taskCard.click();
-    await expect(page.locator('.content-review-workbench .agent-session-artifact')).toContainText('敏感肌安心可用');
-    await expect(page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '生成 Prompt 草稿' })).toBeDisabled();
-
-    await page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '通过' }).click();
-    await expect(page.locator('.content-review-workbench .agent-session-panel')).toContainText('已通过', { timeout: 20_000 });
-    const approvedTask = await page.evaluate(async (workspacePath) => {
-      const tasks = await window.contentStudio.listContentReviewTasks(workspacePath);
-      return tasks.find((task) => task.title === '敏感肌安心可用');
-    }, workspaceDir);
-    expect(approvedTask?.status).toBe('approved');
-    expect(approvedTask?.decisions?.[0]?.action).toBe('approve');
-
-    await page.locator('.content-review-workbench .agent-session-footer button').filter({ hasText: '生成 Prompt 草稿' }).click();
-    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
-    const generatedDraft = await page.evaluate(async (workspacePath) => {
-      const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
-      return drafts.find((draft) => draft.title.includes('敏感肌安心可用'));
-    }, workspaceDir);
-    expect(generatedDraft?.title).toContain('敏感肌安心可用');
-  });
-});
-
-test('审核任务调整动作会真实改写内容知识地图', async ({}, testInfo) => {
-  test.setTimeout(90_000);
-
-  const bugu = await startFakeBuguContentWorkspaceServer();
-  try {
-    await withContentStudio(testInfo, async ({ electronApp, page, workspaceDir }) => {
-      await page.evaluate(async (workspacePath) => {
-      const now = new Date().toISOString();
-      await window.contentStudio.saveSettings({ workspacePath });
-      const source = await window.contentStudio.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'product-brief',
-        title: '通勤背包审核资料',
-        text: '通勤背包重量控制、肩带缓压和小雨防泼资料，防泼不等于完全防水。',
-        summary: '通勤背包审核资料',
-        tags: ['review-mutation-ui'],
-      });
-      const baseMap = await window.contentStudio.buildContentKnowledgeMap({
-        workspacePath,
-        title: '通勤背包审核调整地图',
-        inputSourceIds: [source.id],
-      });
-      await window.contentStudio.updateContentKnowledgeMap({
-        ...baseMap,
-        workspacePath,
-        title: '通勤背包审核调整地图',
-        status: 'needs-review',
-        syncStatus: 'synced',
-        teamSync: {
-          backend: 'bugu',
-          status: 'synced',
-          message: 'E2E 本机团队版本。',
-          workspaceId: 'workspace-review-mutation-ui',
-          revision: 'rev-review-mutation-ui-1',
-        },
-        sourceInputSourceIds: [source.id],
-        brandKnowledgeBaseIds: [],
-        ipKnowledgeBaseIds: [],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        sellingPoints: [{
-          id: 'sp-ui-light',
-          title: '轻便通勤',
-          summary: '适合每天背电脑和文件。',
-          tags: ['卖点', '通勤'],
-          sourceRefs: [`input-source:${source.id}`],
-          evidenceRefs: ['evidence-ui-weight'],
-          materialStatus: 'covered',
-          materialRefs: ['asset-ui-light'],
-          confidence: 72,
-          status: 'ready',
-        }, {
-          id: 'sp-ui-strap',
-          title: '背起来不累',
-          summary: '肩带和重量控制降低通勤负担。',
-          tags: ['卖点', '轻便'],
-          sourceRefs: [`input-source:${source.id}`],
-          evidenceRefs: ['evidence-ui-strap'],
-          materialStatus: 'approved',
-          materialRefs: ['asset-ui-strap'],
-          performanceTags: ['高点击'],
-          confidence: 68,
-          status: 'needs-review',
-        }, {
-          id: 'sp-ui-rain',
-          title: '小雨防泼',
-          summary: '短途通勤遇到小雨时保护随身物品。',
-          tags: ['卖点', '雨天'],
-          sourceRefs: [`input-source:${source.id}`],
-          evidenceRefs: ['evidence-ui-fabric'],
-          materialStatus: 'missing',
-          materialRefs: [],
-          confidence: 70,
-          status: 'ready',
-        }],
-        painPoints: [],
-        scenarios: [],
-        evidence: [{
-          id: 'evidence-ui-weight',
-          sourceType: 'input-source',
-          sourceId: source.id,
-          sourceTitle: '产品参数',
-          claim: '重量控制',
-          excerpt: '整包重量适合日常通勤。',
-          status: 'ready',
-        }, {
-          id: 'evidence-ui-strap',
-          sourceType: 'input-source',
-          sourceId: source.id,
-          sourceTitle: '肩带说明',
-          claim: '肩带缓压',
-          excerpt: '肩带加宽并有缓冲层。',
-          status: 'ready',
-        }, {
-          id: 'evidence-ui-fabric',
-          sourceType: 'input-source',
-          sourceId: source.id,
-          sourceTitle: '面料说明',
-          claim: '防泼面料',
-          excerpt: '表面面料可应对短时间小雨。',
-          status: 'ready',
-        }],
-        constraints: ['防泼不等于完全防水。'],
-        gaps: [],
-        coverage: {
-          inputSourceCount: 1,
-          brandKnowledgeBaseCount: 0,
-          ipKnowledgeBaseCount: 0,
-          sceneCardCount: 0,
-          promptDraftCount: 0,
-          evidenceCount: 3,
-          gapCount: 0,
-          readyPercent: 67,
-        },
-        model: 'e2e-review-mutation-ui',
-        createdAt: now,
-        updatedAt: now,
-      });
-      }, workspaceDir);
-
-      await page.reload();
-      await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待审核调整测试工作区重新加载', timeout: 20_000 },
-      ).toBe(true);
-
-      await clickNavItem(page, '审核任务');
-      const reviewWorkbench = page.locator('.content-review-workbench');
-      await reviewWorkbench.locator('.agent-session-panel button').filter({ hasText: '生成审核任务' }).first().click();
-      const taskCard = reviewWorkbench.locator('.content-review-agent-queue .record-card').filter({ hasText: '背起来不累' }).first();
-      await expect(taskCard).toBeVisible({ timeout: 20_000 });
-      await taskCard.click();
-
-      const artifact = reviewWorkbench.locator('.agent-session-artifact');
-      await expect(artifact).toContainText('调整当前条目');
-      await artifact.locator('label').filter({ hasText: '条目名称' }).locator('input').fill('通勤轻便不压肩');
-      await artifact.locator('label').filter({ hasText: '摘要' }).locator('textarea').fill('把重量控制和肩带缓压合并成通勤人群能理解的表达。');
-      await artifact.getByRole('button', { name: '保存改名' }).click();
-      await expect(reviewWorkbench).toContainText('通勤轻便不压肩', { timeout: 20_000 });
-      await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const [map] = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-        const task = (await window.contentStudio.listContentReviewTasks(workspacePath))
-          .find((item) => item.targetId === 'sp-ui-strap');
-        return {
-          rowTitle: map?.sellingPoints.find((row) => row.id === 'sp-ui-strap')?.title,
-          syncStatus: map?.syncStatus,
-          decision: task?.decisions?.[0]?.action,
-        };
-      }, workspaceDir),
-      { message: '等待改名写入内容知识地图', timeout: 20_000 },
-      ).toEqual({
-      rowTitle: '通勤轻便不压肩',
-      syncStatus: 'synced',
-      decision: 'rename-target',
-      });
-
-      await artifact.locator('.content-review-merge-option').filter({ hasText: '轻便通勤' }).locator('input').check();
-      await artifact.getByRole('button', { name: '合并所选' }).click();
-      await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const [map] = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-        const row = map?.sellingPoints.find((item) => item.id === 'sp-ui-strap');
-        const task = (await window.contentStudio.listContentReviewTasks(workspacePath))
-          .find((item) => item.targetId === 'sp-ui-strap');
-        return {
-          rowTitle: row?.title,
-          removedDuplicate: map?.sellingPoints.some((item) => item.id === 'sp-ui-light') === false,
-          evidenceRefs: row?.evidenceRefs ?? [],
-          materialStatus: row?.materialStatus,
-          performanceTags: row?.performanceTags ?? [],
-          decision: task?.decisions?.[0]?.action,
-        };
-      }, workspaceDir),
-      { message: '等待合并写入内容知识地图', timeout: 20_000 },
-      ).toEqual({
-      rowTitle: '通勤轻便不压肩',
-      removedDuplicate: true,
-      evidenceRefs: expect.arrayContaining(['evidence-ui-weight', 'evidence-ui-strap']),
-      materialStatus: 'approved',
-      performanceTags: expect.arrayContaining(['高点击']),
-      decision: 'merge-related',
-      });
-
-      const splitEditor = artifact.locator('.content-review-split-editor textarea');
-      const splitText = [
-        '通勤轻便｜用于日常通勤背负。',
-        '肩带缓压｜用于长时间背负不勒肩。',
-      ].join('\n');
-      await splitEditor.click();
-      await splitEditor.press('ControlOrMeta+A');
-      await page.keyboard.insertText(splitText);
-      await expect(splitEditor).toHaveValue(splitText);
-      await expect(artifact.getByRole('button', { name: /拆分成 2 条/ })).toBeEnabled({ timeout: 20_000 });
-      await artifact.getByRole('button', { name: /拆分成 2 条/ }).click();
-      await expect(reviewWorkbench).toContainText('通勤轻便', { timeout: 20_000 });
-      await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const tasks = await window.contentStudio.listContentReviewTasks(workspacePath);
-        const draftChanges = await window.contentStudio.listContentDraftChanges(workspacePath);
-        const task = tasks.find((item) => item.targetId === 'sp-ui-strap');
-        return {
-          latestDecision: task?.decisions?.[0]?.action,
-          decisionCount: task?.decisions?.length ?? 0,
-          draftChangeCount: draftChanges.length,
-        };
-      }, workspaceDir),
-      { message: '等待拆分审核调整写入本机事实源', timeout: 20_000 },
-      ).toEqual({
-      latestDecision: 'split-target',
-      decisionCount: 3,
-      draftChangeCount: 3,
-      });
-      const mutationTrace = await page.evaluate(async (workspacePath) => {
-      const [map] = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-      const tasks = await window.contentStudio.listContentReviewTasks(workspacePath);
-      const draftChanges = await window.contentStudio.listContentDraftChanges(workspacePath);
-      const splitRows = map.sellingPoints.filter((row) => row.title === '通勤轻便' || row.title === '肩带缓压');
-      const task = tasks.find((item) => item.targetId === 'sp-ui-strap');
-      return {
-        splitRows: splitRows.map((row) => ({
-          title: row.title,
-          status: row.status,
-          materialStatus: row.materialStatus,
-          materialRefs: row.materialRefs ?? [],
-        })).sort((a, b) => a.title.localeCompare(b.title, 'zh-CN')),
-        latestDecision: task?.decisions?.[0]?.action,
-        decisionCount: task?.decisions?.length ?? 0,
-        draftChangeCount: draftChanges.length,
-        draftChangeTitles: draftChanges.map((change) => change.title),
-      };
-      }, workspaceDir);
-      expect(mutationTrace.splitRows, JSON.stringify(mutationTrace)).toEqual([
-      { title: '肩带缓压', status: 'needs-review', materialStatus: 'missing', materialRefs: [] },
-      { title: '通勤轻便', status: 'needs-review', materialStatus: 'missing', materialRefs: [] },
-      ]);
-      expect(mutationTrace.latestDecision, JSON.stringify(mutationTrace)).toBe('split-target');
-      expect(mutationTrace.decisionCount, JSON.stringify(mutationTrace)).toBeGreaterThanOrEqual(3);
-      expect(mutationTrace.draftChangeCount, JSON.stringify(mutationTrace)).toBeGreaterThanOrEqual(3);
-      expect(mutationTrace.draftChangeTitles, JSON.stringify(mutationTrace)).toEqual(expect.arrayContaining(['通勤背包审核调整地图 变更包']));
-      await expect.poll(
-        () => bugu.requests
-          .filter((request) => request.route === 'content-review-decisions')
-          .map((request) => request.payload.action),
-        { message: '等待审核调整结论同步到 Bugu', timeout: 20_000 },
-      ).toEqual(expect.arrayContaining(['rename-target', 'merge-related', 'split-target']));
-      await expect.poll(
-        () => bugu.requests.filter((request) => request.route === 'content-draft-changes').length,
-        { message: '等待审核调整变更包同步到 Bugu', timeout: 20_000 },
-      ).toBeGreaterThanOrEqual(3);
-      const reviewTaskRequests = bugu.requests.filter((request) => request.route === 'content-review-tasks');
-      const reviewDecisionRequests = bugu.requests.filter((request) => request.route === 'content-review-decisions');
-      const draftChangeRequests = bugu.requests.filter((request) => request.route === 'content-draft-changes');
-      const reviewDecisionActions = reviewDecisionRequests.map((request) => request.payload.action);
-      expect(reviewTaskRequests.length, JSON.stringify(bugu.requests)).toBeGreaterThanOrEqual(1);
-      expect(reviewTaskRequests[0]?.payload.tasks?.[0]?.targetId, JSON.stringify(bugu.requests)).toBe('sp-ui-strap');
-      expect(reviewDecisionActions, JSON.stringify(bugu.requests)).toEqual(expect.arrayContaining(['rename-target', 'merge-related', 'split-target']));
-      expect(draftChangeRequests.length, JSON.stringify(bugu.requests)).toBeGreaterThanOrEqual(3);
-      expect(draftChangeRequests.every((request) => request.payload.contentKnowledgeMapId), JSON.stringify(bugu.requests)).toBe(true);
-
-      await clickNavItem(page, '内容知识地图');
-      await expect(page.locator('.content-map-workbench')).toContainText('通勤轻便', { timeout: 20_000 });
-      await expect(page.locator('.content-map-workbench')).toContainText('肩带缓压');
-    }, {
-      env: {
-        CONTENT_STUDIO_BUGU_CONTENT_API_BASE_URL: bugu.baseUrl,
-        CONTENT_STUDIO_BUGU_CONTENT_API_TOKEN: 'e2e-content-token',
-      },
-    });
-  } finally {
-    await bugu.close();
-  }
-});
-
-test('内容知识地图团队共享按钮会真实生成变更包和知识包版本', async ({}, testInfo) => {
-  test.setTimeout(90_000);
-
-  const bugu = await startFakeBuguContentWorkspaceServer();
-  try {
-    await withContentStudio(testInfo, async ({ electronApp, page, workspaceDir }) => {
-      await page.evaluate(async (workspacePath) => {
-        const api = window.contentStudio;
-        const now = new Date().toISOString();
-        await api.saveSettings({ workspacePath });
-        const source = await api.registerInputSource({
-          workspacePath,
-          kind: 'manual-note',
-          purpose: 'product-brief',
-          title: '防晒团队包资料',
-          text: '清爽肤感、通勤补涂、不搓泥。涉及防晒效果时必须引用备案或检测信息。',
-          summary: '防晒团队包资料',
-          tags: ['team-package-ui'],
-        });
-        const baseMap = await api.buildContentKnowledgeMap({
-          workspacePath,
-          title: '防晒团队知识地图',
-          inputSourceIds: [source.id],
-        });
-        await api.updateContentKnowledgeMap({
-          ...baseMap,
-          workspacePath,
-          title: '防晒团队知识地图',
-          status: 'ready',
-          syncStatus: 'local-only',
-          teamSync: {
-            backend: 'bugu',
-            status: 'local-only',
-            message: '本机团队共享验证。',
-            workspaceId: 'workspace-e2e-content',
-            revision: 'rev-team-ui-1',
-          },
-          sourceInputSourceIds: [source.id],
-          brandKnowledgeBaseIds: ['brand-team-ui'],
-          ipKnowledgeBaseIds: [],
-          sceneCardIds: ['scene-team-ui'],
-          promptDraftIds: ['prompt-team-ui'],
-          sellingPoints: [{
-            id: 'sp-team-light',
-            title: '清爽不搓泥',
-            summary: '适合通勤补涂，强调清爽肤感和不搓泥体验。',
-            tags: ['卖点', '防晒'],
-            sourceRefs: [`input-source:${source.id}`],
-            evidenceRefs: ['evidence-team-light'],
-            materialStatus: 'approved',
-            materialRefs: ['asset-team-light'],
-            confidence: 90,
-            status: 'ready',
-          }],
-          painPoints: [{
-            id: 'pain-team-oily',
-            title: '怕油腻搓泥',
-            summary: '评论中反复出现的购买异议。',
-            tags: ['痛点', '评论'],
-            sourceRefs: [`input-source:${source.id}`],
-            evidenceRefs: ['evidence-team-light'],
-            confidence: 84,
-            status: 'ready',
-          }],
-          scenarios: [{
-            id: 'scenario-team-commute',
-            title: '通勤包补涂',
-            summary: '地铁、办公室和户外切换时的快速补涂。',
-            tags: ['场景', '通勤'],
-            sourceRefs: [`input-source:${source.id}`],
-            evidenceRefs: ['evidence-team-light'],
-            materialStatus: 'approved',
-            materialRefs: ['asset-team-light'],
-            confidence: 86,
-            status: 'ready',
-          }],
-          evidence: [{
-            id: 'evidence-team-light',
-            sourceType: 'manual',
-            sourceTitle: '产品卖点确认表',
-            claim: '用户关注清爽肤感和补涂便利性。',
-            excerpt: '调研记录显示，清爽、便携和不搓泥是主要决策点。',
-            status: 'ready',
-          }],
-          constraints: ['涉及防晒效果时必须引用检测或备案信息。'],
-          gaps: [],
-          coverage: {
-            inputSourceCount: 1,
-            brandKnowledgeBaseCount: 1,
-            ipKnowledgeBaseCount: 0,
-            skuRowCount: 1,
-            competitorObservationCount: 0,
-            sceneCardCount: 1,
-            promptDraftCount: 1,
-            evidenceCount: 1,
-            gapCount: 0,
-            readyPercent: 100,
-          },
-          model: 'e2e-team-package-ui',
-          createdAt: now,
-          updatedAt: now,
-        });
-      }, workspaceDir);
-
-      await page.reload();
-      await expect.poll(
-        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-        { message: '等待团队共享测试工作区重新加载', timeout: 20_000 },
-      ).toBe(true);
-
-      await clickNavItem(page, '内容知识地图');
-      const mapWorkbench = page.locator('.content-map-workbench');
-      const footer = mapWorkbench.locator('.agent-session-footer');
-      await expect(mapWorkbench).toContainText('防晒团队知识地图', { timeout: 20_000 });
-
-      const createChangeButton = footer.getByRole('button', { name: '生成变更包', exact: true });
-      if (await createChangeButton.isVisible().catch(() => false)) {
-        await createChangeButton.click();
-        await expect.poll(
-          async () => page.evaluate(async (workspacePath) => (await window.contentStudio.listContentDraftChanges(workspacePath)).length, workspaceDir),
-          { message: '等待真实变更包写入本机事实源', timeout: 20_000 },
-        ).toBeGreaterThanOrEqual(1);
-      }
-      await expect(footer.getByRole('button', { name: '提交团队工作区', exact: true })).toBeEnabled({ timeout: 20_000 });
-      await footer.getByRole('button', { name: '提交团队工作区', exact: true }).click();
-      await expect.poll(
-        async () => page.evaluate(async (workspacePath) => {
-          const [map] = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-          const [draft] = await window.contentStudio.listContentDraftChanges(workspacePath);
-          return { mapSyncStatus: map?.syncStatus, draftSyncStatus: draft?.syncStatus };
-        }, workspaceDir),
-        { message: '等待变更包提交团队工作区', timeout: 20_000 },
-      ).toEqual({ mapSyncStatus: 'synced', draftSyncStatus: 'synced' });
-
-      await expect(footer.getByRole('button', { name: '导出变更包', exact: true })).toBeEnabled({ timeout: 20_000 });
-      await footer.getByRole('button', { name: '导出变更包', exact: true }).click();
-      await expect(mapWorkbench).toContainText('离线变更包已导出', { timeout: 20_000 });
-      const exportedChange = await page.evaluate(async (workspacePath) => {
-        const [draftChange] = await window.contentStudio.listContentDraftChanges(workspacePath);
-        const exported = await window.contentStudio.exportContentDraftChange({
-          workspacePath,
-          draftChangeId: draftChange.id,
-        });
-        return {
-          exportedStatus: exported.status,
-          exportedFiles: exported.files ?? [],
-          packageDir: exported.packageDir,
-          exportedMapId: draftChange.contentKnowledgeMapId,
-        };
-      }, workspaceDir);
-      expect(exportedChange.exportedStatus, JSON.stringify(exportedChange)).toBe('exported');
-      expect(exportedChange.exportedFiles, JSON.stringify(exportedChange)).toEqual(expect.arrayContaining(['manifest.json', 'draft-change.json', 'import-guide.md']));
-      expect(exportedChange.packageDir, JSON.stringify(exportedChange)).toBeTruthy();
-      await electronApp.evaluate(({ dialog }, packageDir) => {
-        const originalShowOpenDialog = dialog.showOpenDialog;
-        globalThis.__contentStudioE2EImportDialogCalls = [];
-        dialog.showOpenDialog = async (...args) => {
-          const options = args.length > 1 ? args[1] : args[0];
-          const title = typeof options?.title === 'string' ? options.title : '';
-          if (title === '选择内容变更包') {
-            globalThis.__contentStudioE2EImportDialogCalls.push({ title, filePath: packageDir });
-            dialog.showOpenDialog = originalShowOpenDialog;
-            return { canceled: false, filePaths: [packageDir] };
-          }
-          return Reflect.apply(originalShowOpenDialog, dialog, args);
-        };
-      }, exportedChange.packageDir);
-      await expect(footer.getByRole('button', { name: '导入变更包', exact: true })).toBeEnabled({ timeout: 20_000 });
-      await footer.getByRole('button', { name: '导入变更包', exact: true }).click();
-      await expect(mapWorkbench).toContainText('离线变更包已导入', { timeout: 20_000 });
-      const importDialogCalls = await electronApp.evaluate(() => globalThis.__contentStudioE2EImportDialogCalls ?? []);
-      expect(importDialogCalls, JSON.stringify(importDialogCalls)).toEqual([{
-        title: '选择内容变更包',
-        filePath: exportedChange.packageDir,
-      }]);
-      const importTrace = await page.evaluate(async ({ workspacePath, exportedMapId }) => {
-        const allDraftChanges = await window.contentStudio.listContentDraftChanges(workspacePath);
-        const imported = allDraftChanges.find((item) => item.syncStatus === 'local-draft' && item.contentKnowledgeMapId === exportedMapId);
-        return {
-          importedAuthor: imported?.authorLabel,
-          importedMapId: imported?.contentKnowledgeMapId,
-          draftChangeCount: allDraftChanges.length,
-          importedExists: Boolean(imported),
-        };
-      }, { workspacePath: workspaceDir, exportedMapId: exportedChange.exportedMapId });
-      expect(importTrace.importedAuthor, JSON.stringify(importTrace)).toBeTruthy();
-      expect(importTrace.importedMapId, JSON.stringify(importTrace)).toBe(exportedChange.exportedMapId);
-      expect(importTrace.draftChangeCount, JSON.stringify(importTrace)).toBeGreaterThanOrEqual(2);
-      expect(importTrace.importedExists, JSON.stringify(importTrace)).toBe(true);
-
-      await expect(footer.getByRole('button', { name: '创建知识包版本', exact: true })).toBeEnabled({ timeout: 20_000 });
-      await footer.getByRole('button', { name: '创建知识包版本', exact: true }).click();
-      await expect.poll(
-        async () => page.evaluate(async (workspacePath) => (await window.contentStudio.listContentKnowledgeReleases(workspacePath))[0]?.status, workspaceDir),
-        { message: '等待团队知识包版本发布', timeout: 20_000 },
-      ).toBe('published');
-      await page.locator('.content-map-tabs button').filter({ hasText: '团队知识包' }).click();
-      await expect(mapWorkbench.locator('.content-map-package-content')).toContainText('防晒团队知识地图 团队知识包');
-      await page.locator('.content-map-tabs button').filter({ hasText: '高级导出' }).click();
-      await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('团队知识包可下载');
-      await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('KNOWLEDGE.md');
-
-      const trace = await page.evaluate(async (workspacePath) => {
-        const [map] = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-        const draftChanges = await window.contentStudio.listContentDraftChanges(workspacePath);
-        const releases = await window.contentStudio.listContentKnowledgeReleases(workspacePath);
-        const latestDraft = draftChanges[0];
-        const latestRelease = releases[0];
-        return {
-          mapSyncStatus: map?.syncStatus,
-          mapRevision: map?.teamSync?.revision,
-          draftCount: draftChanges.length,
-          hasSyncedDraft: draftChanges.some((change) => change.syncStatus === 'synced'),
-          hasImportedDraft: draftChanges.some((change) => change.syncStatus === 'local-draft' && Boolean(change.authorLabel)),
-          draftIssueCount: draftChanges.reduce((sum, change) => sum + (change.issues?.length ?? 0), 0),
-          releaseStatus: latestRelease?.status,
-          releasePublicUrl: latestRelease?.packagePublicUrl,
-          releaseObjectKey: latestRelease?.packageObjectKey,
-          releaseFileNames: latestRelease?.files ?? [],
-          releaseSha256: latestRelease?.packageArchiveSha256,
-          releaseSize: latestRelease?.packageArchiveSize ?? 0,
-        };
-      }, workspaceDir);
-      expect(trace.mapSyncStatus, JSON.stringify(trace)).toBe('synced');
-      expect(trace.mapRevision, JSON.stringify(trace)).toMatch(/^rev-e2e-content-/);
-      expect(trace.draftCount, JSON.stringify(trace)).toBeGreaterThanOrEqual(1);
-      expect(trace.hasSyncedDraft, JSON.stringify(trace)).toBe(true);
-      expect(trace.hasImportedDraft, JSON.stringify(trace)).toBe(true);
-      expect(trace.draftIssueCount, JSON.stringify(trace)).toBe(0);
-      expect(trace.releaseStatus, JSON.stringify(trace)).toBe('published');
-      expect(trace.releasePublicUrl, JSON.stringify(trace)).toMatch(/^https:\/\/downloads\.bugu\.run\/content-workspaces\//);
-      expect(trace.releaseObjectKey, JSON.stringify(trace)).toContain('agentknowledge');
-      expect(trace.releaseFileNames, JSON.stringify(trace)).toEqual(expect.arrayContaining([
-        'KNOWLEDGE.md',
-        'manifest.json',
-        'ontology/ontology.json',
-        'assets/material-coverage.json',
-        'interop/ontology.jsonld',
-        'interop/ontology.ttl',
-        'interop/ontology.rdf',
-      ]));
-      expect(trace.releaseSha256, JSON.stringify(trace)).toMatch(/^[a-f0-9]{64}$/);
-      expect(trace.releaseSize, JSON.stringify(trace)).toBeGreaterThan(0);
-
-      const draftRequest = bugu.requests.find((request) => request.route === 'content-draft-changes');
-      const releaseRequest = bugu.requests.find((request) => request.route === 'content-knowledge-releases');
-      expect(draftRequest?.payload.title, JSON.stringify(bugu.requests)).toBe('防晒团队知识地图 变更包');
-      expect(releaseRequest?.payload.packageArchive?.contentBase64, JSON.stringify(bugu.requests)).toBeTruthy();
-      expect(releaseRequest?.payload.packageArchive?.sha256, JSON.stringify(bugu.requests)).toMatch(/^[a-f0-9]{64}$/);
-      expect(releaseRequest?.payload.packageManifest?.files, JSON.stringify(bugu.requests)).toEqual(expect.arrayContaining([
-        'KNOWLEDGE.md',
-        'manifest.json',
-        'ontology/ontology.json',
-        'assets/material-coverage.json',
-        'interop/ontology.jsonld',
-        'interop/ontology.ttl',
-        'interop/ontology.rdf',
-      ]));
-
-      const remoteReleaseMapId = await page.evaluate(async (workspacePath) => {
-        const maps = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-        return maps.find((map) => map.title === '防晒团队知识地图')?.id;
-      }, workspaceDir);
-      expect(remoteReleaseMapId).toBeTruthy();
-
-      bugu.addKnowledgeMap({
-        id: 'map-e2e-remote-current',
-        workspaceId: 'workspace-e2e-content',
-        title: '远端团队内容地图',
-        status: 'ready',
-        model: 'remote-team-model',
-        sourceInputSourceIds: ['remote-input-1'],
-        brandKnowledgeBaseIds: ['remote-brand-1'],
-        ipKnowledgeBaseIds: [],
-        sceneCardIds: ['remote-scene-1'],
-        promptDraftIds: ['remote-prompt-1'],
-        evidenceCount: 1,
-        gapCount: 0,
-        readyPercent: 96,
-        coverage: {
-          inputSourceCount: 1,
-          brandKnowledgeBaseCount: 1,
-          ipKnowledgeBaseCount: 0,
-          skuRowCount: 1,
-          competitorObservationCount: 0,
-          sceneCardCount: 1,
-          promptDraftCount: 1,
-          evidenceCount: 1,
-          gapCount: 0,
-          readyPercent: 96,
-        },
-        qualityIssues: [],
-        snapshot: {
-          title: '远端团队内容地图',
-          status: 'ready',
-          sellingPoints: [{
-            id: 'selling-e2e-remote-light',
-            title: '远端团队清爽补涂',
-            summary: '团队另一账号补充的远端卖点。',
-            tags: ['远端团队', '防晒'],
-            dimensions: {
-              audiences: ['通勤人群'],
-              channels: ['抖音'],
-              stages: ['转化'],
-              contentFormats: ['短视频'],
-              useCases: ['午后补涂'],
-            },
-            sourceRefs: ['input-source:remote-input-1'],
-            evidenceRefs: ['evidence-e2e-remote-light'],
-            materialStatus: 'approved',
-            materialRefs: ['asset-e2e-remote-light'],
-            performanceTags: ['高转化'],
-            confidence: 96,
-            status: 'ready',
-          }],
-          painPoints: [],
-          scenarios: [{
-            id: 'scenario-e2e-remote-commute',
-            title: '远端团队午后补涂场景',
-            summary: '办公室午后补涂，不厚重。',
-            tags: ['远端团队', '场景'],
-            sourceRefs: ['input-source:remote-input-1'],
-            evidenceRefs: ['evidence-e2e-remote-light'],
-            confidence: 90,
-            status: 'ready',
-          }],
-          evidence: [{
-            id: 'evidence-e2e-remote-light',
-            sourceType: 'manual',
-            sourceTitle: '远端团队资料',
-            claim: '远端团队确认午后补涂场景。',
-            excerpt: '远端团队资料显示午后补涂需要强调清爽和不厚重。',
-            status: 'ready',
-          }],
-          constraints: ['远端团队边界：不能承诺绝对防护。'],
-          gaps: [],
-          updatedAt: new Date().toISOString(),
-        },
-        baseRevision: 'rev-remote-current-base',
-        serverRevision: 'rev-remote-current-map',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date(Date.now() + 1500).toISOString(),
-      });
-      bugu.addBuildRun({
-        id: 'build-run-e2e-remote-current',
-        workspaceId: 'workspace-e2e-content',
-        title: '远端团队生成流程',
-        status: 'completed',
-        contentKnowledgeMapId: 'map-e2e-remote-current',
-        contentKnowledgeMapTitle: '远端团队内容地图',
-        model: 'remote-team-model',
-        inputSourceIds: ['remote-input-1'],
-        brandKnowledgeBaseIds: ['remote-brand-1'],
-        ipKnowledgeBaseIds: [],
-        sceneCardIds: ['remote-scene-1'],
-        promptDraftIds: ['remote-prompt-1'],
-        readyPercent: 96,
-        evidenceCount: 1,
-        gapCount: 0,
-        issues: [],
-        steps: [{
-          key: 'remote-team-quality-check',
-          title: '远端团队质量检查',
-          status: 'completed',
-          message: '96% 内容可用。',
-          startedAt: new Date().toISOString(),
-          completedAt: new Date().toISOString(),
-        }],
-        baseRevision: 'rev-remote-current-map',
-        serverRevision: 'rev-remote-current-build',
-        startedAt: new Date().toISOString(),
-        completedAt: new Date(Date.now() + 500).toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date(Date.now() + 500).toISOString(),
-      });
-      bugu.addRelease({
-        id: 'release-e2e-remote-refresh',
-        workspaceId: 'workspace-e2e-content',
-        contentKnowledgeMapId: remoteReleaseMapId,
-        contentKnowledgeMapTitle: '远端已确认内容地图',
-        title: '远端团队更新包',
-        version: 'v9.9',
-        status: 'published',
-        baseRevision: 'rev-remote-refresh-base',
-        serverRevision: 'rev-remote-refresh',
-        packageManifest: { files: ['KNOWLEDGE.md', 'manifest.json', 'ontology/ontology.json'] },
-        packageObjectKey: 'content-workspaces/workspace-e2e-content/agentknowledge/release-e2e-remote-refresh.zip',
-        packagePublicUrl: 'https://downloads.bugu.run/content-workspaces/workspace-e2e-content/agentknowledge/release-e2e-remote-refresh.zip',
-        packageStorageProvider: 'r2',
-        packageUploadStatus: 'stored',
-        packageSha256: 'f'.repeat(64),
-        packageSize: 4096,
-        approvalStatus: 'approved',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date(Date.now() + 1000).toISOString(),
-      });
-      await page.locator('.content-map-tabs button').filter({ hasText: '团队知识包' }).click();
-      await page.locator('.content-map-package-primary-actions button').filter({ hasText: '拉取团队更新' }).click();
-      await expect(mapWorkbench.locator('.content-map-package-content')).toContainText('远端团队更新包 v9.9', { timeout: 20_000 });
-      await expect(mapWorkbench.locator('.content-map-release-history')).toContainText('v9.9');
-      await expect.poll(
-        () => bugu.listRequests.filter((request) => (
-          request.route === 'content-knowledge-maps' ||
-          request.route === 'content-build-runs'
-        )).length,
-        { message: `等待 Bugu current GET 请求，当前请求：${JSON.stringify(bugu.listRequests)}`, timeout: 20_000 },
-      ).toBeGreaterThanOrEqual(2);
-      let refreshTrace;
-      await expect.poll(
-        async () => {
-          refreshTrace = await page.evaluate(async (workspacePath) => {
-          const [maps, buildRuns, releases] = await Promise.all([
-            window.contentStudio.listContentKnowledgeMaps(workspacePath),
-            window.contentStudio.listContentKnowledgeMapBuildRuns(workspacePath),
-            window.contentStudio.listContentKnowledgeReleases(workspacePath),
-          ]);
-          const remote = releases.find((release) => release.id === 'release-e2e-remote-refresh');
-          const remoteMap = maps.find((map) => map.id === 'map-e2e-remote-current');
-          const remoteBuildRun = buildRuns.find((run) => run.id === 'build-run-e2e-remote-current');
-          return {
-            mapTitles: maps.map((map) => map.title),
-            buildRunTitles: buildRuns.map((run) => run.title),
-            hasRemoteMap: Boolean(remoteMap),
-            remoteMapTitle: remoteMap?.title,
-            remoteSellingTitle: remoteMap?.sellingPoints[0]?.title,
-            remoteMapRevision: remoteMap?.teamSync?.revision,
-            hasRemoteBuildRun: Boolean(remoteBuildRun),
-            remoteBuildRunStep: remoteBuildRun?.steps[0]?.key,
-            remoteBuildRunRevision: remoteBuildRun?.teamSync?.revision,
-            hasRemote: Boolean(remote),
-            remoteStatus: remote?.status,
-            remotePublicUrl: remote?.packagePublicUrl,
-            remoteFiles: remote?.files ?? [],
-          };
-          }, workspaceDir);
-          return refreshTrace;
-        },
-        { message: '等待 Bugu current 事实源读回本机缓存', timeout: 20_000 },
-      ).toMatchObject({
-        hasRemoteMap: true,
-        hasRemoteBuildRun: true,
-        hasRemote: true,
-      });
-      await expect(mapWorkbench.locator('.prompt-draft-list')).toContainText('远端团队内容地图');
-      await mapWorkbench.locator('.prompt-draft-list .prompt-draft-card').filter({ hasText: '远端团队内容地图' }).click();
-      await expect(mapWorkbench).toContainText('远端团队清爽补涂');
-      await page.locator('.content-map-tabs button').filter({ hasText: '生成流程' }).click();
-      await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('远端团队生成流程');
-      await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('远端团队质量检查');
-      expect(refreshTrace.hasRemoteMap, JSON.stringify(refreshTrace)).toBe(true);
-      expect(refreshTrace.remoteMapTitle, JSON.stringify(refreshTrace)).toBe('远端团队内容地图');
-      expect(refreshTrace.remoteSellingTitle, JSON.stringify(refreshTrace)).toBe('远端团队清爽补涂');
-      expect(refreshTrace.remoteMapRevision, JSON.stringify(refreshTrace)).toBe('rev-remote-current-map');
-      expect(refreshTrace.hasRemoteBuildRun, JSON.stringify(refreshTrace)).toBe(true);
-      expect(refreshTrace.remoteBuildRunStep, JSON.stringify(refreshTrace)).toBe('remote-team-quality-check');
-      expect(refreshTrace.remoteBuildRunRevision, JSON.stringify(refreshTrace)).toBe('rev-remote-current-build');
-      expect(refreshTrace.hasRemote, JSON.stringify(refreshTrace)).toBe(true);
-      expect(refreshTrace.remoteStatus, JSON.stringify(refreshTrace)).toBe('published');
-      expect(refreshTrace.remotePublicUrl, JSON.stringify(refreshTrace)).toMatch(/^https:\/\/downloads\.bugu\.run\/content-workspaces\//);
-      expect(refreshTrace.remoteFiles, JSON.stringify(refreshTrace)).toEqual(expect.arrayContaining(['KNOWLEDGE.md', 'manifest.json']));
-      expect(bugu.listRequests.some((request) => request.route === 'content-knowledge-maps' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'), JSON.stringify(bugu.listRequests)).toBe(true);
-      expect(bugu.listRequests.some((request) => request.route === 'content-build-runs' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'), JSON.stringify(bugu.listRequests)).toBe(true);
-      await expectNavLabelAbsent(page, '目标树');
-      await expectNavLabelAbsent(page, '作战编组');
-      await expectNavLabelAbsent(page, '执行队列');
-      await expectNavLabelAbsent(page, '行动记录');
-
-      bugu.addSyncConflict({
-        id: 'conflict-e2e-team-merge',
-        workspaceId: 'workspace-e2e-content',
-        sourceType: 'draft-change',
-        sourceId: 'draft-change-e2e-old-revision',
-        title: '清爽命名团队冲突',
-        summary: '本机提交把“清爽不搓泥”改成“轻薄不搓泥”，但团队当前版本已补充防晒备案边界。',
-        status: 'open',
-        baseRevision: 'rev-team-ui-1',
-        serverRevision: 'rev-remote-conflict',
-        affectedObjectIds: [`content-map:${remoteReleaseMapId}`, 'selling-point:sp-team-light'],
-        affectedObjects: [{
-          id: `content-map:${remoteReleaseMapId}`,
-          objectId: remoteReleaseMapId,
-          objectType: 'content-map',
-          title: '防晒团队知识地图',
-          summary: '本机变更包基于旧团队版本，影响当前内容地图。',
-          localValue: '本机提交：轻薄不搓泥',
-          teamValue: '团队当前：清爽不搓泥 + 防晒备案边界',
-          impact: 'high',
-          recommendation: '先转人工确认，避免覆盖团队新增备案边界。',
-        }, {
-          id: 'selling-point:sp-team-light',
-          objectId: 'sp-team-light',
-          objectType: 'selling-point',
-          title: '清爽不搓泥',
-          summary: '卖点命名与团队当前版本存在差异。',
-          localValue: '轻薄不搓泥',
-          teamValue: '清爽不搓泥',
-          impact: 'medium',
-          recommendation: '保留团队表达，把轻薄作为别名或新变更包提交。',
-        }],
-        authorLabel: 'E2E 旧版本用户',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      await clickNavItem(page, '内容知识地图');
-      await mapWorkbench.locator('.prompt-draft-list .prompt-draft-card').filter({ hasText: '防晒团队知识地图' }).click();
-      await page.locator('.content-map-tabs button').filter({ hasText: '团队知识包' }).click();
-      await page.locator('.content-map-package-primary-actions button').filter({ hasText: '拉取团队更新' }).click();
-      const conflictList = mapWorkbench.locator('.content-map-conflict-list');
-      await expect(conflictList).toContainText('清爽命名团队冲突', { timeout: 20_000 });
-      await expect(conflictList).toContainText('轻薄不搓泥');
-      await conflictList.getByRole('button', { name: '查看清单' }).click();
-      await expect(mapWorkbench.locator('.content-map-merge-draft')).toContainText('防晒团队知识地图');
-      await expect(mapWorkbench.locator('.content-map-merge-draft')).toContainText('本机提交');
-      await expect(mapWorkbench.locator('.content-map-merge-draft')).toContainText('团队当前');
-      await conflictList.getByRole('button', { name: '按清单转人工确认' }).click();
-      await expect.poll(
-        async () => page.evaluate(async ({ workspacePath, contentKnowledgeMapId }) => {
-          const maps = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-          const map = maps.find((item) => item.id === contentKnowledgeMapId);
-          const conflicts = await window.contentStudio.listContentSyncConflicts(workspacePath);
-          return {
-            syncStatus: map?.syncStatus,
-            syncMessage: map?.teamSync?.message,
-            openConflictCount: conflicts.filter((conflict) => conflict.status === 'open').length,
-          };
-        }, { workspacePath: workspaceDir, contentKnowledgeMapId: remoteReleaseMapId }),
-        { message: '等待同步冲突处理回写本机地图状态', timeout: 20_000 },
-      ).toEqual({
-        syncStatus: 'pending-sync',
-        syncMessage: '冲突处理已记录，请重新生成变更包并提交团队工作区。',
-        openConflictCount: 0,
-      });
-      const conflictResolveRequest = bugu.requests.find((request) => (
-        request.route === 'content-sync-conflicts' &&
-        request.payload.conflictId === 'conflict-e2e-team-merge'
-      ));
-      expect(conflictResolveRequest?.payload.resolutionAction, JSON.stringify(bugu.requests)).toBe('manual-review-recorded');
-      expect(conflictResolveRequest?.payload.mergeDraft?.rows?.length, JSON.stringify(conflictResolveRequest)).toBeGreaterThanOrEqual(2);
-    }, { env: { CONTENT_STUDIO_BUGU_CONTENT_API_BASE_URL: bugu.baseUrl } });
-  } finally {
-    await bugu.close();
-  }
-});
-
-test('内容知识地图会把仅本机资料阻断展示为共享范围处理任务', async ({}, testInfo) => {
-  test.setTimeout(90_000);
-
-  await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-    const seedTrace = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      await api.saveSettings({ workspacePath });
-      const restrictedSource = await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'task-input',
-        title: '仅本机投放复盘',
-        text: '内部投放数据：仅本机使用，禁止共享到团队。',
-        summary: '仅本机投放复盘，不应进入团队知识包。',
-        sensitivity: 'restricted',
-        tags: ['投放数据', '禁止共享'],
-      });
-      const internalSource = await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'product-brief',
-        title: '团队内部产品资料',
-        text: '产品资料：轻便、低噪、适合通勤办公室。',
-        summary: '团队内部产品资料。',
-        sensitivity: 'internal',
-        tags: ['产品资料'],
-      });
-      const baseMap = await api.buildContentKnowledgeMap({
-        workspacePath,
-        title: '仅本机共享检查地图',
-        inputSourceIds: [restrictedSource.id, internalSource.id],
-      });
-      const now = new Date().toISOString();
-      const map = await api.updateContentKnowledgeMap({
-        ...baseMap,
-        workspacePath,
-        title: '仅本机共享检查地图',
-        status: 'ready',
-        syncStatus: 'blocked',
-        teamSync: {
-          backend: 'bugu',
-          status: 'blocked',
-          message: '包含仅本机资料：仅本机投放复盘。处理共享范围后才能同步或发布团队知识包。',
-          workspaceId: 'workspace-sharing-gate-e2e',
-        },
-        sourceInputSourceIds: [restrictedSource.id, internalSource.id],
-        brandKnowledgeBaseIds: [],
-        ipKnowledgeBaseIds: [],
-        sceneCardIds: [],
-        promptDraftIds: [],
-        sellingPoints: [{
-          id: 'selling-sharing-gate',
-          title: '内部复盘卖点',
-          summary: '这条卖点引用了仅本机投放复盘，不能进入团队发布。',
-          tags: ['卖点', '仅本机'],
-          sourceRefs: [`input-source:${restrictedSource.id}`],
-          evidenceRefs: ['evidence-sharing-gate'],
-          materialStatus: 'missing',
-          materialRefs: [],
-          confidence: 91,
-          status: 'ready',
-        }],
-        painPoints: [],
-        scenarios: [],
-        evidence: [{
-          id: 'evidence-sharing-gate',
-          sourceType: 'manual',
-          sourceTitle: '仅本机投放复盘',
-          claim: '内部复盘只允许本机使用。',
-          excerpt: '内部投放数据：仅本机使用，禁止共享到团队。',
-          status: 'ready',
-        }],
-        constraints: ['仅本机资料不能进入团队知识包。'],
-        gaps: [],
-        coverage: {
-          inputSourceCount: 2,
-          brandKnowledgeBaseCount: 0,
-          ipKnowledgeBaseCount: 0,
-          skuRowCount: 0,
-          competitorObservationCount: 0,
-          sceneCardCount: 0,
-          promptDraftCount: 0,
-          evidenceCount: 1,
-          gapCount: 0,
-          readyPercent: 88,
-        },
-        sourceSensitivity: {
-          highest: 'restricted',
-          counts: {
-            public: 0,
-            internal: 1,
-            confidential: 0,
-            restricted: 1,
-          },
-          restrictedSourceTitles: [restrictedSource.title],
-          confidentialSourceTitles: [],
-        },
-        model: 'e2e-sharing-gate',
-        createdAt: baseMap.createdAt || now,
-        updatedAt: now,
-      });
-      return {
-        mapTitle: map.title,
-        restrictedSensitivity: restrictedSource.sensitivity,
-        internalSensitivity: internalSource.sensitivity,
-        syncStatus: map.syncStatus,
-        restrictedCount: map.sourceSensitivity?.counts.restricted,
-      };
-    }, workspaceDir);
-    expect(seedTrace).toMatchObject({
-      mapTitle: '仅本机共享检查地图',
-      restrictedSensitivity: 'restricted',
-      internalSensitivity: 'internal',
-      syncStatus: 'blocked',
-      restrictedCount: 1,
-    });
-
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待共享范围测试工作区重新加载', timeout: 20_000 },
-    ).toBe(true);
-
-    await clickNavItem(page, '内容知识地图');
-    const mapWorkbench = page.locator('.content-map-workbench');
-    const footer = mapWorkbench.locator('.agent-session-footer');
-    await expect(mapWorkbench).toContainText('仅本机共享检查地图', { timeout: 20_000 });
-    await expect(mapWorkbench.locator('.content-map-sharing-card')).toContainText('资料共享检查');
-    await expect(mapWorkbench.locator('.content-map-sharing-card')).toContainText('包含不能同步或发布的资料');
-    await expect(mapWorkbench.locator('.content-map-sharing-card')).toContainText('仅本机投放复盘');
-    await expect(mapWorkbench.locator('.content-map-check-list')).toContainText('1 个仅本机资料');
-    await expect(footer.getByRole('button', { name: '生成变更包', exact: true })).toHaveCount(0);
-    await expect(footer.getByRole('button', { name: '处理共享范围', exact: true })).toBeEnabled();
-    await footer.getByRole('button', { name: '处理共享范围', exact: true }).click();
-    await expect(page.locator('.input-sources-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.input-sources-workbench')).toContainText('共享范围');
-    await expect(page.locator('.input-sources-workbench')).toContainText('仅本机投放复盘');
-    await expect(page.locator('.input-sources-workbench')).toContainText('仅本机');
-  });
-});
-
-test('内容知识地图能开始真实对话', async ({}, testInfo) => {
-  test.setTimeout(90_000);
-
-  const bridge = await startFakePlatformRuntimeBridge();
-  const { server, baseUrl } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
-  try {
-    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-      await page.evaluate(async ({ workspacePath, endpoint }) => {
-        const api = window.contentStudio;
-        await api.saveSettings({ workspacePath });
-        await api.saveModelConfig({
-          textProtocol: 'openai-chat',
-          textApiEndpoint: endpoint,
-          textApiKey: 'test-text-key',
-          textModel: 'test-text-model',
-        });
-        const source = await api.registerInputSource({
-          workspacePath,
-          kind: 'manual-note',
-          purpose: 'product-brief',
-          title: '地图测试产品资料',
-          text: [
-            '产品名称：便携条包',
-            '卖点：早餐后和办公室抽屉随手取用，降低坚持门槛。',
-            '禁用表达：不得承诺治疗、见效或替代专业建议。',
-          ].join('\n'),
-          summary: '地图测试产品资料',
-          tags: ['agent-session'],
-        });
-        const map = await api.buildContentKnowledgeMap({
-          workspacePath,
-          title: '地图测试内容知识地图',
-          inputSourceIds: [source.id],
-        });
-      }, { workspacePath: workspaceDir, endpoint: baseUrl });
-
-      await page.reload();
-      await expect.poll(
-        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-        { message: '等待知识地图测试工作区重新加载', timeout: 20_000 },
-      ).toBe(true);
-
-      await clickNavItem(page, '内容知识地图');
-      await expect(page.locator('.content-map-workbench > .agent-session-panel')).toBeVisible({ timeout: 20_000 });
-      await page.locator('.content-map-workbench .agent-session-footer textarea').fill('请给出证据缺口和下一步交付建议。');
-      await page.locator('.content-map-workbench .agent-session-footer button').filter({ hasText: '开始生成' }).click();
-      await expect(page.locator('.content-map-workbench .agent-turn.user')).toContainText('证据缺口', { timeout: 20_000 });
-      await expectAgentBusinessReply(page.locator('.content-map-workbench .agent-turn.assistant'), {
-        primary: '内容知识地图协作',
-        secondary: '证据缺口',
-      });
-      await expect(page.locator('.content-map-workbench .agent-execution-events [data-event-class="artifact.changed"]').first()).toBeVisible();
-
-      const sessions = await page.evaluate(async (workspacePath) => {
-        const all = await window.contentStudio.listAgentPromptSessions(workspacePath);
-        return all.map((session) => ({ title: session.title, messageCount: session.messages.length }));
-      }, workspaceDir);
-      expect(sessions.some((session) => session.title.includes('内容知识地图协作') && session.messageCount >= 2)).toBe(true);
-      const agentRequest = bridge.requests.find((request) => request.body.capability === 'lime.agent');
-      expect(agentRequest, JSON.stringify(bridge.requests)).toBeTruthy();
-      expect(agentRequest.body.operation).toBe('agentSession/turn/start');
-      expect(JSON.stringify(agentRequest.body)).not.toMatch(/apiKey|api_key|token|secret|password|credential|authorization|cookie/i);
-      await expectNavLabelAbsent(page, '目标树');
-    }, {
-      env: {
-        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
-        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
-      },
-      requireExplicitTextKey: false,
-    });
-  } finally {
-    await bridge.close();
-    await new Promise((resolveClose) => server.close(resolveClose));
-  }
 });
 
 test('agents 平台默认 Gemini 时不会把旧 Claude 参数传给 lime.agent', async ({}, testInfo) => {
@@ -4868,6 +3613,64 @@ test('agents 寒暄对话保持普通回复且不显示 Prompt 交付面板', as
   }
 });
 
+test('agents 今日新闻请求会要求平台 Web Search 工具', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+
+  const bridge = await startFakePlatformRuntimeBridge({
+    agentDraftContent: '我会先联网检索今天德国相关新闻，再按要点、背景和影响给出分析。',
+    agentMessageTitle: 'AI Agent',
+    omitAgentArtifact: true,
+  });
+  try {
+    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
+      await page.evaluate(async ({ workspacePath }) => {
+        await window.contentStudio.saveSettings({ workspacePath });
+      }, { workspacePath: workspaceDir });
+      await page.reload();
+      await expect.poll(
+        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
+        { message: '等待 agents 今日新闻测试工作区重新加载', timeout: 20_000 },
+      ).toBe(true);
+
+      await clickNavItem(page, 'agents');
+      await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
+      await page.locator('.agents-entry-composer textarea').fill('你帮我分析一下今天的德国新闻');
+      await page.locator('.agents-entry-composer textarea').press('Enter');
+      await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.agents-thread')).toContainText('联网检索今天德国相关新闻', { timeout: 20_000 });
+
+      await expect.poll(
+        async () => {
+          const request = bridge.requests.find((item) =>
+            item.body.capability === 'lime.agent' && item.body.operation === 'agentSession/turn/start'
+          );
+          return request?.body.input?.runtimeOptions?.hostOptions?.asterChatRequest?.turn_config?.search_mode ?? '';
+        },
+        { message: '等待 agents 今日新闻请求带上 required web search', timeout: 20_000 },
+      ).toBe('required');
+
+      const agentRequest = bridge.requests.find((item) =>
+        item.body.capability === 'lime.agent' && item.body.operation === 'agentSession/turn/start'
+      );
+      expect(agentRequest, JSON.stringify(bridge.requests)).toBeTruthy();
+      const asterRequest = agentRequest.body.input.runtimeOptions.hostOptions.asterChatRequest;
+      expect(asterRequest.web_search).toBe(true);
+      expect(asterRequest.search_mode).toBe('required');
+      expect(asterRequest.turn_config.web_search).toBe(true);
+      expect(asterRequest.turn_config.search_mode).toBe('required');
+      expect(JSON.stringify(agentRequest.body)).not.toMatch(/apiKey|api_key|token|secret|password|credential|authorization|cookie/i);
+    }, {
+      env: {
+        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
+        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
+      },
+      requireExplicitTextKey: false,
+    });
+  } finally {
+    await bridge.close();
+  }
+});
+
 test('agents 默认不自动打开历史会话或显示模型选择', async ({}, testInfo) => {
   test.setTimeout(90_000);
 
@@ -5318,7 +4121,7 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
         payload: {
           actionId: 'runtime-action-add-source',
           actionKind: 'add-input-source',
-          targetModule: 'knowledge-inputs',
+          targetModule: 'knowledge',
           message: '需要补充输入源后继续',
           evidenceRefs: ['evidence-runtime-input'],
         },
@@ -5328,7 +4131,7 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
         payload: {
           action_id: 'runtime-action-snake-input-source',
           action_kind: 'add-input-source',
-          target_module: 'knowledge-inputs',
+          target_module: 'knowledge',
           message: 'snake_case 动作需要补输入源',
           evidence_refs: ['evidence-runtime-snake-mcp'],
         },
@@ -5783,8 +4586,8 @@ test('agents 将平台运行事实投影到 AgentUI 面板而不是普通正文'
         actionId: 'runtime-action-add-source',
         decision: 'open-input-source',
       });
-      await expect(page.locator('body')).toContainText('输入源 / 文档转换', { timeout: 20_000 });
-      await expect(page.locator('body')).toContainText('登记输入源', { timeout: 20_000 });
+      await expect(page.locator('.knowledge-workbench')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.knowledge-workbench')).toContainText('成型知识库');
     }, {
       env: {
         LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
@@ -5943,742 +4746,7 @@ test('agents 通过 embedded 平台宿主真实调用 Gemini provider store 并�
   });
 });
 
-test('内容知识地图 v1 真实工作台支持下钻和素材回写', async ({}, testInfo) => {
-  test.setTimeout(120_000);
-
-  const bugu = await startFakeBuguContentWorkspaceServer();
-  try {
-    await withContentStudio(testInfo, async ({ page, workspaceDir, e2eProductAssetPath }) => {
-    const seedTrace = await page.evaluate(async ({ workspacePath, assetPath }) => {
-      const api = window.contentStudio;
-      await api.saveSettings({ workspacePath });
-
-      const productSource = await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'product-brief',
-        title: 'BreezeGo Air 产品资料',
-        text: [
-          '产品：BreezeGo Air 便携风扇',
-          'SKU：Air Mini 218g；Air Pro 低档 9-14h；Air Clip 可夹桌边和通勤包。',
-          '禁用表达：不得使用全网最轻、绝对安全、3 秒降温。',
-        ].join('\n'),
-        summary: 'BreezeGo Air 便携风扇产品资料',
-        tags: ['v1-ui', 'product'],
-      });
-      const feedbackSource = await api.registerInputSource({
-        workspacePath,
-        kind: 'manual-note',
-        purpose: 'user-feedback',
-        title: 'BreezeGo Air 评论原声',
-        text: [
-          '用户：包里东西已经很多，不想再多带很重的风扇。',
-          '客服：低档能撑多久？办公室会不会吵？',
-        ].join('\n'),
-        summary: '评论和客服异议',
-        tags: ['v1-ui', 'feedback'],
-      });
-      const assetSource = await api.registerInputSource({
-        workspacePath,
-        kind: 'image',
-        purpose: 'successful-asset',
-        title: '通勤包内实拍图',
-        sourcePath: assetPath,
-        summary: '已通过审核的通勤包内实拍素材。',
-        tags: ['v1-ui', 'coverage:selling-v1-light', '高收藏'],
-      });
-      const assetReview = await api.reviewAsset({
-        workspacePath,
-        assetKey: `imported:${assetSource.id}:0:${assetPath}`,
-        kind: 'image',
-        sourceType: 'input-source',
-        sourceId: assetSource.id,
-        path: assetPath,
-        title: '通勤包内实拍图',
-        status: 'approved',
-        note: 'E2E 通过素材，用于验证覆盖关系。',
-        tags: ['通勤包内', '高收藏'],
-      });
-
-      const baseMap = await api.buildContentKnowledgeMap({
-        workspacePath,
-        title: 'BreezeGo Air v1 真实工作台地图',
-        inputSourceIds: [productSource.id, feedbackSource.id],
-      });
-      const now = new Date().toISOString();
-      const readyMap = await api.updateContentKnowledgeMap({
-        ...baseMap,
-        workspacePath,
-        title: 'BreezeGo Air v1 真实工作台地图',
-        status: 'ready',
-        syncStatus: 'synced',
-        teamSync: {
-          backend: 'bugu',
-          status: 'synced',
-          message: '已同步到测试团队工作区。',
-          workspaceId: 'workspace-v1-e2e',
-          revision: 'rev-v1-e2e-1',
-        },
-        sourceInputSourceIds: [productSource.id, feedbackSource.id],
-        brandKnowledgeBaseIds: [],
-        ipKnowledgeBaseIds: ['ip-v1-e2e'],
-        sceneCardIds: ['scene-v1-e2e'],
-        promptDraftIds: ['prompt-v1-e2e'],
-        sellingPoints: [{
-          id: 'selling-v1-light',
-          title: '轻量便携不压包',
-          summary: 'Air Mini 218g，适合通勤包、办公室抽屉和随身携带场景。',
-          tags: ['卖点', '通勤', 'SKU: Air Mini'],
-          sourceRefs: [`input-source:${productSource.id}`],
-          evidenceRefs: ['evidence-v1-weight'],
-          materialStatus: 'approved',
-          materialRefs: [assetReview.id],
-          performanceTags: ['高收藏', '通勤包内'],
-          confidence: 92,
-          status: 'ready',
-        }, {
-          id: 'selling-v1-video-material',
-          title: '续航竖版视频素材缺口',
-          summary: 'Air Pro 低档 9-14h 可以回答办公室续航异议，但短视频生产还缺竖版实拍素材。',
-          tags: ['卖点', '续航', 'SKU: Air Pro', '补素材'],
-          sourceRefs: [`input-source:${productSource.id}`, `input-source:${feedbackSource.id}`],
-          evidenceRefs: ['evidence-v1-battery'],
-          materialStatus: 'missing',
-          materialRefs: [],
-          performanceTags: ['高咨询'],
-          confidence: 82,
-          status: 'ready',
-        }, {
-          id: 'selling-v1-ip',
-          title: '轻量生活方法口播',
-          summary: 'IP 口径强调少带负担、真实体验和轻量生活方法，不夸大降温。',
-          tags: ['IP', '口播', '语言规则'],
-          sourceRefs: ['ip-knowledge-base:ip-v1-e2e'],
-          evidenceRefs: ['evidence-v1-ip'],
-          materialStatus: 'covered',
-          materialRefs: [assetReview.id],
-          confidence: 84,
-          status: 'ready',
-        }],
-        painPoints: [{
-          id: 'pain-v1-bag',
-          title: '包里东西太多',
-          summary: '评论集中担心多带一个风扇会增加通勤负担。',
-          tags: ['痛点', '评论原声'],
-          sourceRefs: [`input-source:${feedbackSource.id}`],
-          evidenceRefs: ['evidence-v1-quote'],
-          materialStatus: 'covered',
-          materialRefs: [assetReview.id],
-          performanceTags: ['收藏率高于均值'],
-          confidence: 86,
-          status: 'ready',
-        }],
-        scenarios: [{
-          id: 'scenario-v1-commute',
-          title: '早高峰轻装通勤',
-          summary: '手持包内实拍图，表达 218g 轻量和低负担携带。',
-          tags: ['场景', '小红书', '通勤'],
-          sourceRefs: [`input-source:${productSource.id}`],
-          evidenceRefs: ['evidence-v1-weight', 'evidence-v1-quote'],
-          materialStatus: 'approved',
-          materialRefs: [assetReview.id],
-          confidence: 88,
-          status: 'ready',
-        }, {
-          id: 'scenario-v1-competitor',
-          title: '竞品超小随身差异化机会',
-          summary: '竞品强调超小随身，本品牌只能用于结构参考，转写为通勤低负担机会。',
-          tags: ['竞品', '差异化机会', '不可搬运'],
-          sourceRefs: ['competitor-observation:v1-e2e'],
-          evidenceRefs: ['evidence-v1-competitor'],
-          materialStatus: 'covered',
-          materialRefs: [assetReview.id],
-          confidence: 78,
-          status: 'ready',
-        }],
-        evidence: [{
-          id: 'evidence-v1-weight',
-          sourceType: 'manual',
-          sourceTitle: '产品 SKU 表',
-          claim: 'Air Mini 218g 净重',
-          excerpt: 'SKU 表记录 Air Mini 净重 218g，可用于轻量便携表达。',
-          status: 'ready',
-        }, {
-          id: 'evidence-v1-battery',
-          sourceType: 'manual',
-          sourceTitle: 'Air Pro 续航记录',
-          claim: 'Air Pro 低档 9-14h',
-          excerpt: '产品资料记录 Air Pro 低档续航 9-14h，可用于办公室续航异议回答。',
-          status: 'ready',
-        }, {
-          id: 'evidence-v1-quote',
-          sourceType: 'user-quote',
-          sourceTitle: '评论样本',
-          claim: '用户担心包里负担',
-          excerpt: '用户原声：包里东西已经很多，不想再多带很重的风扇。',
-          status: 'ready',
-        }, {
-          id: 'evidence-v1-ip',
-          sourceType: 'ip-knowledge-base',
-          sourceTitle: '林小北 IP 六层资料',
-          claim: '轻量生活方法',
-          excerpt: 'IP 口径强调减负、真实体验和轻量生活方法，不使用夸大承诺。',
-          status: 'ready',
-        }, {
-          id: 'evidence-v1-competitor',
-          sourceType: 'manual',
-          sourceTitle: '竞品公开内容摘要',
-          claim: '竞品强调超小随身',
-          excerpt: '只允许用于内容结构和差异机会参考，不能复制竞品文案或视觉元素。',
-          status: 'ready',
-        }],
-        constraints: [
-          '平台规则：小红书和抖音发布前必须复核禁用表达。',
-          '竞品观察只做差异化结构参考，禁止复制竞品文案或视觉元素。',
-          '不得使用全网最轻、绝对安全、3 秒降温。',
-        ],
-        gaps: [],
-        coverage: {
-          inputSourceCount: 2,
-          brandKnowledgeBaseCount: 0,
-          ipKnowledgeBaseCount: 1,
-          skuRowCount: 3,
-          competitorObservationCount: 1,
-          sceneCardCount: 1,
-          promptDraftCount: 1,
-          evidenceCount: 5,
-          gapCount: 0,
-          readyPercent: 92,
-        },
-        model: 'e2e-v1-ui',
-        createdAt: baseMap.createdAt || now,
-        updatedAt: now,
-      });
-
-      await api.createContentKnowledgeRelease({
-        workspacePath,
-        contentKnowledgeMapId: readyMap.id,
-        title: 'BreezeGo Air 团队知识包',
-        version: 'v1.4',
-      });
-      const reviewTasks = await api.generateContentReviewTasks({
-        workspacePath,
-        contentKnowledgeMapId: readyMap.id,
-        targetRowIds: [
-          'selling-v1-light',
-          'selling-v1-video-material',
-          'selling-v1-ip',
-          'pain-v1-bag',
-          'scenario-v1-commute',
-          'scenario-v1-competitor',
-        ],
-      });
-      for (const task of reviewTasks) {
-        await api.submitContentReviewDecision({
-          workspacePath,
-          taskId: task.id,
-          action: 'approve',
-          reviewerLabel: 'E2E 审核员',
-          reason: 'E2E 种子内容已完成证据、素材和平台边界校验。',
-        });
-      }
-      const [settings, maps, buildRuns, sources, releases, assetReviews] = await Promise.all([
-        api.getSettings(),
-        api.listContentKnowledgeMaps(workspacePath),
-        api.listContentKnowledgeMapBuildRuns(workspacePath),
-        api.listInputSources(workspacePath),
-        api.listContentKnowledgeReleases(workspacePath),
-        api.listAssetReviews(workspacePath),
-      ]);
-      return {
-        savedWorkspacePath: settings.workspacePath,
-        mapId: readyMap.id,
-        mapCount: maps.length,
-        mapTitles: maps.map((item) => item.title),
-        buildRunCount: buildRuns.length,
-        buildRunStepTitles: buildRuns.flatMap((run) => run.steps.map((step) => step.title)),
-        buildRunMessages: buildRuns.flatMap((run) => run.steps.map((step) => step.message)),
-        sourceCount: sources.length,
-        sourceTitles: sources.map((item) => item.title),
-        releaseCount: releases.length,
-        releaseTitles: releases.map((item) => `${item.title} ${item.version}`),
-        assetReviewCount: assetReviews.length,
-        approvedReviewCount: reviewTasks.length,
-      };
-    }, { workspacePath: workspaceDir, assetPath: e2eProductAssetPath });
-    expect(seedTrace.savedWorkspacePath, JSON.stringify(seedTrace)).toBe(workspaceDir);
-    expect(seedTrace.mapTitles, JSON.stringify(seedTrace)).toContain('BreezeGo Air v1 真实工作台地图');
-    expect(seedTrace.buildRunCount, JSON.stringify(seedTrace)).toBeGreaterThanOrEqual(1);
-    expect(seedTrace.buildRunStepTitles, JSON.stringify(seedTrace)).toEqual(expect.arrayContaining(['检查生成服务', '生成结构化矩阵']));
-    expect(seedTrace.buildRunMessages.join('\n'), JSON.stringify(seedTrace)).toContain('生成服务');
-    expect(seedTrace.sourceCount, JSON.stringify(seedTrace)).toBeGreaterThanOrEqual(3);
-    expect(seedTrace.releaseTitles, JSON.stringify(seedTrace)).toContain('BreezeGo Air 团队知识包 v1.4');
-    expect(seedTrace.assetReviewCount, JSON.stringify(seedTrace)).toBeGreaterThanOrEqual(1);
-    expect(seedTrace.approvedReviewCount, JSON.stringify(seedTrace)).toBe(6);
-
-
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-      { message: '等待 v1 工作台测试数据重新加载', timeout: 20_000 },
-    ).toBe(true);
-    await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        const api = window.contentStudio;
-        const [settings, maps, sources] = await Promise.all([
-          api.getSettings(),
-          api.listContentKnowledgeMaps(workspacePath),
-          api.listInputSources(workspacePath),
-        ]);
-        return {
-          workspaceReady: settings.workspacePath === workspacePath,
-          mapTitles: maps.map((item) => item.title),
-          sourceCount: sources.length,
-        };
-      }, workspaceDir),
-      { message: '等待 v1 工作台读取种子数据', timeout: 20_000 },
-    ).toEqual({
-      workspaceReady: true,
-      mapTitles: expect.arrayContaining(['BreezeGo Air v1 真实工作台地图']),
-      sourceCount: 3,
-    });
-    const refreshLoadTrace = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      const calls = [
-        ['scanSkills', () => api.scanSkills(workspacePath)],
-        ['listKnowledgeBases', () => api.listKnowledgeBases(workspacePath)],
-        ['searchKnowledge', () => api.searchKnowledge({ workspacePath, query: '', baseType: 'all', sectionType: 'all', tag: '' })],
-        ['getSkillSelection', () => api.getSkillSelection(workspacePath)],
-        ['listPromptPacks', () => api.listPromptPacks(workspacePath)],
-        ['listSceneCards', () => api.listSceneCards(workspacePath)],
-        ['listGenerationLogs', () => api.listGenerationLogs(workspacePath)],
-        ['listGenerationTasks', () => api.listGenerationTasks(workspacePath)],
-        ['listInputSources', () => api.listInputSources(workspacePath)],
-        ['listPromptDrafts', () => api.listPromptDrafts(workspacePath)],
-        ['listAgentPromptSessions', () => api.listAgentPromptSessions(workspacePath)],
-        ['listBrandKnowledgeBases', () => api.listBrandKnowledgeBases(workspacePath)],
-        ['listIpKnowledgeBases', () => api.listIpKnowledgeBases(workspacePath)],
-        ['listContentKnowledgeMaps', () => api.listContentKnowledgeMaps(workspacePath)],
-        ['listContentDraftChanges', () => api.listContentDraftChanges(workspacePath)],
-        ['listContentKnowledgeReleases', () => api.listContentKnowledgeReleases(workspacePath)],
-        ['listContentSyncConflicts', () => api.listContentSyncConflicts(workspacePath)],
-        ['listContentReviewTasks', () => api.listContentReviewTasks(workspacePath)],
-        ['listOverlayCards', () => api.listOverlayCards(workspacePath)],
-        ['listAssetReviews', () => api.listAssetReviews(workspacePath)],
-        ['listMixPackages', () => api.listMixPackages(workspacePath)],
-        ['listPlatformDrafts', () => api.listPlatformDrafts(workspacePath)],
-      ];
-      const results = [];
-      for (const [name, load] of calls) {
-        try {
-          const value = await load();
-          results.push({
-            name,
-            status: 'fulfilled',
-            count: Array.isArray(value) ? value.length : undefined,
-          });
-        } catch (error) {
-          results.push({
-            name,
-            status: 'rejected',
-            reason: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-      return results;
-    }, workspaceDir);
-    expect(
-      refreshLoadTrace.filter((item) => item.status === 'rejected'),
-      JSON.stringify(refreshLoadTrace),
-    ).toEqual([]);
-    expect(
-      refreshLoadTrace.find((item) => item.name === 'listContentKnowledgeMaps')?.count,
-      JSON.stringify(refreshLoadTrace),
-    ).toBeGreaterThanOrEqual(1);
-
-    await clickNavItem(page, '内容知识地图');
-    const mapWorkbench = page.locator('.content-map-workbench');
-    await expect(mapWorkbench).toContainText('BreezeGo Air v1 真实工作台地图');
-    await page.locator('.content-map-tabs button').filter({ hasText: '生成流程' }).click();
-    await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('生成流程');
-    await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('检查生成服务');
-    await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('生成结构化矩阵');
-    await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('补输入源');
-    await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('重新生成地图');
-    await page.locator('.content-map-tabs button').filter({ hasText: '卖点矩阵' }).click();
-    await mapWorkbench.locator('.content-map-table tbody tr').filter({ hasText: '轻量便携不压包' }).click();
-    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('当前组合');
-    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('218g');
-    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('恢复路径');
-    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('生成 Prompt 草稿');
-    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('生成场景卡');
-    await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '生成 Prompt 草稿' }).click();
-    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
-    const rowPromptDraft = await page.evaluate(async (workspacePath) => {
-      const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
-      return drafts.find((item) => item.title === '轻量便携不压包 生产提示词');
-    }, workspaceDir);
-    expect(rowPromptDraft?.title).toBe('轻量便携不压包 生产提示词');
-    await clickNavItem(page, '内容知识地图');
-    await mapWorkbench.locator('.content-map-table tbody tr').filter({ hasText: '轻量便携不压包' }).click();
-    await mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '生成场景卡' }).click();
-    await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
-    await expect(page.locator('.scene-prompt-workbench')).toContainText('轻量便携不压包');
-
-    await clickNavItem(page, '内容知识地图');
-    await page.locator('.content-map-tabs button').filter({ hasText: '卖点矩阵' }).click();
-    await page.locator('.content-map-tabs button').filter({ hasText: 'IP 口径' }).click();
-    await expect(mapWorkbench.locator('.content-map-table')).toContainText('轻量生活方法口播');
-    await page.locator('.content-map-tabs button').filter({ hasText: '竞品观察' }).click();
-    await expect(mapWorkbench.locator('.content-map-table')).toContainText('竞品超小随身差异化机会');
-    await page.locator('.content-map-tabs button').filter({ hasText: '团队知识包' }).click();
-    await expect(mapWorkbench.locator('.content-map-package-content')).toContainText('BreezeGo Air 团队知识包 v1.4');
-    await expect(mapWorkbench.locator('.content-map-package-content')).toContainText('产品事实 / 证据');
-    await expect(mapWorkbench.locator('.content-map-package-primary-actions .primary')).toHaveCount(1);
-    await expect(mapWorkbench.locator('.content-map-delivery-actions .primary')).toHaveCount(0);
-    await mapWorkbench.locator('.content-map-package-content button').filter({ hasText: '生成 Prompt 草稿' }).click();
-    await expect(page.locator('.agents-entry')).toBeVisible({ timeout: 20_000 });
-    const teamKnowledgeDraft = await page.evaluate(async (workspacePath) => {
-      const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
-      const draft = drafts.find((item) => item.title === 'BreezeGo Air 团队知识包 v1.4 / Prompt 依据');
-      return {
-        title: draft?.title,
-        status: draft?.status,
-        purpose: draft?.purpose,
-        mapId: draft?.contentKnowledgeMapId,
-        mapTitle: draft?.contentKnowledgeMapTitle,
-        teamReleaseTitle: draft?.teamKnowledgeRelease?.title,
-        teamReleaseVersion: draft?.teamKnowledgeRelease?.version,
-        coverageRowIds: draft?.coverageRowIds ?? [],
-        sourceRefs: draft?.sourceRefs ?? [],
-        content: draft?.versions.find((version) => version.id === draft.activeVersionId)?.content ?? '',
-      };
-    }, workspaceDir);
-    expect(teamKnowledgeDraft.title, JSON.stringify(teamKnowledgeDraft)).toBe('BreezeGo Air 团队知识包 v1.4 / Prompt 依据');
-    expect(teamKnowledgeDraft.status, JSON.stringify(teamKnowledgeDraft)).toBe('draft');
-    expect(teamKnowledgeDraft.purpose, JSON.stringify(teamKnowledgeDraft)).toBe('image');
-    expect(teamKnowledgeDraft.mapTitle, JSON.stringify(teamKnowledgeDraft)).toBe('BreezeGo Air v1 真实工作台地图');
-    expect(teamKnowledgeDraft.teamReleaseTitle, JSON.stringify(teamKnowledgeDraft)).toBe('BreezeGo Air 团队知识包');
-    expect(teamKnowledgeDraft.teamReleaseVersion, JSON.stringify(teamKnowledgeDraft)).toBe('v1.4');
-    expect(teamKnowledgeDraft.coverageRowIds, JSON.stringify(teamKnowledgeDraft)).toEqual(
-      expect.arrayContaining(['selling-v1-light', 'pain-v1-bag', 'scenario-v1-commute']),
-    );
-    expect(teamKnowledgeDraft.sourceRefs, JSON.stringify(teamKnowledgeDraft)).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^content-knowledge-map:/),
-        expect.stringMatching(/^content-knowledge-release:/),
-        expect.stringMatching(/^input-source:/),
-      ]),
-    );
-    expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('不能把知识包标题、版本号或文件地址当成产品事实');
-    expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('团队知识包：BreezeGo Air 团队知识包 v1.4');
-    expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('可复用卖点');
-    expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('禁用边界');
-    expect(teamKnowledgeDraft.content, JSON.stringify(teamKnowledgeDraft)).toContain('节奏');
-    await clickNavItem(page, '内容知识地图');
-    await page.locator('.content-map-tabs button').filter({ hasText: '素材回写' }).click();
-    await expect(mapWorkbench.locator('.content-map-material-panel')).toContainText('轻量便携不压包');
-    await expect(mapWorkbench.locator('.content-map-material-panel')).toContainText('高收藏');
-    await expect(mapWorkbench.locator('.content-map-material-panel')).toContainText('续航竖版视频素材缺口');
-    await mapWorkbench.locator('.content-map-material-panel button').filter({ hasText: '创建补素材任务' }).click();
-    await expect(page.locator('.content-review-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.content-review-workbench')).toContainText('补素材：续航竖版视频素材缺口');
-    await expect(page.locator('.content-review-workbench')).toContainText('待补素材');
-    const materialSupplementTask = await page.evaluate(async (workspacePath) => {
-      const tasks = await window.contentStudio.listContentReviewTasks(workspacePath);
-      return tasks.find((task) => (
-        task.targetId === 'selling-v1-video-material' &&
-        task.taskPurpose === 'material-supplement'
-      ));
-    }, workspaceDir);
-    expect(materialSupplementTask?.status, JSON.stringify(materialSupplementTask)).toBe('needs-material');
-    expect(materialSupplementTask?.suggestedAction, JSON.stringify(materialSupplementTask)).toBe('request-material');
-    expect(materialSupplementTask?.title, JSON.stringify(materialSupplementTask)).toContain('补素材：续航竖版视频素材缺口');
-
-    await clickNavItem(page, '素材库');
-    await expect(page.getByRole('heading', { name: '素材库' })).toBeVisible();
-    await page.locator('.asset-tile').filter({ hasText: '通勤包内实拍图' }).locator('button').filter({ hasText: '详情' }).click();
-    await expect(page.locator('.asset-detail-dialog')).toContainText('覆盖内容组合');
-    await expect(page.locator('.asset-detail-dialog')).toContainText('轻量便携不压包');
-    await expect(page.locator('.asset-detail-dialog')).toContainText('早高峰轻装通勤');
-    await page.locator('.asset-coverage-item').filter({ hasText: '轻量便携不压包' }).locator('button').filter({ hasText: '补这个组合' }).click();
-    await expect(page.locator('.content-review-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.content-review-workbench')).toContainText('补素材：轻量便携不压包');
-    const assetLibraryMaterialTask = await page.evaluate(async ({ workspacePath, mapId }) => {
-      const tasks = await window.contentStudio.listContentReviewTasks(workspacePath);
-      return tasks.find((task) => (
-        task.sourceKnowledgeMapId === mapId &&
-        task.targetId === 'selling-v1-light' &&
-        task.taskPurpose === 'material-supplement'
-      ));
-    }, { workspacePath: workspaceDir, mapId: seedTrace.mapId });
-    expect(assetLibraryMaterialTask?.status, JSON.stringify(assetLibraryMaterialTask)).toBe('needs-material');
-    expect(assetLibraryMaterialTask?.suggestedAction, JSON.stringify(assetLibraryMaterialTask)).toBe('request-material');
-    expect(assetLibraryMaterialTask?.title, JSON.stringify(assetLibraryMaterialTask)).toContain('补素材：轻量便携不压包');
-
-    await clickNavItem(page, '内容知识地图');
-    await page.locator('.content-map-tabs button').filter({ hasText: '高级导出' }).click();
-    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('包文件');
-    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('KNOWLEDGE.md');
-    await mapWorkbench.locator('.content-map-export-panel button').filter({ hasText: '生成本机预览' }).click();
-    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('本机预览已生成', { timeout: 20_000 });
-    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('Agent Knowledge v0.7.2');
-    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('素材覆盖');
-    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('JSON-LD / Turtle / RDF/XML');
-    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('compiled/prompt-grounding.md');
-    await expect(mapWorkbench.locator('.content-map-export-panel')).toContainText('sha256');
-    await mapWorkbench.locator('.content-map-package-file-list button').filter({ hasText: 'compiled/prompt-grounding.md' }).click();
-    await expect(mapWorkbench.locator('.content-map-package-file-preview')).toContainText('包内容详情');
-    await expect(mapWorkbench.locator('.content-map-package-file-preview')).toContainText('BreezeGo Air v1 真实工作台地图 提示词依据');
-    await expect(mapWorkbench.locator('.content-map-package-file-preview')).toContainText('轻量便携不压包');
-    await mapWorkbench.locator('.content-map-package-file-list button').filter({ hasText: 'assets/material-coverage.json' }).click();
-    await expect(mapWorkbench.locator('.content-map-package-file-preview')).toContainText('"rowId"');
-    await expect(mapWorkbench.locator('.content-map-package-file-preview')).toContainText('"materialRefs"');
-    const localPreviewTrace = await page.evaluate(async (workspacePath) => {
-      const [map] = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-      const exported = await window.contentStudio.exportContentKnowledgePack({
-        workspacePath,
-        contentKnowledgeMapId: map.id,
-      });
-      return exported.preview;
-    }, workspaceDir);
-    expect(localPreviewTrace?.agentKnowledgeVersion, JSON.stringify(localPreviewTrace)).toBe('0.7.2');
-    expect(localPreviewTrace?.materialCoverageCount, JSON.stringify(localPreviewTrace)).toBeGreaterThanOrEqual(1);
-    expect(localPreviewTrace?.interopFormats, JSON.stringify(localPreviewTrace)).toEqual(['JSON-LD', 'Turtle', 'RDF/XML']);
-
-    await expectNavLabelAbsent(page, '批次工作台');
-    await expectNavLabelAbsent(page, '目标树');
-    await expectNavLabelAbsent(page, '作战编组');
-    await expectNavLabelAbsent(page, '执行队列');
-    await expectNavLabelAbsent(page, '行动记录');
-
-    const needsEvidenceTrace = await page.evaluate(async (workspacePath) => {
-      const api = window.contentStudio;
-      const maps = await api.listContentKnowledgeMaps(workspacePath);
-      const map = maps.find((item) => item.title === 'BreezeGo Air v1 真实工作台地图');
-      const sources = await api.listInputSources(workspacePath);
-      const feedbackSource = sources.find((item) => item.title === 'BreezeGo Air 评论原声');
-      if (!map || !feedbackSource) {
-        return {
-          status: 'missing-seed-data',
-          hasMap: Boolean(map),
-          hasFeedbackSource: Boolean(feedbackSource),
-        };
-      }
-      const hasNeedsEvidenceRow = map.sellingPoints.some((row) => row.id === 'selling-v1-noise-evidence');
-      const sellingPoints = hasNeedsEvidenceRow ? map.sellingPoints : [
-        ...map.sellingPoints,
-        {
-          id: 'selling-v1-noise-evidence',
-          title: '办公室静音证据缺口',
-          summary: '办公室低档噪音表达缺少测试报告，补齐前不能写成确定性主张。',
-          tags: ['卖点', '办公室', '待补证据'],
-          sourceRefs: [`input-source:${feedbackSource.id}`],
-          evidenceRefs: [],
-          materialStatus: 'missing',
-          materialRefs: [],
-          performanceTags: [],
-          confidence: 54,
-          status: 'needs-evidence',
-        },
-      ];
-      const updated = await api.updateContentKnowledgeMap({
-        ...map,
-        sellingPoints,
-        coverage: {
-          ...map.coverage,
-          gapCount: Math.max(map.coverage.gapCount ?? 0, 1),
-          readyPercent: Math.min(map.coverage.readyPercent ?? 84, 84),
-        },
-        updatedAt: new Date().toISOString(),
-      });
-      return {
-        status: updated.sellingPoints.some((row) => row.id === 'selling-v1-noise-evidence') ? 'updated' : 'missing-row',
-        gapCount: updated.coverage.gapCount,
-        readyPercent: updated.coverage.readyPercent,
-      };
-    }, workspaceDir);
-    expect(needsEvidenceTrace.status, JSON.stringify(needsEvidenceTrace)).toBe('updated');
-    expect(needsEvidenceTrace.gapCount, JSON.stringify(needsEvidenceTrace)).toBeGreaterThanOrEqual(1);
-    expect(needsEvidenceTrace.readyPercent, JSON.stringify(needsEvidenceTrace)).toBeLessThanOrEqual(84);
-
-    await page.reload();
-    await expect.poll(
-      async () => page.evaluate(async (workspacePath) => {
-        if (!window.contentStudio) {
-          return false;
-        }
-        const maps = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-        const map = maps.find((item) => item.title === 'BreezeGo Air v1 真实工作台地图');
-        return Boolean(map?.sellingPoints.some((row) => row.id === 'selling-v1-noise-evidence'));
-      }, workspaceDir),
-      { message: '等待缺证据行刷新到内容知识地图 UI 状态', timeout: 20_000 },
-    ).toBe(true);
-    await clickNavItem(page, '内容知识地图');
-    await page.locator('.content-map-tabs button').filter({ hasText: '卖点矩阵' }).click();
-    await mapWorkbench.locator('.content-map-table tbody tr').filter({ hasText: '办公室静音证据缺口' }).click();
-    await expect(mapWorkbench.locator('.content-map-row-detail')).toContainText('补齐前不能写成确定性主张');
-    await expect(mapWorkbench.locator('.content-map-row-detail-actions .primary')).toContainText('创建补证据任务');
-    await expect(mapWorkbench.locator('.content-map-row-detail-actions button').filter({ hasText: '生成 Prompt 草稿' })).toBeDisabled();
-    await mapWorkbench.locator('.content-map-row-detail-actions .primary').click();
-    await expect(page.locator('.content-review-workbench')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.content-review-workbench')).toContainText('办公室静音证据缺口');
-    await expect(page.locator('.content-review-workbench')).toContainText('待补证据');
-    }, {
-      env: {
-        CONTENT_STUDIO_BUGU_CONTENT_API_BASE_URL: bugu.baseUrl,
-        CONTENT_STUDIO_BUGU_CONTENT_API_TOKEN: 'e2e-content-token',
-      },
-    });
-  } finally {
-    await bugu.close();
-  }
-});
-
-test('内容知识地图页点击生成会调用真实结构化文字服务并显示模型矩阵', async ({}, testInfo) => {
-  test.setTimeout(90_000);
-
-  const { server, baseUrl, requests } = await startFakeOpenAITextServer(fakeBusinessChainTextOutput);
-  const bugu = await startFakeBuguContentWorkspaceServer();
-  try {
-    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-      await page.evaluate(async ({ workspacePath, endpoint }) => {
-        const api = window.contentStudio;
-        await api.saveSettings({ workspacePath });
-        await api.saveModelConfig({
-          textProtocol: 'openai-chat',
-          textApiEndpoint: endpoint,
-          textApiKey: 'test-text-key',
-          textModel: 'test-text-model',
-        });
-      }, { workspacePath: workspaceDir, endpoint: baseUrl });
-
-      await page.reload();
-      await expect.poll(
-        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-        { message: '等待结构化生成测试工作区重新加载', timeout: 20_000 },
-      ).toBe(true);
-
-      async function registerTextInput(purpose, title, tags, lines) {
-        await page.locator('.input-source-register-panel select').first().selectOption(purpose);
-        await page.locator('.input-source-register-panel input').first().fill(title);
-        await page.locator('.input-source-register-panel input').nth(1).fill(tags);
-        await page.locator('.input-source-register-panel textarea').fill(lines.join('\n'));
-        await clickButton(page, '登记文本输入源');
-        await expect(page.locator('.input-source-list')).toContainText(title);
-      }
-
-      await clickNavItem(page, '输入源 / 文档转换');
-      await registerTextInput('product-brief', '通勤防晒产品资料', '产品资料, 抖音, 通勤', [
-        '产品名称：通勤防晒乳',
-        '卖点：清爽肤感，午后补涂不厚重，通勤包内可携带。',
-        '禁用表达：不得承诺治疗、绝对防护或替代专业建议。',
-      ]);
-      await registerTextInput('product-brief', '通勤防晒 SKU 表', 'SKU, 价格, 抖音, 短视频, 通勤', [
-        'SKU,规格,价格,适用场景,人群,内容形式',
-        'commute-mini,30ml,89,通勤包内补涂,通勤人群,短视频',
-        'office-pro,50ml,129,办公室午后补涂,办公室白领,口播',
-      ]);
-      await registerTextInput('user-feedback', '通勤防晒评论原声', '评论, 客服问题, 通勤', [
-        '评论：下午补涂会不会很厚重？',
-        '客服：可以放通勤包里随身带吗？',
-      ]);
-      await registerTextInput('competitor-observation', '竞品防晒观察摘要', '竞品观察, 差异化机会, 抖音', [
-        '竞品强调无感补涂和包内携带，但画面结构不能复制。',
-        '对标账号常用午后办公室补涂场景，需要转写成本品牌机会。',
-      ]);
-      await expect(page.locator('.product-brief-sku-table')).toContainText('commute-mini');
-      await expect(page.locator('.feedback-insight-panel')).toContainText('下午补涂会不会很厚重');
-
-      await clickNavItem(page, '内容知识地图');
-      const mapWorkbench = page.locator('.content-map-workbench');
-      await expect(mapWorkbench.locator('.agent-session-footer button').filter({ hasText: '生成内容知识地图' })).toBeEnabled({ timeout: 20_000 });
-      await mapWorkbench.locator('.agent-session-footer button').filter({ hasText: '生成内容知识地图' }).click();
-      await expect(mapWorkbench).toContainText('模型生成卖点：通勤清爽补涂', { timeout: 20_000 });
-      await page.locator('.content-map-tabs button').filter({ hasText: '痛点矩阵' }).click();
-      await expect(mapWorkbench).toContainText('模型生成痛点：担心补涂厚重');
-      await page.locator('.content-map-tabs button').filter({ hasText: '场景矩阵' }).click();
-      await expect(mapWorkbench).toContainText('模型生成场景：通勤包内补涂');
-      await page.locator('.content-map-tabs button').filter({ hasText: '生成流程' }).click();
-      await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('生成结构化矩阵');
-      await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('test-text-model');
-      await expect(mapWorkbench.locator('.content-map-build-detail')).toContainText('待处理');
-      await expect(mapWorkbench).toContainText('已同步到 Bugu 团队工作区', { timeout: 20_000 });
-
-      const generationTrace = await page.evaluate(async (workspacePath) => {
-        const [map] = await window.contentStudio.listContentKnowledgeMaps(workspacePath);
-        const [run] = await window.contentStudio.listContentKnowledgeMapBuildRuns(workspacePath);
-        return {
-          mapTitle: map?.title,
-          mapModel: map?.model,
-          sellingTitle: map?.sellingPoints[0]?.title,
-          painTitle: map?.painPoints[0]?.title,
-          scenarioTitle: map?.scenarios[0]?.title,
-          gaps: map?.gaps ?? [],
-          readyPercent: map?.coverage.readyPercent,
-          skuRowCount: map?.coverage.skuRowCount,
-          competitorObservationCount: map?.coverage.competitorObservationCount,
-          inputSourceCount: map?.coverage.inputSourceCount,
-          skuScenarioTitles: map?.scenarios.filter((row) => row.title.includes('SKU 场景')).map((row) => row.title) ?? [],
-          feedbackPainTitles: map?.painPoints.filter((row) => row.title.includes('补涂') || row.title.includes('通勤包')).map((row) => row.title) ?? [],
-          competitorTitles: [
-            ...(map?.sellingPoints ?? []),
-            ...(map?.painPoints ?? []),
-            ...(map?.scenarios ?? []),
-          ].filter((row) => row.title.includes('竞品') || row.title.includes('差异化机会')).map((row) => row.title),
-          buildRunModel: run?.model,
-          buildRunStatus: run?.status,
-          buildRunSteps: run?.steps.map((step) => step.key) ?? [],
-          syncStatus: map?.syncStatus,
-          teamRevision: map?.teamSync.revision,
-          buildRunRevision: run?.teamSync?.revision,
-        };
-      }, workspaceDir);
-      expect(generationTrace.mapModel, JSON.stringify(generationTrace)).toBe('test-text-model');
-      expect(generationTrace.sellingTitle, JSON.stringify(generationTrace)).toBe('模型生成卖点：通勤清爽补涂');
-      expect(generationTrace.painTitle, JSON.stringify(generationTrace)).toBe('模型生成痛点：担心补涂厚重');
-      expect(generationTrace.scenarioTitle, JSON.stringify(generationTrace)).toBe('模型生成场景：通勤包内补涂');
-      expect(generationTrace.gaps.join('\n'), JSON.stringify(generationTrace)).toContain('模型识别缺口');
-      expect(generationTrace.inputSourceCount, JSON.stringify(generationTrace)).toBe(4);
-      expect(generationTrace.skuRowCount, JSON.stringify(generationTrace)).toBe(2);
-      expect(generationTrace.competitorObservationCount, JSON.stringify(generationTrace)).toBe(1);
-      expect(generationTrace.skuScenarioTitles.join('\n'), JSON.stringify(generationTrace)).toContain('commute-mini');
-      expect(generationTrace.feedbackPainTitles.join('\n'), JSON.stringify(generationTrace)).toContain('下午补涂会不会很厚重');
-      expect(generationTrace.competitorTitles.join('\n'), JSON.stringify(generationTrace)).toContain('竞品');
-      expect(generationTrace.buildRunModel, JSON.stringify(generationTrace)).toBe('test-text-model');
-      expect(generationTrace.buildRunSteps, JSON.stringify(generationTrace)).toEqual(expect.arrayContaining(['prepare-seed', 'structure-output', 'quality-check']));
-      expect(generationTrace.syncStatus, JSON.stringify(generationTrace)).toBe('synced');
-      expect(generationTrace.teamRevision, JSON.stringify(generationTrace)).toBe('rev-e2e-content-2');
-      expect(generationTrace.buildRunRevision, JSON.stringify(generationTrace)).toBe('rev-e2e-content-2');
-      expect(requests.some((request) => request.userMessage.includes('"task":"generate_content_knowledge_map"') || request.userMessage.includes('"task": "generate_content_knowledge_map"'))).toBe(true);
-      const knowledgeMapRequest = bugu.requests.find((request) => request.route === 'content-knowledge-maps');
-      const buildRunRequest = bugu.requests.find((request) => request.route === 'content-build-runs');
-      expect(knowledgeMapRequest?.payload.title, JSON.stringify(bugu.requests)).toBe('模型生成内容知识地图');
-      expect(knowledgeMapRequest?.payload.model, JSON.stringify(bugu.requests)).toBe('test-text-model');
-      expect(knowledgeMapRequest?.payload.sourceInputSourceIds?.length, JSON.stringify(bugu.requests)).toBe(4);
-      expect(knowledgeMapRequest?.payload.coverage?.skuRowCount, JSON.stringify(bugu.requests)).toBe(2);
-      expect(knowledgeMapRequest?.payload.coverage?.competitorObservationCount, JSON.stringify(bugu.requests)).toBe(1);
-      expect(knowledgeMapRequest?.payload.snapshot?.sellingPoints?.some((row) => row.title === '模型生成卖点：通勤清爽补涂'), JSON.stringify(bugu.requests)).toBe(true);
-      expect(knowledgeMapRequest?.payload.snapshot?.painPoints?.some((row) => row.title.includes('下午补涂会不会很厚重')), JSON.stringify(bugu.requests)).toBe(true);
-      expect(knowledgeMapRequest?.payload.snapshot?.scenarios?.some((row) => row.title.includes('commute-mini')), JSON.stringify(bugu.requests)).toBe(true);
-      expect(buildRunRequest?.payload.model, JSON.stringify(bugu.requests)).toBe('test-text-model');
-      expect(buildRunRequest?.payload.inputSourceIds?.length, JSON.stringify(bugu.requests)).toBe(4);
-      expect(buildRunRequest?.payload.steps?.some((step) => step.key === 'structure-output' && step.status === 'completed'), JSON.stringify(bugu.requests)).toBe(true);
-      expect(buildRunRequest?.payload.baseRevision, JSON.stringify(bugu.requests)).toBe('rev-e2e-content-1');
-    }, {
-      requireExplicitTextKey: false,
-      env: {
-        CONTENT_STUDIO_BUGU_CONTENT_API_BASE_URL: bugu.baseUrl,
-        CONTENT_STUDIO_BUGU_CONTENT_API_TOKEN: 'e2e-content-token',
-      },
-    });
-  } finally {
-    await new Promise((resolveClose) => server.close(resolveClose));
-    await bugu.close();
-  }
-});
-
-test('对话里的待处理动作可以恢复到真实输入源页面', async ({}, testInfo) => {
+test('对话里的待处理动作可以恢复到成型知识库页面', async ({}, testInfo) => {
   test.setTimeout(120_000);
 
   const bridge = await startFakePlatformRuntimeBridge({
@@ -6688,7 +4756,7 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
         payload: {
           actionId: 'runtime-action-add-source',
           actionKind: 'add-input-source',
-          targetModule: 'knowledge-inputs',
+          targetModule: 'knowledge',
           message: '需要补充输入源后继续',
         },
       },
@@ -6768,6 +4836,8 @@ test('对话里的待处理动作可以恢复到真实输入源页面', async ({
       actionId: 'runtime-action-add-source',
       decision: 'open-input-source',
     });
+    await expect(page.locator('.knowledge-workbench')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.knowledge-workbench')).toContainText('成型知识库');
     }, {
       requireExplicitTextKey: false,
       env: {
@@ -6916,121 +4986,6 @@ test('品牌知识库在平台文字 capability 未完成时 blocked，Agent 对
 
       const sceneButton = page.locator('.knowledge-brand-workbench button').filter({ hasText: '生成场景库' }).first();
       await expect(sceneButton).toBeDisabled();
-      return;
-      await sceneButton.click();
-      await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.agent-session-panel')).toBeVisible();
-      await expect(page.locator('.scene-agent-attachment-list')).toContainText('早餐后便携场景');
-      await page.locator('.scene-agent-form-drawer summary').click();
-      const sceneEditor = page.locator('.scene-card-editor');
-      await expect(sceneEditor).toBeVisible();
-      await expect(sceneEditor).toContainText('使用场景');
-      await expect(page.locator('.scene-agent-attachment-list')).toContainText('待确认');
-      await sceneEditor.locator('label').filter({ hasText: '使用场景' }).locator('textarea').fill('早餐后准备出门前，家长把便携条包放进孩子书包侧袋。');
-      await sceneEditor.locator('label').filter({ hasText: '画面构图' }).locator('textarea').fill('4:5 竖版，书包侧袋在右下三分之一，早餐桌自然光，手部动作真实。');
-      await sceneEditor.getByRole('button', { name: '确认场景卡', exact: true }).click();
-      await expect(page.locator('.scene-agent-attachment-list')).toContainText('已确认', { timeout: 20_000 });
-
-      await clickNavItem(page, '视频 Prompt');
-      await expect(page.locator('.video-prompt-workbench')).toBeVisible();
-      await page.locator('.video-prompt-builder-panel button').filter({ hasText: '生成视频 Prompt 组' }).click();
-      await expect(page.locator('.video-prompt-preview pre')).toContainText(/视频 Prompt|15 秒/, { timeout: 20_000 });
-      await page.locator('.video-prompt-builder-panel button').filter({ hasText: '复制到第三方平台' }).click();
-      await expect(page.locator('.video-prompt-history-panel')).toContainText('RunningHub', { timeout: 20_000 });
-      await expect(page.locator('.video-prompt-history-panel')).toContainText('1');
-      await page.locator('.video-prompt-builder-panel button').filter({ hasText: '导入成品视频' }).click();
-      await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
-      await page.locator('.video-import-workbench .module-command-center button').filter({ hasText: '导入并关联提示词' }).click();
-      await expect(page.locator('.video-import-list')).toContainText('third-party-finished-video.mp4');
-      await expect(page.locator('.video-import-list')).toContainText('提示词已关联');
-
-      await clickNavItem(page, '混剪包导出');
-      await expect(page.locator('.mix-export-workbench')).toBeVisible({ timeout: 20_000 });
-      const importedVideoCard = page.locator('.mix-asset-card').filter({ hasText: 'third-party-finished-video.mp4' }).first();
-      await expect(importedVideoCard).toBeVisible();
-      await importedVideoCard.getByRole('button', { name: '通过', exact: true }).click();
-      await expect(importedVideoCard).toContainText('已通过');
-      await expect(page.locator('.mix-export-config-panel button').filter({ hasText: '导出混剪包' })).toBeEnabled();
-      await page.locator('.mix-export-config-panel button').filter({ hasText: '导出混剪包' }).click();
-      await expect(page.locator('.mix-package-card').first()).toContainText('短视频混剪素材包', { timeout: 20_000 });
-
-      await clickNavItem(page, '场景提示词');
-      await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
-
-      await page.locator('.agent-composer-meta label').filter({ hasText: '输出' }).locator('select').selectOption('video');
-      const generateVideoPromptButton = page.locator('.scene-agent-composer button').filter({ hasText: '生成 Prompt' });
-      if (await generateVideoPromptButton.count()) {
-        await generateVideoPromptButton.click();
-      }
-      const sceneAgentArtifact = page.locator('.agent-session-artifact');
-      await expect(sceneAgentArtifact.locator('.agent-turn-details pre')).toContainText(/视频 Prompt|15 秒/, { timeout: 20_000 });
-      await expect(sceneAgentArtifact).toContainText(/准备复制到第三方视频平台|已复制到/);
-      await sceneAgentArtifact.locator('.scene-prompt-target-select select').selectOption('vidu');
-      await sceneAgentArtifact.getByRole('button', { name: '复制到第三方视频平台', exact: true }).click();
-      await expect(sceneAgentArtifact).toContainText('已复制到Vidu', { timeout: 20_000 });
-      await expect(sceneAgentArtifact.getByRole('button', { name: '成品导入', exact: true })).toBeEnabled();
-      await sceneAgentArtifact.getByRole('button', { name: '成品导入', exact: true }).click();
-      await expect(page.locator('.video-import-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.video-import-handoff-note')).toContainText(/Prompt 已复制到第三方平台|已导入成品/);
-      await expect(page.locator('.video-import-draft-panel')).toContainText('最近：Vidu');
-      await expect(page.locator('.video-import-workbench .module-command-center button').filter({ hasText: '导入并关联提示词' })).toBeEnabled();
-
-      await clickNavItem(page, '场景提示词');
-      await expect(page.locator('.scene-prompt-workbench')).toBeVisible();
-
-      await page.locator('.agent-composer-meta label').filter({ hasText: '输出' }).locator('select').selectOption('image');
-      const generateImagePromptButton = page.locator('.scene-agent-composer button').filter({ hasText: '生成 Prompt' });
-      if (await generateImagePromptButton.count()) {
-        await generateImagePromptButton.click();
-      }
-      await expect(sceneAgentArtifact.locator('.agent-turn-details pre')).toContainText('图片 Prompt', { timeout: 20_000 });
-      await expect(sceneAgentArtifact).toContainText('准备发送到图片生成');
-      await sceneAgentArtifact.locator('button').filter({ hasText: '外部工具' }).click();
-      await sceneAgentArtifact.getByRole('button', { name: '复制到外部图片工具', exact: true }).click();
-      await expect(sceneAgentArtifact).toContainText('已复制到外部图片工具', { timeout: 20_000 });
-      await sceneAgentArtifact.locator('button').filter({ hasText: '内部下游' }).click();
-      await sceneAgentArtifact.getByRole('button', { name: '发送到图片生成', exact: true }).click();
-      await expect(page.locator('.image-workbench-layout')).toBeVisible();
-      await expect(page.locator('.image-prompt-panel textarea')).toHaveValue(/早餐桌自然光|便携条包/);
-
-      const persisted = await page.evaluate(async (workspacePath) => {
-        const api = window.contentStudio;
-        const [packs, scenes, drafts] = await Promise.all([
-          api.listPromptPacks(workspacePath),
-          api.listSceneCards(workspacePath),
-          api.listPromptDrafts(workspacePath),
-        ]);
-        const importedVideo = (await api.listInputSources(workspacePath)).find((source) => source.purpose === 'successful-asset' && source.kind === 'video');
-        return {
-          packCount: packs.length,
-          firstPackCitationIds: packs[0]?.citations.map((citation) => citation.knowledgeBaseId) ?? [],
-          sceneCount: scenes.length,
-          firstSceneCitationIds: scenes[0]?.citations.map((citation) => citation.knowledgeBaseId) ?? [],
-          imageDraftCount: drafts.filter((draft) => draft.purpose === 'image').length,
-          firstImageDraftSceneIds: drafts.find((draft) => draft.purpose === 'image')?.sceneCardIds ?? [],
-          importedVideo,
-          copiedVideoDraft: drafts.find((draft) => draft.id === importedVideo?.relatedPromptDraftId),
-          sceneCopiedVideoDraft: drafts.find((draft) => draft.title === '场景视频 Prompt 草稿' && draft.lastCopiedTarget === 'Vidu'),
-          mixPackage: (await api.listMixPackages(workspacePath))[0],
-        };
-      }, workspaceDir);
-
-      expect(persisted.packCount).toBeGreaterThanOrEqual(1);
-      expect(persisted.firstPackCitationIds.some((id) => id.startsWith('brand-kb:')), JSON.stringify(persisted)).toBe(true);
-      expect(persisted.sceneCount).toBeGreaterThanOrEqual(1);
-      expect(persisted.firstSceneCitationIds.some((id) => id.startsWith('brand-kb:')), JSON.stringify(persisted)).toBe(true);
-      expect(persisted.copiedVideoDraft?.copyCount, JSON.stringify(persisted)).toBeGreaterThanOrEqual(1);
-      expect(persisted.sceneCopiedVideoDraft?.copyCount, JSON.stringify(persisted)).toBeGreaterThanOrEqual(1);
-      expect(persisted.sceneCopiedVideoDraft?.lastCopiedTarget, JSON.stringify(persisted)).toBe('Vidu');
-      expect(persisted.importedVideo?.relatedPromptDraftId, JSON.stringify(persisted)).toBe(persisted.copiedVideoDraft?.id);
-      expect(persisted.mixPackage?.assets.some((asset) => asset.kind === 'video'), JSON.stringify(persisted)).toBe(true);
-      const mixedVideo = persisted.mixPackage?.assets.find((asset) => asset.kind === 'video');
-      expect(mixedVideo?.promptDraftId, JSON.stringify(persisted)).toBe(persisted.copiedVideoDraft?.id);
-      expect(mixedVideo?.sourceType, JSON.stringify(persisted)).toBe('input-source');
-      expect(mixedVideo?.sourceId, JSON.stringify(persisted)).toBe(persisted.importedVideo?.id);
-      expect(mixedVideo?.promptText, JSON.stringify(persisted)).toContain('15 秒');
-      expect(persisted.imageDraftCount).toBeGreaterThanOrEqual(1);
-      expect(persisted.firstImageDraftSceneIds.length, JSON.stringify(persisted)).toBeGreaterThanOrEqual(1);
     }, {
       env: {
         LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
@@ -7096,7 +5051,7 @@ test('文章生成不会自动混入未显式选择的场景卡', async ({}, tes
         }];
         const pack = await api.generatePromptPack({ workspacePath, citations, inputSourceIds: [source.id], name: '场景隔离提示词包' });
         const cards = await api.generateSceneCards({ workspacePath, promptPackId: pack.id, citations, count: 2 });
-        return { sceneIds: cards.map((card) => card.id), sourceId: source.id };
+        return { sceneIds: cards.map((card) => card.id) };
       }, { workspacePath: workspaceDir, endpoint: baseUrl });
       expect(setup.sceneIds.length).toBeGreaterThan(0);
 
@@ -7124,160 +5079,10 @@ test('文章生成不会自动混入未显式选择的场景卡', async ({}, tes
 
       expect(trace.sceneCardIds, JSON.stringify(trace)).toEqual([]);
       expect(trace.inputSceneCardIds, JSON.stringify(trace)).toEqual([]);
-
-      await clickNavItem(page, '场景提示词');
-      await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      const sceneAgentArtifact = page.locator('.agent-session-artifact');
-      await page.locator('.scene-prompt-workbench .scene-agent-composer button').filter({ hasText: '生成 Prompt' }).click();
-      await expect(sceneAgentArtifact.locator('.agent-turn-details pre')).toContainText('图片 Prompt', { timeout: 20_000 });
-      await sceneAgentArtifact.locator('button').filter({ hasText: '外部工具' }).click();
-      const copyScenePromptButton = sceneAgentArtifact.getByRole('button', { name: '复制到外部图片工具', exact: true });
-      await expect(copyScenePromptButton).toBeEnabled();
-      await copyScenePromptButton.click();
-      await expect(sceneAgentArtifact).toContainText('已复制到外部图片工具', { timeout: 20_000 });
-      const scenePromptTrace = await page.evaluate(async (workspacePath) => {
-        const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
-        const draft = drafts.find((item) => item.title === '场景图片 Prompt 草稿');
-        return { inputSourceIds: draft?.inputSourceIds ?? [] };
-      }, workspaceDir);
-      expect(scenePromptTrace.inputSourceIds, JSON.stringify(scenePromptTrace)).toContain(setup.sourceId);
     });
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
   }
-});
-
-test('IP 知识库在平台文字 capability 未完成时 blocked，Agent 对话仍走平台', async ({}, testInfo) => {
-  test.setTimeout(120_000);
-
-  const capturedPrompts = [];
-  const { server, baseUrl } = await startFakeOpenAITextServer((prompt) => {
-    capturedPrompts.push(prompt);
-    return fakeBusinessChainTextOutput(prompt);
-  });
-  const appServerDataDir = await mkdtemp(join(tmpdir(), 'content-studio-e2e-app-server-'));
-  await seedOpenAIProviderStore({ dataDir: appServerDataDir, baseUrl });
-  const bridge = await startFakePlatformRuntimeBridge({
-    modelSettings: {
-      version: 'e2e-model-settings',
-      updatedAt: '2026-06-09T00:00:00.000Z',
-      defaultAgentProviderId: 'openai',
-      defaultTextModelId: 'test-text-model',
-      providers: [{
-        id: 'openai',
-        displayName: 'OpenAI',
-        protocol: 'openai-compatible',
-        capabilityKinds: ['text'],
-        enabled: true,
-        apiKeyConfigured: true,
-        authType: 'api-key',
-        baseUrl,
-        useResponsesApi: false,
-        models: ['test-text-model'],
-      }],
-    },
-  });
-
-  try {
-    await withContentStudio(testInfo, async ({ page, workspaceDir }) => {
-      await page.evaluate(async ({ workspacePath }) => {
-        const api = window.contentStudio;
-        await api.saveSettings({ workspacePath });
-        await api.installBuiltinKnowledgeBase('personal-ip-demo', workspacePath);
-      }, { workspacePath: workspaceDir });
-      await page.reload();
-      await expect.poll(
-        async () => page.evaluate(() => Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))),
-        { message: '等待 IP 链路测试工作区重新加载', timeout: 20_000 },
-      ).toBe(true);
-
-      await clickNavItem(page, '成型知识库');
-      const ipCard = page.locator('.kb-card').filter({ hasText: '示例个人 IP 知识库' }).first();
-      await expect(ipCard).toBeVisible();
-      await ipCard.locator('.kb-card-main').click();
-      await expect(page.locator('.knowledge-detail-panel')).toContainText('示例个人 IP 知识库');
-
-      await clickNavItem(page, 'IP 知识库');
-      const extractButton = page.locator('.knowledge-brand-workbench button').filter({ hasText: '构建 IP 知识库' }).first();
-      await expect(extractButton).toBeEnabled();
-      await extractButton.click();
-      await expect(page.locator('.knowledge-brand-workbench .prompt-draft-list')).toContainText('待配置', { timeout: 20_000 });
-      await expect(page.locator('.knowledge-brand-workbench .prompt-draft-list')).toContainText(/生成服务未完成|完整度 100%/);
-      await expect(page.locator('.brand-kb-detail')).toContainText('内容工程顾问');
-      await page.locator('.knowledge-brand-workbench .agent-session-footer textarea').fill('请检查 IP 六层缺口和口播场景延伸优先级。');
-      await page.locator('.knowledge-brand-workbench .agent-session-footer button').filter({ hasText: '开始判断' }).click();
-      await expect(page.locator('.knowledge-brand-workbench .agent-turn.user')).toContainText('IP 六层缺口', { timeout: 20_000 });
-      await expectAgentBusinessReply(page.locator('.knowledge-brand-workbench .agent-turn.assistant'), {
-        primary: 'IP 知识库协作',
-        secondary: 'IP 六层缺口',
-      });
-      const agentRequest = bridge.requests.find((request) => request.body.capability === 'lime.agent');
-      expect(agentRequest, JSON.stringify(bridge.requests)).toBeTruthy();
-      expect(agentRequest.body.operation).toBe('agentSession/turn/start');
-      expect(JSON.stringify(agentRequest.body)).not.toMatch(/apiKey|api_key|token|secret|password|credential|authorization|cookie/i);
-      const disabledSceneButton = page.locator('.knowledge-brand-workbench button').filter({ hasText: '生成场景延伸库' }).first();
-      await expect(disabledSceneButton).toBeDisabled();
-      return;
-      const scenarioLibrary = page.locator('.ip-scenario-library-panel');
-      await expect(scenarioLibrary).toContainText('IP 运营场景库');
-      await expect(scenarioLibrary).toContainText('0/3 已生成');
-      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('待生成延伸知识库');
-      await scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' }).getByRole('button', { name: '生成延伸库' }).click();
-      await expect(page.locator('.prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.prompt-workbench')).toContainText('创意视频');
-      const ipScenarioDraft = await page.evaluate(async (workspacePath) => {
-        const drafts = await window.contentStudio.listPromptDrafts(workspacePath);
-        return drafts.find((item) => {
-          const content = item.versions.find((version) => version.id === item.activeVersionId)?.content ?? item.versions.at(-1)?.content ?? '';
-          return item.title.includes('口播') && content.includes('内容工程顾问');
-        });
-      }, workspaceDir);
-      const activeIpScenarioDraftContent = ipScenarioDraft?.versions.find((version) => version.id === ipScenarioDraft.activeVersionId)?.content ?? '';
-      expect(activeIpScenarioDraftContent).toMatch(/IP 场景延伸知识库|延伸场景：口播|内容工程顾问/);
-      await clickNavItem(page, 'IP 知识库');
-      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('已确认');
-      await expect(scenarioLibrary.locator('.ip-scenario-card').filter({ hasText: '口播' })).toContainText('延伸知识库已生成');
-
-      const sceneButton = page.locator('.knowledge-brand-workbench button').filter({ hasText: '生成场景延伸库' }).first();
-      await expect(sceneButton).toBeEnabled();
-      await sceneButton.click();
-      await expect(page.locator('.scene-prompt-workbench')).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('.scene-agent-attachment-list')).toContainText('早餐后便携场景');
-
-      const persisted = await page.evaluate(async (workspacePath) => {
-        const api = window.contentStudio;
-        const [ipRecords, packs, scenes] = await Promise.all([
-          api.listIpKnowledgeBases(workspacePath),
-          api.listPromptPacks(workspacePath),
-          api.listSceneCards(workspacePath),
-        ]);
-        return {
-          ipRecordCount: ipRecords.length,
-          firstIpCompleteness: ipRecords[0]?.completeness ?? 0,
-          firstPackCitationIds: packs[0]?.citations.map((citation) => citation.knowledgeBaseId) ?? [],
-          firstSceneCitationIds: scenes[0]?.citations.map((citation) => citation.knowledgeBaseId) ?? [],
-        };
-      }, workspaceDir);
-
-      expect(persisted.ipRecordCount, JSON.stringify(persisted)).toBeGreaterThanOrEqual(1);
-      expect(persisted.firstIpCompleteness, JSON.stringify(persisted)).toBe(100);
-      expect(persisted.firstPackCitationIds.some((id) => id.startsWith('ip-kb:')), JSON.stringify(persisted)).toBe(true);
-      expect(persisted.firstSceneCitationIds.some((id) => id.startsWith('ip-kb:')), JSON.stringify(persisted)).toBe(true);
-    }, {
-      env: {
-        LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
-        LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
-        CONTENT_STUDIO_APP_SERVER_DATA_DIR: appServerDataDir,
-      },
-      requireExplicitTextKey: false,
-    });
-  } finally {
-    await bridge.close();
-    await new Promise((resolveClose) => server.close(resolveClose));
-    await rm(appServerDataDir, { recursive: true, force: true });
-  }
-
-  expect(capturedPrompts.some((prompt) => prompt.includes('generate_ip_knowledge_base')), capturedPrompts.join('\n---\n')).toBe(true);
 });
 
 test('业务主链在无真实 Provider 时 blocked，不伪造成果', async ({}, testInfo) => {

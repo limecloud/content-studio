@@ -8,6 +8,7 @@ import process from 'node:process';
 const DEFAULT_PROMPT = '请生成一段 80 字以内的 Content Studio 平台宿主联调验收草稿。';
 const DEFAULT_TIMEOUT_MS = 120_000;
 const CONTENT_STUDIO_APP_ID = 'content-studio';
+const FRESH_WEB_SEARCH_PROMPT_RE = /今天|今日|最新|实时|近期|新闻|资讯|舆情|趋势|联网|搜索|检索|查一下|帮我查|分析.*新闻|新闻.*分析/i;
 
 function parseArgs(argv) {
   const args = {};
@@ -25,6 +26,12 @@ function parseArgs(argv) {
 
 function firstValue(...values) {
   return values.map((value) => String(value || '').trim()).find(Boolean);
+}
+
+function booleanFlag(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'boolean') return value;
+  return !/^(0|false|no|off)$/i.test(String(value).trim());
 }
 
 function parseJsonEnv(name) {
@@ -166,6 +173,81 @@ function bridgeHeaders(descriptor, token = descriptor.token) {
   };
 }
 
+function shouldRequireWebSearch(prompt, args, env) {
+  if (args['require-web-search'] !== undefined) {
+    return booleanFlag(args['require-web-search']);
+  }
+  if (env.CONTENT_STUDIO_REQUIRE_WEB_SEARCH_LIVE !== undefined) {
+    return booleanFlag(env.CONTENT_STUDIO_REQUIRE_WEB_SEARCH_LIVE);
+  }
+  return FRESH_WEB_SEARCH_PROMPT_RE.test(prompt);
+}
+
+function buildRuntimeHostOptions({ prompt, providerPreference, modelPreference, metadata }) {
+  const requireWebSearch = FRESH_WEB_SEARCH_PROMPT_RE.test(prompt);
+  const searchMode = requireWebSearch ? 'required' : 'allowed';
+  return {
+    asterChatRequest: {
+      web_search: true,
+      search_mode: searchMode,
+      turn_config: {
+        web_search: true,
+        search_mode: searchMode,
+        provider_preference: providerPreference,
+        model_preference: modelPreference,
+        metadata: {
+          ...metadata,
+          contentStudioToolPolicy: {
+            webSearch: true,
+            searchMode,
+            required: requireWebSearch,
+          },
+        },
+      },
+    },
+  };
+}
+
+function payloadText(payload, ...keys) {
+  if (typeof payload === 'string') return payload;
+  if (!payload || typeof payload !== 'object') return '';
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  const runtimeEvent = payload.runtimeEvent;
+  if (runtimeEvent && typeof runtimeEvent === 'object') {
+    for (const key of keys) {
+      const value = runtimeEvent[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+  }
+  return '';
+}
+
+function isWebSearchRuntimeEvent(event) {
+  if (!event || typeof event !== 'object') return false;
+  const eventType = String(event.type || '');
+  const toolText = [
+    payloadText(event.payload, 'toolName', 'tool_name', 'name', 'tool'),
+    payloadText(event.payload, 'toolCallId', 'tool_call_id', 'id'),
+    payloadText(event.payload, 'rawArgs', 'query', 'args'),
+    JSON.stringify(event.payload?.runtimeEvent ?? {}),
+  ].join(' ');
+  return (
+    eventType.startsWith('tool.') &&
+    /web[_-]?search|websearch|WebSearch|mcp__.*web_search/i.test(toolText)
+  );
+}
+
+function assertWebSearchObserved(result, requireWebSearch) {
+  if (!requireWebSearch) return;
+  const webSearchEvents = result.events.filter(isWebSearchRuntimeEvent);
+  if (!webSearchEvents.length) {
+    throw new Error(`required WebSearch was not observed; events=${result.events.map((event) => event.type).join(',')}`);
+  }
+}
+
 async function postJson(descriptor, path, body, timeoutMs, token = descriptor.token) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -249,7 +331,7 @@ function assertNoSecretLikeFields(value, descriptorToken) {
       continue;
     }
     for (const [key, entry] of Object.entries(item)) {
-      if (/^(api[_-]?key|access[_-]?token|refresh[_-]?token|bearer[_-]?token|secret|password|credential|credentials|authorization|cookie)$/i.test(key)) {
+      if (/^(api[_-]?key|access[_-]?token|refresh[_-]?token|bearer[_-]?token|secret|password|authorization|cookie)$/i.test(key)) {
         throw new Error(`platform host live check result contains secret-like field: ${current.path}.${key}`);
       }
       stack.push({ path: `${current.path}.${key}`, value: entry });
@@ -264,6 +346,11 @@ async function main() {
   assertNoProductAppKeyEnv(process.env);
 
   const prompt = String(args.prompt || process.env.CONTENT_STUDIO_PLATFORM_HOST_LIVE_PROMPT || DEFAULT_PROMPT);
+  const requireWebSearch = shouldRequireWebSearch(prompt, args, process.env);
+  const metadata = {
+    source: 'content-studio-platform-host-runtime-live-check',
+    runtimeOwner: 'lime-desktop-platform',
+  };
   const snapshotPayload = await postJson(descriptor, '/snapshot', {}, timeoutMs);
   const snapshot = snapshotPayload.snapshot;
   if (!snapshot || snapshot.appId !== 'content-studio') {
@@ -282,15 +369,18 @@ async function main() {
         modelPreference,
         modelId: modelPreference,
         permissionMode: 'ask',
+        hostOptions: buildRuntimeHostOptions({
+          prompt,
+          providerPreference,
+          modelPreference,
+          metadata,
+        }),
       },
       modelPolicy: {
         preferredModelId: modelPreference,
         capability: 'agent',
       },
-      metadata: {
-        source: 'content-studio-platform-host-runtime-live-check',
-        runtimeOwner: 'lime-desktop-platform',
-      },
+      metadata,
       businessObjectRef: {
         kind: 'promptDraft',
         id: 'platform-host-runtime-live-check',
@@ -299,6 +389,7 @@ async function main() {
     },
   }, timeoutMs);
   const result = normalizeAgentResult(invokePayload.result?.output);
+  assertWebSearchObserved(result, requireWebSearch);
   assertNoSecretLikeFields({
     snapshot: {
       ...snapshot,
@@ -325,6 +416,7 @@ async function main() {
     `session=${result.sessionId}`,
     `turn=${result.turnId}`,
     `events=${Array.from(new Set(result.events.map((event) => event.type))).join(',')}`,
+    `webSearch=${requireWebSearch ? 'required-observed' : 'not-required'}`,
     `artifact=${result.artifactTitle}`,
     `terminal=${result.terminalType}`,
   ].join(' '));

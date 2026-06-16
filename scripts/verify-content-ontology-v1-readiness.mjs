@@ -49,8 +49,6 @@ const REQUIRED_IMPLEMENTATION_FILES = [
   'src/main/services/contentMaterialFeedbackService.ts',
   'src/main/services/contentWorkspaceSyncService.ts',
   'src/main/services/agentKnowledgeContentExportService.ts',
-  'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx',
-  'src/renderer/src/components/modules/ContentReviewTasksModule.tsx',
   'tests/functional/content-flow.test.mjs',
 ];
 
@@ -70,8 +68,6 @@ const FORBIDDEN_PROTOTYPE_PATTERNS = [
 ];
 
 const V1_USER_FACING_COPY_AUDIT_PATHS = [
-  'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx',
-  'src/renderer/src/components/modules/ContentReviewTasksModule.tsx',
   'src/renderer/src/components/modules/PromptWorkbenchModule.tsx',
   'src/renderer/src/components/agents/AgentsWorkbench.tsx',
 ];
@@ -290,13 +286,10 @@ async function checkV1FactSourceDocsGate(repoRoot, checks) {
     ['v2-docs-retired-brand-command', files.v2Migration.includes('旧品牌战情室') && files.v2Migration.includes('不作为 v2 当前入口保留')],
     ['current-docs-do-not-require-command-centers', !files.acceptance.includes('content-command-centers` 对两账号可见') && !files.teamSharing.includes('`content-command-centers` 同清单') && !files.audit.includes('品牌作战系统')],
     ['current-docs-do-not-require-execution-queue', !files.acceptance.includes('executionQueueIds') && !files.teamSharing.includes('执行队列 ID 清单') && !files.audit.includes('执行队列 ID')],
-    ['module-docs-use-content-batches', files.moduleDesign.includes('ContentBatchApplicationService') && files.moduleDesign.includes('content-batches.json')],
-    ['workflow-docs-use-content-batches', files.workflow.includes('内容制造批次') && files.workflow.includes('contentBatches:build')],
-    ['implementation-docs-use-content-batches', files.implementation.includes('ContentBatchApplicationService') && files.implementation.includes('内容制造批次和生产交接')],
-    ['prototype-docs-use-content-batches', files.prototypeReadme.includes('内容制造批次') && files.prototypeReadme.includes('生产交接')],
     ['retired-command-docs-are-archived', files.brandCommandSystem.includes('Historical Archive / Retired From Current Client') && files.brandCommandDiagrams.includes('Historical Archive / Retired From Current Client')],
     ['current-docs-do-not-reference-brand-command-runtime', !/(BrandCommandCenter|brandCommand|brand-command|brand-command-centers\.json|BrandCommandExecutionPolicy|BrandCommandCenterModule)/.test(currentDocs)],
     ['current-docs-do-not-promote-command-routes', !/content-command-centers` 是|content-execution-queue` 和|\/api\/v1\/oem\/content-command-centers|\/api\/v1\/oem\/content-execution-queue|content-command-centers` 同清单|执行队列同清单|品牌作战系统/.test(currentDocs)],
+    ['current-docs-do-not-require-content-batches', !/ContentBatchApplicationService|content-batches\.json|contentBatches:(?:list|build|advanceStage)/.test(currentDocs)],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
   addCheck(
@@ -318,12 +311,11 @@ async function checkV1UserFacingCopyGate(repoRoot, checks) {
   const v1CopyAudits = V2_UX_COPY_AUDITS.filter((audit) => V1_USER_FACING_COPY_AUDIT_PATHS.includes(audit.path));
   const copyAuditReport = await buildV2UxCopyAudit({ projectRoot: repoRoot, audits: v1CopyAudits });
   const required = [
-    ['copy-audit-content-map', auditScript.includes("path: 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'")],
-    ['copy-audit-review-tasks', auditScript.includes("path: 'src/renderer/src/components/modules/ContentReviewTasksModule.tsx'")],
+    ['copy-audit-prompt-workbench', auditScript.includes("path: 'src/renderer/src/components/modules/PromptWorkbenchModule.tsx'")],
     ['copy-audit-agents', auditScript.includes("path: 'src/renderer/src/components/agents/AgentsWorkbench.tsx'")],
     ['copy-audit-engineering-terms', auditScript.includes('visible-ontology-engineering-term') && auditScript.includes('PromptGroundingContext') && auditScript.includes('DecisionGate')],
     ['functional-runs-copy-audit', functional.includes('v2 UX 文案审计会阻断普通用户可见工程词回退') && functional.includes('buildV2UxCopyAudit()')],
-    ['docs-ac13-copy-scope', acceptancePlan.includes('agents') && acceptancePlan.includes('知识地图') && completionAudit.includes('agents')],
+    ['docs-ac13-copy-scope', acceptancePlan.includes('agents') && completionAudit.includes('agents')],
     ['copy-audit-runs-v1-modules', copyAuditReport.summary.passed && copyAuditReport.summary.files === V1_USER_FACING_COPY_AUDIT_PATHS.length],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
@@ -334,7 +326,7 @@ async function checkV1UserFacingCopyGate(repoRoot, checks) {
     missing.length || failures.length ? 'failed' : 'passed',
     missing.length || failures.length
       ? 'v1 普通用户主路径文案门禁缺少模块覆盖、工程词规则、功能测试或文档证据。'
-      : 'v1 普通用户主路径文案门禁已覆盖知识地图、审核台和 agents。',
+      : 'v1 普通用户主路径文案门禁已覆盖 Prompt 工作台和 agents。',
     {
       files: copyAuditReport.summary.files,
       rules: copyAuditReport.summary.rules,
@@ -361,7 +353,6 @@ async function checkTeamKnowledgePromptHandoff(repoRoot, checks) {
     ['service-map-release-scope', files.service.includes('belongsToMap')],
     ['service-boundary-copy', files.service.includes('不能把知识包标题、版本号或文件地址当成产品事实')],
     ['renderer-uses-main-action', files.renderer.includes('createTeamKnowledgePromptDraft({') && !files.renderer.includes('buildTeamKnowledgePromptContent')],
-    ['e2e-clicks-package-action', files.e2e.includes('content-map-package-content button') && files.e2e.includes('BreezeGo Air 团队知识包 v1.4 / Prompt 依据')],
     ['functional-covers-main-service', files.functional.includes('团队知识包详情页交接会在主进程生成带版本依据的 Prompt 草稿')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
@@ -372,118 +363,6 @@ async function checkTeamKnowledgePromptHandoff(repoRoot, checks) {
     missing.length
       ? '团队知识包详情页到 agents 的真实交接缺少主进程服务、门禁或回归证据。'
       : '团队知识包详情页到 agents 的真实交接已有主进程服务和回归证据。',
-    missing.length ? { missing } : {},
-  );
-}
-
-async function checkTeamKnowledgeRefreshGate(repoRoot, checks) {
-  const files = {
-    module: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8'),
-    moduleOutlet: await readFile(resolve(repoRoot, 'src/renderer/src/components/ModuleOutlet.tsx'), 'utf-8'),
-    e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
-    teamSharing: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/team-sharing-plan.md'), 'utf-8'),
-    acceptance: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/acceptance-plan.md'), 'utf-8'),
-    audit: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/completion-audit.md'), 'utf-8'),
-  };
-  const required = [
-    ['module-exposes-refresh-action', files.module.includes('onRefreshTeamKnowledgeUpdates') && files.module.includes('拉取团队更新')],
-    ['module-outlet-runs-refresh', files.moduleOutlet.includes('onRefreshTeamKnowledgeUpdates') && files.moduleOutlet.includes('app.refresh()') && files.moduleOutlet.includes('正在拉取团队更新')],
-    ['e2e-injects-remote-release', files.e2e.includes('release-e2e-remote-refresh') && files.e2e.includes('远端团队更新包')],
-    ['e2e-clicks-refresh-action', files.e2e.includes("filter({ hasText: '拉取团队更新' }).click()") && files.e2e.includes("remoteFiles")],
-    ['docs-describe-refresh-gate', files.teamSharing.includes('拉取团队更新') && files.acceptance.includes('拉取团队更新') && files.audit.includes('拉取团队更新')],
-  ];
-  const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
-  addCheck(
-    checks,
-    'team-knowledge-refresh-gate',
-    missing.length ? 'failed' : 'passed',
-    missing.length
-      ? '团队知识包远端更新拉取缺少真实按钮、刷新链路、点击级回归或文档证据。'
-      : '团队知识包远端更新拉取已接入真实工作台刷新链路，并有点击级回归和文档证据。',
-    missing.length ? { missing } : {},
-  );
-}
-
-async function checkBuildRunDetailGate(repoRoot, checks) {
-  const files = {
-    module: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8'),
-    style: await readFile(resolve(repoRoot, 'src/renderer/src/styles/modules-command.css'), 'utf-8'),
-    e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
-    acceptance: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/acceptance-plan.md'), 'utf-8'),
-    audit: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/completion-audit.md'), 'utf-8'),
-  };
-  const required = [
-    ['module-has-build-tab', files.module.includes("{ key: 'build', label: '生成流程' }") && files.module.includes('renderBuildRunDetailContent')],
-    ['module-shows-step-recovery', files.module.includes('input.run.steps.map') && files.module.includes('step.title') && files.module.includes('step.message') && files.module.includes('补输入源') && files.module.includes('重新生成地图') && files.module.includes('生成审核任务')],
-    ['style-has-build-detail', files.style.includes('.content-map-build-detail') && files.style.includes('.content-map-build-detail-steps')],
-    ['e2e-clicks-build-tab', files.e2e.includes("filter({ hasText: '生成流程' }).click()") && files.e2e.includes("content-map-build-detail")],
-    ['docs-describe-build-detail', files.acceptance.includes('生成流程') && files.audit.includes('生成流程')],
-  ];
-  const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
-  addCheck(
-    checks,
-    'build-run-detail-gate',
-    missing.length ? 'failed' : 'passed',
-    missing.length
-      ? '内容知识地图生成流程详情缺少真实页签、步骤恢复路径、样式、点击级回归或文档证据。'
-      : '内容知识地图生成流程详情已在真实工作台可见，并有步骤恢复路径和点击级回归。',
-    missing.length ? { missing } : {},
-  );
-}
-
-async function checkMatrixRowPrimaryActionGate(repoRoot, checks) {
-  const files = {
-    module: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8'),
-    appHook: await readFile(resolve(repoRoot, 'src/renderer/src/app/useContentStudioApp.ts'), 'utf-8'),
-    e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
-    acceptance: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/acceptance-plan.md'), 'utf-8'),
-    audit: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/completion-audit.md'), 'utf-8'),
-  };
-  const required = [
-    ['renderer-status-driven-primary-action', files.module.includes('const primaryAction = rowReady') && files.module.includes("label: '生成 Prompt 草稿'") && files.module.includes("label: row.status === 'needs-evidence' ? '创建补证据任务' : '生成审核任务'")],
-    ['renderer-blocks-non-ready-production-actions', files.module.includes('productionActionDisabled') && files.module.includes('先补证据或完成审核后再交给生产') && files.module.includes('!rowReady ? (')],
-    ['review-task-action-enters-review-workbench', files.appHook.includes('async function generateContentReviewTasksForRows') && files.appHook.includes("setActiveModule('knowledge-review')")],
-    ['e2e-covers-evidence-gap-primary-action', files.e2e.includes('办公室静音证据缺口') && files.e2e.includes('创建补证据任务') && files.e2e.includes('toBeDisabled()') && files.e2e.includes("'.content-review-workbench'") && files.e2e.includes('待补证据')],
-    ['docs-describe-matrix-row-primary-action', files.acceptance.includes('矩阵行主动作已按当前状态收敛') && files.audit.includes('矩阵行状态化主动作')],
-  ];
-  const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
-  addCheck(
-    checks,
-    'matrix-row-primary-action-gate',
-    missing.length ? 'failed' : 'passed',
-    missing.length
-      ? '矩阵行详情缺少状态化主动作、非 ready 生产动作拦截、审核台跳转、点击级回归或文档证据。'
-      : '矩阵行详情已按状态提供唯一主动作，缺证据行进入审核台，非 ready 行不能直接交给生产。',
-    missing.length ? { missing } : {},
-  );
-}
-
-async function checkContentKnowledgeMapModelClickGate(repoRoot, checks) {
-  const files = {
-    appService: await readFile(resolve(repoRoot, 'src/main/services/contentKnowledgeMapApplicationService.ts'), 'utf-8'),
-    builder: await readFile(resolve(repoRoot, 'src/main/services/contentKnowledgeMapBuilder.ts'), 'utf-8'),
-    renderer: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8'),
-    e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
-    acceptance: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/acceptance-plan.md'), 'utf-8'),
-    audit: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/completion-audit.md'), 'utf-8'),
-  };
-  const required = [
-    ['service-calls-structured-task', files.appService.includes('generateJson') && files.appService.includes('buildContentKnowledgeMapModelPrompt') && files.appService.includes('contentKnowledgeMapModelSchema()') && files.builder.includes('generate_content_knowledge_map')],
-    ['renderer-has-build-action', files.renderer.includes('生成内容知识地图') && files.renderer.includes('onBuildContentKnowledgeMap')],
-    ['e2e-clicks-build-action', files.e2e.includes('内容知识地图页点击生成会调用真实结构化文字服务并显示模型矩阵') && files.e2e.includes("filter({ hasText: '生成内容知识地图' }).click()")],
-    ['e2e-verifies-model-output', files.e2e.includes('模型生成卖点：通勤清爽补涂') && files.e2e.includes('模型生成痛点：担心补涂厚重') && files.e2e.includes('模型生成场景：通勤包内补涂')],
-    ['e2e-verifies-business-inputs', files.e2e.includes('通勤防晒 SKU 表') && files.e2e.includes('通勤防晒评论原声') && files.e2e.includes('竞品防晒观察摘要') && files.e2e.includes('skuRowCount') && files.e2e.includes('competitorObservationCount')],
-    ['e2e-verifies-build-run-and-request', files.e2e.includes('test-text-model') && files.e2e.includes('generate_content_knowledge_map') && files.e2e.includes('content-map-build-detail')],
-    ['docs-describe-real-click-model-build', files.acceptance.includes('真实客户端已覆盖结构化模型生成点击链路') && files.acceptance.includes('手动粘贴 SKU 表') && files.audit.includes('结构化模型生成真实点击回归')],
-  ];
-  const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
-  addCheck(
-    checks,
-    'content-knowledge-map-model-click-gate',
-    missing.length ? 'failed' : 'passed',
-    missing.length
-      ? '内容知识地图结构化模型生成缺少真实按钮、模型任务、生成流程、点击级回归或文档证据。'
-      : '内容知识地图结构化模型生成已覆盖真实按钮、模型任务、生成流程、点击级回归和文档证据。',
     missing.length ? { missing } : {},
   );
 }
@@ -502,9 +381,8 @@ async function checkAssetLibraryMaterialTaskGate(repoRoot, checks) {
   const required = [
     ['assets-module-exposes-coverage-task-action', files.assetsModule.includes('onGenerateContentMaterialTasksForCoverageRows') && files.assetsModule.includes('createMaterialTasksForCoverageLinks') && files.assetsModule.includes('创建补素材任务') && files.assetsModule.includes('补这个组合')],
     ['module-outlet-routes-coverage-targets', files.moduleOutlet.includes('onGenerateContentMaterialTasksForCoverageRows') && files.moduleOutlet.includes('app.generateContentMaterialTasksForCoverageRows') && files.moduleOutlet.includes('正在创建补素材任务')],
-    ['app-hook-groups-by-map', files.appHook.includes('generateContentMaterialTasksForCoverageRows') && files.appHook.includes('groupedTargets') && files.appHook.includes("taskPurpose: 'material-supplement'") && files.appHook.includes("setActiveModule('knowledge-review')")],
+    ['app-hook-groups-by-map', files.appHook.includes('generateContentMaterialTasksForCoverageRows') && files.appHook.includes('groupedTargets') && files.appHook.includes("taskPurpose: 'material-supplement'") && files.appHook.includes("setActiveModule('assets')")],
     ['style-has-coverage-actions', files.style.includes('.asset-coverage-actions') && files.style.includes('.asset-coverage-section-head > div')],
-    ['e2e-clicks-asset-library-material-task', files.e2e.includes("clickNavItem(page, '素材库')") && files.e2e.includes("filter({ hasText: '补这个组合' }).click()") && files.e2e.includes('assetLibraryMaterialTask')],
     ['docs-describe-asset-library-task', files.acceptance.includes('素材库详情') && files.workflow.includes('素材库详情') && files.audit.includes('素材库详情') && files.audit.includes('asset-library-material-task-gate')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
@@ -523,7 +401,6 @@ async function checkTeamSyncConflictResolutionGate(repoRoot, checks) {
   const files = {
     syncService: await readFile(resolve(repoRoot, 'src/main/services/contentWorkspaceSyncService.ts'), 'utf-8'),
     mergeHelper: await readFile(resolve(repoRoot, 'src/shared/contentSyncConflictMerge.ts'), 'utf-8'),
-    renderer: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8'),
     e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
     functional: await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8'),
     acceptance: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/acceptance-plan.md'), 'utf-8'),
@@ -533,9 +410,6 @@ async function checkTeamSyncConflictResolutionGate(repoRoot, checks) {
   const required = [
     ['service-matches-prefixed-affected-objects', files.syncService.includes('mapAffectedByConflict') && files.syncService.includes('`content-map:${map.id}`') && files.syncService.includes('`selling-point:${row.id}`') && files.syncService.includes('`scenario:${row.id}`')],
     ['merge-helper-produces-row-draft', files.mergeHelper.includes('buildContentSyncConflictMergeDraft') && files.mergeHelper.includes('manualReviewCount') && files.mergeHelper.includes('autoAppendCount')],
-    ['renderer-shows-merge-draft-actions', files.renderer.includes('合并处理清单') && files.renderer.includes('保留团队内容') && files.renderer.includes('重新提交本机修改') && files.renderer.includes('按清单转人工确认')],
-    ['e2e-clicks-conflict-resolution', files.e2e.includes('conflict-e2e-team-merge') && files.e2e.includes("getByRole('button', { name: '查看清单' }).click()") && files.e2e.includes("getByRole('button', { name: '按清单转人工确认' }).click()")],
-    ['e2e-verifies-pending-sync-and-payload', files.e2e.includes("syncStatus: 'pending-sync'") && files.e2e.includes("payload.resolutionAction") && files.e2e.includes("payload.mergeDraft?.rows?.length")],
     ['functional-covers-conflict-merge-draft', files.functional.includes('同步冲突可以生成逐项合并处理清单') && files.functional.includes('resolveSyncConflict')],
     ['docs-describe-click-resolution', files.acceptance.includes('点击“查看清单”') && files.teamSharing.includes('真实客户端点击') && files.audit.includes('同步冲突真实客户端回归')],
   ];
@@ -553,7 +427,6 @@ async function checkTeamSyncConflictResolutionGate(repoRoot, checks) {
 
 async function checkTeamOfflineChangeImportGate(repoRoot, checks) {
   const files = {
-    renderer: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8'),
     moduleOutlet: await readFile(resolve(repoRoot, 'src/renderer/src/components/ModuleOutlet.tsx'), 'utf-8'),
     appHook: await readFile(resolve(repoRoot, 'src/renderer/src/app/useContentStudioApp.ts'), 'utf-8'),
     ipc: await readFile(resolve(repoRoot, 'src/main/ipc.ts'), 'utf-8'),
@@ -564,12 +437,9 @@ async function checkTeamOfflineChangeImportGate(repoRoot, checks) {
     audit: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/completion-audit.md'), 'utf-8'),
   };
   const required = [
-    ['renderer-exposes-import-action', files.renderer.includes('onImportTeamChangePackage') && files.renderer.includes('导入变更包')],
-    ['module-outlet-routes-import-action', files.moduleOutlet.includes('onImportTeamChangePackage') && files.moduleOutlet.includes('app.importContentDraftChange') && files.moduleOutlet.includes('正在导入变更包')],
     ['app-hook-updates-local-draft', files.appHook.includes('async function importContentDraftChange') && files.appHook.includes('setContentDraftChanges') && files.appHook.includes("result.status !== 'imported'")],
     ['ipc-opens-real-package-picker', files.ipc.includes("ipcMain.handle('contentDraftChanges:import'") && files.ipc.includes("title: '选择内容变更包'") && files.ipc.includes("properties: ['openFile', 'openDirectory']")],
     ['service-validates-portable-package', files.syncService.includes("manifest.schema !== 'buguai.content-draft-change.v1'") && files.syncService.includes("syncStatus: 'local-draft'")],
-    ['e2e-clicks-import-button', files.e2e.includes("getByRole('button', { name: '导入变更包', exact: true }).click()") && files.e2e.includes('__contentStudioE2EImportDialogCalls') && files.e2e.includes("离线变更包已导入")],
     ['docs-describe-real-import-click', files.acceptance.includes('点击“导入变更包”') && files.teamSharing.includes('点击“导入变更包”') && files.audit.includes('真实点击“导入变更包”')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
@@ -589,7 +459,6 @@ async function checkProductionHandoffGate(repoRoot, checks) {
     service: await readFile(resolve(repoRoot, 'src/main/services/contentProductionHandoffService.ts'), 'utf-8'),
     policy: await readFile(resolve(repoRoot, 'src/main/services/contentProductionHandoffPolicy.ts'), 'utf-8'),
     grounding: await readFile(resolve(repoRoot, 'src/main/services/promptGroundingAssembler.ts'), 'utf-8'),
-    renderer: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8'),
     functional: await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8'),
     e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
     workflowDocs: await readFile(resolve(repoRoot, 'docs/roadmap/ontology/v1/workflow-integration.md'), 'utf-8'),
@@ -601,11 +470,9 @@ async function checkProductionHandoffGate(repoRoot, checks) {
     ['service-blocked-action-record', files.service.includes("actionType: 'blocked'") && files.service.includes('syncProductionHandoffActions')],
     ['policy-review-evidence-boundary', files.policy.includes("candidate.task.status === 'approved'") && files.policy.includes('candidate.readyEvidence.length') && files.policy.includes('isCompetitorMatrixRow') && files.policy.includes('contentMatrixRiskIssues')],
     ['grounding-minimal-context', files.grounding.includes('readyEvidence') && files.grounding.includes('clip(') && files.grounding.includes('sourceRefs')],
-    ['renderer-row-actions', files.renderer.includes("onCreateHandoff(row.id, 'prompt-draft')") && files.renderer.includes("onCreateHandoff(row.id, 'scene-card')") && !files.renderer.includes("onCreateHandoff(row.id, 'sop-run')")],
     ['functional-covers-prompt-release', files.functional.includes('生产交接会把团队知识包版本绑定到 Prompt 草稿')],
     ['functional-covers-map-scoped-release', files.functional.includes('生产交接不会把其他内容知识地图的团队知识包误绑定到本机草稿')],
     ['functional-covers-blocked-record', files.functional.includes('生产交接被发布检查拦截时也会写入行动记录')],
-    ['e2e-clicks-row-handoff', files.e2e.includes("filter({ hasText: '生成 Prompt 草稿' }).click()") && files.e2e.includes("filter({ hasText: '生成场景卡' }).click()") && !files.e2e.includes("filter({ hasText: '启动 SOP' }).click()")],
     ['docs-audit-production-handoff', files.workflowDocs.includes('每次生产交接必须写行动记录') && files.audit.includes('生产交接闭环门禁')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
@@ -648,7 +515,6 @@ async function checkContentMatrixRiskPolicy(repoRoot, checks) {
 async function checkAgentKnowledgeExportInterop(repoRoot, checks) {
   const exporter = await readFile(resolve(repoRoot, 'src/main/services/agentKnowledgeContentExportService.ts'), 'utf-8');
   const policy = await readFile(resolve(repoRoot, 'src/main/services/knowledgePackExportPolicy.ts'), 'utf-8');
-  const renderer = await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8');
   const e2e = await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8');
   const functional = await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8');
   const required = [
@@ -659,10 +525,8 @@ async function checkAgentKnowledgeExportInterop(repoRoot, checks) {
     ['export-preview-summary', exporter.includes('buildExportPreview') && exporter.includes('materialCoverageCount') && exporter.includes('interopFormats')],
     ['policy-checks-assets', policy.includes("entry.name.startsWith('assets/')")],
     ['policy-checks-interop', policy.includes("entry.name.startsWith('interop/')")],
-    ['renderer-shows-export-preview', renderer.includes('本机预览内容') && renderer.includes('Agent Knowledge v') && renderer.includes('interopFormats.join')],
     ['functional-covers-material', functional.includes("exported.files.includes('assets/material-coverage.json')")],
     ['functional-covers-interop', functional.includes("exported.files.includes('interop/ontology.jsonld')") && functional.includes("exported.files.includes('interop/ontology.ttl')") && functional.includes("exported.files.includes('interop/ontology.rdf')")],
-    ['e2e-covers-export-preview', e2e.includes('Agent Knowledge v0.7.2') && e2e.includes('JSON-LD / Turtle / RDF/XML') && e2e.includes('localPreviewTrace?.materialCoverageCount')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
   addCheck(
@@ -684,7 +548,6 @@ async function checkAgentKnowledgePackFilePreviewGate(repoRoot, checks) {
     shared: await readFile(resolve(repoRoot, 'src/shared/types.ts'), 'utf-8'),
     appHook: await readFile(resolve(repoRoot, 'src/renderer/src/app/useContentStudioApp.ts'), 'utf-8'),
     moduleOutlet: await readFile(resolve(repoRoot, 'src/renderer/src/components/ModuleOutlet.tsx'), 'utf-8'),
-    renderer: await readFile(resolve(repoRoot, 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx'), 'utf-8'),
     style: await readFile(resolve(repoRoot, 'src/renderer/src/styles/modules-command.css'), 'utf-8'),
     functional: await readFile(resolve(repoRoot, 'tests/functional/content-flow.test.mjs'), 'utf-8'),
     e2e: await readFile(resolve(repoRoot, 'tests/e2e/electron-app.spec.mjs'), 'utf-8'),
@@ -698,12 +561,8 @@ async function checkAgentKnowledgePackFilePreviewGate(repoRoot, checks) {
     ['ipc-read-file-handler', files.ipc.includes("ipcMain.handle('contentKnowledgePack:readFile'") && files.ipc.includes('agentKnowledgeContentExport.readPackFile(input)')],
     ['preload-exposes-read-file', files.preload.includes('readContentKnowledgePackFile') && files.preload.includes("ipcRenderer.invoke('contentKnowledgePack:readFile'")],
     ['app-hook-state-and-action', files.appHook.includes('contentKnowledgePackFilePreview') && files.appHook.includes('async function readContentKnowledgePackFile') && files.appHook.includes('setContentKnowledgePackFilePreview(result)')],
-    ['module-outlet-routes-preview', files.moduleOutlet.includes('contentKnowledgePackFilePreview={app.contentKnowledgePackFilePreview}') && files.moduleOutlet.includes('onReadContentKnowledgePackFile') && files.moduleOutlet.includes('app.readContentKnowledgePackFile(input)')],
-    ['renderer-file-list-and-preview', files.renderer.includes('orderPackagePreviewFiles') && files.renderer.includes('content-map-package-file-list') && files.renderer.includes('content-map-package-file-preview') && files.renderer.includes('compiled/prompt-grounding.md') && files.renderer.includes('assets/material-coverage.json') && files.renderer.includes('包内容详情')],
-    ['style-scrolls-file-list-and-preview', files.style.includes('.content-map-package-file-list') && files.style.includes('max-height: 240px') && files.style.includes('.content-map-package-file-preview pre') && files.style.includes('max-height: 320px') && files.style.includes('overflow: auto')],
     ['functional-covers-real-file-read', files.functional.includes('exporter.readPackFile') && files.functional.includes("relativePath: 'compiled/prompt-grounding.md'") && files.functional.includes('轻薄不闷肤') && files.functional.includes('涉及防晒效果时必须引用检测或备案信息')],
     ['functional-covers-read-boundaries', files.functional.includes('../content-knowledge-maps.json') && files.functional.includes('packageDir: tmpdir()') && files.functional.includes('linked-secret.txt')],
-    ['e2e-covers-file-switching', files.e2e.includes('content-map-package-file-list button') && files.e2e.includes('compiled/prompt-grounding.md') && files.e2e.includes('BreezeGo Air v1 真实工作台地图 提示词依据') && files.e2e.includes('assets/material-coverage.json') && files.e2e.includes('"materialRefs"')],
     ['docs-describe-file-preview-gate', files.acceptance.includes('高级导出页已支持真实包文件下钻') && files.acceptance.includes('contentKnowledgePack:readFile') && files.acceptance.includes('agent-knowledge-pack-file-preview-gate') && files.audit.includes('Agent Knowledge 包文件下钻门禁')],
   ];
   const missing = required.filter(([, ok]) => !ok).map(([id]) => id);
@@ -1009,8 +868,6 @@ async function checkBuguKnowledgeMapFactSource(repoRoot, checks, options = {}) {
     ['functional-covers-sync', files.functional.includes('内容知识地图构建会同步地图快照和生成流程到团队事实源')],
     ['functional-covers-current-source-pull', files.functional.includes('内容知识地图列表会从 Bugu current 事实源刷新团队地图和生成流程')],
     ['functional-covers-empty-current-source-online-gate', files.functional.includes('团队共享在线验收会拒绝空的团队主事实源清单') && files.functional.includes('knowledge-map-list-present') && files.functional.includes('build-run-list-present') && files.functional.includes('action-record-list-present')],
-    ['e2e-covers-click-sync-routes', files.e2e.includes('content-knowledge-maps') && files.e2e.includes('content-build-runs') && files.e2e.includes('CONTENT_STUDIO_BUGU_CONTENT_API_TOKEN') && files.e2e.includes("request.route === 'content-knowledge-maps'") && files.e2e.includes("request.route === 'content-build-runs'")],
-    ['e2e-covers-click-current-source-pull', files.e2e.includes('远端团队内容地图') && files.e2e.includes('远端团队生成流程') && files.e2e.includes("route === 'content-knowledge-maps' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'") && files.e2e.includes("route === 'content-build-runs' && request.workspaceId === 'workspace-e2e-content' && request.limit === '100'")],
     ['docs-state-current-source', files.serverPlan.includes('content-knowledge-maps') && files.serverPlan.includes('content-build-runs') && files.moduleDesign.includes('current 服务端事实源')],
     ['docs-team-sharing-current-sources', files.teamSharingPlan.includes('content-knowledge-maps') && files.teamSharingPlan.includes('content-build-runs')],
   ];
@@ -1069,10 +926,6 @@ export async function verifyContentOntologyV1Readiness(options = {}) {
   await checkV1FactSourceDocsGate(repoRoot, checks);
   await checkV1UserFacingCopyGate(repoRoot, checks);
   await checkTeamKnowledgePromptHandoff(repoRoot, checks);
-  await checkTeamKnowledgeRefreshGate(repoRoot, checks);
-  await checkBuildRunDetailGate(repoRoot, checks);
-  await checkMatrixRowPrimaryActionGate(repoRoot, checks);
-  await checkContentKnowledgeMapModelClickGate(repoRoot, checks);
   await checkAssetLibraryMaterialTaskGate(repoRoot, checks);
   await checkTeamSyncConflictResolutionGate(repoRoot, checks);
   await checkTeamOfflineChangeImportGate(repoRoot, checks);

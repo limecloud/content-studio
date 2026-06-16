@@ -18,22 +18,6 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     preview: '竖版 4:5，产品位于右下三分之一，早餐桌自然光，左上保留标题空间，手机实拍感。',
     table: [['参考素材', '已上传', '构图 / 光线', '可分析'], ['产品图', '已关联', '产品实物', '替换主体'], ['Prompt', '草稿', '可编辑', '复制外部']],
   },
-  'image-scene-prompts': {
-    eyebrow: '图片 / 场景库',
-    title: '场景提示词',
-    description: '品牌 / 产品知识库先生成场景库，再由场景卡生成 UGC 手机实拍图片 / 图生视频提示词。',
-    scope: '品牌 / 产品知识库 -> 场景库 -> 图片 / 视频 Prompt',
-    status: '可运行入口',
-    primaryAction: '生成提示词组',
-    secondaryAction: '复制选中 Prompt',
-    flow: ['读取知识库', '抽取场景卡', '确认字段', '生成提示词组', '复制 / 入队', '审核'],
-    cards: [
-      { title: '场景卡字段', text: '场景库不是 Prompt 文本列表，而是 Prompt 前的结构化中间层。', items: ['人群 / 问题 / 季节', '空间 / 动作 / 情绪', '镜头 / 合规 / 用途'] },
-      { title: 'Prompt 产物', text: '同一个场景可输出图片、图生视频、文案和绿幕文案图 Prompt。', items: ['图片 Prompt', '视频 Prompt', '绿幕文案图 Prompt'] },
-    ],
-    preview: '场景卡：早餐后，妈妈把便携条包放进孩子书包侧袋。Prompt 强调自然光、真实手部动作、无广告棚拍感。',
-    table: [['早餐后', '已确认', '图片 / 视频', '可生成'], ['办公抽屉', '待确认', '图片', '可编辑'], ['换季家庭', '已确认', '详情页', '可生成']],
-  },
   'image-green-screen': {
     eyebrow: '图片 / 视频素材',
     title: '绿幕文案图',
@@ -49,38 +33,6 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     ],
     preview: '标题卡：早餐后 10 秒钟的小习惯。卖点卡：便携条包，放进包里或抽屉都不占地方。',
     table: [['标题卡 01', '通过', '9:16 PNG', '入清单'], ['卖点卡 03', '需拆分', '文案过长', '待处理'], ['CTA 卡', '草稿', '透明背景', '可导出']],
-  },
-  'image-compliance': {
-    eyebrow: '图片 / 审核',
-    title: '合规检测',
-    description: '检查图片、文案和 Prompt 是否存在医疗化承诺、绝对化表达、竞品元素复制和事实不一致。',
-    scope: '候选素材 -> 合规审核 -> 入库 / 回炉',
-    status: '审核入口',
-    primaryAction: '执行合规检测',
-    secondaryAction: '提交人工审核',
-    flow: ['读取产物', '事实检查', '合规检查', '标记风险', '人工确认', '入库'],
-    cards: [
-      { title: '检测维度', text: '事实、合规、品牌口吻、图片文字可读性和 AI 味统一进入审核清单。', items: ['事实一致性', '禁用表达', '视觉可读性'] },
-      { title: '恢复路径', text: '不删除失败产物，保留驳回原因并允许回到 Prompt 版本重生成。', items: ['驳回原因', '重生成入口', '保留原产物'] },
-    ],
-    preview: '风险：出现“见效更快”表达，建议替换为“更容易坚持的日常补充场景”。',
-    table: [['图片 02', '通过', '无高风险表达', '可入库'], ['文案卡 03', '风险', '绝对化表达', '需改写'], ['Prompt v4', '注意', '医疗化词汇', '人工确认']],
-  },
-  'image-retouch': {
-    eyebrow: '图片 / 后处理',
-    title: '图片精修',
-    description: '对通过初筛的图片做局部修复、裁切、扩图、文字区域清理和版本对比，保留原图与提示词来源。',
-    scope: '通过素材 -> 精修版本 -> 审核 / 模板回炉',
-    status: '回炉入口',
-    primaryAction: '创建精修版本',
-    secondaryAction: '回炉为模板',
-    flow: ['选择图片', '标记区域', '精修 / 扩图', '版本对比', '审核', '回炉'],
-    cards: [
-      { title: '精修动作', text: '只处理当前选中图片，不改写原始素材和生成记录。', items: ['局部修复', '扩图', '文字区域清理'] },
-      { title: '回炉沉淀', text: '通过审核的好图可以反推质量原因、标签和模板草稿。', items: ['Prompt 模板', '场景标签', 'Skill 草稿'] },
-    ],
-    preview: '精修说明：清理左上角多余文字阴影，保留产品位置和自然光质感。',
-    table: [['原图 02', '已通过', '可精修', '保留'], ['v2-clean', '草稿', '文字区清理', '待审'], ['模板草稿', '未创建', '回炉入口', '可操作']],
   },
   'video-script': {
     eyebrow: '视频 / 脚本',
@@ -210,38 +162,6 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     preview: '很多人不是不想坚持，而是动作太复杂。把它变成早餐后顺手做的一件事，门槛就低很多。',
     table: [['口播 v1', '草稿', '60s', '待审'], ['短视频 v1', '可用', '15s', '可转 Prompt'], ['字幕卡', '8 张', '待生成', '绿幕图']],
   },
-  'knowledge-map': {
-    eyebrow: '知识库 / 内容地图',
-    title: '内容知识地图',
-    description: '把输入源、品牌 / 产品知识库、场景卡和 Prompt 草稿整理成卖点、痛点、场景、证据和缺口矩阵。',
-    scope: '输入源 -> 品牌知识库 -> 内容知识地图 -> 场景库 / Prompt / 生产交接',
-    status: '可运行入口',
-    primaryAction: '生成知识地图',
-    secondaryAction: '打开场景库',
-    flow: ['补输入源', '抽取品牌知识库', '生成矩阵', '查看缺口', '交给生产任务', '团队同步'],
-    cards: [
-      { title: '可控穷举', text: '把卖点、痛点、人群、场景和证据拆成矩阵，避免一次性 prompt 漏项。', items: ['卖点矩阵', '痛点矩阵', '场景矩阵'] },
-      { title: '团队边界', text: '本机草稿先生成变更包，再提交到 Bugu 团队工作区；旧版本提交进入冲突队列，不覆盖团队当前版本。', items: ['本机草稿', '团队同步', '冲突处理'] },
-    ],
-    preview: '卖点：便携条包；痛点：坚持门槛高；场景：早餐后放进书包侧袋；证据：产品资料和评论原声。',
-    table: [['卖点矩阵', '待确认', '证据 8 条', '可交接'], ['痛点矩阵', '缺评论', '需补输入源', '待补齐'], ['团队同步', '变更包', '冲突队列', '不覆盖旧版本']],
-  },
-  'knowledge-review': {
-    eyebrow: '知识库 / 审核',
-    title: '审核任务',
-    description: '审核卖点、痛点、场景、证据和风险缺口，支持通过、驳回、补证据和标记禁用。',
-    scope: '内容知识地图 -> 审核任务 -> 决策记录 -> 发布检查',
-    status: '审核入口',
-    primaryAction: '生成审核任务',
-    secondaryAction: '打开知识地图',
-    flow: ['读取矩阵', '生成待审项', '查看证据', '做审核决策', '追加记录', '发布检查'],
-    cards: [
-      { title: '审核对象', text: '待验证主张、缺证据卖点、风险表达和知识地图缺口进入审核任务。', items: ['卖点', '痛点', '场景'] },
-      { title: '决策留痕', text: '审核决策只能追加，保留审核人、时间、前后快照和原因。', items: ['通过', '补证据', '禁用'] },
-    ],
-    preview: '任务：便携条包卖点缺少证据。建议：请求补证据，补充产品资料、测试记录或品牌确认后再进入下游 Prompt。',
-    table: [['缺证据卖点', '待补证据', '高风险', '请求补证据'], ['禁用表达', '待审核', '高风险', '标记禁用'], ['低风险场景', '待确认', '低风险', '通过']],
-  },
   'knowledge-brand': {
     eyebrow: '知识库 / 品牌链路',
     title: '品牌 / 产品知识库',
@@ -258,54 +178,6 @@ export const V2_FEATURES: Record<V2ModuleKey, V2FeatureSpec> = {
     preview: '合规边界：避免“治疗、见效、最强、根治”等承诺；优先表达使用场景、坚持门槛和便携性。',
     table: [['品牌调性', '已抽取', '温和可信', '可确认'], ['卖点卡', '12 条', '待审核', '可编辑'], ['场景库', '未生成', '下一步', '主按钮']],
   },
-  'knowledge-scenes': {
-    eyebrow: '知识库 / 中间层',
-    title: '场景库',
-    description: '场景库是 Prompt 前的中间层，承接品牌 / 产品知识库和 IP 运营场景，向图片、文案和视频 Prompt 下游输出。',
-    scope: '场景卡 -> 图片 Prompt / 视频 Prompt / 文案 Prompt',
-    status: '可运行入口',
-    primaryAction: '生成提示词组',
-    secondaryAction: '发送到图片生成',
-    flow: ['场景卡', '用户确认', 'Prompt 组', '图片生成', '视频 Prompt', '文案生成'],
-    cards: [
-      { title: '场景字段', text: '人群、问题、季节、空间、动作、情绪、镜头、合规边界和输出用途。', items: ['早餐后', '办公室', '换季'] },
-      { title: '输出用途', text: '同一场景可生成图片 Prompt、图生视频 Prompt、文案 Prompt 和绿幕文案图 Prompt。', items: ['图片', '视频', '文案'] },
-    ],
-    preview: '场景卡：办公室抽屉备货，午后自然光，同事递水杯，重点表达“随手就能坚持”。',
-    table: [['早餐后', '已确认', '图片 / 视频', '可生成'], ['办公抽屉', '待确认', '图片', '可编辑'], ['换季家庭', '已确认', '详情页', '可生成']],
-  },
-  'knowledge-ip': {
-    eyebrow: '知识库 / IP 体系',
-    title: 'IP 知识库',
-    description: '个人 IP 全面运营底座，包含身份、价值观、语言、判断、素材和创作引擎六层，不是品牌知识库的字段。',
-    scope: 'IP 素材 -> 六层知识库 -> 场景延伸库',
-    status: '可运行入口',
-    primaryAction: '构建 IP 知识库',
-    secondaryAction: '生成场景延伸库',
-    flow: ['导入素材', '读取资料', '生成六层', '补齐缺口', '导出知识库', '延伸场景'],
-    cards: [
-      { title: '六层结构', text: '身份锚定、价值观立场、声音语言、判断方法、内容素材、创作引擎。', items: ['身份', '语言', '创作引擎'] },
-      { title: '场景延伸', text: '口播、朋友圈、私域、产品化和咨询回复都引用同一 IP 知识库版本。', items: ['口播', '私域', '产品化'] },
-    ],
-    preview: '待补齐：判断方法层缺少具体案例；内容素材层缺少可公开故事；创作引擎层需要栏目模板。',
-    table: [['身份锚定', '完整', '已确认', '可导出'], ['判断方法', '缺口', '待补案例', '需追问'], ['创作引擎', '草稿', '栏目模板', '待确认']],
-  },
-  'knowledge-inputs': {
-    eyebrow: '知识库 / 输入源',
-    title: '输入源 / 文档转换',
-    description: '登记 DOCX、Markdown、参考图、参考视频、产品资料、SKU 表、竞品内容、评论和历史成功素材。',
-    scope: '文件 / 文本 / 参考素材 -> 输入源记录 -> 知识库 / Prompt 分流',
-    status: '可运行入口',
-    primaryAction: '登记输入源',
-    secondaryAction: '转换为 Markdown',
-    flow: ['选择文件', '解析类型', '转换文本', '补充标签', '入输入源', '分流 Prompt'],
-    cards: [
-      { title: '输入类型', text: '不只有知识库，参考图、参考视频、SKU 表和历史素材都能驱动 Prompt 与内容制造。', items: ['DOCX', '参考图', 'SKU 表'] },
-      { title: '失败状态', text: '文件无法解析时保留原文件并标记待解析原因，不伪造成功。', items: ['保留原文件', '错误原因', '重试入口'] },
-    ],
-    preview: '转换队列：嘉文老师_IP知识库_v1.0.docx -> markdown；参考视频 01 -> analyze；SKU 表 -> ProductBrief。',
-    table: [['DOCX', '已转换 2', '待转换 1', '可重试'], ['参考视频', '待分析', '视频理解', '待配置'], ['SKU 表', '可解析', '变量表', '可运行']],
-  },
 };
 
 const V2_FEATURE_ACTION_TARGETS: Partial<
@@ -313,9 +185,6 @@ const V2_FEATURE_ACTION_TARGETS: Partial<
 > = {
   'material-breakdown': {
     secondary: { type: 'module', module: 'agents' },
-  },
-  'image-scene-prompts': {
-    secondary: { type: 'module', module: 'image-production' },
   },
   'image-green-screen': {
     secondary: { type: 'module', module: 'video-mix-export' },
@@ -338,28 +207,9 @@ const V2_FEATURE_ACTION_TARGETS: Partial<
   'article-script': {
     secondary: { type: 'module', module: 'image-green-screen' },
   },
-  'knowledge-map': {
-    primary: { type: 'module', module: 'knowledge-brand' },
-    secondary: { type: 'module', module: 'knowledge-scenes' },
-  },
-  'knowledge-review': {
-    primary: { type: 'module', module: 'knowledge-map' },
-    secondary: { type: 'module', module: 'knowledge-map' },
-  },
   'knowledge-brand': {
-    primary: { type: 'module', module: 'knowledge-scenes' },
+    primary: { type: 'module', module: 'knowledge' },
     secondary: { type: 'module', module: 'knowledge' },
-  },
-  'knowledge-scenes': {
-    primary: { type: 'module', module: 'image-scene-prompts' },
-    secondary: { type: 'module', module: 'image-production' },
-  },
-  'knowledge-ip': {
-    primary: { type: 'module', module: 'knowledge' },
-    secondary: { type: 'module', module: 'knowledge-scenes' },
-  },
-  'knowledge-inputs': {
-    primary: { type: 'module', module: 'knowledge' },
   },
 };
 

@@ -6,14 +6,9 @@ export type AgentModuleKey = 'agents';
 
 export type CoreModuleKey = AgentModuleKey | 'image' | 'image-production' | 'image-showcase' | 'video' | 'video-showcase' | 'article' | 'knowledge' | 'assets' | 'skills';
 
-export type BusinessModuleKey = 'content-batch';
-
 export type V2ModuleKey =
   | 'material-breakdown'
-  | 'image-scene-prompts'
   | 'image-green-screen'
-  | 'image-compliance'
-  | 'image-retouch'
   | 'video-script'
   | 'video-prompt'
   | 'video-import'
@@ -22,16 +17,10 @@ export type V2ModuleKey =
   | 'video-custom'
   | 'article-title'
   | 'article-script'
-  | 'knowledge-map'
-  | 'knowledge-review'
-  | 'knowledge-brand'
-  | 'knowledge-scenes'
-  | 'knowledge-ip'
-  | 'knowledge-inputs';
+  | 'knowledge-brand';
 
-export type DeprecatedModuleKey = 'assets-prompt-workbench' | 'assets-history';
-export type ModuleKey = CoreModuleKey | BusinessModuleKey | V2ModuleKey | DeprecatedModuleKey;
-export type NavItem = { key?: ModuleKey; label: string; disabled?: boolean; advanced?: boolean };
+export type ModuleKey = CoreModuleKey | V2ModuleKey;
+export type NavItem = { key?: ModuleKey; label: string };
 
 export type ModelDraft = {
   apiEndpoint: string;

@@ -115,8 +115,6 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 - `src/main/services/contentReviewTaskStore.ts`
 - `src/main/services/contentReviewTaskBuilder.ts`
 - `src/main/services/contentReviewTaskApplicationService.ts`
-- `src/main/services/contentBatchStore.ts`
-- `src/main/services/contentBatchApplicationService.ts`
 - `src/main/ipc.ts`
 - `src/preload/index.ts`
 
@@ -124,8 +122,8 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 
 1. 定义 `ContentKnowledgeMapRecord`、矩阵行、证据、约束、缺口和团队同步摘要。
 2. 定义 `ContentReviewTask`、`ContentReviewDecision`、审核状态和审核动作。
-3. 定义 `ContentBatchRecord`、阶段运行、阶段门禁、恢复任务、产物引用和行动记录引用。
-4. 本地保存 `.content-studio/content-knowledge-maps.json`、`content-knowledge-map-build-runs.json`、`content-review-tasks.json`、`content-production-handoffs.json`、`content-draft-changes.json` 和 `content-batches.json`，定位为缓存、离线草稿和运行临时产物。
+3. 定义生产交接、审核、素材覆盖和知识包导出的产物引用和行动记录引用。
+4. 本地保存 `.content-studio/content-knowledge-maps.json`、`content-knowledge-map-build-runs.json`、`content-review-tasks.json`、`content-production-handoffs.json` 和 `content-draft-changes.json`，定位为缓存、离线草稿和运行临时产物；旧内容制造批次缓存已退役。
 5. 增加服务端同步字段：`tenantId`、`workspaceId`、`revision`、`baseRevision`、`syncStatus`、`lastSyncedAt`、`idempotencyKey`，本机阶段允许先以 `teamSync` 摘要表达。
 6. 暴露 list / build / update / review / handoff / batch / export IPC，并通过 Bugu 适配器同步变更包、审核、行动记录、素材覆盖、同步冲突和 release；pull、逐项合并处理清单、服务端清单落库审计和素材覆盖待确认补充已补齐。
 
@@ -299,9 +297,7 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 
 写集：
 
-- `src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx`
-- `src/renderer/src/components/modules/ContentReviewTasksModule.tsx`
-- `src/renderer/src/components/modules/ContentBatchPipelineModule.tsx`
+- 当前入口收敛到知识库、素材库、Prompt 工作台和 Agents；旧独立知识地图、审核任务和内容制造批次页面已退役。
 - `src/renderer/src/styles/modules-command.css`
 - `src/renderer/src/app/useContentStudioApp.ts`
 - `src/renderer/src/components/ModuleOutlet.tsx`
@@ -350,7 +346,7 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 - `src/main/services/workflowEngine.ts`
 - `src/main/ipc.ts`
 - `src/preload/index.ts`
-- `src/renderer/src/components/modules/ContentReviewTasksModule.tsx`
+- 当前审核任务消费入口收敛到素材库和生产交接服务；旧独立审核任务页面已退役。
 
 任务：
 
@@ -429,10 +425,7 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 
 写集：
 
-- `src/main/services/contentBatchApplicationService.ts`
-- `src/main/services/contentBatchStore.ts`
 - `src/main/services/contentProductionHandoffService.ts`
-- `src/renderer/src/components/modules/ContentBatchPipelineModule.tsx`
 - `docs/roadmap/ontology/v2/client-capability-migration.md`
 
 任务：
@@ -455,11 +448,9 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 
 当前落地：
 
-- `ContentBatchApplicationService` 已从输入源、内容知识地图、审核任务、生成日志、Prompt 草稿、SOP 运行和素材审核记录生成内容制造批次。
-- 批次阶段覆盖选品、意图、建模、卖点、矩阵、制造、审核、调优和复盘；每个阶段保留输入引用、输出引用、门禁结果、恢复任务和 Agent / 工具运行引用。
-- 制造阶段会把图片、视频、视频 Prompt、SOP 和素材审核产物投影为制造产物；审核阶段会把第三方成品视频排入素材审核；调优阶段要求投放表现和行动复盘；复盘阶段要求素材覆盖回写和成功素材沉淀。
+- 旧内容制造批次运行时已退役；生产交接、素材覆盖、审核任务和 Agent 会话成为当前运行事实源。
 - 生产交接继续负责生成 Prompt 草稿、场景卡、SOP 运行、补素材交付包和素材覆盖回写，并通过 Bugu `content-action-records` 追加团队行动记录。
-- 真实客户端内容制造批次页展示当前阶段、门禁、恢复任务、产物链路和相关工具入口；空态只提示生成内容制造批次，不生成示例数据。
+- 真实客户端不再保留内容制造批次页，相关产物链路从素材库、Prompt 工作台、Agents 和运行追溯进入。
 - 旧品牌战情室、目标树、作战编组和执行队列运行时已退役；readiness 和 v2 UX copy audit 会阻止旧入口、旧 IPC、旧 Bugu 路由和旧文案回流到当前客户端。
 
 ### V1-P8：Agent Knowledge v0.7.2 导出
@@ -473,7 +464,7 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 
 - `src/main/services/agentKnowledgeContentExportService.ts`
 - `src/main/services/knowledgePackExportPolicy.ts`
-- `src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx`
+- 当前知识包导出入口收敛到主工作台服务和运行追溯；旧独立知识地图页面已退役。
 
 任务：
 
@@ -515,7 +506,7 @@ v1 的核心能力是把“穷举”变成可控矩阵，而不是一次性让 L
 - `src/main/services/contentKnowledgeReleaseStore.ts`
 - `src/main/services/buguContentWorkspaceSyncAdapter.ts`
 - `src/main/services/agentKnowledgeContentExportService.ts`
-- `src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx`
+- 当前团队共享消费入口收敛到主工作台服务和运行追溯；旧独立知识地图页面已退役。
 - `docs/roadmap/ontology/v1/team-sharing-plan.md`
 
 任务：

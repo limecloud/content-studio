@@ -35,10 +35,7 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
       { key: 'image-production', label: '图片生成' },
       { key: 'image-showcase', label: 'AI 生图' },
       { key: 'material-breakdown', label: '拆解素材' },
-      { key: 'image-scene-prompts', label: '场景提示词' },
       { key: 'image-green-screen', label: '绿幕文案图' },
-      { key: 'image-compliance', label: '合规检测' },
-      { key: 'image-retouch', label: '图片精修' },
     ],
   },
   {
@@ -55,14 +52,8 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
   {
     title: '知识库',
     items: [
-      { key: 'content-batch', label: '内容制造' },
       { key: 'knowledge', label: '成型知识库' },
-      { key: 'knowledge-map', label: '内容知识地图' },
-      { key: 'knowledge-review', label: '审核任务' },
       { key: 'knowledge-brand', label: '品牌 / 产品知识库' },
-      { key: 'knowledge-scenes', label: '场景库' },
-      { key: 'knowledge-ip', label: 'IP 知识库' },
-      { key: 'knowledge-inputs', label: '输入源 / 文档转换' },
     ],
   },
   {

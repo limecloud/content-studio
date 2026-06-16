@@ -20,6 +20,12 @@
       "@limecloud/agent-runtime-projection": [
         "../../aiclientproxy/lime/packages/agent-runtime-projection/dist/index.d.ts"
       ],
+      "@limecloud/agent-capability-catalog": [
+        "../../aiclientproxy/lime/packages/agent-capability-catalog/dist/index.d.ts"
+      ],
+      "@limecloud/agent-workbench-adapter": [
+        "../../aiclientproxy/lime/packages/agent-workbench-adapter/dist/index.d.ts"
+      ],
       "@limecloud/agent-runtime-ui": [
         "../../aiclientproxy/lime/packages/agent-runtime-ui/dist/index.d.ts"
       ],

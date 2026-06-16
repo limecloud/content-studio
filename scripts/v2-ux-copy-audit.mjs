@@ -85,23 +85,6 @@ export const V2_UX_COPY_AUDITS = [
     ],
   },
   {
-    path: 'src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx',
-    rules: v1BusinessModuleRules(),
-  },
-  {
-    path: 'src/renderer/src/components/modules/ContentReviewTasksModule.tsx',
-    rules: v1BusinessModuleRules(),
-  },
-  {
-    path: 'src/renderer/src/components/modules/ContentBatchPipelineModule.tsx',
-    rules: [
-      ...v1BusinessModuleRules(),
-      ...intakeLevelCopyRules(),
-      ...retiredBrandCommandEntryRules(),
-      rule('content-batch-action-review-copy', /行动复盘|行动记录|执行队列|作战编组|品牌战情室/, '内容制造主链不能回流到旧作战模块语义，应使用运行复盘、运行历史和矩阵交接。'),
-    ],
-  },
-  {
     path: 'src/renderer/src/components/modules/PromptWorkbenchModule.tsx',
     rules: v1BusinessModuleRules(),
   },
@@ -111,10 +94,6 @@ export const V2_UX_COPY_AUDITS = [
       ...v1BusinessModuleRules(),
       rule('agents-old-toolbar-copy', /计划模式|追求目标|附加 Wave|后端接口|等待启动协作|进行中的目标/, 'agents 工作台不能回流通用 Agent 工具栏、旧调试文案或无业务对象状态。'),
     ],
-  },
-  {
-    path: 'src/renderer/src/components/modules/InputSourcesModule.tsx',
-    rules: [...v1BusinessModuleRules(), ...intakeLevelCopyRules()],
   },
   {
     path: 'src/renderer/src/app/constants.ts',
@@ -129,8 +108,20 @@ export const V2_UX_COPY_AUDITS = [
     rules: [...retiredBrandCommandEntryRules(), ...retiredSopWorkflowEntryRules()],
   },
   {
-    path: 'src/main/services/contentBatchApplicationService.ts',
-    rules: [...retiredBrandCommandEntryRules(), ...retiredSopWorkflowEntryRules()],
+    path: 'src/shared/types.ts',
+    rules: retiredContentBatchRuntimeRules(),
+  },
+  {
+    path: 'src/main/ipc.ts',
+    rules: retiredContentBatchRuntimeRules(),
+  },
+  {
+    path: 'src/preload/index.ts',
+    rules: retiredContentBatchRuntimeRules(),
+  },
+  {
+    path: 'src/renderer/src/devContentStudioBridge.ts',
+    rules: retiredContentBatchRuntimeRules(),
   },
 ];
 
@@ -201,6 +192,12 @@ function retiredSopWorkflowEntryRules() {
     rule('retired-sop-workflow-module-key', /assets-sop|workflow-definition|workflow-canvas/, '旧 SOP 工作流模块 key 不能回流到当前导航、路由、v2 registry 或内容制造主链。'),
     rule('retired-sop-workflow-module-name', /WorkflowFeatureModule|WorkflowStore|WorkflowEngine/, '旧 SOP 工作流运行时不能回流到当前导航、路由、v2 registry 或内容制造主链。'),
     rule('retired-sop-workflow-action', /SOP 工作流|工作流定义|Canvas 编排|启动 SOP|打开 SOP|沉淀为 SOP/, '旧 SOP 工作流入口文案不能回流到当前导航、路由、v2 registry 或内容制造主链。'),
+  ];
+}
+
+function retiredContentBatchRuntimeRules() {
+  return [
+    rule('retired-content-batch-api', /ContentBatch|contentBatch|contentBatches|content-batch/, '内容制造批次运行时已删除，不能回流到 shared / IPC / preload / dev bridge。'),
   ];
 }
 

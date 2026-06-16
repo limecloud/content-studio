@@ -6,17 +6,11 @@ import { AgentsWorkbench } from './agents/AgentsWorkbench';
 import { ImageModule } from './modules/ImageModule';
 import { ImageShowcaseModule } from './modules/ImageShowcaseModule';
 import { BrandKnowledgeModule } from './modules/BrandKnowledgeModule';
-import { InputSourcesModule } from './modules/InputSourcesModule';
 import { KnowledgeModule } from './modules/KnowledgeModule';
 import { GreenScreenModule } from './modules/GreenScreenModule';
-import { ContentBatchPipelineModule } from './modules/ContentBatchPipelineModule';
-import { ContentKnowledgeMapModule } from './modules/ContentKnowledgeMapModule';
-import { ContentReviewTasksModule } from './modules/ContentReviewTasksModule';
-import { IpKnowledgeModule } from './modules/IpKnowledgeModule';
 import { MaterialBreakdownModule } from './modules/MaterialBreakdownModule';
 import { MixExportModule } from './modules/MixExportModule';
 import { PromptWorkbenchModule } from './modules/PromptWorkbenchModule';
-import { ScenePromptModule } from './modules/ScenePromptModule';
 import { VideoImportModule } from './modules/VideoImportModule';
 import { VideoPromptModule } from './modules/VideoPromptModule';
 import { VideoShowcaseModule } from './modules/VideoShowcaseModule';
@@ -91,7 +85,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
     }
 
     if (action.decision === 'open-input-source') {
-      recordResponse(() => app.setActiveModule('knowledge-inputs'));
+      recordResponse(() => app.setActiveModule('knowledge'));
       return;
     }
 
@@ -181,7 +175,7 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onOpenImageProduction={() => app.setActiveModule('image-production')}
         onOpenImageShowcase={() => app.setActiveModule('image-showcase')}
         onOpenMaterialBreakdown={() => app.setActiveModule('material-breakdown')}
-        onOpenScenePrompts={() => app.setActiveModule('image-scene-prompts')}
+        onOpenScenePrompts={() => app.setActiveModule('image-production')}
         onOpenVideoPrompt={() => app.setActiveModule('video')}
         onOpenArticle={() => app.setActiveModule('article')}
         onOpenArticleTitle={() => app.setActiveModule('article-title')}
@@ -457,22 +451,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
     );
   }
 
-  if (app.activeModule === 'content-batch') {
-    return (
-      <ContentBatchPipelineModule
-        workspaceReady={Boolean(app.workspacePath)}
-        busy={app.busy}
-        batch={app.activeContentBatch}
-        onBuildContentBatch={() => app.runAction(app.buildContentBatch, '正在生成内容制造批次')}
-        onAdvanceStage={() => app.runAction(app.advanceContentBatchStage, '正在推进内容制造阶段')}
-        onRunStagePrimaryAction={(stageId) =>
-          app.runAction(() => app.runContentBatchStagePrimaryAction(stageId), '正在处理当前制造阶段')
-        }
-        onSelectModule={app.setActiveModule}
-      />
-    );
-  }
-
   if (app.activeModule === 'knowledge-brand') {
     return (
       <BrandKnowledgeModule
@@ -500,142 +478,8 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         }
         onResolveAgentAction={resolveAgentAction}
         onGenerateBrandKnowledgeBase={() => app.runAction(app.generateBrandKnowledgeBase, '正在生成品牌知识库')}
-        onOpenKnowledgeScenes={() => app.runAction(app.generateSceneCards, '正在基于品牌知识库生成场景库')}
-        onOpenInputSources={() => app.setActiveModule('knowledge-inputs')}
-      />
-    );
-  }
-
-  if (app.activeModule === 'knowledge-map') {
-    return (
-      <ContentKnowledgeMapModule
-        workspaceReady={Boolean(app.workspacePath)}
-        busy={app.busy}
-        inputSources={app.inputSources}
-        brandKnowledgeBases={app.brandKnowledgeBases}
-        sceneCards={app.sceneCards}
-        promptDrafts={app.promptDrafts}
-        contentKnowledgeMaps={app.contentKnowledgeMaps}
-        contentKnowledgeMapBuildRuns={app.contentKnowledgeMapBuildRuns}
-        teamChangePackages={app.contentDraftChanges}
-        teamKnowledgePackageVersions={app.contentKnowledgeReleases}
-        teamSyncConflicts={app.contentSyncConflicts}
-        contentWorkspaceSyncResult={app.contentWorkspaceSyncResult}
-        activeContentKnowledgeMap={app.activeContentKnowledgeMap}
-        activeContentKnowledgeMapId={app.activeContentKnowledgeMapId}
-        setActiveContentKnowledgeMapId={app.setActiveContentKnowledgeMapId}
-        onBuildContentKnowledgeMap={() => app.runAction(app.buildContentKnowledgeMap, '正在生成内容知识地图')}
-        onExportContentKnowledgePack={() => app.runAction(app.exportContentKnowledgePack, '正在导出团队知识包')}
-        onWriteBackContentMaterialCoverage={() => app.runAction(app.writeBackContentMaterialCoverage, '正在回写素材覆盖')}
-        onCreateTeamChangePackage={() => app.runAction(app.createContentDraftChange, '正在生成变更包')}
-        onSubmitTeamChangePackage={() => app.runAction(() => app.submitContentDraftChange(), '正在提交团队工作区')}
-        onExportTeamChangePackage={() => app.runAction(() => app.exportContentDraftChange(), '正在导出变更包')}
-        onImportTeamChangePackage={() => app.runAction(app.importContentDraftChange, '正在导入变更包')}
-        onResolveTeamSyncConflict={(conflict, resolutionAction) => app.runAction(() => app.resolveContentSyncConflict(conflict, resolutionAction), '正在记录冲突处理')}
-        onCreateTeamKnowledgePackage={() => app.runAction(app.createContentKnowledgeRelease, '正在创建团队知识包版本')}
-        onCreateTeamKnowledgePromptDraft={() => app.runAction(app.createTeamKnowledgePromptDraft, '正在生成团队知识包 Prompt 草稿')}
-        onRefreshTeamKnowledgeUpdates={() => app.runAction(() => app.refresh(), '正在拉取团队更新')}
-        onGenerateContentReviewTasksForRows={(rowIds) =>
-          app.runAction(() => app.generateContentReviewTasksForRows(rowIds), '正在生成本批审核任务')
-        }
-        onGenerateContentMaterialTasksForRows={(rowIds) =>
-          app.runAction(() => app.generateContentMaterialTasksForRows(rowIds), '正在创建补素材任务')
-        }
-        onCreateContentProductionHandoffForRow={(rowId, target) =>
-          app.runAction(
-            () => app.createContentProductionHandoffForRow(rowId, target),
-            target === 'scene-card' ? '正在生成场景卡' : '正在生成 Prompt 草稿',
-          )
-        }
-        contentKnowledgePackExport={app.contentKnowledgePackExport}
-        contentKnowledgePackFilePreview={app.contentKnowledgePackFilePreview}
-        onReadContentKnowledgePackFile={(input) =>
-          app.runAction(() => app.readContentKnowledgePackFile(input), '正在读取知识包内容')
-        }
-        contentMaterialCoverage={app.contentMaterialCoverage}
-        agentPromptSessions={app.agentPromptSessions}
-        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-        textModel={app.params.textModel}
-        onSelectAgentSession={app.setActiveAgentPromptSessionId}
-        onStartAgentSession={(input) =>
-          app.runAction(() => app.startAgentPromptSession(input), '正在开始协作')
-        }
-        onContinueAgentSession={(input) =>
-          app.runAction(() => app.continueAgentPromptSession(input), '正在继续对话')
-        }
-        onResolveAgentAction={resolveAgentAction}
-        onSelectModule={app.setActiveModule}
-      />
-    );
-  }
-
-  if (app.activeModule === 'knowledge-review') {
-    return (
-      <ContentReviewTasksModule
-        workspaceReady={Boolean(app.workspacePath)}
-        busy={app.busy}
-        contentKnowledgeMaps={app.contentKnowledgeMaps}
-        activeContentKnowledgeMap={app.activeContentKnowledgeMap}
-        contentReviewTasks={app.contentReviewTasks}
-        activeContentReviewTask={app.activeContentReviewTask}
-        activeContentReviewTaskId={app.activeContentReviewTaskId}
-        setActiveContentReviewTaskId={app.setActiveContentReviewTaskId}
-        onGenerateContentReviewTasks={() => app.runAction(app.generateContentReviewTasks, '正在生成审核任务')}
-        onSubmitContentReviewDecision={(taskId, action, payload) =>
-          app.runAction(() => app.submitContentReviewDecision(taskId, action, payload), '正在记录审核决策')
-        }
-        onCreateContentProductionHandoff={(taskId, target) =>
-          app.runAction(() => app.createContentProductionHandoff(taskId, target), '正在生成 Prompt 草稿')
-        }
-        contentProductionHandoff={app.contentProductionHandoff}
-        agentPromptSessions={app.agentPromptSessions}
-        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-        textModel={app.params.textModel}
-        onSelectAgentSession={app.setActiveAgentPromptSessionId}
-        onStartAgentSession={(input) =>
-          app.runAction(() => app.startAgentPromptSession(input), '正在开始审核')
-        }
-        onContinueAgentSession={(input) =>
-          app.runAction(() => app.continueAgentPromptSession(input), '正在继续审核')
-        }
-        onResolveAgentAction={resolveAgentAction}
-        onSelectModule={app.setActiveModule}
-      />
-    );
-  }
-
-  if (app.activeModule === 'knowledge-ip') {
-    return (
-      <IpKnowledgeModule
-        workspaceReady={Boolean(app.workspacePath)}
-        busy={app.busy}
-        activeKnowledgeBase={app.activeKnowledgeBase}
-        selectedCitations={app.selectedCitations}
-        citationCount={app.effectiveCitationCount}
-        inputSources={app.inputSources}
-        ipKnowledgeBases={app.ipKnowledgeBases}
-        promptDrafts={app.promptDrafts}
-        activeIpKnowledgeBase={app.activeIpKnowledgeBase}
-        activeIpKnowledgeBaseId={app.activeIpKnowledgeBaseId}
-        setActiveIpKnowledgeBaseId={app.setActiveIpKnowledgeBaseId}
-        agentPromptSessions={app.agentPromptSessions}
-        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-        textModel={app.params.textModel}
-        onSelectAgentSession={app.setActiveAgentPromptSessionId}
-        onStartAgentSession={(input) =>
-          app.runAction(() => app.startAgentPromptSession(input), '正在开始 IP 知识库判断')
-        }
-        onContinueAgentSession={(input) =>
-          app.runAction(() => app.continueAgentPromptSession(input), '正在继续 IP 知识库判断')
-        }
-        onResolveAgentAction={resolveAgentAction}
-        onGenerateIpKnowledgeBase={() => app.runAction(app.generateIpKnowledgeBase, '正在生成 IP 知识库')}
-        onCreateScenarioPrompt={(scene) =>
-          app.runAction(() => app.createIpScenarioPrompt(scene), '正在生成 IP 场景延伸 Prompt')
-        }
-        onOpenPromptDraft={app.openTracePromptDraft}
-        onOpenKnowledgeScenes={() => app.runAction(app.generateSceneCards, '正在基于 IP 知识库生成场景延伸库')}
-        onOpenPromptWorkbench={() => app.setActiveModule('agents')}
+        onOpenKnowledgeScenes={() => app.runAction(app.generateSceneCards, '正在基于品牌知识库生成场景')}
+        onOpenInputSources={() => app.setActiveModule('knowledge')}
       />
     );
   }
@@ -671,14 +515,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           }
         />
       );
-    }
-
-    if (app.activeModule === 'image-compliance') {
-      return renderAssetsModule('compliance');
-    }
-
-    if (app.activeModule === 'image-retouch') {
-      return renderAssetsModule('retouch');
     }
 
     if (
@@ -864,79 +700,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           onOpenPromptDraft={app.openTracePromptDraft}
           onOpenSceneCards={app.openTraceSceneCards}
           onOpenRunTrace={() => app.setActiveModule('assets')}
-          onSelectModule={app.setActiveModule}
-        />
-      );
-    }
-
-    if (app.activeModule === 'knowledge-scenes' || app.activeModule === 'image-scene-prompts') {
-      return (
-        <ScenePromptModule
-          module={app.activeModule}
-          workspaceReady={Boolean(app.workspacePath)}
-          busy={app.busy}
-          sceneCards={app.sceneCards}
-          promptDrafts={app.promptDrafts}
-          agentPromptSessions={app.agentPromptSessions}
-          activePromptPack={app.activePromptPack}
-          activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-          currentActionLabel={app.currentActionLabel}
-          textModel={app.params.textModel}
-          citationCount={app.effectiveCitationCount}
-          selectedSceneIds={app.selectedSceneIds}
-          onSelectSceneIds={app.setSelectedSceneIds}
-          onSelectAgentSession={app.setActiveAgentPromptSessionId}
-          onGenerateSceneCards={() => app.runAction(app.generateSceneCards, '正在生成场景库')}
-          onGenerateScenePromptDraft={(input) =>
-            app.runAction(() => app.generateScenePromptDraft(input), '正在生成场景 Prompt 草稿')
-          }
-          onStartAgentSession={(input) =>
-            app.runAction(() => app.startAgentPromptSession(input), '正在开始协作')
-          }
-          onContinueAgentSession={(input) =>
-            app.runAction(() => app.continueAgentPromptSession(input), '正在继续对话')
-          }
-          onResolveAgentAction={resolveAgentAction}
-          onUpdateSceneCard={(scene) =>
-            app.runAction(() => app.updateSceneCard(scene), '正在确认场景卡')
-          }
-          onUsePromptInImage={app.useScenePromptInImage}
-          onUsePromptInVideo={app.usePromptDraftInVideo}
-          onUsePromptInArticle={app.usePromptDraftInArticle}
-          onUsePromptInGreenScreen={app.usePromptDraftInGreenScreen}
-          onRecordPromptDraftCopy={(input) =>
-            app.runAction(async () => {
-              await app.recordPromptDraftCopy(input);
-            }, '正在记录复制动作')
-          }
-          onSelectModule={app.setActiveModule}
-        />
-      );
-    }
-
-    if (app.activeModule === 'knowledge-inputs') {
-      return (
-        <InputSourcesModule
-          workspaceReady={Boolean(app.workspacePath)}
-          busy={app.busy}
-          inputSources={app.inputSources}
-          onImportInputSource={(purpose, agentSessionId, sensitivity) =>
-            app.runAction(() => app.importInputSource(purpose, agentSessionId, sensitivity), '正在登记输入源文件')
-          }
-          onRegisterManualInputSource={(input) =>
-            app.runAction(() => app.registerManualInputSource(input), '正在登记文本输入源')
-          }
-          agentPromptSessions={app.agentPromptSessions}
-          activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-          textModel={app.params.textModel}
-          onSelectAgentSession={app.setActiveAgentPromptSessionId}
-          onStartAgentSession={(input) =>
-            app.runAction(() => app.startAgentPromptSession(input), '正在开始输入源分流')
-          }
-          onContinueAgentSession={(input) =>
-            app.runAction(() => app.continueAgentPromptSession(input), '正在继续输入源分流')
-          }
-          onResolveAgentAction={resolveAgentAction}
           onSelectModule={app.setActiveModule}
         />
       );

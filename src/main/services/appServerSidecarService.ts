@@ -33,7 +33,7 @@ import {
   type AppServerArtifactReadResponse,
   type AppServerEvidenceExportResponse,
 } from './appServerAgentRuntimeGateway';
-import { buildAgentRuntimeToolPolicy } from './agentRuntimeToolPolicy';
+import { buildAgentRuntimeHostOptions, buildAgentRuntimeToolPolicy } from './agentRuntimeToolPolicy';
 
 const DEFAULT_RPC_TIMEOUT_MS = 5000;
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000;
@@ -56,6 +56,7 @@ export interface AppServerPromptTurnInput {
   capabilityId?: string;
   providerPreference?: string;
   modelPreference?: string;
+  hostOptions?: unknown;
   businessObjectRef?: AppServerBusinessObjectRef;
   timeoutMs?: number;
   backendEnv?: NodeJS.ProcessEnv;
@@ -73,6 +74,7 @@ export interface AppServerCapabilityTurnInput {
   backendEnv?: NodeJS.ProcessEnv;
   providerPreference?: string;
   modelPreference?: string;
+  hostOptions?: unknown;
   backendMode?: 'external' | 'runtime';
   sessionIdPrefix?: string;
 }
@@ -378,6 +380,13 @@ export class AppServerSidecarService {
       backendEnv: input.backendEnv,
       providerPreference: input.providerPreference,
       modelPreference: input.modelPreference,
+      hostOptions: input.hostOptions ?? buildAgentRuntimeHostOptions({
+        prompt: input.prompt,
+        workspacePath: input.workspacePath,
+        providerPreference: input.providerPreference,
+        modelPreference: input.modelPreference,
+        metadata: input.metadata,
+      }),
       backendMode: 'runtime',
       sessionIdPrefix: 'content_studio_prompt',
     });
@@ -511,9 +520,18 @@ export class AppServerSidecarService {
         runtimeOptions: {
           stream: true,
           capabilityId: DEFAULT_AGENT_RUNTIME_CAPABILITY_ID,
+          hostOptions: input.hostOptions ?? buildAgentRuntimeHostOptions({
+            prompt: input.prompt,
+            workspacePath: input.workspacePath,
+            metadata: {
+              selectedSkillSlugs: toolPolicy.selectedSkillSlugs,
+            },
+          }),
           metadata: {
             selectedSkillSlugs: toolPolicy.selectedSkillSlugs,
             permissionMode: toolPolicy.permissionMode,
+            requiredCapabilities: toolPolicy.requiredCapabilities,
+            capabilityHints: toolPolicy.capabilityHints,
             toolPolicy,
           },
         },

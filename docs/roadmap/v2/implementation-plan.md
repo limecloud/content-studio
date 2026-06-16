@@ -6,13 +6,13 @@
 
 ## 0.1 当前治理结论
 
-SOP 工作流运行时已从客户端退役。本文中早期 P4-P6/P9 对 `WorkflowStore`、`WorkflowEngine`、`WorkflowFeatureModule`、SOP 表单执行和 Canvas 编排的描述只保留为历史切片，不再作为 current 计划。
+SOP 工作流运行时和内容制造批次运行时已从客户端退役。本文中早期 P4-P6/P9 对 `WorkflowStore`、`WorkflowEngine`、`WorkflowFeatureModule`、SOP 表单执行、Canvas 编排、`contentBatch*` 服务和 `ontologyV2` 批次投影的描述只保留为历史切片，不再作为 current 计划。
 
 当前事实源分类：
 
-- `current`：`inputSourceStore.ts`、知识库 / 场景库 / Prompt 草稿、内容制造批次、审核 / 生产交接、素材库、混剪包、平台草稿包和 `run-trace`。
+- `current`：知识库 / 场景库 / Prompt 草稿、审核 / 生产交接、素材库、混剪包、平台草稿包、Agent 会话和 `run-trace`。
 - `compat`：旧 `workflowRunId`、`workflow-runs.json`、`sop-input`、`workflow-run` kind 只用于旧数据读取和验收追溯。
-- `dead`：`workflowStore.ts`、`workflowEngine.ts`、`WorkflowFeatureModule.tsx`、SOP 表单入口、工作流定义维护和 Canvas 编排。
+- `dead`：`workflowStore.ts`、`workflowEngine.ts`、`WorkflowFeatureModule.tsx`、`contentBatchStore.ts`、`contentBatchApplicationService.ts`、`ontologyV2.ts`、SOP 表单入口、内容制造批次入口、工作流定义维护和 Canvas 编排。
 
 ## 0. 当前基线
 
@@ -24,7 +24,7 @@ SOP 工作流运行时已从客户端退役。本文中早期 P4-P6/P9 对 `Work
 - 文章生成、图片生成、视频脚本 / 视频队列。
 - 生成日志和素材库雏形。
 - 图片 provider、视频 provider 与文本 provider 的显式协议路由。
-- v2 输入源、品牌 / IP 知识库、场景库、PromptDraft、内容制造批次、运行追溯、素材审核、混剪包、平台草稿包的本地文件事实源。
+- 品牌 / IP 知识库、场景库、PromptDraft、运行追溯、素材审核、混剪包、平台草稿包的本地文件事实源。
 
 当前仍未完成到“生产发布 v2”的标准：
 
@@ -38,7 +38,7 @@ SOP 工作流运行时已从客户端退役。本文中早期 P4-P6/P9 对 `Work
 - `npm run verify:v2` 聚合 provider dry-run 诊断和业务验收，并已纳入 `npm run verify:local`，避免 v2 验收和本地总闸分裂。
 - 审核后的长期复用、Prompt / Skill / SOP 回炉和平台草稿辅助仍是局部闭环，不应标记为云端发布或自动发布能力。
 
-v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知识库 + 场景库 + Prompt 工作台 + 大模型玩法”层，再把跑稳的玩法沉淀为 Prompt / Skill 草稿、内容制造批次模板和可追溯运行记录。
+v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知识库 + 场景库 + Prompt 工作台 + 大模型玩法”层，再把跑稳的玩法沉淀为 Prompt / Skill 草稿和可追溯运行记录。
 
 ## 1. 模块事实源
 
@@ -57,13 +57,13 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 | current | `src/main/services/referenceReverseService.ts` | 参考图 / 参考视频反推与 PromptDraft 生成。 |
 | current | `src/main/services/generationLogStore.ts` | 生成日志。 |
 | current | `src/main/providers/mediaProvider.ts` | 图片 / 视频生成入口。 |
-| current | `src/shared/types.ts` | v2 输入源、Prompt 会话、内容制造批次、运行追溯和产物类型事实源。 |
-| current | `src/shared/ontologyV2.ts` | ontology v2 批次 / 阶段 / 产物归一化模型；旧 `workflow-run` kind 在边界归一化为 `run-trace`。 |
-| current | `src/main/services/contentBatchStore.ts` | 内容制造批次本地文件事实源。 |
-| current | `src/main/services/contentBatchApplicationService.ts` | 从输入源、Prompt、生成日志、审核和交接记录投影内容制造批次阶段状态。 |
+| current | `src/shared/types.ts` | Prompt 会话、运行追溯和产物类型事实源。 |
 | compat | `.content-studio/workflow-runs.json` | 旧工作区追溯文件；只读兼容，不再新增 SOP 运行逻辑。 |
 | dead | `src/main/services/workflowStore.ts` | 已删除；旧工作流定义 / SOP 运行记录运行时不再恢复。 |
-| dead | `src/main/services/workflowEngine.ts` | 已删除；步骤编排改由当前业务服务和内容制造批次投影承接。 |
+| dead | `src/main/services/workflowEngine.ts` | 已删除；步骤编排改由当前业务服务承接。 |
+| dead | `src/main/services/contentBatchStore.ts` | 已删除；不再保留本机内容制造批次文件事实源。 |
+| dead | `src/main/services/contentBatchApplicationService.ts` | 已删除；不再从各类产物投影内容制造批次阶段状态。 |
+| dead | `src/shared/ontologyV2.ts` | 已删除；不再保留批次 / 阶段 / 产物归一化模型。 |
 | current | `src/main/services/overlayCardStore.ts` | 本地绿幕文案图素材生成与登记。 |
 | current | `src/main/services/assetReviewStore.ts` | 本地素材通过 / 驳回审核记录，作为混剪导出门槛。 |
 | current | `src/main/services/mixPackageStore.ts` | 混剪素材包导出、manifest / CSV / import-guide 写入。 |
@@ -86,7 +86,7 @@ v2 不重写这些能力，而是先补充“品牌 / 产品知识库 + IP 知�
 1. 明确 v2 产品边界：品牌 / 产品知识库先到场景库，IP 知识库独立成体系，不是知识库单链，也不是纯 canvas。
 2. 定义 `BrandKnowledgeBase`、`IpKnowledgeBase`、`SceneLibrary`、`SceneCard`、`PromptGroup`。
 3. 定义 `WorkflowInputSource`、`AgentPromptSession`、`PromptDraft`。
-4. 旧 `WorkflowDefinition`、`WorkflowRun`、`WorkflowStepRun`、`WorkflowArtifact` 只保留为历史类型兼容；当前新增类型应落到内容制造批次、运行追溯和 `src/shared/ontologyV2.ts`。
+4. 旧 `WorkflowDefinition`、`WorkflowRun`、`WorkflowStepRun`、`WorkflowArtifact` 和内容制造批次类型只保留为历史描述；当前新增类型应落到共享类型、运行追溯和具体业务服务。
 5. 定义视频生成路径：`internal-api`、`manual-external-prompt`、`manual-video-import`。
 
 验收：

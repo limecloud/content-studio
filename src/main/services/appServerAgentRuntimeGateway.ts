@@ -24,7 +24,7 @@ import type {
   AppServerRuntimeEvent,
   PermissionMode,
 } from '../../shared/types';
-import { buildAgentRuntimeToolPolicy } from './agentRuntimeToolPolicy';
+import { buildAgentRuntimeHostOptions, buildAgentRuntimeToolPolicy } from './agentRuntimeToolPolicy';
 
 const AGENT_RUNTIME_EVENT_POLL_MS = 1000;
 
@@ -108,10 +108,13 @@ export interface AppServerAgentRuntimeTurnInput {
   input: Record<string, unknown>;
   permissionMode?: PermissionMode;
   selectedSkillSlugs?: string[];
+  requiredCapabilities?: string[];
+  capabilityHints?: string[];
   metadata?: Record<string, unknown>;
   businessObjectRef?: AppServerBusinessObjectRef;
   providerPreference?: string;
   modelPreference?: string;
+  hostOptions?: unknown;
   sessionIdPrefix?: string;
 }
 
@@ -245,9 +248,20 @@ export async function runContentStudioAgentRuntimeTurn(
       capabilityId: input.capabilityId,
       providerPreference: input.providerPreference,
       modelPreference: input.modelPreference,
+      hostOptions: input.hostOptions ?? buildAgentRuntimeHostOptions({
+        prompt: typeof input.input.text === 'string' ? input.input.text : undefined,
+        workspacePath: input.workspacePath,
+        providerPreference: input.providerPreference,
+        modelPreference: input.modelPreference,
+        metadata: input.metadata,
+        requiredCapabilities: input.requiredCapabilities,
+        capabilityHints: input.capabilityHints,
+      }),
       metadata: {
         selectedSkillSlugs: toolPolicy.selectedSkillSlugs,
         permissionMode: toolPolicy.permissionMode,
+        requiredCapabilities: toolPolicy.requiredCapabilities,
+        capabilityHints: toolPolicy.capabilityHints,
         toolPolicy,
         ...(input.metadata ?? {}),
       },

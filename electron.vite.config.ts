@@ -31,6 +31,14 @@ const limeAgentPackageAliases = [
     replacement: resolve(limePackagesDir, 'agent-runtime-projection/dist/index.js'),
   },
   {
+    find: '@limecloud/agent-capability-catalog',
+    replacement: resolve(limePackagesDir, 'agent-capability-catalog/dist/index.js'),
+  },
+  {
+    find: '@limecloud/agent-workbench-adapter',
+    replacement: resolve(limePackagesDir, 'agent-workbench-adapter/dist/index.js'),
+  },
+  {
     find: '@limecloud/agent-runtime-ui',
     replacement: resolve(limePackagesDir, 'agent-runtime-ui/dist/index.js'),
   },

@@ -590,12 +590,12 @@ export function AssetsModule({
     },
     compliance: {
       eyebrow: '图片审核',
-      title: '合规检测 / 人工审核台',
+      title: '素材审核 / 人工复核',
       description: '先把生成图和导入素材拉进同一个审核台，逐张标记通过、驳回或回炉，不伪造自动检测结论。',
     },
     retouch: {
       eyebrow: '图片回炉',
-      title: '图片精修 / 回炉',
+      title: '素材回炉',
       description: '选择问题图片后回到图片生成模块复用原 Prompt 和参考图，保留原图、审核状态和重做路径。',
     },
   }[variant];
@@ -927,8 +927,8 @@ export function AssetsModule({
                 ) : (
                   <p className="asset-coverage-empty">
                     {selectedReview?.status === 'approved'
-                      ? '这个素材已入库，但还没有回写到卖点、痛点或场景组合。到内容知识地图页点击“回写素材”后可在这里查看覆盖关系。'
-                      : '先通过素材审核并入库，再回写到内容知识地图中的卖点、痛点或场景组合。'}
+                      ? '这个素材已入库，但还没有关联到当前卖点、痛点或场景组合。关联后可在这里查看覆盖关系。'
+                      : '先通过素材审核并入库，再关联到卖点、痛点或场景组合。'}
                   </p>
                 )}
                 <p className="asset-coverage-note">

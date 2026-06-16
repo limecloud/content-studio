@@ -10,8 +10,6 @@ import type {
   CreateContentProductionHandoffInput,
   CreateSceneCardFromContentInput,
   CreateTeamKnowledgePromptDraftInput,
-  AdvanceContentBatchStageInput,
-  BuildContentBatchInput,
   BuildContentKnowledgeMapInput,
   ExportContentDraftChangeInput,
   GenerateBrandKnowledgeBaseInput,
@@ -104,8 +102,6 @@ import { ContentReviewTaskApplicationService } from './services/contentReviewTas
 import { ContentReviewTaskStore } from './services/contentReviewTaskStore';
 import { ContentTeamKnowledgePromptDraftService } from './services/contentTeamKnowledgePromptDraftService';
 import { ContentWorkspaceSyncService } from './services/contentWorkspaceSyncService';
-import { ContentBatchApplicationService } from './services/contentBatchApplicationService';
-import { ContentBatchStore } from './services/contentBatchStore';
 import { FileAssociationService } from './services/fileAssociationService';
 import { GenerationLogStore } from './services/generationLogStore';
 import { GenerationTaskService } from './services/generationTaskService';
@@ -447,7 +443,6 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     contentKnowledgeReleaseStore,
     promptDrafts,
   );
-  const contentBatchStore = new ContentBatchStore();
   const contentReviewTaskStore = new ContentReviewTaskStore();
   const referenceReverse = new ReferenceReverseService(logs, inputSources, promptDrafts, modelConfig);
   const articles = new ArticleGenerationService(logs, textGeneration);
@@ -466,15 +461,6 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     contentKnowledgeMapStore,
     buguContentSync,
     contentWorkspaceSync,
-  );
-  const contentBatches = new ContentBatchApplicationService(
-    contentBatchStore,
-    inputSources,
-    contentKnowledgeMapStore,
-    contentReviewTaskStore,
-    assetReviews,
-    logs,
-    promptDrafts,
   );
   const contentProductionHandoffs = new ContentProductionHandoffService(
     contentReviewTaskStore,
@@ -676,9 +662,6 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('contentKnowledgeReleases:create', (_event, input: CreateContentKnowledgeReleaseInput) => contentWorkspaceSync.createKnowledgeRelease(input));
   ipcMain.handle('contentSyncConflicts:list', (_event, workspacePath: string) => contentWorkspaceSync.listSyncConflicts(workspacePath));
   ipcMain.handle('contentSyncConflicts:resolve', (_event, input: ResolveContentSyncConflictInput) => contentWorkspaceSync.resolveSyncConflict(input));
-  ipcMain.handle('contentBatches:list', (_event, workspacePath: string) => contentBatches.list(workspacePath));
-  ipcMain.handle('contentBatches:build', (_event, input: BuildContentBatchInput) => contentBatches.build(input));
-  ipcMain.handle('contentBatches:advanceStage', (_event, input: AdvanceContentBatchStageInput) => contentBatches.advanceStage(input));
   ipcMain.handle('contentKnowledgePack:export', (_event, input: ExportContentKnowledgePackInput) => agentKnowledgeContentExport.exportPack(input));
   ipcMain.handle('contentKnowledgePack:readFile', (_event, input: ReadContentKnowledgePackFileInput) => agentKnowledgeContentExport.readPackFile(input));
   ipcMain.handle('contentReviewTasks:list', (_event, workspacePath: string) => contentReviewTasks.list(workspacePath));

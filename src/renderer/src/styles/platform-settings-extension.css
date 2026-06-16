@@ -1,6 +1,6 @@
 .content-studio-platform-settings-host .lime-settings-dialog {
-  grid-template-columns: 170px minmax(0, 820px);
-  width: min(980px, calc(100vw - 72px));
+  grid-template-columns: 178px minmax(0, 1040px);
+  width: min(1240px, calc(100vw - 56px));
 }
 
 .content-studio-platform-settings-host .lime-settings-nav-title,
@@ -33,4 +33,112 @@
 .content-studio-platform-settings-host .lime-setting-row strong,
 .content-studio-platform-settings-host .lime-model-card-title h2 {
   font-weight: 600;
+}
+
+.content-studio-platform-settings-host .lime-model-card-title h2,
+.content-studio-platform-settings-host .lime-model-card-title-main h2 {
+  font-size: 16px;
+}
+
+.content-studio-platform-settings-host .lime-model-settings {
+  min-height: 540px;
+  height: min(640px, calc(100vh - 190px));
+}
+
+.content-studio-platform-settings-host .lime-model-side {
+  background: #fbfaf7;
+}
+
+.content-studio-platform-settings-host .lime-model-main {
+  background: #ffffff;
+}
+
+.content-studio-platform-settings-host .lime-model-config-card {
+  background: #f8fafb;
+}
+
+.content-studio-platform-settings-host .lime-model-detail-head,
+.content-studio-platform-settings-host .lime-model-config-scroll,
+.content-studio-platform-settings-host .lime-model-catalog,
+.content-studio-platform-settings-host .lime-model-custom-editor,
+.content-studio-platform-settings-host .lime-model-custom-card {
+  background: #ffffff;
+}
+
+.content-studio-platform-settings-host .lime-model-config-card,
+.content-studio-platform-settings-host .lime-model-catalog,
+.content-studio-platform-settings-host .lime-model-custom-editor {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.content-studio-platform-settings-host .lime-model-detail-head,
+.content-studio-platform-settings-host .lime-model-config-scroll,
+.content-studio-platform-settings-host .lime-model-card-actions,
+.content-studio-platform-settings-host .lime-model-custom-card {
+  width: min(820px, 100%);
+}
+
+.content-studio-platform-settings-host .lime-model-catalog-card strong,
+.content-studio-platform-settings-host .lime-model-provider-row strong,
+.content-studio-platform-settings-host .lime-model-card-title h2,
+.content-studio-platform-settings-host .lime-model-card-title-main h2 {
+  letter-spacing: 0;
+}
+
+.content-studio-platform-settings-host .lime-model-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #eef1f3;
+  padding: 4px;
+}
+
+.content-studio-platform-settings-host .lime-model-tabs button {
+  min-width: 0;
+  min-height: 34px;
+  border-radius: 10px;
+  overflow: hidden;
+  padding: 0 8px;
+  color: #66737d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.content-studio-platform-settings-host .lime-model-tabs button.active {
+  background: #ffffff;
+  color: #26333b;
+  box-shadow: 0 1px 2px rgba(31, 45, 56, 0.1);
+}
+
+.content-studio-platform-settings-host .lime-model-field {
+  color: #7b8791;
+  font-size: 13px;
+}
+
+.content-studio-platform-settings-host .lime-model-field input,
+.content-studio-platform-settings-host .lime-model-add-priority input {
+  border-color: #e3e8ec;
+  background: #ffffff;
+  color: #26333b;
+  font-size: 14px;
+}
+
+.content-studio-platform-settings-host .lime-model-field input::placeholder,
+.content-studio-platform-settings-host .lime-model-add-priority input::placeholder {
+  color: #a8b1b8;
+}
+
+.content-studio-platform-settings-host .lime-segmented-control {
+  background: #eef1f3;
+}
+
+.content-studio-platform-settings-host .lime-segmented-control button.active {
+  background: #ffffff;
+  color: #26333b;
+  box-shadow: 0 1px 2px rgba(31, 45, 56, 0.1);
 }

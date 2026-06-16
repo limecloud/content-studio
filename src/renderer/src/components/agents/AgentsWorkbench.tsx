@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { PlatformRuntimeModelMenu } from "@limecloud/desktop-platform-react";
 import type { PlatformModelSelection, PlatformModelSettingsProjection } from "@limecloud/desktop-platform-react";
+import {
+  agentWorkbenchSkillKey,
+  buildAgentWorkbenchSessionStartRequest,
+  resolveAgentWorkbenchIntentDescriptor,
+  resolveAgentWorkbenchSkills,
+  resolveWorkbenchSubmitMode,
+  summarizeAgentRuntimeFacts,
+} from "@limecloud/agent-workbench-adapter";
 import type {
   AgentPromptExecutionEvent,
   AgentPromptMessage,
@@ -48,6 +56,11 @@ interface AgentsWorkbenchProps {
     textModel?: string;
     selectedSkills?: SkillRef[];
     selectedSkillSlugs?: string[];
+    requiredCapabilities?: string[];
+    capabilityHints?: string[];
+    agentTaskKind?: string;
+    agentIntentId?: string;
+    permissionMode?: "safe" | "ask" | "allow-all";
   }) => AgentPromptSession | void | undefined | Promise<AgentPromptSession | void | undefined>;
   onContinueAgentSession: (input: { sessionId: string; message: string; textModel?: string }) => void | Promise<void>;
   onUsePromptInImage: (input: ShowcaseImageHandoff) => void;
@@ -86,18 +99,10 @@ interface QuickIntent {
   placeholder: string;
 }
 
-interface CopywritingTask {
-  intentId: Extract<QuickIntentId, "article" | "articleTitle" | "articleScript">;
-  title: string;
-  object: string;
-  output: string;
-  requiredSkillSlugs: string[];
-}
-
 type ActiveMenu = "add" | "access" | null;
 type WorkbenchView = "entry" | "thread";
 type ThreadToolbarMenu = "workspace" | "task" | null;
-type ComposerSubmitMode = "start" | "send" | "queue";
+type AgentPermissionMode = "safe" | "ask" | "allow-all";
 
 type IconName =
   | "add"
@@ -136,9 +141,9 @@ const QUICK_INTENTS: QuickIntent[] = [
   },
   {
     id: "scenePrompt",
-    label: "场景提示词",
+    label: "图片 Prompt",
     icon: "compass",
-    placeholder: "说明目标人群、场景方向和需要输出的 Prompt 数量",
+    placeholder: "说明目标人群、画面场景和需要输出的图片 Prompt 数量",
   },
   {
     id: "imageGenerate",
@@ -217,30 +222,6 @@ const ACCESS_OPTIONS = [
   },
 ] as const;
 
-const COPYWRITING_TASKS: CopywritingTask[] = [
-  {
-    intentId: "article",
-    title: "文章生成",
-    object: "知识库 / 素材 / 选题",
-    output: "平台正文草稿",
-    requiredSkillSlugs: ["copywriting-master", "article-typesetting-master"],
-  },
-  {
-    intentId: "articleTitle",
-    title: "标题生成",
-    object: "文章 / 脚本 / 素材",
-    output: "标题矩阵",
-    requiredSkillSlugs: ["copywriting-master", "moments-copywriter"],
-  },
-  {
-    intentId: "articleScript",
-    title: "脚本生成",
-    object: "卖点 / IP 知识 / 视频任务",
-    output: "口播 / 分镜脚本",
-    requiredSkillSlugs: ["copywriting-master", "moments-copywriter", "ip-knowledge-base-builder"],
-  },
-];
-
 const INTERNAL_PROMPT_MARKERS = [
   "内容工厂的 Prompt 生成 Agent",
   "请基于用户意图、输入源、团队知识包和 skill 约束",
@@ -253,15 +234,11 @@ const INTERNAL_PROMPT_MARKERS = [
 ];
 
 function skillKey(skill: LoadedSkill | SkillRef): string {
-  return `${skill.source}:${skill.slug}`;
+  return agentWorkbenchSkillKey(skill);
 }
 
 function skillRefFromLoaded(skill: LoadedSkill): SkillRef {
   return { slug: skill.slug, source: skill.source };
-}
-
-function skillMatchesSlug(skill: LoadedSkill, slug: string): boolean {
-  return skill.slug === slug || skill.metadata.name === slug;
 }
 
 function defaultSkillKeys(skills: LoadedSkill[], enabledSkillKeys: Set<string>): string[] {
@@ -279,29 +256,12 @@ function statusLabel(status: AgentPromptSession["status"]): string {
   return "协作中";
 }
 
-function copywritingTaskForIntent(intentId: QuickIntentId): CopywritingTask | undefined {
-  return COPYWRITING_TASKS.find((task) => task.intentId === intentId);
-}
-
 function purposeForIntent(intentId: QuickIntentId): PromptDraftPurpose {
-  if (intentId === "videoPrompt") return "video";
-  if (intentId === "article" || intentId === "articleTitle" || intentId === "articleScript") return "article";
-  if (intentId === "greenScreen") return "green-screen";
-  if (intentId === "guide" || intentId === "assets" || intentId === "breakdown") return "content-task";
-  return "image";
+  return resolveAgentWorkbenchIntentDescriptor({ intentId }).purpose as PromptDraftPurpose;
 }
 
 function titleForIntent(intentId: QuickIntentId): string {
-  if (intentId === "guide") return "内容协作";
-  if (intentId === "videoPrompt") return "图生视频 Prompt 协作";
-  if (intentId === "article") return "文章生成协作";
-  if (intentId === "articleTitle") return "标题矩阵协作";
-  if (intentId === "articleScript") return "脚本生成协作";
-  if (intentId === "greenScreen") return "绿幕文案图协作";
-  if (intentId === "assets") return "素材入库说明协作";
-  if (intentId === "breakdown") return "素材拆解协作";
-  if (intentId === "scenePrompt") return "场景提示词协作";
-  return "图片 Prompt 协作";
+  return resolveAgentWorkbenchIntentDescriptor({ intentId }).title;
 }
 
 function messageTitle(message: AgentPromptMessage): string {
@@ -381,16 +341,11 @@ function activeDraftContent(session: AgentPromptSession | undefined, drafts: Pro
 }
 
 function outputPurposeForIntent(intentId: QuickIntentId): string {
-  if (intentId === "guide") return "内容协作";
-  if (intentId === "videoPrompt") return "视频 Prompt";
-  if (intentId === "article") return "文章草稿";
-  if (intentId === "articleTitle") return "标题矩阵";
-  if (intentId === "articleScript") return "脚本草稿";
-  if (intentId === "greenScreen") return "绿幕文案图";
-  if (intentId === "assets") return "素材入库说明";
-  if (intentId === "breakdown") return "拆解报告 / Prompt";
-  if (intentId === "scenePrompt") return "场景提示词";
-  return "图片 Prompt";
+  return resolveAgentWorkbenchIntentDescriptor({ intentId }).outputPurpose;
+}
+
+function agentPermissionMode(value: string): AgentPermissionMode {
+  return value === "safe" || value === "allow-all" ? value : "ask";
 }
 
 function compactLine(value: string, fallback = "未选择"): string {
@@ -402,32 +357,6 @@ function pushComposerHistory(history: string[], next: string): string[] {
   const value = compactLine(next, "");
   if (!value) return history;
   return [value, ...history.filter((item) => item !== value)].slice(0, 12);
-}
-
-function runtimeToolEventCount(readModel: ReturnType<typeof projectAgentRuntimeReadModel>): number {
-  return readModel.events.filter((event) => event.surface === "tool").length;
-}
-
-function hasSidecarRuntimeFacts(readModel: ReturnType<typeof projectAgentRuntimeReadModel>): boolean {
-  return readModel.events.some((event) => {
-    const eventClass = event.source.eventClass ?? "";
-    return (
-      event.surface === "tool" ||
-      event.surface === "human-action" ||
-      eventClass.startsWith("tool.") ||
-      eventClass.startsWith("action.") ||
-      eventClass.startsWith("task.") ||
-      eventClass.startsWith("subagent.") ||
-      eventClass.startsWith("handoff.") ||
-      eventClass.startsWith("review.") ||
-      eventClass.startsWith("artifact.") ||
-      eventClass.startsWith("evidence.") ||
-      eventClass.startsWith("runtime.") ||
-      eventClass.startsWith("permission.") ||
-      event.status === "blocked" ||
-      event.status === "failed"
-    );
-  });
 }
 
 function sanitizeRuntimeProjectionEvent(event: AgentRuntimeEventProjection): AgentRuntimeEventProjection {
@@ -444,6 +373,23 @@ function sanitizeRuntimeReadModel(readModel: ReturnType<typeof projectAgentRunti
   const visibleEvents = readModel.visibleEvents.map(sanitizeRuntimeProjectionEvent);
   const pendingActions = readModel.pendingActions.map(sanitizeRuntimeProjectionEvent);
   return { ...readModel, events, visibleEvents, pendingActions };
+}
+
+function hasWorkbenchRuntimeFacts(
+  readModel: ReturnType<typeof projectAgentRuntimeReadModel>,
+  summary: ReturnType<typeof summarizeAgentRuntimeFacts>,
+): boolean {
+  if (summary.sourceCount || summary.toolCount || summary.pendingActionCount || summary.artifactCount) {
+    return true;
+  }
+  return readModel.visibleEvents.some((event) => (
+    event.surface === "tool" ||
+    event.surface === "human-action" ||
+    event.status === "failed" ||
+    event.status === "blocked" ||
+    event.source.eventClass?.startsWith("tool.") ||
+    event.source.eventClass?.startsWith("action.")
+  ));
 }
 
 function Icon({ name }: { name: IconName }) {
@@ -604,45 +550,25 @@ export function AgentsWorkbench({
     .filter((session) => !workspacePath || session.workspacePath === workspacePath)
     .slice(0, 4);
   const entryIntents = QUICK_INTENTS.filter((intent) => ENTRY_INTENT_IDS.includes(intent.id));
-  const visibleSkills = useMemo(
-    () => [...skills]
-      .filter((skill) => skill.valid)
-      .sort((a, b) => {
-        const aRecommended = COPYWRITING_TASKS.some((task) => task.requiredSkillSlugs.some((slug) => skillMatchesSlug(a, slug)));
-        const bRecommended = COPYWRITING_TASKS.some((task) => task.requiredSkillSlugs.some((slug) => skillMatchesSlug(b, slug)));
-        return Number(!aRecommended) - Number(!bRecommended)
-          || Number(!enabledSkillKeys.has(skillKey(a))) - Number(!enabledSkillKeys.has(skillKey(b)))
-          || a.slug.localeCompare(b.slug, "zh-Hans-CN");
-      })
-      .slice(0, 18),
-    [enabledSkillKeys, skills],
+  const selectedIntentDescriptor = useMemo(
+    () => resolveAgentWorkbenchIntentDescriptor({ intentId: selectedQuickIntentId }),
+    [selectedQuickIntentId],
   );
-  const selectedSkills = useMemo(
-    () => visibleSkills.filter((skill) => selectedSkillKeys.includes(skillKey(skill))),
-    [selectedSkillKeys, visibleSkills],
+  const skillSelection = useMemo(
+    () => resolveAgentWorkbenchSkills({
+      skills,
+      enabledSkillKeys,
+      selectedSkillKeys,
+      intent: selectedIntentDescriptor,
+    }),
+    [enabledSkillKeys, selectedIntentDescriptor, selectedSkillKeys, skills],
   );
-  const selectedCopywritingTask = copywritingTaskForIntent(selectedQuickIntentId);
+  const visibleSkills = skillSelection.visibleSkills;
+  const selectedSkills = skillSelection.selectedSkills;
   const modelMenuEmptyLabel = modelSettings?.providers.length
     ? "未配置可用模型"
     : "未连接 Lime Desktop Platform";
-  const recommendedCopywritingSkills = useMemo(
-    () => selectedCopywritingTask
-      ? skills
-        .filter((skill) =>
-          skill.valid && selectedCopywritingTask.requiredSkillSlugs.some((slug) => skillMatchesSlug(skill, slug)),
-        )
-        .slice(0, 4)
-      : [],
-    [selectedCopywritingTask, skills],
-  );
-  const runSkills = useMemo(
-    () => {
-      const byKey = new Map<string, LoadedSkill>();
-      [...recommendedCopywritingSkills, ...selectedSkills].forEach((skill) => byKey.set(skillKey(skill), skill));
-      return [...byKey.values()].slice(0, 6);
-    },
-    [recommendedCopywritingSkills, selectedSkills],
-  );
+  const runSkills = skillSelection.runSkills;
   const conversationMessages = activeSession?.messages ?? [];
   const displayMessages = useMemo(
     () => conversationMessages.map((message) => ({
@@ -659,15 +585,23 @@ export function AgentsWorkbench({
     () => sanitizeRuntimeReadModel(projectAgentRuntimeReadModel(activeSession)),
     [activeSession],
   );
-  const hasRuntimeFacts = hasSidecarRuntimeFacts(runtimeReadModel);
+  const runtimeFactSummary = summarizeAgentRuntimeFacts(runtimeReadModel, {
+    artifactCount: activeArtifactContent ? 1 : 0,
+  });
+  const hasRuntimeFacts = hasWorkbenchRuntimeFacts(runtimeReadModel, runtimeFactSummary);
   const runtimePanelOpen = hasRuntimeFacts && !runtimePanelCollapsed;
   const agentIsRunning = busy && activeSession?.status === "active";
   const sourceCount = runtimeReadModel.sourceCount + productImageRefs.length + referenceImageRefs.length;
-  const artifactCount = runtimeReadModel.artifactRefs.length + (activeArtifactContent ? 1 : 0);
-  const pendingActionCount = runtimeReadModel.pendingActions.length;
-  const toolEventCount = runtimeToolEventCount(runtimeReadModel);
-  const submitMode: ComposerSubmitMode =
-    view === "thread" && activeSession ? busy ? "queue" : "send" : "start";
+  const artifactCount = runtimeFactSummary.artifactCount;
+  const pendingActionCount = runtimeFactSummary.pendingActionCount;
+  const toolEventCount = runtimeFactSummary.toolCount;
+  const submitMode = resolveWorkbenchSubmitMode({
+    view,
+    hasActiveSession: Boolean(activeSession),
+    busy,
+    workspaceReady,
+    prompt,
+  });
   const canQueuePrompt = submitMode === "queue" && workspaceReady && Boolean(activeSession) && prompt.trim().length > 0;
   const primaryDisabled =
     !workspaceReady ||
@@ -718,17 +652,29 @@ export function AgentsWorkbench({
     setComposerHistory((current) => pushComposerHistory(current, userIntent));
     setHistoryCursor(null);
     const selectedSkillRefs = runSkills.map(skillRefFromLoaded);
+    const startRequest = buildAgentWorkbenchSessionStartRequest({
+      intentId,
+      prompt: userIntent,
+      selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug),
+      permissionPreset: accessMode,
+      fallbackTaskKind: `content.${purposeForIntent(intentId)}`,
+    });
     setOpenedSessionId("");
     const session = await onStartAgentSession({
-      title: titleForIntent(intentId),
-      purpose: purposeForIntent(intentId),
-      userIntent,
+      title: startRequest.title,
+      purpose: startRequest.purpose as PromptDraftPurpose,
+      userIntent: startRequest.userIntent,
       inputSourceIds: [],
       productImageRefs,
       referenceImageRefs,
       textModel,
       selectedSkills: selectedSkillRefs,
-      selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug),
+      selectedSkillSlugs: startRequest.selectedSkillSlugs,
+      requiredCapabilities: startRequest.requiredCapabilities,
+      capabilityHints: startRequest.capabilityHints,
+      agentTaskKind: startRequest.agentTaskKind,
+      agentIntentId: startRequest.agentIntentId,
+      permissionMode: agentPermissionMode(startRequest.permissionMode),
     });
     if (!session?.id) return;
     setOpenedSessionId(session.id);

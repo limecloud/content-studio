@@ -574,6 +574,27 @@ function firstPayloadString(
     .find((value): value is string => Boolean(value));
 }
 
+function sessionCapabilityRequest(session: AgentPromptSession): {
+  requiredCapabilities: string[];
+  capabilityHints: string[];
+  agentTaskKind?: string;
+  agentIntentId?: string;
+  permissionMode?: 'safe' | 'ask' | 'allow-all';
+} {
+  const submittedEvent = (session.executionEvents ?? []).find((event) => event.eventClass === 'turn.submitted');
+  const payload = payloadRecord(submittedEvent?.payload);
+  const permissionMode = firstPayloadString(payload, {}, 'permissionMode', 'permission_mode');
+  return {
+    requiredCapabilities: payloadStringArray(payload, {}, 'requiredCapabilities', 'required_capabilities'),
+    capabilityHints: payloadStringArray(payload, {}, 'capabilityHints', 'capability_hints'),
+    agentTaskKind: firstPayloadString(payload, {}, 'agentTaskKind', 'agent_task_kind'),
+    agentIntentId: firstPayloadString(payload, {}, 'agentIntentId', 'agent_intent_id'),
+    permissionMode: permissionMode === 'safe' || permissionMode === 'ask' || permissionMode === 'allow-all'
+      ? permissionMode
+      : undefined,
+  };
+}
+
 function streamingDeltaText(event: TextProviderRuntimeEvent): string {
   if (event.eventClass !== 'model.delta') return '';
   const payload = payloadRecord(event.payload);
@@ -877,6 +898,11 @@ export class AgentPromptSessionStore {
         sceneCardIds: input.sceneCardIds,
         selectedSkills: skillContext.skillRefs,
         selectedSkillSlugs: skillContext.skillRefs.map((skill) => skill.slug),
+        requiredCapabilities: input.requiredCapabilities,
+        capabilityHints: input.capabilityHints,
+        agentTaskKind: input.agentTaskKind,
+        agentIntentId: input.agentIntentId,
+        permissionMode: input.permissionMode,
         selectedSources,
         skillContext,
         textModel: input.textModel,
@@ -1048,6 +1074,7 @@ export class AgentPromptSessionStore {
     const skillContext = await buildSkillRuntimeContext(this.skills, input.workspacePath, {
       selectedSkills: session.selectedSkills ?? draft.selectedSkills ?? [],
     });
+    const capabilityRequest = sessionCapabilityRequest(session);
     const turnId = randomUUID();
     const runId = randomUUID();
     let liveSession = this.appendUserTurnPending(session, adjustment, turnId, runId, input.textModel ?? reusableSessionModel(session.model));
@@ -1066,6 +1093,7 @@ export class AgentPromptSessionStore {
         messages: session.messages,
         skillContext,
         textModel: input.textModel ?? reusableSessionModel(session.model),
+        ...capabilityRequest,
         onProviderEvent: async (event) => {
           liveSession = await this.applyProviderEvent({
             workspacePath: input.workspacePath,
@@ -1157,6 +1185,7 @@ export class AgentPromptSessionStore {
       selectedSkills: input.session.selectedSkills ?? [],
       selectedSkillSlugs: input.session.selectedSkillSlugs ?? [],
     });
+    const capabilityRequest = sessionCapabilityRequest(input.session);
     const turnId = randomUUID();
     const runId = randomUUID();
     let liveSession = this.appendUserTurnPending(
@@ -1182,6 +1211,7 @@ export class AgentPromptSessionStore {
         messages: input.session.messages,
         skillContext,
         textModel: input.textModel ?? reusableSessionModel(input.session.model),
+        ...capabilityRequest,
         onProviderEvent: async (event) => {
           liveSession = await this.applyProviderEvent({
             workspacePath: input.workspacePath,
@@ -1465,6 +1495,11 @@ export class AgentPromptSessionStore {
           payload: {
             runtime: 'lime-agent-server',
             selectedSkillSlugs: input.selectedSkillSlugs,
+            requiredCapabilities: input.input.requiredCapabilities ?? [],
+            capabilityHints: input.input.capabilityHints ?? [],
+            agentTaskKind: input.input.agentTaskKind,
+            agentIntentId: input.input.agentIntentId,
+            permissionMode: input.input.permissionMode,
             skillSummary: skillSummaryText(input.skillContext),
           },
           createdAt: now,

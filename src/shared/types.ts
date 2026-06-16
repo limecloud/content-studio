@@ -1173,113 +1173,6 @@ export interface BuildContentKnowledgeMapInput {
   promptDraftIds?: string[];
 }
 
-export type ContentBatchStageId =
-  | 'selection'
-  | 'intent'
-  | 'modeling'
-  | 'selling'
-  | 'matrix'
-  | 'manufacturing'
-  | 'review'
-  | 'optimization'
-  | 'feedback';
-
-export type ContentBatchStatus = 'draft' | 'active' | 'blocked' | 'completed' | 'archived';
-export type ContentBatchRunStatus =
-  | 'draft'
-  | 'ready'
-  | 'running'
-  | 'blocked'
-  | 'needs-human'
-  | 'approved'
-  | 'rejected';
-export type ContentBatchGateStatus = 'passed' | 'needs-input' | 'needs-review' | 'blocked';
-export type ContentBatchRecoveryStatus = 'open' | 'resolved' | 'blocked';
-
-export interface ContentBatchArtifactRef {
-  kind: string;
-  id: string;
-  summary: string;
-  path?: string;
-  targetModule?: string;
-}
-
-export interface ContentBatchGateResult {
-  id: string;
-  stageId: ContentBatchStageId;
-  status: ContentBatchGateStatus;
-  title: string;
-  message: string;
-  recoveryAction?: string;
-  sourceRef?: ContentBatchArtifactRef;
-}
-
-export interface ContentBatchRecoveryTask {
-  id: string;
-  stageId: ContentBatchStageId;
-  status: ContentBatchRecoveryStatus;
-  title: string;
-  message: string;
-  recoveryAction: string;
-  targetModule: string;
-  sourceRef?: ContentBatchArtifactRef;
-  ownerLabel?: string;
-  createdAt: string;
-}
-
-export interface ContentBatchStageRun {
-  id: string;
-  batchId: string;
-  stageId: ContentBatchStageId;
-  status: ContentBatchRunStatus;
-  inputRefs: ContentBatchArtifactRef[];
-  outputRefs: ContentBatchArtifactRef[];
-  gateResults: ContentBatchGateResult[];
-  recoveryTasks: ContentBatchRecoveryTask[];
-  agentRunRefs: ContentBatchArtifactRef[];
-  updatedAt: string;
-}
-
-export interface ContentBatchIntakeSummary {
-  inputSourceCount: number;
-  convertedCount: number;
-  blockedCount: number;
-  coveragePercent: number;
-  maturity?: IntakeMaturitySummary;
-  productPlan?: ProductPlanProjection;
-  manufacturing?: ManufacturingPlanProjection;
-  missingInputs: ContentBatchRecoveryTask[];
-}
-
-export interface ContentBatchRecord {
-  id: string;
-  workspacePath: string;
-  title: string;
-  objective: string;
-  ownerIds: string[];
-  status: ContentBatchStatus;
-  currentStageId: ContentBatchStageId;
-  sourceKnowledgeMapId?: string;
-  sourceKnowledgeMapTitle?: string;
-  intakeSummary: ContentBatchIntakeSummary;
-  stageRuns: ContentBatchStageRun[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface BuildContentBatchInput {
-  workspacePath: string;
-  title?: string;
-  objective?: string;
-  contentKnowledgeMapId?: string;
-}
-
-export interface AdvanceContentBatchStageInput {
-  workspacePath: string;
-  batchId: string;
-  stageId?: ContentBatchStageId;
-}
-
 export interface ExportContentKnowledgePackInput {
   workspacePath: string;
   contentKnowledgeMapId?: string;
@@ -1831,6 +1724,10 @@ export interface GeneratePromptDraftInput {
   sceneCardIds?: string[];
   selectedSkills?: SkillRef[];
   selectedSkillSlugs?: string[];
+  requiredCapabilities?: string[];
+  capabilityHints?: string[];
+  agentTaskKind?: string;
+  agentIntentId?: string;
 }
 
 export interface CreatePromptDraftFromContentInput {
@@ -2048,6 +1945,11 @@ export interface StartAgentPromptSessionInput {
   sceneCardIds?: string[];
   selectedSkills?: SkillRef[];
   selectedSkillSlugs?: string[];
+  requiredCapabilities?: string[];
+  capabilityHints?: string[];
+  agentTaskKind?: string;
+  agentIntentId?: string;
+  permissionMode?: PermissionMode;
   textModel?: string;
 }
 
@@ -3057,6 +2959,9 @@ export interface RunTaskInput {
   workspacePath: string;
   permissionMode: PermissionMode;
   selectedSkillSlugs?: string[];
+  requiredCapabilities?: string[];
+  capabilityHints?: string[];
+  hostOptions?: unknown;
   businessObjectRef?: AppServerBusinessObjectRef;
 }
 
@@ -3219,9 +3124,6 @@ export interface ContentStudioApi {
   createContentKnowledgeRelease(input: CreateContentKnowledgeReleaseInput): Promise<ContentWorkspaceSyncResult>;
   listContentSyncConflicts(workspacePath: string): Promise<ContentSyncConflict[]>;
   resolveContentSyncConflict(input: ResolveContentSyncConflictInput): Promise<ContentSyncConflict | null>;
-  listContentBatches(workspacePath: string): Promise<ContentBatchRecord[]>;
-  buildContentBatch(input: BuildContentBatchInput): Promise<ContentBatchRecord>;
-  advanceContentBatchStage(input: AdvanceContentBatchStageInput): Promise<ContentBatchRecord>;
   exportContentKnowledgePack(input: ExportContentKnowledgePackInput): Promise<ContentKnowledgePackExportResult>;
   readContentKnowledgePackFile(input: ReadContentKnowledgePackFileInput): Promise<ContentKnowledgePackFilePreview>;
   listContentReviewTasks(workspacePath: string): Promise<ContentReviewTask[]>;

@@ -12,6 +12,7 @@ import * as esbuild from 'esbuild';
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_PROMPT = '请生成一段 80 字以内的 Content Studio runtime provider store live 验收草稿。';
 const DEFAULT_TIMEOUT_MS = 120_000;
+const FRESH_WEB_SEARCH_PROMPT_RE = /今天|今日|最新|实时|近期|新闻|资讯|舆情|趋势|联网|搜索|检索|查一下|帮我查|分析.*新闻|新闻.*分析/i;
 
 function parseArgs(argv) {
   const args = {};
@@ -29,6 +30,12 @@ function parseArgs(argv) {
 
 function firstValue(...values) {
   return values.map((value) => String(value || '').trim()).find(Boolean);
+}
+
+function booleanFlag(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'boolean') return value;
+  return !/^(0|false|no|off)$/i.test(String(value).trim());
 }
 
 function parseAppServerArgs(raw) {
@@ -52,6 +59,68 @@ function dataDirFromAppServerArgs(raw) {
     if (item.startsWith('--data-dir=')) return item.slice('--data-dir='.length);
   }
   return undefined;
+}
+
+function shouldRequireWebSearch(prompt, args, env) {
+  if (args['require-web-search'] !== undefined) {
+    return booleanFlag(args['require-web-search']);
+  }
+  if (env.CONTENT_STUDIO_REQUIRE_WEB_SEARCH_LIVE !== undefined) {
+    return booleanFlag(env.CONTENT_STUDIO_REQUIRE_WEB_SEARCH_LIVE);
+  }
+  return FRESH_WEB_SEARCH_PROMPT_RE.test(prompt);
+}
+
+function payloadText(payload, ...keys) {
+  if (typeof payload === 'string') return payload;
+  if (!payload || typeof payload !== 'object') return '';
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  const runtimeEvent = payload.runtimeEvent;
+  if (runtimeEvent && typeof runtimeEvent === 'object') {
+    for (const key of keys) {
+      const value = runtimeEvent[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+  }
+  return '';
+}
+
+function isWebSearchRuntimeEvent(event) {
+  if (!event || typeof event !== 'object') return false;
+  const eventType = String(event.type || '');
+  const toolText = [
+    payloadText(event.payload, 'toolName', 'tool_name', 'name', 'tool'),
+    payloadText(event.payload, 'toolCallId', 'tool_call_id', 'id'),
+    payloadText(event.payload, 'rawArgs', 'query', 'args'),
+    JSON.stringify(event.payload?.runtimeEvent ?? {}),
+  ].join(' ');
+  return (
+    eventType.startsWith('tool.') &&
+    /web[_-]?search|websearch|WebSearch|mcp__.*web_search/i.test(toolText)
+  );
+}
+
+function assertNoSecretLikeFields(value) {
+  const stack = [{ path: '$', value }];
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current) continue;
+    const item = current.value;
+    if (!item || typeof item !== 'object') continue;
+    if (Array.isArray(item)) {
+      item.forEach((entry, index) => stack.push({ path: `${current.path}[${index}]`, value: entry }));
+      continue;
+    }
+    for (const [key, entry] of Object.entries(item)) {
+      if (/^(api[_-]?key|access[_-]?token|refresh[_-]?token|bearer[_-]?token|secret|password|authorization|cookie)$/i.test(key)) {
+        throw new Error(`runtime live check result contains secret-like field: ${current.path}.${key}`);
+      }
+      stack.push({ path: `${current.path}.${key}`, value: entry });
+    }
+  }
 }
 
 function hasRuntimeSidecarSource(env) {
@@ -274,19 +343,40 @@ async function runJsonRpcProbe({ binaryPath, args, requests, timeoutMs }) {
   });
 }
 
-function summarizeResult(result) {
+function terminalFailureMessage(events) {
+  const failed = [...events].reverse().find((event) => (
+    event.type === 'turn.failed' ||
+    event.type === 'tool.failed' ||
+    String(event.type || '').endsWith('.failed')
+  ));
+  if (!failed) return '';
+  const payload = failed.payload;
+  const text = [
+    textFromRuntimePayload(payload),
+    payloadText(payload, 'error', 'reason', 'failureCategory', 'message'),
+  ].find((value) => typeof value === 'string' && value.trim());
+  return text ? `${failed.type}: ${text.trim()}` : failed.type;
+}
+
+function summarizeResult(result, { requireWebSearch }) {
   const artifact = result.artifacts.find((item) => item.content?.trim()) ?? result.evidenceArtifacts.find((item) => item.content?.trim());
   const messageText = finalMessageText(result.events);
   const completed = result.events.find((event) => event.type === 'turn.final_done' || event.type === 'turn.completed');
+  const webSearchEvents = result.events.filter(isWebSearchRuntimeEvent);
+  assertNoSecretLikeFields(result);
+  if (requireWebSearch && !webSearchEvents.length) {
+    throw new Error(`required WebSearch was not observed; events=${result.events.map((event) => event.type).join(',')}`);
+  }
   if (!completed) {
-    throw new Error(`runtime live check did not produce turn.final_done; events=${result.events.map((event) => event.type).join(',')}`);
+    throw new Error([
+      'runtime live check did not produce turn.final_done',
+      `events=${result.events.map((event) => event.type).join(',')}`,
+      `webSearch=${webSearchEvents.length ? 'observed' : 'missing'}`,
+      terminalFailureMessage(result.events),
+    ].filter(Boolean).join(' '));
   }
   if (!artifact && !messageText) {
     throw new Error(`runtime live check did not produce artifact or message content; events=${result.events.map((event) => event.type).join(',')}`);
-  }
-  const serialized = JSON.stringify(result);
-  if (/api[_-]?key|token|secret|password|credential|authorization|cookie/i.test(serialized)) {
-    throw new Error('runtime live check result contains key/token/secret-like fields');
   }
   return {
     sessionId: result.sessionId,
@@ -295,6 +385,9 @@ function summarizeResult(result) {
     artifact: artifact?.title || artifact?.artifactRef || artifact?.artifactId || (messageText ? 'message.final' : 'untitled'),
     evidenceEvents: result.evidenceEvents.length,
     evidenceArtifacts: result.evidenceArtifacts.length,
+    webSearch: requireWebSearch
+      ? 'required-observed'
+      : (webSearchEvents.length ? 'observed' : 'not-required'),
   };
 }
 
@@ -338,6 +431,7 @@ async function main() {
   if (args['data-dir']) process.env.CONTENT_STUDIO_APP_SERVER_DATA_DIR = dataDir;
 
   const prompt = String(args.prompt || process.env.CONTENT_STUDIO_RUNTIME_LIVE_PROMPT || DEFAULT_PROMPT);
+  const requireWebSearch = shouldRequireWebSearch(prompt, args, process.env);
   const timeoutMs = Number(args['timeout-ms'] || process.env.CONTENT_STUDIO_RUNTIME_LIVE_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
   const { AppServerSidecarService, cleanup } = await loadAppServerSidecarService();
   try {
@@ -370,7 +464,7 @@ async function main() {
       },
       timeoutMs,
     });
-    const summary = summarizeResult(result);
+    const summary = summarizeResult(result, { requireWebSearch });
     console.log([
       '[app-server:runtime:live] ok',
       `provider=${providerPreference}`,
@@ -378,6 +472,7 @@ async function main() {
       `session=${summary.sessionId}`,
       `turn=${summary.turnId}`,
       `events=${summary.eventTypes.join(',')}`,
+      `webSearch=${summary.webSearch}`,
       `artifact=${summary.artifact}`,
       `evidenceEvents=${summary.evidenceEvents}`,
       `evidenceArtifacts=${summary.evidenceArtifacts}`,

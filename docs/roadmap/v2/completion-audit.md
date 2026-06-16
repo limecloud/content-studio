@@ -99,15 +99,15 @@ v2 本地总闸：`npm run verify:v2` 会顺序执行生成服务 dry-run 诊断
 | US-06 / UC-10 绿幕文案图 | 把口播脚本或卖点拆成标题卡、卖点卡和 CTA 卡，审核后交给第三方混剪叠加。 | 绿幕文案图已纳入业务验收；脚本 / 卖点 / CTA 可拆成三类本地 9:16 绿幕卡，并自动创建 pending 审核记录，后续可作为 overlay 进入混剪清单。 | 仍需真实口播脚本、真实绿幕图和真实混剪工具导入验收。 |
 | US-07 / UC-11 审核与入库 | 审核人员能从素材看到输入、提示词、参数、质检和下一步。 | 导航新增“合规检测”和“图片精修”，让审核 / 回炉入口可直接找到；素材详情已补“审核决策”面板，按来源、质检结果、建议下一步和处理动作组织；驳回素材必须填写原因，回炉提示词会带入该原因。 | 已接入生成日志和关联 Prompt 草稿中的结构化质检 / 风险证据；仍需真实 provider 素材质量验收。 |
 | US-08 / UC-12 混剪素材包 | 剪辑人员拿到已通过素材文件夹、清单文件、CSV 和导入说明。 | 导航保留“混剪包导出”，成品视频导入和运行追溯成为可发现入口；导出包新增 `import-guide.md`，说明第三方混剪软件导入顺序、`videos/` / `overlays/` 目录、清单 CSV 用法和人工审核边界，并纳入业务验收。 | 仍需真实混剪工具按导入说明试导入一次，补外部验收证据。 |
-| US-09 / US-12 内容工程师运行追溯 | 工程师查看输入、Prompt、生成、审核和交付物关系，普通用户不进旧工作流表单。 | 工作流定义和 Canvas 已退役；当前只保留运行追溯、内容制造批次阶段和生产交接作为事实源。 | 仍需真实团队权限 / 角色策略验收；v2 暂不做复杂权限系统。 |
+| US-09 / US-12 内容工程师运行追溯 | 工程师查看输入、Prompt、生成、审核和交付物关系，普通用户不进旧工作流表单。 | 工作流定义、Canvas 和内容制造批次页面已退役；当前只保留运行追溯、素材库、Prompt 工作台、Agents 和生产交接作为事实源。 | 仍需真实团队权限 / 角色策略验收；v2 暂不做复杂权限系统。 |
 
-补充修正：早期 SOP 执行页曾把“本次使用资料”提升为运行前必选项；当前该页面已退役，但“资料必须显式可见、缺资料必须给恢复路径”的原则继续保留在输入源、Prompt 工作台、内容制造批次和运行追溯中。
+补充修正：早期 SOP 执行页曾把“本次使用资料”提升为运行前必选项；当前该页面已退役，但“资料必须显式可见、缺资料必须给恢复路径”的原则继续保留在知识库、素材库、Prompt 工作台、Agents 和运行追溯中。
 
 本轮前端修正范围：
 
 - `src/renderer/src/app/constants.ts`：补齐现有一级分组下的二级入口，不新增另一套一级导航。
 - `src/renderer/src/components/UserJourneyGuide.tsx`：新增复用任务导轨，服务普通用户“当前在哪、缺什么、下一步去哪”。
-- `InputSourcesModule`、`MaterialBreakdownModule`、`BrandKnowledgeModule`、`IpKnowledgeModule`、`ScenePromptModule`、`VideoPromptModule`、`PromptWorkbenchModule`：接入任务导轨并收敛工程化文案；场景库页支持场景卡字段确认 / 编辑，场景提示词支持单条复制，IP 知识库页支持结构化 IP 运营场景库和已生成延伸提示词回看。
+- 早期 `InputSourcesModule`、`IpKnowledgeModule`、`ScenePromptModule` 等独立页面已退役；当前入口收敛到 `MaterialBreakdownModule`、`BrandKnowledgeModule`、`VideoPromptModule`、`PromptWorkbenchModule`、素材库和 Agents。
 - `VideoPromptModule` / `VideoImportModule`：视频 Prompt 复制后进入“已复制待导入”本地状态，成品视频导入后变为“已导入成品”，导入页可按状态筛选原提示词。
 - `AssetsModule`：素材卡片和详情不再把 SOP / Prompt 作为主判断层，改为“任务可追溯 / 提示词可追溯 / 审核决策 / 建议下一步”，审核人员先做业务判断，再查看追溯信息。
 - `tests/e2e/electron-app.spec.mjs`：导航断言改为普通用户关键二级入口可见，创意视频 / 自定义视频继续作为高级入口隐藏。

@@ -422,6 +422,12 @@ try {
         && !document.body.innerText.includes('Content Studio 文案生成')
         && !document.body.innerText.includes('Content Studio 图片生成')
         && !document.body.innerText.includes('Content Studio 视频生成')
+        && !document.body.innerText.includes('provider 设置由平台统一保存')
+        && !document.body.innerText.includes('打开完整模型设置')
+        && document.body.innerText.includes('启用的模型')
+        && document.body.innerText.includes('添加模型')
+        && document.body.innerText.includes('推荐服务')
+        && document.body.innerText.includes('自定义供应商')
         && (
           document.body.innerText.includes('平台模型设置')
           || document.body.innerText.includes('Agent Runtime')
@@ -432,11 +438,6 @@ try {
           || document.body.innerText.includes('选择或添加模型')
           || document.body.innerText.includes('还没有启用模型')
         )
-        && (
-          document.body.innerText.includes('打开完整模型设置')
-          || document.body.innerText.includes('打开模型设置')
-          || document.body.innerText.includes('检查连接')
-        ),
     });
     checks.push({
       action: 'close settings',

@@ -174,7 +174,7 @@ Route Adapter
 - Content Studio 已通过 `BuguContentWorkspaceSyncAdapter` 同步知识地图快照、同步构建运行摘要、提交变更包、同步审核任务、提交审核结论、追加行动记录、同步素材覆盖并发布团队知识包版本。
 - Bugu `content-knowledge-maps` 是团队版内容知识地图 current 服务端事实源，保存标题、状态、模型、来源 ID、质量摘要、覆盖摘要和可审核矩阵快照；桌面端本地 JSON 只是本机缓存，`content-draft-changes` 只承担变更包和冲突处理，不再承担读取主快照的职责。
 - Bugu `content-build-runs` 是生成流程 current 服务端事实源，保存模型、输入集合、质量问题和步骤摘要；重复提交同一构建运行 ID 保持幂等，不推进 revision。
-- Bugu `content-action-records` 是生产交接行动记录 current 服务端事实源，保存 Prompt 草稿、场景卡、SOP 运行、素材覆盖变更、审核任务引用、补素材交付文件引用和操作者角色；桌面端 `content-batches.json` 是本机内容制造批次缓存，不是团队共享事实源。
+- Bugu `content-action-records` 是生产交接行动记录 current 服务端事实源，保存 Prompt 草稿、场景卡、SOP 运行、素材覆盖变更、审核任务引用、补素材交付文件引用和操作者角色；旧本机内容制造批次缓存已退役，不是团队共享事实源。
 - Bugu `content-review-decisions` 已保存审核调整 payload 和 before / after 快照；Content Studio 会先提交知识地图变更包再提交审核结论，团队成员既能拿到调整后的矩阵，也能追溯调整输入。
 - Bugu `content-action-records` 已保留 Prompt 草稿、场景卡、SOP 运行、素材覆盖变更、审核任务引用、补素材交付文件引用和操作者角色 `actorRole`，团队刷新行动记录时不会丢失下游产物 ID、交付包线索或权限审计字段；追加行动记录时会按认证角色做服务端权限校验。
 - Bugu `content-action-records` 已把交付物引用安全校验前移到服务端：直接写入本机绝对路径、`file://`、临时目录路径或带 `api_key / token / secret / password` 查询参数的 `artifactRefs` 会返回 `400`，不能只依赖桌面端脱敏或验收脚本事后拦截。
@@ -420,7 +420,7 @@ flowchart LR
 - Content Studio `BuguContentWorkspaceSyncAdapter`：发布 release 时发送 zip 包摘要和 base64 内容；请求体不包含本机绝对路径。
 - Content Studio `ContentWorkspaceSyncService`：刷新团队知识包版本时从 Bugu 拉取已同步工作区 release 列表，合并服务端包地址和本机预览路径。
 - Bugu `contentKnowledgeReleaseService`：使用对象存储端口登记发布包对象，release 返回对象 key、下载地址、上传状态和校验摘要。
-- Content Studio `ContentKnowledgeMapModule`：右侧交付栏展示同步冲突、版本差异、人工处理动作和团队知识包可分发状态，普通用户不需要理解 `baseRevision` 等工程字段。
+- 当前交付栏消费层：右侧展示同步冲突、版本差异、人工处理动作和团队知识包可分发状态，普通用户不需要理解 `baseRevision` 等工程字段；旧独立知识地图页面已退役。
 - Content Studio `buildContentSyncConflictMergeDraft` 和 Bugu `content-sync-conflict-merge`：把同步冲突影响内容组装为逐项合并处理清单，桌面端和控制台展示本机提交、团队当前内容、建议处理方式和下一步；Bugu resolve 接口会保存清单、追加行动记录并推进 revision，当前不直接改写业务字段。
 - Bugu `content-knowledge-release-actions`：支持将任一已发布团队知识包设为默认版本，控制台用它完成回滚到旧版本。
 - Content Studio `scripts/verify-content-knowledge-release-online.mjs`：提供只读在线验收入口，只执行 Bugu release 查询和公开包 HEAD / GET 校验；可验证公开地址、大小、sha256，并阻止 metadata-only 版本被当成可分发成功。

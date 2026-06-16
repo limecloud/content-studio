@@ -1134,27 +1134,9 @@
   resize: vertical;
 }
 
-.scene-prompt-workbench > .agent-session-panel {
-  min-height: 0;
-  height: 100%;
-}
 
-.scene-prompt-workbench > .agent-session-panel {
-  border: 0;
-  background: transparent;
-  padding: 0;
-}
 
-.scene-prompt-workbench .agent-session-context,
-.scene-prompt-workbench .agent-session-artifact {
-  border: 0;
-  background: transparent;
-  padding: 0;
-}
 
-.scene-prompt-workbench .agent-execution-timeline {
-  justify-content: flex-start;
-}
 
 .prompt-workbench > .agent-session-panel {
   min-height: 0;

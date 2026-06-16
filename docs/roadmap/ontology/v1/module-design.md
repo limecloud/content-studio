@@ -113,7 +113,6 @@ flowchart TB
 | Review | 审核任务、证据、来源、禁用表达、风险处理、改名 / 合并 / 拆分。 | `ContentReviewTaskApplicationService` | State Machine + Append Decision + Map Mutation | 不替用户自动通过，不把未通过内容交给生产链路，不在 renderer 中直接改矩阵。 |
 | Production Handoff | 提示词依据、生成 Prompt 草稿、创建场景卡、SOP 输入。 | `ContentProductionHandoffService` | Policy + Assembler + Target Adapter | 不绕过审核，不注入完整原文，不直接自动发布平台。 |
 | Team Knowledge Prompt | 团队知识包详情页生成 Prompt 草稿。 | `ContentTeamKnowledgePromptDraftService` | Application Service + Release Scope Gate + Prompt Assembler | 不在 React 中拼业务依据，不允许其他地图的 release 误绑定当前项目，不把包元数据当产品事实。 |
-| Content Batch | 内容制造批次、阶段门禁、恢复任务、运行历史、行动记录。 | `ContentBatchApplicationService` | Stage Pipeline + Gate Result + Recovery Task | 不回流旧作战入口，不做自动发布、刷量、伪装用户或自动发帖。 |
 | Material Feedback | 素材覆盖、表现标签、待确认补充、高表现组合。 | `ContentMaterialFeedbackService` | Feedback Loop + Supplement Policy | 不把素材表现自动当成产品事实证据，不改写已发布主文案。 |
 | Team Sharing | 团队工作区、未同步草稿、变更包、冲突、影响内容、知识包版本。 | `ContentWorkspaceSyncService` | Port / Adapter + Revision Policy | 不把本地 JSON 或共享目录当团队事实源，不做未审核自动合并。 |
 | Knowledge Pack | 团队知识包、Agent Knowledge v0.7.x 导出、发布包 zip。 | `AgentKnowledgeContentExportService` | Export Assembler + Validation | 不导出凭证、本机绝对路径和未审核高风险主张。 |
@@ -156,7 +155,7 @@ UI action
 
 - `ContentKnowledgeMapApplicationService`
 - `ContentReviewTaskApplicationService`
-- `ContentBatchApplicationService`
+- 旧内容制造批次应用服务已退役，不再作为当前模块扩展点。
 
 后续继续按这个命名和职责扩展：
 
@@ -311,7 +310,7 @@ UI 负责选择、展示、筛选和触发动作；矩阵行状态、审核状�
 当前矩阵 View Model：
 
 - `src/shared/contentMatrixPlanning.ts` 负责把矩阵行转换成可展示计划，包含状态 / 素材 / 关键词筛选、优先级 / 可信度 / 证据 / 素材缺口排序、分页、本批摘要和风险计数。
-- `ContentKnowledgeMapModule` 只消费计划结果，负责选择本页条目、显示本批摘要和触发“生成本批审核任务”。
+- 当前矩阵消费层只消费计划结果，负责选择本页条目、显示本批摘要和触发审核任务生成；旧独立知识地图页面已退役。
 - `ContentReviewTaskApplicationService` 通过 `targetRowIds` 生成指定矩阵行审核任务；ready 行可送审，未选行和缺口不会混入本批。
 - UI 文案保持“本批、条目、审核任务、证据、素材、竞品边界、IP 口吻”等业务语言，不暴露内部覆盖矩阵对象名。
 
@@ -378,14 +377,10 @@ src/main/services/contentKnowledgeMapSyncPort.ts
 src/main/services/contentReviewTaskStore.ts
 src/main/services/contentReviewTaskBuilder.ts
 src/main/services/contentReviewTaskApplicationService.ts
-src/main/services/contentBatchStore.ts
-src/main/services/contentBatchApplicationService.ts
 src/main/services/agentKnowledgeContentExportService.ts
 src/main/ipc.ts
 src/preload/index.ts
-src/renderer/src/components/modules/ContentKnowledgeMapModule.tsx
-src/renderer/src/components/modules/ContentReviewTasksModule.tsx
-src/renderer/src/components/modules/ContentBatchPipelineModule.tsx
+旧独立知识地图、审核任务和内容制造批次页面已退役；当前入口收敛到知识库、素材库、Prompt 工作台和 Agents。
 ```
 
 ### 5.2 P5 生产交接模块
@@ -522,9 +517,6 @@ IPC 命名必须是粗粒度业务动作，不暴露本地 JSON 细节：
 | 生成审核任务 | `generateContentReviewTasks(input)`；可传 `targetRowIds` 只生成本批矩阵行审核任务。 | `ContentReviewTask[]` |
 | 提交审核决策 | `submitContentReviewDecision(input)` | `ContentReviewTask` |
 | 生产交接 | `createContentProductionHandoff(input)` | `ContentProductionHandoffResult` |
-| 内容制造批次列表 | `listContentBatches(workspacePath)` | `ContentBatchRecord[]` |
-| 生成内容制造批次 | `buildContentBatch(input)` | `ContentBatchRecord` |
-| 推进批次阶段 | `advanceContentBatchStage(input)` | `ContentBatchRecord` |
 | 导出团队知识包 | `exportContentKnowledgePack(input)` | `ContentKnowledgePackExportResult` |
 
 新增 IPC 必须同步四侧：
@@ -558,7 +550,7 @@ Content Studio 只通过 main 进程同步服务调用 Bugu API。renderer 不�
 - `content-action-records` 是生产交接行动记录 current 服务端事实源，承载 Prompt 草稿、场景卡、SOP 运行、素材覆盖回写、补素材交付包、操作者角色和服务端版本。
 - `content-draft-changes` 是 compat 变更包入口，只用于提交本机变更、冲突检测和离线协作，不再承载团队主快照。
 - 旧 `content-command-centers` 和 `content-execution-queue` 不再是当前客户端事实源；历史语义只允许沉淀为内容制造批次、阶段恢复任务和生产交接行动记录。
-- `.content-studio/content-knowledge-maps.json`、`.content-studio/content-knowledge-map-build-runs.json` 和 `.content-studio/content-batches.json` 是桌面本机缓存和离线草稿，不是团队共享事实源。
+- `.content-studio/content-knowledge-maps.json` 和 `.content-studio/content-knowledge-map-build-runs.json` 是桌面本机缓存和离线草稿，不是团队共享事实源；旧内容制造批次本机缓存已退役。
 
 构建链路：
 

@@ -62,6 +62,36 @@ async function openPlatformSettings(page) {
   await expect(page.locator('.lime-settings-dialog')).toBeVisible();
 }
 
+async function expectPlatformModelCatalogVisible(page) {
+  const modelSettings = page.locator('.lime-model-settings');
+  await expect(modelSettings).toBeVisible();
+  await expect(modelSettings).toContainText('启用的模型');
+  await expect(modelSettings).toContainText('添加模型');
+  await expect(modelSettings).toContainText('Content Studio 文字');
+  await expect(modelSettings).toContainText('Content Studio 图片');
+  await expect(modelSettings).toContainText('Content Studio 视频');
+  await expect(modelSettings).not.toContainText('provider 设置由平台统一保存');
+  await expect(modelSettings).not.toContainText('打开完整模型设置');
+  await page.locator('[data-testid="add-model-button"]').click();
+  await expect(modelSettings).toContainText('推荐服务');
+  await expect(modelSettings).toContainText('自定义供应商');
+}
+
+async function expectModelCatalogTabsSingleRow(page) {
+  const tabMetrics = await page.locator('.lime-model-tabs').evaluate((tabs) => {
+    const tabRect = tabs.getBoundingClientRect();
+    const buttonRects = Array.from(tabs.querySelectorAll('button')).map((button) => button.getBoundingClientRect());
+    return {
+      tabHeight: tabRect.height,
+      buttonCount: buttonRects.length,
+      rowTops: Array.from(new Set(buttonRects.map((rect) => Math.round(rect.top)))),
+    };
+  });
+  expect(tabMetrics.buttonCount).toBe(5);
+  expect(tabMetrics.rowTops).toHaveLength(1);
+  expect(tabMetrics.tabHeight).toBeLessThanOrEqual(48);
+}
+
 async function openAgentsEntry(page) {
   if (await page.locator('.app-shell').getAttribute('data-sidebar') !== 'expanded') {
     await page.getByRole('button', { name: '展开侧边栏' }).first().click();
@@ -158,19 +188,31 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     await openPlatformSettings(page);
     await page.getByRole('button', { name: '模型', exact: true }).click();
     await expect(page.locator('.lime-settings-content h1')).toHaveText('模型');
-    await expect(page.locator('.lime-model-settings')).toBeVisible();
+    await expectPlatformModelCatalogVisible(page);
+    await expectModelCatalogTabsSingleRow(page);
     const providerRows = await page.locator('.lime-model-provider-row').allTextContents();
     expect(providerRows.join('\n')).not.toContain('OpenAI Compatible');
     expect(providerRows.join('\n')).not.toContain('Anthropic Compatible');
     expect(providerRows.join('\n')).not.toContain('Local Runtime');
-    await expect(page.locator('.lime-model-settings')).toContainText('Content Studio 文字');
-    await expect(page.locator('.lime-model-settings')).toContainText('Content Studio 图片');
-    await expect(page.locator('.lime-model-settings')).toContainText('Content Studio 视频');
-    await expect(page.locator('.lime-model-settings')).toContainText('provider 设置由平台统一保存');
-    await page.getByRole('button', { name: '打开完整模型设置' }).click();
-    await expect(page.locator('.app-error-banner')).toHaveCount(0);
-
-    await page.getByRole('button', { name: /Content Studio 图片/ }).click();
+    await page.locator('.lime-model-provider-row').filter({ hasText: 'Content Studio 图片' }).first().click();
+    const imageProviderCard = page.locator('[data-testid="provider-setting"]');
+    await expect(imageProviderCard).toBeVisible();
+    await expect(imageProviderCard.getByRole('button', { name: '删除', exact: true })).toBeVisible();
+    const providerTitleMetrics = await imageProviderCard.locator('.lime-model-card-title h2').evaluate((title) => {
+      const rect = title.getBoundingClientRect();
+      const style = window.getComputedStyle(title);
+      return {
+        fontSize: Number.parseFloat(style.fontSize),
+        titleBottom: rect.bottom,
+        cardBottom: title.closest('[data-testid="provider-setting"]')?.getBoundingClientRect().bottom ?? 0,
+      };
+    });
+    expect(providerTitleMetrics.fontSize).toBeLessThanOrEqual(17);
+    expect(providerTitleMetrics.titleBottom).toBeLessThan(providerTitleMetrics.cardBottom);
+    const baseUrlInput = imageProviderCard.getByLabel('API Base URL');
+    await expect(baseUrlInput).toHaveValue('https://image-provider.example.test/v1');
+    await baseUrlInput.fill('https://image-provider-edit.example.test/v1');
+    await expect(baseUrlInput).toHaveValue('https://image-provider-edit.example.test/v1');
     await page.getByLabel('API 密钥').fill('new-product-app-key');
     await page.locator('.lime-model-add-priority input').fill('new-product-app-model');
     await page.locator('.lime-model-add-priority button').click();
@@ -181,6 +223,11 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     expect(persisted.imageModels[0]).toBe('saved-image-model');
     expect(persisted.imageModels).not.toContain('new-product-app-model');
     expect(persisted.hasImageApiKey).toBe(true);
+
+    await page.locator('[data-testid="add-model-button"]').click();
+    await page.locator('[data-testid="custom-provider-template-card"], .lime-model-catalog-card.muted').click();
+    await expect(page.locator('[data-testid="provider-setting-custom"]')).toBeVisible();
+    await expect(page.locator('.app-error-banner')).toHaveCount(0);
 
     await page.getByRole('button', { name: '账号', exact: true }).click();
     await expect(page.locator('.lime-settings-content h1')).toHaveText('账号');

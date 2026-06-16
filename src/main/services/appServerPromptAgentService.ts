@@ -9,6 +9,7 @@ import type {
   ModelConfigView,
   PromptDraftPurpose,
 } from '../../shared/types';
+import { buildAgentRuntimeHostOptions } from './agentRuntimeToolPolicy';
 import type { TextProviderRuntimeEvent } from '../providers/textGenerationProvider';
 import {
   AppServerSidecarService,
@@ -982,6 +983,7 @@ export interface GenerateAgentPromptDraftInput extends GeneratePromptDraftInput 
   selectedSources: InputSourceRecord[];
   skillContext: SkillRuntimeContext;
   textModel?: string;
+  permissionMode?: 'safe' | 'ask' | 'allow-all';
   onProviderEvent?: (event: TextProviderRuntimeEvent) => void | Promise<void>;
 }
 
@@ -1005,6 +1007,11 @@ export interface GenerateAgentPromptRefinementInput {
   messages: AgentPromptMessage[];
   skillContext: SkillRuntimeContext;
   textModel?: string;
+  requiredCapabilities?: string[];
+  capabilityHints?: string[];
+  agentTaskKind?: string;
+  agentIntentId?: string;
+  permissionMode?: 'safe' | 'ask' | 'allow-all';
   onProviderEvent?: (event: TextProviderRuntimeEvent) => void | Promise<void>;
 }
 
@@ -1026,6 +1033,11 @@ export interface ContinueAgentConversationInput {
   messages: AgentPromptMessage[];
   skillContext: SkillRuntimeContext;
   textModel?: string;
+  requiredCapabilities?: string[];
+  capabilityHints?: string[];
+  agentTaskKind?: string;
+  agentIntentId?: string;
+  permissionMode?: 'safe' | 'ask' | 'allow-all';
   onProviderEvent?: (event: TextProviderRuntimeEvent) => void | Promise<void>;
 }
 
@@ -1091,11 +1103,15 @@ export class AppServerPromptAgentService {
     const result = await this.runPromptTurn({
       workspacePath: input.workspacePath,
       prompt,
-      permissionMode: 'ask',
+      permissionMode: input.permissionMode ?? 'ask',
       selectedSkillSlugs: selectedSkillSlugs(input),
+      requiredCapabilities: input.requiredCapabilities,
+      capabilityHints: input.capabilityHints,
       metadata: {
         purpose: input.purpose,
         workflowRunId: input.workflowRunId,
+        agentTaskKind: input.agentTaskKind,
+        agentIntentId: input.agentIntentId,
         textModel: backendConfig.model,
         textProtocol: backendConfig.protocol,
         providerPreference: backendConfig.providerPreference,
@@ -1107,6 +1123,21 @@ export class AppServerPromptAgentService {
       providerPreference: backendConfig.providerPreference,
       modelPreference: backendConfig.modelPreference,
       platformManaged: backendConfig.platformManaged,
+      hostOptions: buildAgentRuntimeHostOptions({
+        prompt,
+        workspacePath: input.workspacePath,
+        providerPreference: backendConfig.providerPreference,
+        modelPreference: backendConfig.modelPreference,
+        requiredCapabilities: input.requiredCapabilities,
+        capabilityHints: input.capabilityHints,
+        metadata: {
+          purpose: input.purpose,
+          agentTaskKind: input.agentTaskKind,
+          agentIntentId: input.agentIntentId,
+          agentSurface: 'agents',
+          operation: 'draft',
+        },
+      }),
       onRuntimeEvent: input.onProviderEvent
         ? (event) => input.onProviderEvent?.(providerEventFromRuntimeEvent(event, backendConfig.model))
         : undefined,
@@ -1159,10 +1190,14 @@ export class AppServerPromptAgentService {
     const result = await this.runPromptTurn({
       workspacePath: input.workspacePath,
       prompt,
-      permissionMode: 'ask',
+      permissionMode: input.permissionMode ?? 'ask',
       selectedSkillSlugs: input.skillContext.skillRefs.map((skill) => skill.slug),
+      requiredCapabilities: input.requiredCapabilities,
+      capabilityHints: input.capabilityHints,
       metadata: {
         purpose: input.purpose,
+        agentTaskKind: input.agentTaskKind,
+        agentIntentId: input.agentIntentId,
         textModel: backendConfig.model,
         textProtocol: backendConfig.protocol,
         providerPreference: backendConfig.providerPreference,
@@ -1226,10 +1261,14 @@ export class AppServerPromptAgentService {
     const result = await this.runPromptTurn({
       workspacePath: input.workspacePath,
       prompt,
-      permissionMode: 'ask',
+      permissionMode: input.permissionMode ?? 'ask',
       selectedSkillSlugs: input.skillContext.skillRefs.map((skill) => skill.slug),
+      requiredCapabilities: input.requiredCapabilities,
+      capabilityHints: input.capabilityHints,
       metadata: {
         purpose: input.purpose,
+        agentTaskKind: input.agentTaskKind,
+        agentIntentId: input.agentIntentId,
         textModel: backendConfig.model,
         textProtocol: backendConfig.protocol,
         providerPreference: backendConfig.providerPreference,
@@ -1332,10 +1371,13 @@ export class AppServerPromptAgentService {
     prompt: string;
     permissionMode?: 'safe' | 'ask' | 'allow-all';
     selectedSkillSlugs?: string[];
+    requiredCapabilities?: string[];
+    capabilityHints?: string[];
     metadata?: Record<string, unknown>;
     capabilityId?: string;
     providerPreference?: string;
     modelPreference?: string;
+    hostOptions?: unknown;
     platformManaged?: boolean;
     businessObjectRef?: AppServerBusinessObjectRef;
     timeoutMs?: number;
@@ -1355,6 +1397,17 @@ export class AppServerPromptAgentService {
         modelPreference: input.modelPreference,
         providerPreference: input.providerPreference,
         permissionMode: input.permissionMode,
+        requiredCapabilities: input.requiredCapabilities,
+        capabilityHints: input.capabilityHints,
+        hostOptions: input.hostOptions ?? buildAgentRuntimeHostOptions({
+          prompt: input.prompt,
+          workspacePath: input.workspacePath,
+          providerPreference: input.providerPreference,
+          modelPreference: input.modelPreference,
+          metadata: input.metadata,
+          requiredCapabilities: input.requiredCapabilities,
+          capabilityHints: input.capabilityHints,
+        }),
         metadata: {
           ...input.metadata,
           agentSurface: input.metadata?.agentSurface ?? 'agents',

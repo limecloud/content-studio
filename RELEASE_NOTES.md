@@ -1,5 +1,26 @@
 # Release Notes
 
+## v0.24.0 - 2026-06-16
+
+### Platform Host WebSearch 主链修复
+
+- Content Studio 平台宿主 runtime live check 默认覆盖实时新闻类请求，并断言 WebSearch 工具事件实际出现，避免只看最终文本导致假通过。
+- Agents 通过 Lime App Server runtime 发起 required WebSearch 时，App Server turn context 会携带 WebSearch 权限标记，工具权限不再因缺少 turn metadata 被阻断。
+- Platform Host adapter 保留并清洗 Product App 传入的 `runtimeOptions.hostOptions`，确保 `asterChatRequest.search_mode=required` 能传入 App Server，同时阻断 API Key、token、secret 等敏感字段回流。
+
+### Desktop Platform npm 包发布
+
+- 发布并接入 `@limecloud/desktop-platform-contracts@0.2.2`，补齐 runtime hostOptions 公开契约。
+- 发布并接入 `@limecloud/desktop-platform-electron-adapter@0.2.6`，生产构建不再依赖本地 diagnostic override。
+- Content Studio 依赖锁定到新的 Desktop Platform adapter 版本，平台宿主下的实时新闻用例可通过正式 npm 包复现。
+
+### 验证
+
+- `npm run verify:local`
+- `npm run app-server:runtime:live -- --data-dir "<provider-store-data-dir>" --provider "<providerId>" --model "gemini-2.5-flash" --prompt "整理一下今天的国际新闻"`
+- `node scripts/run-functional-tests.mjs --test-name-pattern "今天的国际新闻"`
+- `node scripts/run-functional-tests.mjs --test-name-pattern "平台宿主下 Prompt Agent 会为实时新闻类请求强制打开 WebSearch"`
+
 ## v0.23.0 - 2026-06-14
 
 ### Lime Agent Runtime 标准包发布

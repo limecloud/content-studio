@@ -707,7 +707,7 @@ export function PromptWorkbenchModule({
         >
           仅生成草稿
         </button>
-        <button className="ghost small" onClick={() => onSelectModule('knowledge-inputs')}>补输入源</button>
+        <button className="ghost small" onClick={() => onSelectModule('knowledge')}>补知识来源</button>
         {downstreamAction && !downstreamAction.disabled ? (
           <button className="ghost small" onClick={downstreamAction.onClick}>
             {downstreamAction.label}
@@ -893,7 +893,7 @@ export function PromptWorkbenchModule({
               </label>
             ))}
             {inputSources.length === 0 ? (
-              <div className="empty-state">还没有输入源。先到“输入源 / 文档转换”登记用户意图、产品资料或参考素材。</div>
+              <div className="empty-state">还没有输入源。先在成型知识库选择来源，或在当前任务中粘贴产品资料和参考素材。</div>
             ) : null}
             {activeDraftTraceSources.length ? (
               <div className="inline-warning subtle">
@@ -916,7 +916,7 @@ export function PromptWorkbenchModule({
             >
               仅生成草稿
             </button>
-            <button className="ghost small" onClick={() => onSelectModule('knowledge-inputs')}>补输入源</button>
+            <button className="ghost small" onClick={() => onSelectModule('knowledge')}>补知识来源</button>
           </ActionGroup>
           </aside>
 

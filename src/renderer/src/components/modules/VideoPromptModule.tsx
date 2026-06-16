@@ -524,11 +524,11 @@ export function VideoPromptModule({
             开始打磨
           </button>
         )}
-        <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('knowledge-scenes')}>
-          场景库
+        <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('knowledge')}>
+          成型知识库
         </button>
-        <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('knowledge-inputs')}>
-          补输入源
+        <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('knowledge')}>
+          补知识来源
         </button>
         <button className="ghost small" disabled={!canGenerate} onClick={generateVideoPrompt}>
           生成视频 Prompt 组

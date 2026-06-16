@@ -38,7 +38,7 @@ flowchart TD
   Handoff --> Prompt["PromptDraftStore"]
   Handoff --> SOP["WorkflowEngine"]
 
-  MapStore --> Batch["ContentBatchApplicationService"]
+  MapStore --> Handoff["ContentProductionHandoffService"]
   Batch --> Action["内容制造批次 / 行动记录"]
   Action --> Feedback["ContentMaterialFeedbackService"]
   Feedback --> MapStore
@@ -64,7 +64,7 @@ flowchart TD
 | `PromptDraftStore` | 接收提示词依据，生成可追溯 PromptDraft。 | 不直接拼接完整原始文档。 |
 | `WorkflowEngine` | 接收 ready 矩阵组合和提示词依据作为 SOP 输入。 | 不绕过发布检查执行动作。 |
 | `AssetReviewStore` | 构建时提供素材审核证据；生产后回写素材覆盖、审核结论和表现标签。 | 不把素材表现自动当成产品事实，不向模型或团队包写入本机素材路径。 |
-| `ContentBatchApplicationService` | 将选品、意图、建模、卖点、矩阵、制造、审核、调优和复盘阶段产品化。 | 不回流旧作战入口，不做自动发布、刷量、虚假互动或伪装用户。 |
+| `ContentProductionHandoffService` | 将已审核内容交接到 Prompt 草稿、场景卡和行动记录。 | 不回流旧批次入口，不做自动发布、刷量、虚假互动或伪装用户。 |
 | Agent Knowledge 导出 | 发布审核后的内容知识包和可选 answer-ready 层。 | 不把知识包变成可执行 Skill 或排名操控指令。 |
 
 ## 4. 构建时序
@@ -333,9 +333,7 @@ v1 IPC 应保持粗粒度业务接口，避免 renderer 直接操作内部文件
 - `contentReviewTasks:generate`
 - `contentReviewTasks:submitDecision`
 - `contentProductionHandoff:create`
-- `contentBatches:list`
-- `contentBatches:build`
-- `contentBatches:advanceStage`
+- 旧内容制造批次 IPC 运行时已退役，不再作为 current IPC。
 - `contentKnowledgePack:export`
 - `contentWorkspaceSync:pull`
 - `contentWorkspaceSync:submitDraftChange`

@@ -18,8 +18,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createEmbeddedElectronPlatformHost } from '@limecloud/desktop-platform-electron-adapter';
 import type { EmbeddedElectronPlatformHost } from '@limecloud/desktop-platform-electron-adapter';
-import { buildAgentRuntimeToolPolicy } from './agentRuntimeToolPolicy';
+import { buildAgentTurnStartPayload } from '@limecloud/agent-workbench-adapter';
 import { getResourcesRoot } from './paths';
+import { buildAgentRuntimeHostOptions } from './agentRuntimeToolPolicy';
 
 interface BridgeResponse<T> {
   ok: boolean;
@@ -370,34 +371,47 @@ export class PlatformHostBridgeClient {
     providerPreference?: string;
     metadata?: Record<string, unknown>;
     selectedSkillSlugs?: string[];
+    requiredCapabilities?: string[];
+    capabilityHints?: string[];
+    tools?: string[];
+    hostOptions?: unknown;
     businessObjectRef?: unknown;
   }): Promise<PlatformAgentRuntimeResult> {
+    const payload = buildAgentTurnStartPayload({
+      agentAppId: 'content-studio',
+      workspacePath: input.workspacePath,
+      prompt: input.prompt,
+      capabilityId: input.capabilityId ?? 'content.draft.generate',
+      workflowId: input.workflowId,
+      modelId: input.modelId,
+      modelPreference: input.modelPreference ?? input.modelId,
+      permissionMode: input.permissionMode ?? 'ask',
+      providerPreference: input.providerPreference,
+      selectedSkillSlugs: input.selectedSkillSlugs ?? [],
+      requiredCapabilities: input.requiredCapabilities,
+      capabilityHints: input.capabilityHints,
+      metadata: input.metadata,
+      businessObjectRef: input.businessObjectRef,
+    });
+    const hostOptions = input.hostOptions ?? buildAgentRuntimeHostOptions({
+      prompt: input.prompt,
+      workspacePath: input.workspacePath,
+      providerPreference: input.providerPreference,
+      modelPreference: input.modelPreference ?? input.modelId,
+      metadata: input.metadata,
+      requiredCapabilities: input.requiredCapabilities,
+      capabilityHints: input.capabilityHints,
+      tools: input.tools,
+    });
     const result = await this.invokeCapability({
       capability: 'lime.agent',
       operation: 'agentSession/turn/start',
       input: {
-        agentAppId: 'content-studio',
-        taskId: input.workflowId,
-        prompt: input.prompt,
+        ...payload,
         runtimeOptions: {
-          capabilityId: input.capabilityId ?? 'content.draft.generate',
-          workflowId: input.workflowId,
-          modelId: input.modelId,
-          modelPreference: input.modelPreference ?? input.modelId,
-          permissionMode: input.permissionMode ?? 'ask',
-          providerPreference: input.providerPreference,
+          ...payload.runtimeOptions,
+          hostOptions,
         },
-        modelPolicy: {
-          preferredModelId: input.modelId,
-          capability: 'agent',
-        },
-        toolPolicy: buildAgentRuntimeToolPolicy(input),
-        metadata: {
-          workspacePath: input.workspacePath,
-          selectedSkillSlugs: input.selectedSkillSlugs ?? [],
-          ...(input.metadata ?? {}),
-        },
-        businessObjectRef: input.businessObjectRef,
       },
     });
     if (!result.ok) {
