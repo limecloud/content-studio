@@ -442,9 +442,11 @@ function platformModelConfigView(
   );
   const imageModels = platformProviderModels(readyImageProvider);
   const videoModels = platformProviderModels(readyVideoProvider);
+  const viewImageModels = imageModels.length ? imageModels : fallback.imageModels;
+  const viewVideoModels = videoModels.length ? videoModels : fallback.videoModels;
   const textModel = platformDefaultModel(settings.defaultTextModelId, readyTextProviderModels.length ? readyTextProviderModels : textModels);
-  const imageModel = platformDefaultModel(settings.defaultImageModelId, imageModels);
-  const videoModel = platformDefaultModel(settings.defaultVideoModelId, videoModels);
+  const imageModel = platformDefaultModel(settings.defaultImageModelId, viewImageModels) || fallback.imageOuterModel;
+  const videoModel = platformDefaultModel(settings.defaultVideoModelId, viewVideoModels) || fallback.videoModel;
   const selectedTextProvider = readyTextProvider ?? textProvider;
   const selectedImageProvider = readyImageProvider ?? imageProvider;
   const selectedVideoProvider = readyVideoProvider ?? videoProvider;
@@ -487,7 +489,7 @@ function platformModelConfigView(
     imageApiKeyStatus: imageProvider
       ? configuredStatus(imageProvider.apiKeyConfigured, imageProvider.authType)
       : 'missing',
-    imageModels,
+    imageModels: viewImageModels,
     videoProvider: selectedVideoProvider ? 'generic-http' : 'disabled',
     videoApiEndpoint: selectedVideoProvider?.baseUrl ?? '',
     hasVideoApiKey: platformProviderConfigured(videoProvider),
@@ -495,7 +497,7 @@ function platformModelConfigView(
       ? configuredStatus(videoProvider.apiKeyConfigured, videoProvider.authType)
       : 'missing',
     videoModel,
-    videoModels,
+    videoModels: viewVideoModels,
     updatedAt: settings.updatedAt,
   };
 }

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { access, mkdir, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +27,8 @@ async function resolveFirstExistingPath(paths) {
 
 const desktopPlatformDir = await resolveFirstExistingPath(desktopPlatformCandidates);
 const limePackagesDir = resolve(projectRoot, '../../aiclientproxy/lime/packages');
+const localAgentCapabilityCatalogDist = join(limePackagesDir, 'agent-capability-catalog/dist/index.js');
+const localAgentWorkbenchAdapterDist = join(limePackagesDir, 'agent-workbench-adapter/dist/index.js');
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
@@ -55,12 +58,16 @@ if (process.env.CONTENT_STUDIO_FUNCTIONAL_TEST_BUNDLE === '1') {
       build.onResolve({ filter: /^@limecloud\/desktop-platform-electron-adapter$/ }, () => ({
         path: join(desktopPlatformDir, 'packages/electron-adapter/dist/packages/electron-adapter/src/index.js'),
       }));
-      build.onResolve({ filter: /^@limecloud\/agent-capability-catalog$/ }, () => ({
-        path: join(limePackagesDir, 'agent-capability-catalog/dist/index.js'),
-      }));
-      build.onResolve({ filter: /^@limecloud\/agent-workbench-adapter$/ }, () => ({
-        path: join(limePackagesDir, 'agent-workbench-adapter/dist/index.js'),
-      }));
+      if (existsSync(localAgentCapabilityCatalogDist)) {
+        build.onResolve({ filter: /^@limecloud\/agent-capability-catalog$/ }, () => ({
+          path: localAgentCapabilityCatalogDist,
+        }));
+      }
+      if (existsSync(localAgentWorkbenchAdapterDist)) {
+        build.onResolve({ filter: /^@limecloud\/agent-workbench-adapter$/ }, () => ({
+          path: localAgentWorkbenchAdapterDist,
+        }));
+      }
       build.onResolve({ filter: /^electron$/ }, () => ({ path: 'electron-test-shim', namespace: 'content-studio-test' }));
       build.onLoad({ filter: /.*/, namespace: 'content-studio-test' }, () => ({
         loader: 'js',

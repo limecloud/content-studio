@@ -14,6 +14,12 @@
 - 发布并接入 `@limecloud/desktop-platform-electron-adapter@0.2.6`，生产构建不再依赖本地 diagnostic override。
 - Content Studio 依赖锁定到新的 Desktop Platform adapter 版本，平台宿主下的实时新闻用例可通过正式 npm 包复现。
 
+### 发版回归修复
+
+- Functional test bundler 在 CI 没有本地 Lime agent package `dist/` 时回退 npm 包，避免 release workflow 因本地 alias 缺失失败。
+- Agents blocked 会话会净化联网搜索预调用失败、内部 Prompt 回显和未返回交付物错误，不再把 system / skill / 输入源上下文展示到对话正文或运行错误事实中。
+- 平台模型设置页在平台图片 Provider 暂无可用模型列表时保留 Product App 本地图片模型快照，避免只读公共 Provider 设置页丢失已保存图片模型显示。
+
 ### 验证
 
 - `npm run verify:local`

@@ -3893,7 +3893,8 @@ test('agents 会阻断 Lime 回显内部 Prompt 片段且不展示内部事实',
 
       await expect(page.locator('.agents-workbench')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.agents-entry')).toHaveCount(0);
-      await expect(page.locator('.agents-thread')).toContainText(/AI Agent 对话未启动|未返回可交付 Prompt|交付物线索/, { timeout: 20_000 });
+      await expect(page.locator('.agents-thread')).toContainText(/AI Agent 运行被阻断|未返回可展示交付物|未产生可展示回复|交付物线索/, { timeout: 20_000 });
+      await expect(page.locator('.agents-thread')).not.toContainText('AI Agent 对话未启动');
       const runtimePanel = page.locator('.agents-runtime-inline');
       await expect(runtimePanel).toBeVisible({ timeout: 20_000 });
 
@@ -3913,7 +3914,8 @@ test('agents 会阻断 Lime 回显内部 Prompt 片段且不展示内部事实',
       expect(trace.found, JSON.stringify(trace)).toBe(true);
       expect(trace.status, JSON.stringify(trace)).toBe('blocked');
       expect(trace.model, JSON.stringify(trace)).toBe('blocked:lime-agent-server');
-      expect(trace.content, JSON.stringify(trace)).toContain('AI Agent 对话未启动');
+      expect(trace.content, JSON.stringify(trace)).toMatch(/AI Agent 已连接平台|运行被安全校验阻断|未返回可展示交付物/);
+      expect(trace.content, JSON.stringify(trace)).not.toContain('AI Agent 对话未启动');
       expect(trace.content, JSON.stringify(trace)).not.toContain('本地输入源：');
       expect(trace.content, JSON.stringify(trace)).not.toContain('输出要求：');
     }, {

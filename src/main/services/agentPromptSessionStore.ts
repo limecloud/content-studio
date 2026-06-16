@@ -118,8 +118,34 @@ interface LimeAgentServerFailure {
   reason: string;
 }
 
+const SAFE_RUNTIME_CONTEXT_BLOCKED_REASON = '协作生成服务返回了内部上下文或工具预调用失败，未产生可展示回复。请调整问题后重试，或检查平台 Web Search / 模型权限。';
+const SAFE_WEB_SEARCH_BLOCKED_REASON = '联网搜索工具调用失败，AI Agent 未产生可展示回复。请检查平台 Web Search 工具权限后重试。';
+const SAFE_ARTIFACT_BLOCKED_REASON = '协作生成服务未返回可展示交付物，AI Agent 已阻断本轮结果。请调整问题后重试。';
+
+const INTERNAL_AGENT_CONTEXT_MARKERS = [
+  '内容工厂的 AI Agent',
+  '内容工厂的 Prompt 生成 Agent',
+  'Prompt 多轮调整 Agent',
+  '你负责先判断用户本轮输入',
+  '本轮 skills',
+  '本轮 skill 执行规范',
+  '输入源快照：',
+  '本地输入源：',
+  '团队知识包：',
+  '会话记录：',
+  '当前 Prompt 草稿：',
+  '下游用途：',
+  '用户意图：',
+  '首轮用户意图：',
+  '本轮用户补充：',
+  '本轮用户调整要求：',
+  '输出要求：',
+];
+
 function limeAgentServerErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  const blockedReason = safeRuntimeBlockedReason(message);
+  if (blockedReason) return blockedReason;
   if (
     /lime-desktop-platform|runtime bridge|provider store|sidecar/i.test(message) &&
     !isModelInvocationFailureMessage(message) &&
@@ -139,7 +165,7 @@ function limeAgentServerErrorMessage(error: unknown): string {
     .replace(/sidecar/gi, '本地服务')
     .replace(/Prompt artifact/gi, '可交付 Prompt')
     .replace(/artifact/gi, '交付物');
-  return sanitized;
+  return safeRuntimeBlockedReason(sanitized) ?? sanitized;
 }
 
 function isModelInvocationFailureMessage(message: string): boolean {
@@ -150,10 +176,31 @@ function isModelSetupFailureMessage(message: string): boolean {
   return /平台文字模型未配置|未配置或未授权|Provider Key|可用凭据|显式模型 ID/i.test(message);
 }
 
+function hasInternalAgentContext(message: string): boolean {
+  return INTERNAL_AGENT_CONTEXT_MARKERS.some((marker) => message.includes(marker)) ||
+    /\b(system|developer)\s*:/i.test(message);
+}
+
+function safeRuntimeBlockedReason(message: string): string | undefined {
+  if (hasInternalAgentContext(message)) return SAFE_RUNTIME_CONTEXT_BLOCKED_REASON;
+  if (/联网搜索预调用失败|required WebSearch|WebSearch|web[_\s-]?search/i.test(message)) {
+    return SAFE_WEB_SEARCH_BLOCKED_REASON;
+  }
+  if (/请求上下文回显|未返回可交付 Prompt|未返回可展示交付物|未产生可展示回复/i.test(message)) {
+    return SAFE_ARTIFACT_BLOCKED_REASON;
+  }
+  return undefined;
+}
+
+function isRuntimeBlockedFailureMessage(message: string): boolean {
+  return message === SAFE_RUNTIME_CONTEXT_BLOCKED_REASON ||
+    message === SAFE_WEB_SEARCH_BLOCKED_REASON ||
+    message === SAFE_ARTIFACT_BLOCKED_REASON ||
+    /工具调用失败|工具预调用失败|联网搜索工具调用失败|运行被阻断|安全校验阻断|未返回完整会话事实|未返回运行事件|未返回可展示交付物|未产生可展示回复/i.test(message);
+}
+
 function limeAgentServerFailure(errorOrReason: unknown): LimeAgentServerFailure {
-  const reason = typeof errorOrReason === 'string'
-    ? errorOrReason
-    : limeAgentServerErrorMessage(errorOrReason);
+  const reason = limeAgentServerErrorMessage(errorOrReason);
   if (isModelSetupFailureMessage(reason)) {
     return {
       title: 'AI Agent 模型未配置或未授权',
@@ -175,6 +222,21 @@ function limeAgentServerFailure(errorOrReason: unknown): LimeAgentServerFailure 
         '当前不会生成本地 Prompt 草稿、工具记录或证据链；请在平台模型设置中切换可用模型或重新授权后重试。',
       ].join('\n'),
       recoveryHint: '请在平台模型设置中切换可用模型或重新授权后重试。',
+      reason,
+    };
+  }
+  if (isRuntimeBlockedFailureMessage(reason)) {
+    const isToolFailure = /工具|Web Search|联网搜索/i.test(reason);
+    return {
+      title: isToolFailure ? 'AI Agent 工具调用失败' : 'AI Agent 运行被阻断',
+      summary: [
+        isToolFailure
+          ? 'AI Agent 已连接平台，但本轮工具调用失败，未产生可展示回复。'
+          : 'AI Agent 已连接平台，但本轮运行被安全校验阻断，未产生可展示回复。',
+        reason,
+        '当前不会生成本地 Prompt 草稿、工具记录或证据链；请检查平台工具权限、模型设置或调整问题后重试。',
+      ].join('\n'),
+      recoveryHint: '请检查平台工具权限、模型设置或调整问题后重试。',
       reason,
     };
   }
@@ -1108,7 +1170,7 @@ export class AgentPromptSessionStore {
     } catch (error) {
       const failure = limeAgentServerFailure(error);
       const updatedSession = appendBlockedSessionNote(session, adjustment, failure);
-      await this.upsertSession(input.workspacePath, updatedSession);
+      await this.upsertSession(input.workspacePath, updatedSession, updatedSession.id, { replaceExecutionEvents: true });
       this.publish(updatedSession, 'blocked');
       return { session: updatedSession };
     }
@@ -1226,7 +1288,7 @@ export class AgentPromptSessionStore {
     } catch (error) {
       const failure = limeAgentServerFailure(error);
       const updatedSession = appendBlockedSessionNote(input.session, input.adjustment, failure);
-      await this.upsertSession(input.workspacePath, updatedSession);
+      await this.upsertSession(input.workspacePath, updatedSession, updatedSession.id, { replaceExecutionEvents: true });
       this.publish(updatedSession, 'blocked');
       return { session: updatedSession };
     }
@@ -1605,10 +1667,11 @@ export class AgentPromptSessionStore {
     workspacePath: string,
     session: AgentPromptSession,
     replaceSessionId = session.id,
+    options: { replaceExecutionEvents?: boolean } = {},
   ): Promise<AgentPromptSession> {
     const existing = await this.list(workspacePath);
     const current = existing.find((item) => item.id === replaceSessionId || item.id === session.id);
-    const nextSession = mergeSessionForUpsert(current, session);
+    const nextSession = mergeSessionForUpsert(current, session, options);
     const next = [
       nextSession,
       ...existing.filter((item) => item.id !== replaceSessionId && item.id !== session.id),
@@ -1654,8 +1717,10 @@ function mergeExecutionEvents(
 function mergeSessionForUpsert(
   existing: AgentPromptSession | undefined,
   incoming: AgentPromptSession,
+  options: { replaceExecutionEvents?: boolean } = {},
 ): AgentPromptSession {
   if (!existing || existing.id !== incoming.id) return incoming;
+  if (options.replaceExecutionEvents) return incoming;
   if (shouldPreserveExistingResolvedSession(existing, incoming)) {
     return {
       ...existing,

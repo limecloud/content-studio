@@ -9213,6 +9213,77 @@ test('平台宿主下普通模型保存不会从 Product App 传递模型访问�
   }
 });
 
+test('平台宿主模型视图保留 Product App 本地图片模型快照且不写入平台', async () => {
+  const shimUserDataDir = join(tmpdir(), 'content-studio-functional-user-data');
+  try {
+    await rm(shimUserDataDir, { recursive: true, force: true });
+    await mkdir(shimUserDataDir, { recursive: true });
+    const requests = [];
+    await writeFile(join(shimUserDataDir, 'model-config.json'), JSON.stringify({
+      imageOuterModel: 'saved-image-model',
+      imageModels: ['saved-image-model', 'saved-image-backup'],
+      updatedAt: new Date().toISOString(),
+    }, null, 2), 'utf8');
+    await withPlatformRuntimeBridge(async ({ url, body }) => {
+      assert.equal(url, '/capability/invoke');
+      requests.push(body);
+      if (body.capability === 'lime.modelSettings' && body.operation === 'model-settings/read') {
+        return {
+          ok: true,
+          requestId: 'read-model-settings',
+          output: {
+            version: 'readonly-platform-models',
+            updatedAt: '2026-06-16T00:00:00.000Z',
+            defaultAgentProviderId: 'platform-openai',
+            defaultTextModelId: 'platform-text-model',
+            providers: [
+              {
+                id: 'platform-openai',
+                displayName: 'Platform OpenAI',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['text'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                baseUrl: 'https://api.openai.example/v1',
+                models: ['platform-text-model'],
+              },
+              {
+                id: 'platform-image',
+                displayName: 'Platform Image',
+                protocol: 'openai-compatible',
+                capabilityKinds: ['image'],
+                enabled: true,
+                apiKeyConfigured: true,
+                authType: 'api-key',
+                baseUrl: 'https://image-provider.example.test/v1',
+                models: [],
+              },
+            ],
+          },
+          event: {},
+        };
+      }
+      if (body.capability === 'lime.modelSettings' && body.operation === 'model-settings/save') {
+        throw new Error('Product App 不应把图片模型保存回平台设置。');
+      }
+      throw new Error(`unexpected capability ${body.capability}:${body.operation}`);
+    }, async () => {
+      const store = new ModelConfigStore(new PlatformHostBridgeClient());
+      const view = await store.readView();
+
+      assert.equal(view.platformManaged, true);
+      assert.equal(view.source, 'lime-desktop-platform');
+      assert.deepEqual(view.imageModels, ['saved-image-model', 'saved-image-backup']);
+      assert.equal(view.imageOuterModel, 'saved-image-model');
+      assert.equal(view.hasImageApiKey, true);
+      assert.equal(requests.some((request) => request.capability === 'lime.modelSettings' && request.operation === 'model-settings/save'), false);
+    });
+  } finally {
+    await rm(shimUserDataDir, { recursive: true, force: true });
+  }
+});
+
 test('直接启动 Content Studio 时通过 runtime bridge discovery 读取平台 Provider 设置', async () => {
   const shimUserDataDir = join(tmpdir(), 'content-studio-functional-user-data');
   try {
@@ -11783,6 +11854,48 @@ test('平台 Agent 模型不可用时不误报 AI Agent 对话未启动', async 
     assert.equal(runtimeError?.title, 'AI Agent 模型调用失败');
     assert.match(runtimeError?.detail ?? '', /Model not available/);
     assert.match(String(runtimeError?.payload?.recoveryHint ?? ''), /平台模型设置/);
+  });
+});
+
+test('平台 Agent 联网搜索预调用失败时不泄漏内部 Prompt 上下文', async () => {
+  await withWorkspace(async (workspacePath) => {
+    const internalFailure = [
+      '联网搜索预调用失败：required WebSearch was not observed',
+      '你是布谷AI内容工厂的 AI Agent。',
+      '本轮 skill 执行规范',
+      '输入源快照：',
+      '团队知识包：',
+      '输出要求：',
+      'system: hidden runtime prompt',
+    ].join('\n');
+    const text = new FakeTextGenerationService();
+    const promptAgent = new FakeAppServerPromptAgentService({ failDraftReason: internalFailure });
+    const inputSources = new InputSourceStore();
+    const promptDrafts = new PromptDraftStore(inputSources, text);
+    const sessions = new AgentPromptSessionStore(inputSources, promptDrafts, promptAgent);
+
+    const started = await sessions.start({
+      workspacePath,
+      title: '联网搜索失败 Prompt 对话',
+      purpose: 'image',
+      userIntent: '请联网确认最新小红书种草趋势并生成真实生活场景图片 Prompt。',
+      inputSourceIds: [],
+      textModel: 'gpt-compatible',
+      requiredCapabilities: ['web.search'],
+    });
+
+    const serializedMessages = started.session.messages.map((message) => message.content).join('\n');
+    const serializedSession = JSON.stringify(started.session);
+    const runtimeError = started.session.executionEvents?.find((event) => event.eventClass === 'runtime.error');
+    assert.equal(started.session.status, 'blocked');
+    assert.equal(started.draft, undefined);
+    assert.equal(started.session.model, 'blocked:lime-agent-server');
+    assert.match(serializedMessages, /AI Agent 已连接平台，但本轮工具调用失败/);
+    assert.match(serializedMessages, /Web Search|联网搜索工具调用失败/);
+    assert.doesNotMatch(serializedMessages, /AI Agent 对话未启动/);
+    assert.equal(runtimeError?.title, 'AI Agent 工具调用失败');
+    assert.doesNotMatch(runtimeError?.detail ?? '', /输入源快照|输出要求|system:/);
+    assert.doesNotMatch(serializedSession, /内容工厂的 AI Agent|本轮 skill 执行规范|输入源快照：|团队知识包：|输出要求：|system:/);
   });
 });
 
