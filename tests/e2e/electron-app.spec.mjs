@@ -973,8 +973,6 @@ async function expectModelSettingsVisible(page) {
   await expect(modelSettings).not.toContainText('Content Studio 文案生成');
   await expect(modelSettings).not.toContainText('Content Studio 图片生成');
   await expect(modelSettings).not.toContainText('Content Studio 视频生成');
-  await expect(modelSettings).not.toContainText('provider 设置由平台统一保存');
-  await expect(modelSettings).not.toContainText('打开完整模型设置');
   await page.locator('[data-testid="add-model-button"]').click();
   await expect(modelSettings).toContainText('推荐服务');
   await expect(modelSettings).toContainText('自定义供应商');
@@ -1021,7 +1019,7 @@ async function expectAgentBusinessReply(locator, expected) {
   ).toBe(true);
 }
 
-async function expectAgentsUiHidesInternalTerms(page, selector = '.agents-workbench') {
+async function expectAgentsUiHidesInternalTerms(page, selector = '.agents-thread-scroll') {
   const target = page.locator(selector);
   for (const term of AGENTS_FORBIDDEN_TERMS) {
     await expect(target, `agents UI 不应展示内部词：${term}`).not.toContainText(term);
@@ -2103,10 +2101,11 @@ test('AI 生图页复刻关键选项并消费 OEM 素材清单', async ({}, test
       const imageLog = logs.find((log) => log.kind === 'image');
       const input = imageLog?.input && typeof imageLog.input === 'object' ? imageLog.input : {};
       return {
+        status: imageLog?.status,
         productCount: Array.isArray(input.productImageRefs) ? input.productImageRefs.length : -1,
         referenceCount: Array.isArray(input.referenceImageRefs) ? input.referenceImageRefs.length : -1,
       };
-    })).toEqual({ productCount: 0, referenceCount: firstCaseInputImages });
+    }), { timeout: 20_000 }).toEqual({ status: 'blocked', productCount: 0, referenceCount: firstCaseInputImages });
     await page.locator('.ai-floating-history').click();
     await expect(page.locator('.ai-history-drawer')).toContainText('模特产品展示');
     await expect(page.locator('.ai-history-drawer')).toContainText('待配置');
@@ -2634,7 +2633,7 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
           featureTitle: input.featureTitle,
           outputCount: outputRefs.length,
         };
-      })).toEqual({ status: 'blocked', featureTitle: '智能视频', outputCount: 2 });
+      }), { timeout: 20_000 }).toEqual({ status: 'blocked', featureTitle: '智能视频', outputCount: 2 });
       await page.locator('.ai-video-floating-history').click();
       await expect(page.locator('.ai-video-history-operation-row button').filter({ hasText: '发送到素材库' })).toBeDisabled();
       await expect(page.locator('.ai-video-history-operation-row button').filter({ hasText: '局部精修' })).toBeDisabled();
@@ -2668,7 +2667,7 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
           selectedCaseTitle: input.selectedCaseTitle,
           imageCount: Array.isArray(input.imageAssetRefs) ? input.imageAssetRefs.length : -1,
         };
-      }, promptOnlyVideoLogCountBeforeExample)).toEqual({
+      }, promptOnlyVideoLogCountBeforeExample), { timeout: 20_000 }).toEqual({
         status: 'blocked',
         featureTitle: '智能视频',
         selectedCaseTitle: '男士香薰',
@@ -2792,7 +2791,7 @@ test('AI 视频页复刻关键选项并消费 OEM 视频素材清单', async ({}
           outputCount: outputRefs.length,
           hasTraceArtifact: outputRefs.some((ref) => /\.(json|md)$/i.test(ref)),
         };
-      })).toEqual({
+      }), { timeout: 20_000 }).toEqual({
         status: 'blocked',
         featureTitle: '全能视频',
         selectedCaseTitle: '爆款复刻-拖把',

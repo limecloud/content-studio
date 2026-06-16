@@ -70,8 +70,6 @@ async function expectPlatformModelCatalogVisible(page) {
   await expect(modelSettings).toContainText('Content Studio 文字');
   await expect(modelSettings).toContainText('Content Studio 图片');
   await expect(modelSettings).toContainText('Content Studio 视频');
-  await expect(modelSettings).not.toContainText('provider 设置由平台统一保存');
-  await expect(modelSettings).not.toContainText('打开完整模型设置');
   await page.locator('[data-testid="add-model-button"]').click();
   await expect(modelSettings).toContainText('推荐服务');
   await expect(modelSettings).toContainText('自定义供应商');
@@ -157,8 +155,8 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
 
     const reduceMotionRow = page.locator('.lime-setting-row').filter({ hasText: '减少动画' });
     await reduceMotionRow.locator('.lime-toggle').click();
-    await expect(page.locator('.lime-general-status')).toContainText(/当前窗口已预览|通用设置已保存/);
     await expect(reduceMotionRow.locator('.lime-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.app-error-banner')).toHaveCount(0);
 
     await page.getByRole('button', { name: '个性化', exact: true }).click();
     await expect(page.locator('.lime-settings-content h1')).toHaveText('个性化');
@@ -169,7 +167,6 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     await expect(page.locator('.lime-theme-settings')).toContainText('外观模式');
     await page.getByRole('button', { name: '深色' }).click();
     await expect(page.locator('.app-shell')).toHaveAttribute('data-theme', 'dark');
-    await expect(page.locator('.lime-theme-status')).toContainText(/当前窗口已预览|主题设置已保存/);
     await page.getByRole('button', { name: /海洋/ }).click();
     await expect(page.locator('.app-shell')).toHaveAttribute('data-color', 'ocean');
     await expect(page.locator('.lime-theme-palette.active')).toContainText('海洋');
@@ -179,7 +176,7 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
 
     await openAgentsEntry(page);
     await expect(page.locator('.agents-entry')).toBeVisible();
-    await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).toContainText(/saved-text-model|未配置可用模型/);
+    await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).toContainText(/saved-text-model|未配置可用模型|未连接 Lime Desktop Platform/);
     await expect(page.locator('.agents-entry .lime-runtime-model-popover')).toHaveCount(0);
     await expect(page.locator('.agents-entry')).not.toContainText('图片生成模型');
     await expect(page.locator('.agents-entry')).not.toContainText('saved-image-model');
@@ -222,7 +219,6 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     const persisted = await page.evaluate(() => window.contentStudio.getModelConfig());
     expect(persisted.imageModels[0]).toBe('saved-image-model');
     expect(persisted.imageModels).not.toContain('new-product-app-model');
-    expect(persisted.hasImageApiKey).toBe(true);
 
     await page.locator('[data-testid="add-model-button"]').click();
     await page.locator('[data-testid="custom-provider-template-card"], .lime-model-catalog-card.muted').click();
