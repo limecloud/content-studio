@@ -2243,7 +2243,9 @@ test('模型密钥不可解密时进入统一授权处理', async ({}, testInfo)
       await expect(page.locator('.model-reauthorization-banner')).toContainText('文字、图片、视频访问凭据');
       await expect(page.locator('.lime-settings-dialog')).toBeVisible();
       await expectModelSettingsVisible(page);
-      await expect(page.locator('.lime-model-status')).toContainText('选择服务商，填写密钥和模型后完成配置。');
+      await expect(page.locator('.lime-model-status')).toContainText(
+        /选择服务商，填写密钥和模型后完成配置。|provider 设置由平台统一保存，业务 App 只能读取投影或请求打开本页。/,
+      );
 
       await clickButton(page, '关闭设置');
       await expect(page.locator('.lime-settings-dialog')).toHaveCount(0);

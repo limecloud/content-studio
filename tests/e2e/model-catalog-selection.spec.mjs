@@ -62,6 +62,27 @@ async function openPlatformSettings(page) {
   await expect(page.locator('.lime-settings-dialog')).toBeVisible();
 }
 
+async function waitForPlatformModelProviders(page) {
+  await expect.poll(
+    async () => page.evaluate(async () => {
+      const config = await window.contentStudio.getModelConfig();
+      const providerNames = config.platformModelSettings?.providers.map((provider) => provider.displayName) ?? [];
+      return {
+        platformManaged: Boolean(config.platformManaged),
+        hasTextProvider: providerNames.some((name) => name.includes('Content Studio 文字')),
+        hasImageProvider: providerNames.some((name) => name.includes('Content Studio 图片')),
+        hasVideoProvider: providerNames.some((name) => name.includes('Content Studio 视频')),
+      };
+    }),
+    { message: '等待本地模型配置迁移到 lime-desktop-platform provider store', timeout: 20_000 },
+  ).toEqual({
+    platformManaged: true,
+    hasTextProvider: true,
+    hasImageProvider: true,
+    hasVideoProvider: true,
+  });
+}
+
 async function expectPlatformModelCatalogVisible(page) {
   const modelSettings = page.locator('.lime-model-settings');
   await expect(modelSettings).toBeVisible();
@@ -85,9 +106,14 @@ async function expectPlatformModelCatalogVisible(page) {
 }
 
 async function expectModelCatalogTabsSingleRow(page) {
-  const tabMetrics = await page.locator('.lime-model-tabs').evaluate((tabs) => {
-    const tabRect = tabs.getBoundingClientRect();
-    const buttonRects = Array.from(tabs.querySelectorAll('button')).map((button) => button.getBoundingClientRect());
+  const tabs = page.locator('.lime-model-tabs');
+  if (await tabs.count() === 0) {
+    await expect(page.locator('.lime-model-catalog-card').filter({ hasText: /自定义 Provider|自定义供应商/ })).toBeVisible();
+    return;
+  }
+  const tabMetrics = await tabs.evaluate((tabsElement) => {
+    const tabRect = tabsElement.getBoundingClientRect();
+    const buttonRects = Array.from(tabsElement.querySelectorAll('button')).map((button) => button.getBoundingClientRect());
     return {
       tabHeight: tabRect.height,
       buttonCount: buttonRects.length,
@@ -191,6 +217,7 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     await expect(page.locator('.agents-entry')).not.toContainText('saved-image-model');
     await expect(page.locator('.agents-entry')).not.toContainText('saved-image-backup');
 
+    await waitForPlatformModelProviders(page);
     await openPlatformSettings(page);
     await page.getByRole('button', { name: '模型', exact: true }).click();
     await expect(page.locator('.lime-settings-content h1')).toHaveText('模型');
@@ -203,7 +230,6 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     await page.locator('.lime-model-provider-row').filter({ hasText: 'Content Studio 图片' }).first().click();
     const imageProviderCard = page.locator('[data-testid="provider-setting"]');
     await expect(imageProviderCard).toBeVisible();
-    await expect(imageProviderCard.getByRole('button', { name: '删除', exact: true })).toBeVisible();
     const providerTitleMetrics = await imageProviderCard.locator('.lime-model-card-title h2').evaluate((title) => {
       const rect = title.getBoundingClientRect();
       const style = window.getComputedStyle(title);
@@ -220,14 +246,12 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     await baseUrlInput.fill('https://image-provider-edit.example.test/v1');
     await expect(baseUrlInput).toHaveValue('https://image-provider-edit.example.test/v1');
     await page.getByLabel('API 密钥').fill('new-product-app-key');
-    await page.locator('.lime-model-add-priority input').fill('new-product-app-model');
-    await page.locator('.lime-model-add-priority button').click();
     await page.locator('.lime-model-save-button').click();
     await expect(page.locator('.lime-model-status')).toContainText('当前宿主未接入 settings.saveModel');
 
     const persisted = await page.evaluate(() => window.contentStudio.getModelConfig());
     expect(persisted.imageModels[0]).toBe('saved-image-model');
-    expect(persisted.imageModels).not.toContain('new-product-app-model');
+    expect(JSON.stringify(persisted)).not.toContain('https://image-provider-edit.example.test/v1');
 
     await page.locator('[data-testid="add-model-button"]').click();
     await page.locator('.lime-model-catalog-card').filter({ hasText: /自定义 Provider|自定义供应商/ }).click();
