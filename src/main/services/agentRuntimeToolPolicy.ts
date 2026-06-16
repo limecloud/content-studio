@@ -66,15 +66,17 @@ export function buildAgentRuntimeHostOptions(input: {
   requiredCapabilities?: readonly string[];
   capabilityHints?: readonly string[];
   tools?: readonly string[];
+  searchMode?: AgentRuntimeSearchMode;
 }): AgentRuntimeHostOptions {
   const requireWebSearch = shouldRequireAgentWebSearch(input);
-  const searchMode: AgentRuntimeSearchMode = requireWebSearch ? 'required' : 'allowed';
+  const searchMode: AgentRuntimeSearchMode = input.searchMode ?? (requireWebSearch ? 'required' : 'allowed');
+  const webSearchEnabled = searchMode !== 'disabled';
   return {
     asterChatRequest: {
-      web_search: true,
+      web_search: webSearchEnabled,
       search_mode: searchMode,
       turn_config: {
-        web_search: true,
+        web_search: webSearchEnabled,
         search_mode: searchMode,
         provider_preference: input.providerPreference,
         model_preference: input.modelPreference,
@@ -83,9 +85,9 @@ export function buildAgentRuntimeHostOptions(input: {
         metadata: {
           ...(input.metadata ?? {}),
           contentStudioToolPolicy: {
-            webSearch: true,
+            webSearch: webSearchEnabled,
             searchMode,
-            required: requireWebSearch,
+            required: searchMode === 'required',
           },
         },
       },

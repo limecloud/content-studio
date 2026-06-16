@@ -2,12 +2,10 @@ import { useMemo, useState } from 'react';
 import type {
   GenerationLogEntry,
   GlobalGenerationParams,
-  KnowledgeCitation,
   ModelConfigView,
-  SkillSelectionView,
   TextGenerationProtocol,
 } from '../../../shared/types';
-import { formatDuration, generationServiceLabel, kindLabel, sectionLabel, skillKey, statusLabel, textProtocolLabel } from '../app/formatters';
+import { formatDuration, generationServiceLabel, kindLabel, statusLabel, textProtocolLabel } from '../app/formatters';
 import type { SetGlobalParams } from '../app/types';
 
 interface ParamsPanelProps {
@@ -17,9 +15,7 @@ interface ParamsPanelProps {
   imageModels: string[];
   videoModels: string[];
   modelConfig: ModelConfigView | null;
-  citations: KnowledgeCitation[];
   logs: GenerationLogEntry[];
-  skillSelection: SkillSelectionView | null;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   onOpenModelSettings: () => void;
@@ -35,9 +31,7 @@ export function ParamsPanel({
   imageModels,
   videoModels,
   modelConfig,
-  citations,
   logs,
-  skillSelection,
   collapsed,
   onToggleCollapsed,
   onOpenModelSettings,
@@ -253,33 +247,6 @@ export function ParamsPanel({
                   {quality}
                 </button>
               ))}
-            </div>
-          </section>
-
-          <section className="panel compact">
-            <p className="eyebrow">已选知识引用</p>
-            <div className="citation-stack">
-              {citations.map((citation) => (
-                <article key={`${citation.knowledgeBaseId}:${citation.sectionId}`}>
-                  <strong>{sectionLabel(citation.sectionType)}</strong>
-                  <p>{citation.excerpt}</p>
-                </article>
-              ))}
-              {citations.length === 0 ? (
-                <div className="empty-state">当前模块未绑定知识引用。</div>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="panel compact">
-            <p className="eyebrow">当前启用 skills</p>
-            <div className="selected-citations">
-              {(skillSelection?.enabledSkills ?? []).map((skill) => (
-                <span key={skillKey(skill)}>{skill.slug}</span>
-              ))}
-              {!skillSelection?.enabledSkills.length ? (
-                <p>选择工作区后可启用内容生成 skills。</p>
-              ) : null}
             </div>
           </section>
         </>

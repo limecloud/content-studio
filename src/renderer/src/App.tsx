@@ -158,9 +158,7 @@ export function App() {
           imageModels={app.imageModelOptions}
           videoModels={app.videoModelOptions}
           modelConfig={app.modelConfig}
-          citations={app.activeModule === "material-breakdown" ? [] : app.selectedCitations}
           logs={app.logs}
-          skillSelection={app.skillSelection}
           collapsed={paramsPanelCollapsed}
           onToggleCollapsed={() => setParamsPanelCollapsed((current) => !current)}
           setParams={app.setParams}

@@ -19,6 +19,7 @@
 - Functional test bundler 在 CI 没有本地 Lime agent package `dist/` 时回退 npm 包，避免 release workflow 因本地 alias 缺失失败。
 - Agents blocked 会话会净化联网搜索预调用失败、内部 Prompt 回显和未返回交付物错误，不再把 system / skill / 输入源上下文展示到对话正文或运行错误事实中。
 - 平台模型设置页在平台图片 Provider 暂无可用模型列表时保留 Product App 本地图片模型快照，避免只读公共 Provider 设置页丢失已保存图片模型显示。
+- Electron GUI smoke 对齐 `@limecloud/desktop-platform-react` 公共模型设置页的新 Provider 列表契约，不再断言已删除的推荐服务目录文案，远端 release verification 可稳定覆盖真实模型设置入口。
 
 ### 验证
 

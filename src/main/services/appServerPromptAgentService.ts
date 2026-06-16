@@ -104,6 +104,15 @@ function purposeLabel(purpose: PromptDraftPurpose): string {
   return 'Skill';
 }
 
+function isConversationalProbe(content: string): boolean {
+  const normalized = content
+    .trim()
+    .toLowerCase()
+    .replace(/[。！!？?~～\s,.，、]+/g, '');
+  if (!normalized) return true;
+  return /^(你好|您好|哈喽|hello|hi|hey|在吗|在么|测试|test|ping)$/.test(normalized);
+}
+
 function sourceKindLabel(kind: InputSourceRecord['kind'] | AgentPromptSourceSnapshot['kind']): string {
   if (kind === 'docx' || kind === 'markdown') return '文档';
   if (kind === 'image') return '图片';
@@ -1076,37 +1085,45 @@ export class AppServerPromptAgentService {
   async generatePromptDraft(input: GenerateAgentPromptDraftInput): Promise<GenerateAgentPromptDraftResult> {
     const blockedSources = input.selectedSources.filter((source) => source.status === 'blocked' || source.status === 'failed');
     const backendConfig = await this.resolveBackendConfig(input.textModel);
-    const prompt = [
-      `你是${getOemRuntimeConfig().productName}内容工厂的 AI Agent。`,
-      '你负责先判断用户本轮输入是否足以形成内容工厂交付物，再决定回复形态。',
-      '只使用输入源中可追溯的信息，不编造功效、背书、品牌数据或用户案例。',
-      '',
-      `下游用途：${purposeLabel(input.purpose)}`,
-      `用户意图：${input.userIntent.trim()}`,
-      input.sceneCardIds?.length ? `场景卡：已选择 ${input.sceneCardIds.length} 张` : '未选择场景卡。',
-      `团队知识包：${teamKnowledgeReleaseDigest(input.teamKnowledgeRelease)}`,
-      '',
-      input.skillContext.promptText ? '本轮 skill 执行规范：' : '',
-      input.skillContext.promptText,
-      input.skillContext.promptText ? '' : '',
-      '本地输入源：',
-      sourceMaterialForModel(input.selectedSources),
-      '',
-      '输出要求：',
-      '- 如果用户只是寒暄、测试连通性，或只输入“你好 / hi / hello / 在吗”等内容：只用一句自然语言回应，并追问用户要处理的内容对象或目标；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿。',
-      '- 如果用户意图不足以生成可交付内容，例如缺少明确的内容对象、主题或交付物类型：只说明还缺什么并提出 1 到 3 个追问；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿。',
-      '- 如果用户已经给出明确的内容对象和交付物类型，只是缺少平台、风格、受众或素材细节，可以生成 Markdown Prompt 草稿，并把这些缺口放入“需要人工确认”。',
-      '- 只有当用户明确要求生成或改写内容工厂交付物，并且输入源 / 用户意图足够支撑结果时，才输出完整 Markdown Prompt 草稿。',
-      '- 生成 Markdown Prompt 草稿时必须包含目标、事实来源约束、主体/场景/动作/文案结构、风格、负面约束、需要人工确认的缺口。',
-      '- 如果输入源存在 blocked 或 failed，且本轮确实生成草稿，必须在“需要人工确认”中保留提醒。',
-    ].filter(Boolean).join('\n');
+    const conversationOnly = isConversationalProbe(input.userIntent);
+    const prompt = conversationOnly
+      ? [
+        `你是${getOemRuntimeConfig().productName}内容工厂的 AI Agent。`,
+        `用户输入：${input.userIntent.trim()}`,
+        '用户只是在寒暄或测试连通性。',
+        '输出要求：只用一句自然中文回应，并追问用户要处理的内容对象或目标；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿；不要调用工具。',
+      ].join('\n')
+      : [
+        `你是${getOemRuntimeConfig().productName}内容工厂的 AI Agent。`,
+        '你负责先判断用户本轮输入是否足以形成内容工厂交付物，再决定回复形态。',
+        '只使用输入源中可追溯的信息，不编造功效、背书、品牌数据或用户案例。',
+        '',
+        `下游用途：${purposeLabel(input.purpose)}`,
+        `用户意图：${input.userIntent.trim()}`,
+        input.sceneCardIds?.length ? `场景卡：已选择 ${input.sceneCardIds.length} 张` : '未选择场景卡。',
+        `团队知识包：${teamKnowledgeReleaseDigest(input.teamKnowledgeRelease)}`,
+        '',
+        input.skillContext.promptText ? '本轮 skill 执行规范：' : '',
+        input.skillContext.promptText,
+        input.skillContext.promptText ? '' : '',
+        '本地输入源：',
+        sourceMaterialForModel(input.selectedSources),
+        '',
+        '输出要求：',
+        '- 如果用户只是寒暄、测试连通性，或只输入“你好 / hi / hello / 在吗”等内容：只用一句自然语言回应，并追问用户要处理的内容对象或目标；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿。',
+        '- 如果用户意图不足以生成可交付内容，例如缺少明确的内容对象、主题或交付物类型：只说明还缺什么并提出 1 到 3 个追问；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿。',
+        '- 如果用户已经给出明确的内容对象和交付物类型，只是缺少平台、风格、受众或素材细节，可以生成 Markdown Prompt 草稿，并把这些缺口放入“需要人工确认”。',
+        '- 只有当用户明确要求生成或改写内容工厂交付物，并且输入源 / 用户意图足够支撑结果时，才输出完整 Markdown Prompt 草稿。',
+        '- 生成 Markdown Prompt 草稿时必须包含目标、事实来源约束、主体/场景/动作/文案结构、风格、负面约束、需要人工确认的缺口。',
+        '- 如果输入源存在 blocked 或 failed，且本轮确实生成草稿，必须在“需要人工确认”中保留提醒。',
+      ].filter(Boolean).join('\n');
     const result = await this.runPromptTurn({
       workspacePath: input.workspacePath,
       prompt,
       permissionMode: input.permissionMode ?? 'ask',
-      selectedSkillSlugs: selectedSkillSlugs(input),
-      requiredCapabilities: input.requiredCapabilities,
-      capabilityHints: input.capabilityHints,
+      selectedSkillSlugs: conversationOnly ? [] : selectedSkillSlugs(input),
+      requiredCapabilities: conversationOnly ? [] : input.requiredCapabilities,
+      capabilityHints: conversationOnly ? [] : input.capabilityHints,
       metadata: {
         purpose: input.purpose,
         workflowRunId: input.workflowRunId,
@@ -1118,6 +1135,7 @@ export class AppServerPromptAgentService {
         modelPreference: backendConfig.modelPreference,
         agentSurface: 'agents',
         operation: 'draft',
+        conversationOnly,
       },
       businessObjectRef: promptDraftBusinessObjectRef(input),
       providerPreference: backendConfig.providerPreference,
@@ -1128,14 +1146,16 @@ export class AppServerPromptAgentService {
         workspacePath: input.workspacePath,
         providerPreference: backendConfig.providerPreference,
         modelPreference: backendConfig.modelPreference,
-        requiredCapabilities: input.requiredCapabilities,
-        capabilityHints: input.capabilityHints,
+        requiredCapabilities: conversationOnly ? [] : input.requiredCapabilities,
+        capabilityHints: conversationOnly ? [] : input.capabilityHints,
+        searchMode: conversationOnly ? 'disabled' : undefined,
         metadata: {
           purpose: input.purpose,
           agentTaskKind: input.agentTaskKind,
           agentIntentId: input.agentIntentId,
           agentSurface: 'agents',
           operation: 'draft',
+          conversationOnly,
         },
       }),
       onRuntimeEvent: input.onProviderEvent
@@ -1230,41 +1250,49 @@ export class AppServerPromptAgentService {
 
   async continueConversation(input: ContinueAgentConversationInput): Promise<ContinueAgentConversationResult> {
     const backendConfig = await this.resolveBackendConfig(input.textModel);
-    const prompt = [
-      `你是${getOemRuntimeConfig().productName}内容工厂的 AI Agent。`,
-      '当前会话还没有形成可交付 Prompt 草稿，请基于已有对话和用户本轮补充继续协作。',
-      '不要因为尚无 Prompt 草稿就拒绝继续；你需要判断本轮是否已经足以形成内容工厂交付物。',
-      '只使用输入源和用户明确给出的信息，不编造功效、背书、品牌数据或用户案例。',
-      '',
-      `下游用途：${purposeLabel(input.purpose)}`,
-      '首轮用户意图：',
-      input.userIntent.trim(),
-      '',
-      input.skillContext.promptText ? '本轮 skill 执行规范：' : '',
-      input.skillContext.promptText,
-      input.skillContext.promptText ? '' : '',
-      '输入源快照：',
-      sourceSnapshotText(input.sourceSnapshots),
-      '',
-      '会话记录：',
-      compactMessages(input.messages),
-      '',
-      '本轮用户补充：',
-      input.adjustment.trim(),
-      '',
-      '输出要求：',
-      '- 如果用户仍然只是寒暄、测试连通性，或没有给出要处理的内容对象和目标：只用一句自然语言回应，并追问用户要处理的对象或交付目标；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿。',
-      '- 如果用户已经补齐明确的内容对象和交付物类型，可以输出完整 Markdown Prompt 草稿。',
-      '- 生成 Markdown Prompt 草稿时必须包含目标、事实来源约束、主体/场景/动作/文案结构、风格、负面约束、需要人工确认的缺口。',
-      '- 如果仍需追问或来源存在风险，必须保留在“需要人工确认”或“来源与合规提醒”段落。',
-    ].filter(Boolean).join('\n');
+    const conversationOnly = isConversationalProbe(input.adjustment);
+    const prompt = conversationOnly
+      ? [
+        `你是${getOemRuntimeConfig().productName}内容工厂的 AI Agent。`,
+        `用户输入：${input.adjustment.trim()}`,
+        '用户仍然只是在寒暄或测试连通性。',
+        '输出要求：只用一句自然中文回应，并追问用户要处理的内容对象或目标；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿；不要调用工具。',
+      ].join('\n')
+      : [
+        `你是${getOemRuntimeConfig().productName}内容工厂的 AI Agent。`,
+        '当前会话还没有形成可交付 Prompt 草稿，请基于已有对话和用户本轮补充继续协作。',
+        '不要因为尚无 Prompt 草稿就拒绝继续；你需要判断本轮是否已经足以形成内容工厂交付物。',
+        '只使用输入源和用户明确给出的信息，不编造功效、背书、品牌数据或用户案例。',
+        '',
+        `下游用途：${purposeLabel(input.purpose)}`,
+        '首轮用户意图：',
+        input.userIntent.trim(),
+        '',
+        input.skillContext.promptText ? '本轮 skill 执行规范：' : '',
+        input.skillContext.promptText,
+        input.skillContext.promptText ? '' : '',
+        '输入源快照：',
+        sourceSnapshotText(input.sourceSnapshots),
+        '',
+        '会话记录：',
+        compactMessages(input.messages),
+        '',
+        '本轮用户补充：',
+        input.adjustment.trim(),
+        '',
+        '输出要求：',
+        '- 如果用户仍然只是寒暄、测试连通性，或没有给出要处理的内容对象和目标：只用一句自然语言回应，并追问用户要处理的对象或交付目标；不要输出 Markdown；不要创建、命名或描述 Prompt 草稿。',
+        '- 如果用户已经补齐明确的内容对象和交付物类型，可以输出完整 Markdown Prompt 草稿。',
+        '- 生成 Markdown Prompt 草稿时必须包含目标、事实来源约束、主体/场景/动作/文案结构、风格、负面约束、需要人工确认的缺口。',
+        '- 如果仍需追问或来源存在风险，必须保留在“需要人工确认”或“来源与合规提醒”段落。',
+      ].filter(Boolean).join('\n');
     const result = await this.runPromptTurn({
       workspacePath: input.workspacePath,
       prompt,
       permissionMode: input.permissionMode ?? 'ask',
-      selectedSkillSlugs: input.skillContext.skillRefs.map((skill) => skill.slug),
-      requiredCapabilities: input.requiredCapabilities,
-      capabilityHints: input.capabilityHints,
+      selectedSkillSlugs: conversationOnly ? [] : input.skillContext.skillRefs.map((skill) => skill.slug),
+      requiredCapabilities: conversationOnly ? [] : input.requiredCapabilities,
+      capabilityHints: conversationOnly ? [] : input.capabilityHints,
       metadata: {
         purpose: input.purpose,
         agentTaskKind: input.agentTaskKind,
@@ -1275,6 +1303,7 @@ export class AppServerPromptAgentService {
         modelPreference: backendConfig.modelPreference,
         agentSurface: 'agents',
         operation: 'conversation',
+        conversationOnly,
       },
       businessObjectRef: {
         kind: 'promptDraft',
@@ -1290,6 +1319,23 @@ export class AppServerPromptAgentService {
       providerPreference: backendConfig.providerPreference,
       modelPreference: backendConfig.modelPreference,
       platformManaged: backendConfig.platformManaged,
+      hostOptions: buildAgentRuntimeHostOptions({
+        prompt,
+        workspacePath: input.workspacePath,
+        providerPreference: backendConfig.providerPreference,
+        modelPreference: backendConfig.modelPreference,
+        requiredCapabilities: conversationOnly ? [] : input.requiredCapabilities,
+        capabilityHints: conversationOnly ? [] : input.capabilityHints,
+        searchMode: conversationOnly ? 'disabled' : undefined,
+        metadata: {
+          purpose: input.purpose,
+          agentTaskKind: input.agentTaskKind,
+          agentIntentId: input.agentIntentId,
+          agentSurface: 'agents',
+          operation: 'conversation',
+          conversationOnly,
+        },
+      }),
       onRuntimeEvent: input.onProviderEvent
         ? (event) => input.onProviderEvent?.(providerEventFromRuntimeEvent(event, backendConfig.model))
         : undefined,

@@ -3576,6 +3576,25 @@ test('agents 寒暄对话保持普通回复且不显示 Prompt 交付面板', as
       await expect(page.locator('.agents-thread')).not.toContainText('AI Agent 对话未启动');
       await expect(page.locator('.agents-thread')).not.toContainText('不能用本地草稿继续');
 
+      const readAgentRequests = () => bridge.requests.filter((item) =>
+        item.body.capability === 'lime.agent' && item.body.operation === 'agentSession/turn/start'
+      );
+      await expect.poll(
+        async () => readAgentRequests().length,
+        { message: '等待 agents 寒暄第二轮请求发出', timeout: 20_000 },
+      ).toBeGreaterThanOrEqual(2);
+      const agentRequests = readAgentRequests();
+      for (const request of agentRequests) {
+        const asterRequest = request.body.input?.runtimeOptions?.hostOptions?.asterChatRequest;
+        expect(asterRequest?.web_search, JSON.stringify(request.body)).toBe(false);
+        expect(asterRequest?.search_mode, JSON.stringify(request.body)).toBe('disabled');
+        expect(asterRequest?.turn_config?.web_search, JSON.stringify(request.body)).toBe(false);
+        expect(asterRequest?.turn_config?.search_mode, JSON.stringify(request.body)).toBe('disabled');
+        expect(request.body.input?.selectedSkillSlugs ?? [], JSON.stringify(request.body)).toEqual([]);
+        expect(request.body.input?.requiredCapabilities ?? [], JSON.stringify(request.body)).toEqual([]);
+        expect(request.body.input?.capabilityHints ?? [], JSON.stringify(request.body)).toEqual([]);
+      }
+
       const readTrace = () => page.evaluate(async ({ workspacePath }) => {
         const sessions = await window.contentStudio.listAgentPromptSessions(workspacePath);
         const session = sessions.find((item) => item.userIntent === '你好');

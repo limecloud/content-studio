@@ -442,8 +442,10 @@ function platformModelConfigView(
   );
   const imageModels = platformProviderModels(readyImageProvider);
   const videoModels = platformProviderModels(readyVideoProvider);
-  const viewImageModels = imageModels.length ? imageModels : fallback.imageModels;
-  const viewVideoModels = videoModels.length ? videoModels : fallback.videoModels;
+  const usesFallbackImageModels = imageModels.length === 0;
+  const usesFallbackVideoModels = videoModels.length === 0;
+  const viewImageModels = usesFallbackImageModels ? fallback.imageModels : imageModels;
+  const viewVideoModels = usesFallbackVideoModels ? fallback.videoModels : videoModels;
   const textModel = platformDefaultModel(settings.defaultTextModelId, readyTextProviderModels.length ? readyTextProviderModels : textModels);
   const imageModel = platformDefaultModel(settings.defaultImageModelId, viewImageModels) || fallback.imageOuterModel;
   const videoModel = platformDefaultModel(settings.defaultVideoModelId, viewVideoModels) || fallback.videoModel;
@@ -485,15 +487,15 @@ function platformModelConfigView(
     imageProtocol: selectedImageProvider ? imageProtocolFromPlatformProtocol(selectedImageProvider.protocol) : fallback.imageProtocol,
     imageApiEndpoint: selectedImageProvider?.baseUrl ?? '',
     imageOuterModel: imageModel,
-    hasImageApiKey: platformProviderConfigured(imageProvider),
-    imageApiKeyStatus: imageProvider
+    hasImageApiKey: usesFallbackImageModels ? fallback.hasImageApiKey : platformProviderConfigured(imageProvider),
+    imageApiKeyStatus: usesFallbackImageModels ? fallback.imageApiKeyStatus : imageProvider
       ? configuredStatus(imageProvider.apiKeyConfigured, imageProvider.authType)
       : 'missing',
     imageModels: viewImageModels,
     videoProvider: selectedVideoProvider ? 'generic-http' : 'disabled',
     videoApiEndpoint: selectedVideoProvider?.baseUrl ?? '',
-    hasVideoApiKey: platformProviderConfigured(videoProvider),
-    videoApiKeyStatus: videoProvider
+    hasVideoApiKey: usesFallbackVideoModels ? fallback.hasVideoApiKey : platformProviderConfigured(videoProvider),
+    videoApiKeyStatus: usesFallbackVideoModels ? fallback.videoApiKeyStatus : videoProvider
       ? configuredStatus(videoProvider.apiKeyConfigured, videoProvider.authType)
       : 'missing',
     videoModel,

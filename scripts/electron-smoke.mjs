@@ -316,6 +316,15 @@ try {
   })()`, true);
   const clickFlowState = await evaluate(cdp, `(async () => {
 	  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const bodyText = () => document.body.innerText;
+    const waitFor = async (predicate, timeoutMs = 3000) => {
+      const started = Date.now();
+      while (Date.now() - started < timeoutMs) {
+        if (predicate()) return true;
+        await wait(120);
+      }
+      return false;
+    };
     const expandAllNavGroups = async () => {
       const toggles = Array.from(document.querySelectorAll('.nav-group-toggle[aria-expanded="false"], .agent-nav-root[aria-expanded="false"]'));
       for (const toggle of toggles) {
@@ -415,28 +424,33 @@ try {
         && document.body.innerText.includes('Slash command + auto'),
     });
     checks.push({ action: 'open settings', clicked: await clickAppSettingsButton(), hasText: Boolean(document.querySelector('.lime-settings-dialog')) && document.body.innerText.includes('内容工厂') });
+    const modelSettingsClicked = await clickSettingsButton('模型');
+    const modelSettingsReady = modelSettingsClicked
+      ? await waitFor(() => Boolean(document.querySelector('.lime-model-settings')), 5000)
+      : false;
+    const modelSettingsText = bodyText();
     checks.push({
       action: 'click model settings',
-      clicked: await clickSettingsButton('模型'),
-      hasText: Boolean(document.querySelector('.lime-model-settings'))
+      clicked: modelSettingsClicked,
+      hasText: modelSettingsReady
         && !document.body.innerText.includes('Content Studio 文案生成')
         && !document.body.innerText.includes('Content Studio 图片生成')
         && !document.body.innerText.includes('Content Studio 视频生成')
-        && !document.body.innerText.includes('provider 设置由平台统一保存')
-        && !document.body.innerText.includes('打开完整模型设置')
-        && document.body.innerText.includes('启用的模型')
-        && document.body.innerText.includes('添加模型')
-        && document.body.innerText.includes('推荐服务')
-        && document.body.innerText.includes('自定义供应商')
+        && Boolean(document.querySelector('[data-testid="api-key-provider-section"]'))
+        && Boolean(document.querySelector('[data-testid="enabled-model-list"]'))
+        && Boolean(document.querySelector('[data-testid="add-model-button"]'))
+        && modelSettingsText.includes('启用的模型')
+        && modelSettingsText.includes('添加模型')
         && (
-          document.body.innerText.includes('平台模型设置')
-          || document.body.innerText.includes('Agent Runtime')
-          || document.body.innerText.includes('Platform OpenAI')
-          || document.body.innerText.includes('未连接平台设置')
-          || document.body.innerText.includes('尚未配置 Provider')
-          || document.body.innerText.includes('添加自定义 Provider')
-          || document.body.innerText.includes('选择或添加模型')
-          || document.body.innerText.includes('还没有启用模型')
+          modelSettingsText.includes('平台模型设置')
+          || modelSettingsText.includes('Agent Runtime')
+          || modelSettingsText.includes('Platform OpenAI')
+          || modelSettingsText.includes('未连接平台设置')
+          || modelSettingsText.includes('尚未配置 Provider')
+          || modelSettingsText.includes('选择或添加模型')
+          || modelSettingsText.includes('还没有启用模型')
+          || modelSettingsText.includes('请添加一个模型 Provider')
+          || modelSettingsText.includes('Provider 名称')
         )
     });
     checks.push({

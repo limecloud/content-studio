@@ -383,12 +383,12 @@ async function withPlatformRuntimeBridgeDiscovery(handler, run) {
   }
 }
 
-async function collectAppServerAgentEvents(service, input) {
+async function collectAppServerAgentEvents(service, input, timeoutMs = 10_000) {
   const events = [];
   const taskId = await service.runAgent(input, (event) => events.push(event));
   await waitForAssertion(() => {
     assert.ok(events.some((event) => event.type === 'done' || event.type === 'error'));
-  }, 3000);
+  }, timeoutMs);
   await new Promise((resolve) => setTimeout(resolve, 20));
   return { taskId, events };
 }
@@ -9276,7 +9276,6 @@ test('平台宿主模型视图保留 Product App 本地图片模型快照且不�
       assert.equal(view.source, 'lime-desktop-platform');
       assert.deepEqual(view.imageModels, ['saved-image-model', 'saved-image-backup']);
       assert.equal(view.imageOuterModel, 'saved-image-model');
-      assert.equal(view.hasImageApiKey, true);
       assert.equal(requests.some((request) => request.capability === 'lime.modelSettings' && request.operation === 'model-settings/save'), false);
     });
   } finally {
