@@ -15,6 +15,7 @@ function run(cmd, args) {
         ...process.env,
         CONTENT_STUDIO_USE_NPM_DESKTOP_PLATFORM: '1',
       },
+      shell: process.platform === 'win32',
       stdio: 'inherit',
     });
     child.on('error', rejectRun);
