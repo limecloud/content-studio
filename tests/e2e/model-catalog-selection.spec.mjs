@@ -65,7 +65,14 @@ async function openPlatformSettings(page) {
 async function waitForPlatformModelProviders(page) {
   await expect.poll(
     async () => page.evaluate(async () => {
-      const config = await window.contentStudio.getModelConfig();
+      const emptyState = {
+        platformManaged: false,
+        hasTextProvider: false,
+        hasImageProvider: false,
+        hasVideoProvider: false,
+      };
+      const config = await window.contentStudio.getModelConfig().catch(() => null);
+      if (!config) return emptyState;
       const providerNames = config.platformModelSettings?.providers.map((provider) => provider.displayName) ?? [];
       return {
         platformManaged: Boolean(config.platformManaged),
@@ -241,7 +248,7 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     });
     expect(providerTitleMetrics.fontSize).toBeLessThanOrEqual(17);
     expect(providerTitleMetrics.titleBottom).toBeLessThan(providerTitleMetrics.cardBottom);
-    const baseUrlInput = imageProviderCard.getByLabel('API Base URL');
+    const baseUrlInput = imageProviderCard.getByLabel(/^(API )?Base URL$/);
     await expect(baseUrlInput).toHaveValue('https://image-provider.example.test/v1');
     await baseUrlInput.fill('https://image-provider-edit.example.test/v1');
     await expect(baseUrlInput).toHaveValue('https://image-provider-edit.example.test/v1');
