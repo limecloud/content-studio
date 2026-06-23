@@ -7,7 +7,6 @@ const DASHBOARD_CARDS: Array<{
   description: string;
   statLabel: string;
 }> = [
-  { module: 'agents', index: '00', title: 'agents 工作台', description: '围绕素材、Prompt 草稿和运行事件展开协作。', statLabel: '协作线程' },
   { module: 'knowledge', index: '01', title: '知识库列表', description: '从成型知识库选择引用，生成品牌口吻、视觉风格和合规边界。', statLabel: '提示词包' },
   { module: 'image-production', index: '02', title: '图片素材工作台', description: '使用场景卡、产品图和参考图调用真实图片生成服务。', statLabel: '场景卡' },
   { module: 'video', index: '03', title: '视频脚本工作台', description: '生成短视频脚本；视频服务未配置时只保存队列文件。', statLabel: '视频队列' },
@@ -28,7 +27,6 @@ interface WorkbenchDashboardProps {
 }
 
 function cardStat(module: CoreModuleKey, props: WorkbenchDashboardProps): string {
-  if (module === 'agents') return props.workspaceReady ? '可协作' : '待工作区';
   if (module === 'knowledge') return `${props.promptPacksCount} 个`;
   if (module === 'image' || module === 'image-production') return `${props.sceneCardsCount} 张`;
   if (module === 'video') return `${props.logsCount} 条历史`;

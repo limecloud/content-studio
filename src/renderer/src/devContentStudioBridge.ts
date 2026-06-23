@@ -3,7 +3,6 @@ import {
   APP_SERVER_PROTOCOL_VERSION,
 } from "../../shared/types";
 import type {
-  AgentPromptSession,
   AppSettingsView,
   AutoUpdateState,
   BuguAuthState,
@@ -146,7 +145,6 @@ let devPlatformSettings: PlatformSettingsProjection = {
 
 const devInputSources: ContentStudioApi extends { listInputSources(workspacePath: string): Promise<infer T> } ? T : never = [];
 const devPromptDrafts: PromptDraft[] = [];
-const devAgentPromptSessions: AgentPromptSession[] = [];
 const devSceneCards: SceneCard[] = [];
 const devContentKnowledgeMaps: ContentKnowledgeMapRecord[] = [];
 const devContentKnowledgeMapBuildRuns: ContentKnowledgeMapBuildRunRecord[] = [];
@@ -605,12 +603,6 @@ export function createDevBridge(): ContentStudioApi {
   });
   const createDraft = (input: Pick<GeneratePromptDraftInput, "workspacePath" | "purpose" | "userIntent"> & Partial<PromptDraft>) =>
     promptDraft(input);
-  const createAgentResult = (_input: Parameters<ContentStudioApi["startAgentPromptSession"]>[0]) => {
-    throw new Error("浏览器开发桥接未接入 Lime App Server runtime，不能创建 agents 会话；Content Studio 不再本地伪造 runtime facts。");
-  };
-  const continueAgentResult = (_input: Parameters<ContentStudioApi["continueAgentPromptSession"]>[0]) => {
-    throw new Error("浏览器开发桥接未接入 Lime App Server runtime，不能继续 agents 会话；Content Studio 不再本地伪造 runtime facts。");
-  };
   const createReviewRecord = (input?: Parameters<ContentStudioApi["reviewAsset"]>[0]) => {
     const createdAt = new Date().toISOString();
     return {
@@ -1029,7 +1021,7 @@ export function createDevBridge(): ContentStudioApi {
               status: "passed" as const,
               message: `${row.evidenceRefs.length} 条证据可追溯。`,
             }],
-            nextStep: "在 agents 确认草稿，或在场景库继续拆成图片、视频和生产任务。",
+            nextStep: "在 Prompt 草稿中确认，或在场景库继续拆成图片、视频和生产任务。",
             createdAt: new Date().toISOString(),
           }],
           createdAt: new Date().toISOString(),
@@ -1168,15 +1160,6 @@ export function createDevBridge(): ContentStudioApi {
     },
     updatePromptDraft: async (input) => createDraft({ workspacePath: input.workspacePath, purpose: "image", userIntent: input.content }),
     recordPromptDraftCopy: async (input) => createDraft({ workspacePath: input.workspacePath, purpose: "image", userIntent: input.draftId }),
-    listAgentPromptSessions: async () => devAgentPromptSessions,
-    startAgentPromptSession: async (input) => createAgentResult(input),
-    continueAgentPromptSession: async (input) => continueAgentResult(input),
-    respondAgentPromptAction: async () => {
-      throw new Error("浏览器开发桥接未接入 Lime App Server runtime，不能处理 agents action；Content Studio 不再本地伪造 action facts。");
-    },
-    attachAgentPromptSessionInputSources: async () => {
-      throw new Error("浏览器开发桥接未接入 Lime App Server runtime，不能补写 agents 输入源事实；Content Studio 不再本地伪造 context/evidence facts。");
-    },
     listOverlayCards: async () => [],
     generateOverlayCards: async () => [],
     listAssetReviews: async () => devAssetReviews,
@@ -1440,8 +1423,6 @@ export function createDevBridge(): ContentStudioApi {
     listGenerationTasks: async () => [],
     onGenerationTaskEvent: () => () => undefined,
 
-    runTask: async () => ({ taskId: `browser-dev-task-${Date.now()}` }),
-    cancelTask: async () => true,
     getAppServerHealth: async () => ({
       available: false,
       protocolVersion: APP_SERVER_PROTOCOL_VERSION,
@@ -1456,7 +1437,6 @@ export function createDevBridge(): ContentStudioApi {
       bridgeProfile: APP_SERVER_AGENT_RUNTIME_BRIDGE_PROFILE,
       error: "浏览器开发模式不启动 App Server sidecar。",
     }),
-    onAgentEvent: () => () => undefined,
   };
 
   return new Proxy(api, {

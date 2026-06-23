@@ -2,6 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,159 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const mainEntry = join(projectRoot, 'out/main/index.js');
 const resourcesDir = join(projectRoot, 'resources');
 
-async function launchWithModelConfig(userDataDir) {
+async function startFakePlatformRuntimeBridge() {
+  const token = 'model-catalog-e2e-token';
+  const snapshot = {
+    hostKind: 'electron',
+    hostVersion: 'e2e',
+    appId: 'content-studio',
+    entryKey: 'model-catalog-e2e',
+    locale: 'zh-CN',
+    theme: 'light',
+    appearance: {
+      colorTheme: 'emerald',
+      fontScale: 1,
+      serifEnabled: false,
+    },
+    workspacePath: '',
+    modelSettingsVersion: 'model-catalog-e2e',
+  };
+  let platformSettings = {
+    version: 'platform-settings-initial',
+    updatedAt: new Date().toISOString(),
+    locale: snapshot.locale,
+    theme: snapshot.theme,
+    appearance: snapshot.appearance,
+    workspacePath: snapshot.workspacePath,
+    proxy: {
+      enabled: false,
+      url: '',
+    },
+    developerMode: false,
+    general: {
+      notificationsEnabled: true,
+      reduceMotion: false,
+      syncLocalAgentHistory: false,
+      quickWindowShortcutEnabled: true,
+      commandWhitelistEnabled: false,
+      permissionMode: 'auto-approve',
+      thinkingMode: 'auto',
+      showToolCalls: true,
+      expandToolCallsByDefault: false,
+    },
+  };
+  let modelSettings = {
+    version: 'model-catalog-initial',
+    updatedAt: new Date().toISOString(),
+    defaultAgentProviderId: undefined,
+    defaultTextModelId: undefined,
+    providers: [],
+  };
+
+  const writeJson = (response, statusCode, payload) => {
+    response.statusCode = statusCode;
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify(payload));
+  };
+
+  const server = createServer((request, response) => {
+    if (request.method !== 'POST') {
+      writeJson(response, 405, { ok: false, error: { code: 'method_not_allowed', message: 'method not allowed' } });
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${token}`) {
+      writeJson(response, 401, { ok: false, error: { code: 'unauthorized', message: 'unauthorized' } });
+      return;
+    }
+    let body = '';
+    request.on('data', (chunk) => { body += chunk.toString(); });
+    request.on('end', () => {
+      const payload = body ? JSON.parse(body) : {};
+      if (request.url === '/snapshot') {
+        writeJson(response, 200, { ok: true, snapshot });
+        return;
+      }
+      if (request.url === '/capability/invoke' && payload.capability === 'lime.modelSettings') {
+        if (payload.operation === 'model-settings/save') {
+          const nextSettings = payload.input?.settings ?? modelSettings;
+          modelSettings = {
+            ...nextSettings,
+            version: 'model-catalog-migrated',
+            updatedAt: new Date().toISOString(),
+            providers: (nextSettings.providers ?? []).map((provider) => ({
+              ...provider,
+              apiKey: undefined,
+              apiKeyConfigured: true,
+            })),
+          };
+        }
+        if (payload.operation === 'model-settings/read' || payload.operation === 'model-settings/save') {
+          writeJson(response, 200, {
+            ok: true,
+            result: {
+              ok: true,
+              requestId: `model-catalog-${payload.operation}`,
+              output: modelSettings,
+              event: {},
+            },
+          });
+          return;
+        }
+      }
+      if (request.url === '/capability/invoke' && payload.capability === 'lime.settings') {
+        if (payload.operation === 'platform-settings/save') {
+          const nextSettings = payload.input?.settings ?? platformSettings;
+          platformSettings = {
+            ...nextSettings,
+            version: 'platform-settings-saved',
+            updatedAt: new Date().toISOString(),
+          };
+          snapshot.theme = platformSettings.theme;
+          snapshot.appearance = platformSettings.appearance;
+          snapshot.workspacePath = platformSettings.workspacePath;
+        }
+        if (payload.operation === 'platform-settings/read' || payload.operation === 'platform-settings/save') {
+          writeJson(response, 200, {
+            ok: true,
+            result: {
+              ok: true,
+              requestId: `platform-settings-${payload.operation}`,
+              output: platformSettings,
+              event: {},
+            },
+          });
+          return;
+        }
+      }
+      writeJson(response, 404, { ok: false, error: { code: 'not_found', message: 'not found' } });
+    });
+  });
+  const endpoint = await new Promise((resolveListen) => {
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('无法启动模型目录测试平台宿主。');
+      resolveListen(`http://127.0.0.1:${address.port}`);
+    });
+  });
+  return {
+    descriptor: {
+      protocol: 'lime.runtimeBridge',
+      version: 1,
+      endpoint,
+      token,
+      appId: 'content-studio',
+      entryKey: 'model-catalog-e2e',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    },
+    snapshot,
+    close: () => new Promise((resolveClose) => {
+      server.closeAllConnections?.();
+      server.close(resolveClose);
+    }),
+  };
+}
+
+async function launchWithModelConfig(userDataDir, bridge) {
   await writeFile(join(userDataDir, 'model-config.json'), JSON.stringify({
     textProtocol: 'openai-chat',
     textApiEndpoint: 'https://text-provider.example.test/v1',
@@ -43,6 +196,9 @@ async function launchWithModelConfig(userDataDir) {
       CONTENT_STUDIO_TEST_SILENT: '1',
       CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '1',
       CONTENT_STUDIO_RESOURCES_DIR: resourcesDir,
+      CONTENT_STUDIO_DISABLE_EMBEDDED_PLATFORM_HOST: '1',
+      LIME_RUNTIME_BRIDGE: JSON.stringify(bridge.descriptor),
+      LIME_HOST_SNAPSHOT: JSON.stringify(bridge.snapshot),
     },
   });
   const page = await electronApp.firstWindow();
@@ -132,28 +288,15 @@ async function expectModelCatalogTabsSingleRow(page) {
   expect(tabMetrics.tabHeight).toBeLessThanOrEqual(48);
 }
 
-async function openAgentsEntry(page) {
-  if (await page.locator('.app-shell').getAttribute('data-sidebar') !== 'expanded') {
-    await page.getByRole('button', { name: '展开侧边栏' }).first().click();
-    await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar', 'expanded');
-  }
-  const collapsedAgents = page.locator('.agent-nav-root[aria-expanded="false"]');
-  if (await collapsedAgents.count()) {
-    await collapsedAgents.first().click();
-  }
-  const newDialogButton = page.locator('.nav-stack button.agent-nav-action[title="新对话"]').first();
-  await expect(newDialogButton, 'agents 新对话入口应存在').toBeVisible();
-  await newDialogButton.click();
-}
-
 test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页', async () => {
   test.setTimeout(90_000);
   if (!existsSync(mainEntry)) throw new Error('请先运行 npm run build。');
 
   const userDataDir = await mkdtemp(join(tmpdir(), 'content-studio-platform-settings-'));
+  const bridge = await startFakePlatformRuntimeBridge();
   let electronApp;
   try {
-    const launched = await launchWithModelConfig(userDataDir);
+    const launched = await launchWithModelConfig(userDataDir, bridge);
     electronApp = launched.electronApp;
     const page = launched.page;
 
@@ -216,14 +359,6 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     await page.getByRole('button', { name: '关闭设置' }).click();
     await expect(page.locator('.lime-settings-dialog')).toHaveCount(0);
 
-    await openAgentsEntry(page);
-    await expect(page.locator('.agents-entry')).toBeVisible();
-    await expect(page.locator('.agents-entry .lime-runtime-model-trigger')).toContainText(/saved-text-model|未配置可用模型|未连接 Lime Desktop Platform/);
-    await expect(page.locator('.agents-entry .lime-runtime-model-popover')).toHaveCount(0);
-    await expect(page.locator('.agents-entry')).not.toContainText('图片生成模型');
-    await expect(page.locator('.agents-entry')).not.toContainText('saved-image-model');
-    await expect(page.locator('.agents-entry')).not.toContainText('saved-image-backup');
-
     await waitForPlatformModelProviders(page);
     await openPlatformSettings(page);
     await page.getByRole('button', { name: '模型', exact: true }).click();
@@ -274,6 +409,7 @@ test('模型设置入口使用 lime-desktop-platform 公共 Provider 设置页',
     await expect(page.locator('.lime-settings-dialog')).toHaveCount(0);
   } finally {
     await electronApp?.close().catch(() => undefined);
+    await bridge.close().catch(() => undefined);
     await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined);
   }
 });

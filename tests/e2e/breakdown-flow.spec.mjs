@@ -2,7 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -72,7 +72,7 @@ function startVisionServer() {
 }
 
 async function clickNavItem(page, label) {
-  const collapsedGroupToggles = page.locator('.nav-group-toggle[aria-expanded="false"], .agent-nav-root[aria-expanded="false"]');
+  const collapsedGroupToggles = page.locator('.nav-group-toggle[aria-expanded="false"]');
   while (await collapsedGroupToggles.count()) {
     await collapsedGroupToggles.first().click();
   }
@@ -88,21 +88,37 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   test.setTimeout(120_000);
   if (!existsSync(mainEntry)) throw new Error('请先 npm run build');
 
-  const { server, baseUrl, getRequestCount } = await startVisionServer();
+  const { server, getRequestCount } = await startVisionServer();
 
   const userDataDir = await mkdtemp(join(tmpdir(), 'cs-breakdown-e2e-'));
-  const workspaceDir = await mkdtemp(join(tmpdir(), 'cs-breakdown-ws-'));
+  const workspaceDir = join(userDataDir, 'workspace');
   const refImagePath = join(workspaceDir, 'reference-sample.png');
   const productImagePath = join(workspaceDir, 'product-sample.png');
+  await mkdir(workspaceDir, { recursive: true });
   await writeFile(refImagePath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
   await writeFile(productImagePath, Buffer.from(ONE_PIXEL_PNG, 'base64'));
-  await writeFile(join(userDataDir, 'model-config.json'), JSON.stringify({
-    imageApiKeyPlain: 'test-vision-key',
-    imageApiEndpoint: baseUrl,
-    imageOuterModel: 'test-vision-model',
-    imageProvider: 'openai-responses',
-    imageProtocol: 'openai-responses',
+  await writeFile(join(userDataDir, 'settings.json'), JSON.stringify({
+    workspacePath: workspaceDir,
+    recentWorkspacePaths: [workspaceDir],
+  }, null, 2));
+  await mkdir(join(userDataDir, 'state'), { recursive: true });
+  await writeFile(join(userDataDir, 'state', 'platform-settings.json'), JSON.stringify({
+    version: '1',
     updatedAt: new Date().toISOString(),
+    locale: 'zh-CN',
+    theme: 'system',
+    workspacePath: workspaceDir,
+    appearance: {
+      colorTheme: 'emerald',
+      fontScale: 1,
+      serifEnabled: false,
+    },
+    proxy: {
+      enabled: false,
+      url: '',
+    },
+    developerMode: true,
+    general: {},
   }, null, 2));
 
   const electronApp = await electron.launch({
@@ -115,6 +131,7 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
       CONTENT_STUDIO_TEST_SILENT: '1',
       CONTENT_STUDIO_REQUIRE_EXPLICIT_TEXT_KEY: '0',
       CONTENT_STUDIO_RESOURCES_DIR: resourcesDir,
+      CONTENT_STUDIO_USER_DATA_DIR: userDataDir,
       CONTENT_STUDIO_E2E_ASSET_SELECTIONS: JSON.stringify({
         'product-image': [productImagePath],
         'reference-image': [refImagePath],
@@ -123,6 +140,22 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   });
 
   const page = await electronApp.firstWindow();
+  await expect.poll(
+    async () => page.evaluate(() =>
+      Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))
+    ),
+    { timeout: 30_000 },
+  ).toBe(true);
+  await page.evaluate(async (workspacePath) => {
+    await window.contentStudio.saveSettings({ workspacePath });
+    const platformSettings = await window.contentStudio.getPlatformSettings();
+    await window.contentStudio.savePlatformSettings({
+      ...platformSettings,
+      workspacePath,
+      updatedAt: new Date().toISOString(),
+    });
+  }, workspaceDir);
+  await page.reload();
   await expect.poll(
     async () => page.evaluate(() =>
       Boolean(window.contentStudio) && Boolean(document.querySelector('.app-shell'))
@@ -139,7 +172,9 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   await expect(page.locator('.ai-breakdown-boundary')).toContainText('本页只交付 Prompt');
 
   // Step 2: 上传参考素材（e2e 环境自动选择预设图片）
-  await page.getByRole('button', { name: '上传参考' }).click();
+  const uploadReferenceButton = page.getByRole('button', { name: '上传参考' });
+  await expect(uploadReferenceButton).toBeEnabled({ timeout: 10_000 });
+  await uploadReferenceButton.click();
   const referenceList = page.locator('.ai-breakdown-source-list').filter({ hasText: '参考源' });
   await expect(referenceList).toBeVisible({ timeout: 10_000 });
 
@@ -152,7 +187,8 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
   page.once('dialog', (dialog) => dialog.accept());
   await removeReferenceButton.click();
   await expect(referenceList).toHaveCount(0);
-  await page.getByRole('button', { name: '上传参考' }).click();
+  await expect(uploadReferenceButton).toBeEnabled({ timeout: 10_000 });
+  await uploadReferenceButton.click();
   await expect(referenceList).toBeVisible({ timeout: 10_000 });
 
   // 上传产品图（登记为产品输入源，确保服务端能拿到 productSourceIds）
@@ -180,7 +216,7 @@ test('拆解素材完整流程 e2e', async ({}, testInfo) => {
 
   // Step 4: 平台托管模式下素材拆解不能读取 Product App 本地视觉 Key。
   await expect(page.locator('.ai-breakdown-error-state')).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator('.ai-breakdown-error-state')).toContainText('暂未接入平台 lime.agent 视觉理解 runtime');
+  await expect(page.locator('.ai-breakdown-error-state')).toContainText('暂未接入平台视觉理解生成服务');
   expect(getRequestCount()).toBe(0);
 
   // 验证只交付 Prompt，不再暴露图片生成 / 审核入库动作

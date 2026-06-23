@@ -13,14 +13,12 @@ import {
   APP_SERVER_PROTOCOL_VERSION,
 } from '../../shared/types';
 import type {
-  AgentEvent,
   AppServerBusinessObjectRef,
   AppServerHealthCheckResult,
   AppServerJsonRpcMessage,
   AppServerRuntimeEvent,
   AppServerSmokeResult,
   PermissionMode,
-  RunTaskInput,
 } from '../../shared/types';
 import {
   ContentStudioAgentRuntimeSessionGateway,
@@ -33,15 +31,12 @@ import {
   type AppServerArtifactReadResponse,
   type AppServerEvidenceExportResponse,
 } from './appServerAgentRuntimeGateway';
-import { buildAgentRuntimeHostOptions, buildAgentRuntimeToolPolicy } from './agentRuntimeToolPolicy';
+import { buildAgentRuntimeHostOptions } from './agentRuntimeToolPolicy';
 
 const DEFAULT_RPC_TIMEOUT_MS = 5000;
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000;
-const AGENT_NOTIFICATION_POLL_MS = 1000;
 const DEFAULT_AGENT_RUNTIME_CAPABILITY_ID = 'content.draft.generate';
 const RUNTIME_PROVIDER_STORE_PROBE_TIMEOUT_MS = 10_000;
-
-type AgentEventSink = (event: AgentEvent) => void;
 
 interface AppServerCapabilityListResponse {
   capabilities: Array<{ id: string; title: string; methods: string[] }>;
@@ -82,16 +77,6 @@ export interface AppServerCapabilityTurnInput {
 export type AppServerCapabilityTurnResult = AppServerAgentRuntimeTurnResult;
 export type { AppServerTurnArtifact };
 export interface AppServerPromptTurnResult extends AppServerAgentRuntimeTurnResult {}
-
-interface RunningAgentTask {
-  sidecar?: AppServerJsonRpcClient;
-  sessionId?: string;
-  turnId?: string;
-  tempDir?: string;
-  closed: boolean;
-  completed: boolean;
-  failed: boolean;
-}
 
 class AppServerJsonRpcClient {
   private nextId = 1;
@@ -213,8 +198,6 @@ class AppServerJsonRpcClient {
 }
 
 export class AppServerSidecarService {
-  private readonly runningTasks = new Map<string, RunningAgentTask>();
-
   async healthCheck(): Promise<AppServerHealthCheckResult> {
     const binaryPath = this.resolveBinaryPath();
     if (!binaryPath) {
@@ -357,14 +340,6 @@ export class AppServerSidecarService {
     }
   }
 
-  async runAgent(input: RunTaskInput, sink: AgentEventSink): Promise<string> {
-    const taskId = randomUUID();
-    const task: RunningAgentTask = { closed: false, completed: false, failed: false };
-    this.runningTasks.set(taskId, task);
-    void this.executeAgent(taskId, task, input, sink);
-    return taskId;
-  }
-
   async runPromptTurn(input: AppServerPromptTurnInput): Promise<AppServerPromptTurnResult> {
     return this.runCapabilityTurn({
       workspacePath: input.workspacePath,
@@ -439,167 +414,6 @@ export class AppServerSidecarService {
       sidecar?.close();
       await rm(tempDir, { recursive: true, force: true });
     }
-  }
-
-  cancelAgent(taskId: string): boolean {
-    const task = this.runningTasks.get(taskId);
-    if (!task) return false;
-    task.closed = true;
-    if (task.sidecar?.canWrite() && task.sessionId && task.turnId) {
-      void task.sidecar.request(APP_SERVER_AGENT_SESSION_METHODS.cancelTurn, {
-        sessionId: task.sessionId,
-        turnId: task.turnId,
-      }, DEFAULT_RPC_TIMEOUT_MS).catch(() => undefined);
-    }
-    task.sidecar?.close();
-    void (task.tempDir ? rm(task.tempDir, { recursive: true, force: true }) : Promise.resolve());
-    this.runningTasks.delete(taskId);
-    return true;
-  }
-
-  private async executeAgent(taskId: string, task: RunningAgentTask, input: RunTaskInput, sink: AgentEventSink): Promise<void> {
-    try {
-      const binaryPath = this.resolveBinaryPath();
-      if (!binaryPath) {
-        sink({ type: 'error', taskId, message: missingAppServerMessage() });
-        return;
-      }
-
-      const backend = this.resolveAgentBackend();
-      if (!backend) {
-        sink({ type: 'error', taskId, message: '未配置 App Server external backend。设置 CONTENT_STUDIO_APP_SERVER_BACKEND_COMMAND，或随包携带 resources/app-server/backend/content-backend.mjs。' });
-        return;
-      }
-
-      const agentTimeoutMs = resolveAgentTimeoutMs();
-      task.tempDir = await mkdtemp(join(tmpdir(), 'content-studio-app-server-agent-'));
-      const policyPath = join(task.tempDir, 'content-studio.policy.json');
-      await writePolicy(policyPath);
-      task.sidecar = this.createSidecar({
-        binaryPath,
-        policyPath,
-        backend,
-        backendMode: 'external',
-        backendTimeoutMs: agentTimeoutMs,
-      });
-      sink({ type: 'status', taskId, message: '正在通过 App Server 启动内容生产任务...' });
-
-      const initialize = await task.sidecar.request<{ serverInfo?: { protocolVersion?: string } }>(APP_SERVER_AGENT_SESSION_METHODS.initialize, {
-        clientInfo: appServerClientInfo(),
-        capabilities: appServerClientCapabilities(),
-      });
-      const protocolVersion = initialize.result.serverInfo?.protocolVersion ?? APP_SERVER_PROTOCOL_VERSION;
-      if (protocolVersion !== APP_SERVER_PROTOCOL_VERSION) {
-        throw new Error(`unsupported app-server protocol: ${protocolVersion}`);
-      }
-      task.sidecar.notify(APP_SERVER_AGENT_SESSION_METHODS.initialized);
-
-      task.sessionId = `content_studio_${taskId}`;
-      task.turnId = `turn_${taskId}`;
-      const toolPolicy = buildAgentRuntimeToolPolicy(input);
-      await task.sidecar.request<AppServerSessionStartResponse>(APP_SERVER_AGENT_SESSION_METHODS.startSession, {
-        sessionId: task.sessionId,
-        threadId: `thread_${taskId}`,
-        appId: 'content-studio',
-        workspaceId: input.workspacePath,
-        businessObjectRef: input.businessObjectRef ?? {
-          kind: 'agentTask',
-          id: taskId,
-          title: input.prompt.slice(0, 80),
-          metadata: {
-            selectedSkillSlugs: input.selectedSkillSlugs ?? [],
-          },
-        },
-      });
-      const turn = await task.sidecar.request<AppServerTurnStartResponse>(APP_SERVER_AGENT_SESSION_METHODS.startTurn, {
-        sessionId: task.sessionId,
-        turnId: task.turnId,
-        input: {
-          text: input.prompt,
-        },
-        runtimeOptions: {
-          stream: true,
-          capabilityId: DEFAULT_AGENT_RUNTIME_CAPABILITY_ID,
-          hostOptions: input.hostOptions ?? buildAgentRuntimeHostOptions({
-            prompt: input.prompt,
-            workspacePath: input.workspacePath,
-            metadata: {
-              selectedSkillSlugs: toolPolicy.selectedSkillSlugs,
-            },
-          }),
-          metadata: {
-            selectedSkillSlugs: toolPolicy.selectedSkillSlugs,
-            permissionMode: toolPolicy.permissionMode,
-            requiredCapabilities: toolPolicy.requiredCapabilities,
-            capabilityHints: toolPolicy.capabilityHints,
-            toolPolicy,
-          },
-        },
-        queueIfBusy: true,
-        skipPreSubmitResume: true,
-      }, agentTimeoutMs);
-      sink({ type: 'status', taskId, message: `App Server turn ${turn.result.turn.status}` });
-
-      const handled = new Set<string>();
-      for (const notification of turn.notifications) {
-        this.publishNotificationEvent(taskId, notification, handled, sink, task);
-      }
-      await this.drainAgentNotifications(taskId, task, handled, sink, agentTimeoutMs);
-      if (!task.closed && !task.failed) sink({ type: 'done', taskId });
-    } catch (error) {
-      if (!task.closed) {
-        sink({ type: 'error', taskId, message: error instanceof Error ? error.message : String(error) });
-      }
-    } finally {
-      task.sidecar?.close();
-      if (task.tempDir) await rm(task.tempDir, { recursive: true, force: true });
-      this.runningTasks.delete(taskId);
-    }
-  }
-
-  private async drainAgentNotifications(
-    taskId: string,
-    task: RunningAgentTask,
-    handled: Set<string>,
-    sink: AgentEventSink,
-    timeoutMs: number,
-  ): Promise<void> {
-    if (!task.sidecar) return;
-    const expiresAt = Date.now() + timeoutMs;
-    while (!task.closed && !task.failed && !task.completed) {
-      const remainingMs = expiresAt - Date.now();
-      if (remainingMs <= 0) {
-        throw new Error(`app-server agent turn timed out after ${timeoutMs}ms`);
-      }
-      try {
-        const message = await task.sidecar.nextMessage(Math.min(AGENT_NOTIFICATION_POLL_MS, remainingMs));
-        this.publishNotificationEvent(taskId, message, handled, sink, task);
-      } catch (error) {
-        if (task.closed) return;
-        const message = error instanceof Error ? error.message : String(error);
-        if (/timed out/.test(message)) continue;
-        throw error;
-      }
-    }
-  }
-
-  private publishNotificationEvent(
-    taskId: string,
-    message: AppServerJsonRpcMessage,
-    handled: Set<string>,
-    sink: AgentEventSink,
-    task?: RunningAgentTask,
-  ): void {
-    const event = notificationEvent(message);
-    if (!isRuntimeEvent(event)) return;
-    const eventKey = event.eventId ?? `${event.sequence ?? handled.size}:${event.type}`;
-    if (handled.has(eventKey)) return;
-    handled.add(eventKey);
-    if (isFailedRuntimeEvent(event)) task && (task.failed = true);
-    if (event.type === 'turn.completed') task && (task.completed = true);
-    if (event.type === 'turn.canceled') task && (task.closed = true);
-    const mapped = mapRuntimeEvent(taskId, event);
-    if (mapped) sink(mapped);
   }
 
   private createSidecar(input: {
@@ -875,87 +689,9 @@ function missingAppServerMessage(): string {
   ].join(' ');
 }
 
-function mapRuntimeEvent(taskId: string, event: AppServerRuntimeEvent): AgentEvent | null {
-  if (event.type === 'message.delta') {
-    const text = textFromRuntimePayload(event.payload);
-    return text ? { type: 'assistant', taskId, text } : null;
-  }
-  if (event.type === 'artifact.snapshot') {
-    return { type: 'result', taskId, summary: artifactSummary(event.payload), raw: event.payload };
-  }
-  if (isFailedRuntimeEvent(event)) {
-    return { type: 'error', taskId, message: textFromRuntimePayload(event.payload) || 'App Server turn failed' };
-  }
-  if (event.type === 'action.required' || event.type === 'action.resolved') {
-    return {
-      type: 'action',
-      taskId,
-      actionId: stringPayloadValue(event.payload, 'actionId'),
-      actionKind: stringPayloadValue(event.payload, 'actionKind'),
-      targetModule: stringPayloadValue(event.payload, 'targetModule'),
-      message: textFromRuntimePayload(event.payload) || event.type,
-      raw: event.payload,
-    };
-  }
-  if (event.type === 'evidence.changed') {
-    return {
-      type: 'evidence',
-      taskId,
-      evidenceRefs: stringArrayPayloadValue(event.payload, 'evidenceRefs'),
-      summary: textFromRuntimePayload(event.payload) || event.type,
-      raw: event.payload,
-    };
-  }
-  if (event.type.includes('tool')) {
-    return { type: 'tool', taskId, name: event.type, input: event.payload };
-  }
-  if (event.type === 'turn.completed') {
-    return { type: 'result', taskId, summary: textFromRuntimePayload(event.payload), raw: event.payload };
-  }
-  if (event.type === 'turn.canceled') {
-    return { type: 'status', taskId, message: 'App Server turn canceled' };
-  }
-  return { type: 'status', taskId, message: event.type };
-}
-
-function stringPayloadValue(payload: unknown, field: string): string | undefined {
-  if (!payload || typeof payload !== 'object') return undefined;
-  const value = (payload as Record<string, unknown>)[field];
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function stringArrayPayloadValue(payload: unknown, field: string): string[] | undefined {
-  if (!payload || typeof payload !== 'object') return undefined;
-  const value = (payload as Record<string, unknown>)[field];
-  if (!Array.isArray(value)) return undefined;
-  const items = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
-  return items.length ? items : undefined;
-}
-
 function resolveAgentTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   const value = Number(env.CONTENT_STUDIO_APP_SERVER_AGENT_TIMEOUT_MS || env.APP_SERVER_AGENT_TIMEOUT_MS || DEFAULT_AGENT_TIMEOUT_MS);
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : DEFAULT_AGENT_TIMEOUT_MS;
-}
-
-function textFromRuntimePayload(payload: unknown): string {
-  if (typeof payload === 'string') return payload;
-  if (!payload || typeof payload !== 'object') return '';
-  const record = payload as Record<string, unknown>;
-  return [record.text, record.summary, record.message]
-    .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    ?.trim() ?? '';
-}
-
-function artifactSummary(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== 'object') return undefined;
-  const record = payload as Record<string, unknown>;
-  const title = typeof record.title === 'string' ? record.title : undefined;
-  const artifactId = typeof record.artifactId === 'string' ? record.artifactId : undefined;
-  return title ?? artifactId;
-}
-
-function isFailedRuntimeEvent(event: AppServerRuntimeEvent): boolean {
-  return event.type === 'turn.failed' || event.type.endsWith('.failed');
 }
 
 function isRuntimeEvent(value: unknown): value is AppServerRuntimeEvent {

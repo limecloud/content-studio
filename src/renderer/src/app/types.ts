@@ -2,9 +2,7 @@ import type { GlobalGenerationParams, ImageGenerationProtocol, TextGenerationPro
 import type { PlatformSettingsPageKey } from '@limecloud/desktop-platform-react';
 import type { Dispatch, SetStateAction } from 'react';
 
-export type AgentModuleKey = 'agents';
-
-export type CoreModuleKey = AgentModuleKey | 'image' | 'image-production' | 'image-showcase' | 'video' | 'video-showcase' | 'article' | 'knowledge' | 'assets' | 'skills';
+export type CoreModuleKey = 'image' | 'image-production' | 'image-showcase' | 'video' | 'video-showcase' | 'article' | 'knowledge' | 'assets' | 'skills';
 
 export type V2ModuleKey =
   | 'material-breakdown'

@@ -1,9 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
-  AgentEvent,
-  AgentPromptSessionEvent,
-  AttachAgentPromptSessionInputSourcesInput,
-  ContinueAgentPromptSessionInput,
   ArticleGenerationRequest,
   CreatePromptDraftFromContentInput,
   CreateContentDraftChangeInput,
@@ -49,13 +45,11 @@ import type {
   KnowledgeSearchInput,
   PromptPack,
   ReferenceReverseRequest,
-  RespondAgentPromptActionInput,
   ResolveContentSyncConflictInput,
   RecordPromptDraftCopyInput,
   RecordMixPackageImportEvidenceInput,
   ReadContentKnowledgePackFileInput,
   ReadPlatformDraftCopyTextInput,
-  RunTaskInput,
   SubmitContentReviewDecisionInput,
   SubmitContentDraftChangeInput,
   WriteBackContentMaterialCoverageInput,
@@ -76,7 +70,6 @@ import type {
   VideoScriptGenerationRequest,
   VideoScriptShotRewriteRequest,
   UpdateCheckOptions,
-  StartAgentPromptSessionInput,
   GenerationTaskEvent,
   SubmitGenerationTaskInput,
   UpdateGenerationLogReviewInput,
@@ -191,16 +184,6 @@ const api: ContentStudioApi = {
   createTeamKnowledgePromptDraft: (input: CreateTeamKnowledgePromptDraftInput) => ipcRenderer.invoke('promptDrafts:createTeamKnowledge', input),
   updatePromptDraft: (input: UpdatePromptDraftInput) => ipcRenderer.invoke('promptDrafts:update', input),
   recordPromptDraftCopy: (input: RecordPromptDraftCopyInput) => ipcRenderer.invoke('promptDrafts:recordCopy', input),
-  listAgentPromptSessions: (workspacePath: string) => ipcRenderer.invoke('agentPromptSessions:list', workspacePath),
-  startAgentPromptSession: (input: StartAgentPromptSessionInput) => ipcRenderer.invoke('agentPromptSessions:start', input),
-  continueAgentPromptSession: (input: ContinueAgentPromptSessionInput) => ipcRenderer.invoke('agentPromptSessions:continue', input),
-  onAgentPromptSessionEvent: (callback: (event: AgentPromptSessionEvent) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: AgentPromptSessionEvent) => callback(payload);
-    ipcRenderer.on('agentPromptSessions:event', listener);
-    return () => ipcRenderer.off('agentPromptSessions:event', listener);
-  },
-  respondAgentPromptAction: (input: RespondAgentPromptActionInput) => ipcRenderer.invoke('agentPromptSessions:respondAction', input),
-  attachAgentPromptSessionInputSources: (input: AttachAgentPromptSessionInputSourcesInput) => ipcRenderer.invoke('agentPromptSessions:attachInputSources', input),
   listOverlayCards: (workspacePath: string) => ipcRenderer.invoke('overlayCards:list', workspacePath),
   generateOverlayCards: (input: GenerateOverlayCardsInput) => ipcRenderer.invoke('overlayCards:generate', input),
   listAssetReviews: (workspacePath: string) => ipcRenderer.invoke('assetReviews:list', workspacePath),
@@ -240,16 +223,8 @@ const api: ContentStudioApi = {
   listGenerationLogs: (workspacePath: string) => ipcRenderer.invoke('generationLogs:list', workspacePath),
   updateGenerationLogReview: (input: UpdateGenerationLogReviewInput) => ipcRenderer.invoke('generationLogs:updateReview', input),
 
-  runTask: (input: RunTaskInput) => ipcRenderer.invoke('agent:run', input),
-  cancelTask: (taskId: string) => ipcRenderer.invoke('agent:cancel', taskId),
   getAppServerHealth: () => ipcRenderer.invoke('appServer:health'),
   runAppServerSmoke: () => ipcRenderer.invoke('appServer:smoke'),
-  onAgentEvent: (taskId: string, callback: (event: AgentEvent) => void) => {
-    const channel = `agent:event:${taskId}`;
-    const listener = (_event: Electron.IpcRendererEvent, payload: AgentEvent) => callback(payload);
-    ipcRenderer.on(channel, listener);
-    return () => ipcRenderer.off(channel, listener);
-  },
 };
 
 contextBridge.exposeInMainWorld('contentStudio', api);

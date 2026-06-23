@@ -2995,14 +2995,14 @@
   width: min(1180px, calc(100vw - 80px));
 }
 
-.ai-assistant-dialog.agent-first,
-.ai-assistant-dialog.agent-first.has-templates {
+.ai-assistant-dialog.prompt-first,
+.ai-assistant-dialog.prompt-first.has-templates {
   grid-template-rows: 40px minmax(0, 1fr) 52px;
   width: min(1380px, calc(100vw - 56px));
   height: min(900px, calc(100vh - 72px));
 }
 
-.ai-assistant-dialog.agent-first .ai-assistant-content {
+.ai-assistant-dialog.prompt-first .ai-assistant-content {
   display: none;
 }
 
@@ -3050,41 +3050,73 @@
   scrollbar-width: thin;
 }
 
-.ai-assistant-dialog.agent-first .ai-assistant-agent-panel {
+.ai-assistant-prompt-panel {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  height: 100%;
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.ai-assistant-draft-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-height: 0;
+}
+
+.ai-assistant-draft-editor label {
+  display: grid;
+  gap: 6px;
+  min-height: 180px;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-assistant-draft-editor textarea {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.ai-assistant-prompt-summary {
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fafafa;
+}
+
+.ai-assistant-prompt-summary summary {
+  cursor: pointer;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ai-assistant-prompt-summary pre {
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #111827;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ai-assistant-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.ai-assistant-dialog.prompt-first .ai-assistant-agent-panel {
   overflow: hidden;
   border-top: 0;
   padding: 0 16px;
-}
-
-.ai-assistant-agent-panel .agent-session-panel {
-  min-height: 0;
-  height: 100%;
-  border-radius: 8px;
-  padding: 0;
-  gap: 0;
-  box-shadow: none;
-}
-
-.ai-assistant-agent-panel .agent-session-transcript {
-  gap: 10px;
-  padding-bottom: 6px;
-}
-
-.ai-assistant-agent-panel .agent-session-workbench {
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
-}
-
-.ai-assistant-dialog.agent-first .ai-assistant-agent-panel .agent-claw-workspace {
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(280px, 360px);
-}
-
-.ai-assistant-agent-panel .agent-session-context,
-.ai-assistant-agent-panel .agent-session-artifact {
-  padding: 10px 12px;
-}
-
-.ai-assistant-agent-panel .agent-session-footer {
-  padding-top: 10px;
 }
 
 .ai-assistant-main {

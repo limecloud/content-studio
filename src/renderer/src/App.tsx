@@ -9,7 +9,6 @@ import { SettingsDialogOutlet } from "./components/SettingsDialogOutlet";
 import { SkillPackageInstallDialog } from "./components/SkillPackageInstallDialog";
 
 const AUTH_ONBOARDING_SKIP_KEY = "buguai:auth-onboarding-skipped";
-const AGENT_MODULES = new Set(["agents"]);
 
 function modelReauthorizationLabels(app: ReturnType<typeof useContentStudioApp>): string[] {
   const labels: string[] = [];
@@ -41,8 +40,7 @@ export function App() {
   const modelReauthorizationMessage = reauthorizationLabels.length
     ? `${reauthorizationLabels.join("、")}访问凭据已保存但当前系统无法解密，请重新授权后再生成内容。`
     : "";
-  const showParamsPanel = !AGENT_MODULES.has(app.activeModule);
-  const paramsPanelState = showParamsPanel ? (paramsPanelCollapsed ? "collapsed" : "expanded") : "hidden";
+  const paramsPanelState = paramsPanelCollapsed ? "collapsed" : "expanded";
 
   useEffect(() => {
     if (!modelReauthorizationMessage) return;
@@ -89,19 +87,11 @@ export function App() {
     >
       <AppSidebar
         activeModule={app.activeModule}
-        workspacePath={app.workspacePath}
-        recentWorkspacePaths={app.settings?.recentWorkspacePaths ?? []}
         updateState={app.updateState}
         authState={app.authState}
-        agentPromptSessions={app.agentPromptSessions}
-        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
         onSelectModule={app.setActiveModule}
-        onSelectAgentSession={app.setActiveAgentPromptSessionId}
-        onSelectWorkspacePath={(workspacePath) =>
-          app.runAction(() => app.switchWorkspace(workspacePath), "正在切换项目")
-        }
         onOpenSettingsPage={(page) => {
           app.setSettingsPage(page);
           app.setShowSettingsDialog(true);
@@ -150,24 +140,22 @@ export function App() {
         </div>
       </section>
 
-      {showParamsPanel ? (
-        <ParamsPanel
-          params={app.params}
-          textProtocol={app.modelConfig?.textProtocol ?? "openai-chat"}
-          textModels={app.textModelOptions}
-          imageModels={app.imageModelOptions}
-          videoModels={app.videoModelOptions}
-          modelConfig={app.modelConfig}
-          logs={app.logs}
-          collapsed={paramsPanelCollapsed}
-          onToggleCollapsed={() => setParamsPanelCollapsed((current) => !current)}
-          setParams={app.setParams}
-          onOpenModelSettings={() => {
-            app.setShowSettingsDialog(true);
-            app.setSettingsPage("model");
-          }}
-        />
-      ) : null}
+      <ParamsPanel
+        params={app.params}
+        textProtocol={app.modelConfig?.textProtocol ?? "openai-chat"}
+        textModels={app.textModelOptions}
+        imageModels={app.imageModelOptions}
+        videoModels={app.videoModelOptions}
+        modelConfig={app.modelConfig}
+        logs={app.logs}
+        collapsed={paramsPanelCollapsed}
+        onToggleCollapsed={() => setParamsPanelCollapsed((current) => !current)}
+        setParams={app.setParams}
+        onOpenModelSettings={() => {
+          app.setShowSettingsDialog(true);
+          app.setSettingsPage("model");
+        }}
+      />
 
       <SkillPackageInstallDialog
         workspacePath={app.workspacePath}

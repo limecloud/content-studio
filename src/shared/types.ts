@@ -1768,9 +1768,6 @@ export interface RecordPromptDraftCopyInput {
   target?: string;
 }
 
-export type AgentPromptSessionStatus = 'active' | 'waiting-user' | 'draft-created' | 'blocked' | 'closed';
-export type AgentPromptMessageRole = 'user' | 'assistant' | 'system';
-export type AgentPromptMessageKind = 'intent' | 'draft' | 'adjustment' | 'note';
 export type AgentPromptExecutionEventKind =
   | 'context'
   | 'source'
@@ -1856,138 +1853,6 @@ export type AgentRuntimePhase =
   | 'blocked'
   | 'canceled'
   | (string & {});
-
-export interface AgentPromptSourceSnapshot {
-  sourceId: string;
-  title: string;
-  kind: InputSourceKind;
-  purpose: InputSourcePurpose;
-  status: InputSourceStatus;
-  summary?: string;
-  markdownPath?: string;
-  blockedReason?: string;
-}
-
-export interface AgentPromptMessage {
-  id: string;
-  role: AgentPromptMessageRole;
-  kind: AgentPromptMessageKind;
-  content: string;
-  model?: string;
-  promptDraftId?: string;
-  createdAt: string;
-}
-
-export interface AgentPromptExecutionEvent {
-  id: string;
-  kind: AgentPromptExecutionEventKind;
-  status: AgentPromptExecutionEventStatus;
-  eventClass?: AgentRuntimeEventClass;
-  owner?: AgentRuntimeFactOwner;
-  schemaVersion?: string;
-  sequence?: number;
-  runtimeId?: string;
-  threadId?: string;
-  turnId?: string;
-  taskId?: string;
-  runId?: string;
-  stepId?: string;
-  toolCallId?: string;
-  actionId?: string;
-  traceId?: string;
-  spanId?: string;
-  attemptId?: string;
-  artifactId?: string;
-  evidenceId?: string;
-  phase?: AgentRuntimePhase;
-  title: string;
-  detail?: string;
-  refIds?: string[];
-  artifactRefs?: string[];
-  evidenceRefs?: string[];
-  payload?: Record<string, unknown>;
-  model?: string;
-  createdAt: string;
-  completedAt?: string;
-}
-
-export interface AgentPromptSession {
-  id: string;
-  workspacePath: string;
-  workflowRunId?: string;
-  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
-  title: string;
-  purpose: PromptDraftPurpose;
-  status: AgentPromptSessionStatus;
-  userIntent: string;
-  inputSourceIds: string[];
-  sceneCardIds?: string[];
-  selectedSkills?: SkillRef[];
-  selectedSkillSlugs?: string[];
-  promptDraftIds: string[];
-  sourceSnapshots: AgentPromptSourceSnapshot[];
-  messages: AgentPromptMessage[];
-  executionEvents?: AgentPromptExecutionEvent[];
-  model?: string;
-  textProtocol?: TextGenerationProtocol;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface StartAgentPromptSessionInput {
-  workspacePath: string;
-  workflowRunId?: string;
-  title?: string;
-  purpose: PromptDraftPurpose;
-  userIntent: string;
-  inputSourceIds: string[];
-  teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
-  sceneCardIds?: string[];
-  selectedSkills?: SkillRef[];
-  selectedSkillSlugs?: string[];
-  requiredCapabilities?: string[];
-  capabilityHints?: string[];
-  agentTaskKind?: string;
-  agentIntentId?: string;
-  permissionMode?: PermissionMode;
-  textModel?: string;
-}
-
-export interface ContinueAgentPromptSessionInput {
-  workspacePath: string;
-  sessionId: string;
-  message: string;
-  textModel?: string;
-}
-
-export type AgentPromptActionDecision = 'open-input-source' | 'open-model-settings' | 'acknowledge';
-
-export interface RespondAgentPromptActionInput {
-  workspacePath: string;
-  sessionId: string;
-  actionId: string;
-  decision: AgentPromptActionDecision;
-  note?: string;
-  payload?: Record<string, unknown>;
-}
-
-export interface AttachAgentPromptSessionInputSourcesInput {
-  workspacePath: string;
-  sessionId: string;
-  inputSourceIds: string[];
-  reason?: string;
-}
-
-export interface AgentPromptSessionResult {
-  session: AgentPromptSession;
-  draft?: PromptDraft;
-}
-
-export interface AgentPromptSessionEvent {
-  type: 'upsert' | 'completed' | 'blocked' | 'failed';
-  workspacePath: string;
-  session: AgentPromptSession;
-}
 
 export type OverlayCardType = 'title' | 'selling-point' | 'quote' | 'cta' | 'subtitle';
 export type OverlayCardStatus = 'draft' | 'exported' | 'archived';
@@ -2954,31 +2819,6 @@ export interface AppServerBusinessObjectRef {
   metadata?: Record<string, unknown>;
 }
 
-export interface RunTaskInput {
-  prompt: string;
-  workspacePath: string;
-  permissionMode: PermissionMode;
-  selectedSkillSlugs?: string[];
-  requiredCapabilities?: string[];
-  capabilityHints?: string[];
-  hostOptions?: unknown;
-  businessObjectRef?: AppServerBusinessObjectRef;
-}
-
-export type AgentEvent =
-  | { type: 'status'; taskId: string; message: string }
-  | { type: 'assistant'; taskId: string; text: string }
-  | { type: 'tool'; taskId: string; name: string; input?: unknown }
-  | { type: 'action'; taskId: string; actionId?: string; actionKind?: string; targetModule?: string; message: string; raw?: unknown }
-  | { type: 'evidence'; taskId: string; evidenceRefs?: string[]; summary?: string; raw?: unknown }
-  | { type: 'result'; taskId: string; summary?: string; raw?: unknown }
-  | { type: 'error'; taskId: string; message: string }
-  | { type: 'done'; taskId: string };
-
-export interface RunTaskResult {
-  taskId: string;
-}
-
 export interface AppServerJsonRpcError {
   code: number;
   message: string;
@@ -3147,12 +2987,6 @@ export interface ContentStudioApi {
   createTeamKnowledgePromptDraft(input: CreateTeamKnowledgePromptDraftInput): Promise<PromptDraft>;
   updatePromptDraft(input: UpdatePromptDraftInput): Promise<PromptDraft>;
   recordPromptDraftCopy(input: RecordPromptDraftCopyInput): Promise<PromptDraft>;
-  listAgentPromptSessions(workspacePath: string): Promise<AgentPromptSession[]>;
-  startAgentPromptSession(input: StartAgentPromptSessionInput): Promise<AgentPromptSessionResult>;
-  continueAgentPromptSession(input: ContinueAgentPromptSessionInput): Promise<AgentPromptSessionResult>;
-  onAgentPromptSessionEvent(callback: (event: AgentPromptSessionEvent) => void): () => void;
-  respondAgentPromptAction(input: RespondAgentPromptActionInput): Promise<AgentPromptSession>;
-  attachAgentPromptSessionInputSources(input: AttachAgentPromptSessionInputSourcesInput): Promise<AgentPromptSession>;
 
   listOverlayCards(workspacePath: string): Promise<OverlayCardRecord[]>;
   generateOverlayCards(input: GenerateOverlayCardsInput): Promise<OverlayCardRecord[]>;
@@ -3190,9 +3024,6 @@ export interface ContentStudioApi {
   listGenerationLogs(workspacePath: string): Promise<GenerationLogEntry[]>;
   updateGenerationLogReview(input: UpdateGenerationLogReviewInput): Promise<GenerationLogEntry | null>;
 
-  runTask(input: RunTaskInput): Promise<RunTaskResult>;
-  cancelTask(taskId: string): Promise<boolean>;
-  onAgentEvent(taskId: string, callback: (event: AgentEvent) => void): () => void;
   getAppServerHealth(): Promise<AppServerHealthCheckResult>;
   runAppServerSmoke(): Promise<AppServerSmokeResult>;
 }

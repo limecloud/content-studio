@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ArticleGenerationResult,
   ArticleGenerationRequest,
-  AgentPromptSession,
   AppSettingsView,
   AssetFileKind,
   AssetReworkSource,
@@ -56,7 +55,6 @@ import type {
   MixPackageRecord,
   ModelCatalogView,
   ModelConfigView,
-  AttachAgentPromptSessionInputSourcesInput,
   GenerateBrandKnowledgeBaseInput,
   GenerateIpKnowledgeBaseInput,
   IpKnowledgeBaseRecord,
@@ -67,7 +65,6 @@ import type {
   PromptDraftPurpose,
   PromptPack,
   RecordMixPackageImportEvidenceInput,
-  RespondAgentPromptActionInput,
   ReferenceReverseResult,
   ReviewAssetInput,
   SceneCard,
@@ -88,8 +85,6 @@ import type {
 } from "../../../shared/types";
 import { buildContentSyncConflictMergeDraft } from "../../../shared/contentSyncConflictMerge";
 import { stripInternalTraceLinesFromPrompt } from "../../../shared/promptTraceText";
-import { isAgentInputSourceRecoverySession } from "../components/agent/agentRuntimeProjection";
-import { cleanAgentAssetRefs, planAgentAssetInputSourceRegistrations } from "./agentAssetInputSources";
 import { DEFAULT_PARAMS, VIDEO_DIMENSIONS } from "./constants";
 import { platformColorThemeToContentStudio } from "./platformAppearance";
 import {
@@ -185,98 +180,6 @@ function uniqueModelNames(models: string[]): string[] {
 
 function compactModelNames(models: Array<string | undefined>): string[] {
   return uniqueModelNames(models.filter((model): model is string => Boolean(model)));
-}
-
-function createPendingAgentPromptSession(input: {
-  workspacePath: string;
-  title?: string;
-  purpose: PromptDraftPurpose;
-  userIntent: string;
-  inputSourceIds: string[];
-  sceneCardIds?: string[];
-  selectedSkills?: SkillRef[];
-  selectedSkillSlugs?: string[];
-  requiredCapabilities?: string[];
-  capabilityHints?: string[];
-  agentTaskKind?: string;
-  agentIntentId?: string;
-  permissionMode?: 'safe' | 'ask' | 'allow-all';
-  textModel?: string;
-}): AgentPromptSession {
-  const now = new Date().toISOString();
-  const id = `pending-agent-${Date.now()}`;
-  return {
-    id,
-    workspacePath: input.workspacePath,
-    title: input.title?.trim() || "AI Agent 正在处理",
-    purpose: input.purpose,
-    status: "active",
-    userIntent: input.userIntent.trim(),
-    inputSourceIds: input.inputSourceIds,
-    sceneCardIds: input.sceneCardIds ?? [],
-    selectedSkills: input.selectedSkills,
-    selectedSkillSlugs: input.selectedSkillSlugs,
-    promptDraftIds: [],
-    sourceSnapshots: [],
-    messages: [
-      {
-        id: `${id}:user`,
-        role: "user",
-        kind: "intent",
-        content: input.userIntent.trim(),
-        createdAt: now,
-      },
-      {
-        id: `${id}:assistant`,
-        role: "assistant",
-        kind: "note",
-        content: "正在连接 Lime Desktop Platform 并生成回复。",
-        model: input.textModel,
-        createdAt: now,
-      },
-    ],
-    executionEvents: [
-      {
-        id: `${id}:submitted`,
-        kind: "state",
-        status: "running",
-        eventClass: "turn.submitted",
-        owner: "runtime",
-        sequence: 1,
-        runtimeId: "content-studio-agent-prompt-runtime",
-        threadId: id,
-        phase: "submitted",
-        title: "请求已提交",
-        detail: "正在等待平台运行结果。",
-        model: input.textModel,
-        payload: {
-          requiredCapabilities: input.requiredCapabilities ?? [],
-          capabilityHints: input.capabilityHints ?? [],
-          agentTaskKind: input.agentTaskKind,
-          agentIntentId: input.agentIntentId,
-          permissionMode: input.permissionMode,
-        },
-        createdAt: now,
-      },
-    ],
-    model: input.textModel,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-function upsertAgentPromptSession(
-  sessions: AgentPromptSession[],
-  nextSession: AgentPromptSession,
-  replaceId?: string,
-): AgentPromptSession[] {
-  return [
-    nextSession,
-    ...sessions.filter((session) => (
-      session.id !== nextSession.id &&
-      (!replaceId || session.id !== replaceId)
-    )),
-  ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 function paramsForImageGeneration(
@@ -392,7 +295,12 @@ type MediaGenerationSubmission =
   | { type: "task"; task: GenerationTaskRecord }
   | { type: "fallback"; result: MediaGenerationResult };
 
-const cleanPathList = cleanAgentAssetRefs;
+function cleanPathList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
+}
 
 function imageLogStage(log: GenerationLogEntry): ImageGenerationRequest["generationStage"] | undefined {
   const input = imageRequestFromLog(log);
@@ -469,11 +377,17 @@ function isMissingGenerationTaskHandler(error: unknown): boolean {
 
 function userFacingActionError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  const remoteErrorMessage =
+    message.match(/Error invoking remote method '[^']+':\s*(?:Error:\s*)?([\s\S]+)$/i)?.[1]?.trim()
+    ?? message.match(/Error invoking remote method "[^"]+":\s*(?:Error:\s*)?([\s\S]+)$/i)?.[1]?.trim();
   if (
     /platformHost:openModelSettings/i.test(message) ||
     /未检测到 lime-desktop-platform runtime bridge/i.test(message)
   ) {
     return "当前窗口未连接平台设置中心，请从平台客户端打开内容工厂后再进入完整模型设置。";
+  }
+  if (remoteErrorMessage && !/No handler registered/i.test(remoteErrorMessage)) {
+    return remoteErrorMessage;
   }
   if (/Error invoking remote method/i.test(message)) {
     return "当前操作未能连接到桌面服务，请稍后重试或重新打开应用。";
@@ -570,7 +484,7 @@ function promptPurposeForIpScenario(scene: string): PromptDraftPurpose {
 function promptWorkbenchModuleForPurpose(purpose: PromptDraftPurpose): ModuleKey {
   if (purpose === "video") return "video-creative";
   if (purpose === "green-screen") return "image-green-screen";
-  return "agents";
+  return purpose === "article" ? "article-title" : "image-showcase";
 }
 
 function videoSubtitleModeLabel(value: string): string {
@@ -704,7 +618,7 @@ export function useContentStudioApp() {
   const [providerTab, setProviderTab] = useState<ProviderTab>("recommended");
   const [responsesApiActive, setResponsesApiActive] = useState(false);
 
-  const [activeModule, setActiveModuleState] = useState<ModuleKey>("agents");
+  const [activeModule, setActiveModuleState] = useState<ModuleKey>("image-production");
   const setActiveModule = (module: ModuleKey) => setActiveModuleState(module);
   const [settings, setSettings] = useState<AppSettingsView | null>(null);
   const [authState, setAuthState] = useState<BuguAuthState | null>(null);
@@ -750,8 +664,6 @@ export function useContentStudioApp() {
   const [inputSources, setInputSources] = useState<InputSourceRecord[]>([]);
   const [promptDrafts, setPromptDrafts] = useState<PromptDraft[]>([]);
   const [activePromptDraftId, setActivePromptDraftId] = useState("");
-  const [agentPromptSessions, setAgentPromptSessions] = useState<AgentPromptSession[]>([]);
-  const [activeAgentPromptSessionId, setActiveAgentPromptSessionId] = useState("");
   const [knowledgeQuery, setKnowledgeQuery] = useState("卖点 合规 场景");
   const [knowledgeBaseFilter, setKnowledgeBaseFilter] = useState<
     KnowledgeBaseType | "all"
@@ -924,13 +836,6 @@ export function useContentStudioApp() {
       promptDrafts.find((draft) => draft.id === activePromptDraftId) ??
       promptDrafts[0],
     [activePromptDraftId, promptDrafts],
-  );
-  const activeAgentPromptSession = useMemo(
-    () =>
-      agentPromptSessions.find((session) => session.id === activeAgentPromptSessionId) ??
-      agentPromptSessions.find((session) => activePromptDraft?.id && session.promptDraftIds.includes(activePromptDraft.id)) ??
-      agentPromptSessions[0],
-    [activeAgentPromptSessionId, activePromptDraft?.id, agentPromptSessions],
   );
   const activeBrandKnowledgeBase = useMemo(
     () =>
@@ -1215,7 +1120,6 @@ export function useContentStudioApp() {
       setActiveImageProductionTaskId("");
       setInputSources([]);
       setPromptDrafts([]);
-      setAgentPromptSessions([]);
       setBrandKnowledgeBases([]);
       setIpKnowledgeBases([]);
       setContentKnowledgeMaps([]);
@@ -1233,7 +1137,6 @@ export function useContentStudioApp() {
       setMixPackages([]);
       setPlatformDrafts([]);
       setActivePromptDraftId("");
-      setActiveAgentPromptSessionId("");
       setActiveBrandKnowledgeBaseId("");
       setActiveIpKnowledgeBaseId("");
       setActiveContentKnowledgeMapId("");
@@ -1253,7 +1156,6 @@ export function useContentStudioApp() {
       nextImageProductionTasks,
       nextInputSources,
       nextPromptDrafts,
-      nextAgentPromptSessions,
       nextBrandKnowledgeBases,
       nextIpKnowledgeBases,
       nextContentKnowledgeMaps,
@@ -1276,7 +1178,6 @@ export function useContentStudioApp() {
         window.contentStudio.listImageProductionTasks(workspace),
         window.contentStudio.listInputSources(workspace),
         window.contentStudio.listPromptDrafts(workspace),
-        window.contentStudio.listAgentPromptSessions(workspace),
         window.contentStudio.listBrandKnowledgeBases(workspace),
         window.contentStudio.listIpKnowledgeBases(workspace),
         window.contentStudio.listContentKnowledgeMaps(workspace),
@@ -1298,7 +1199,6 @@ export function useContentStudioApp() {
     setImageProductionTasks(nextImageProductionTasks);
     setInputSources(nextInputSources);
     setPromptDrafts(nextPromptDrafts);
-    setAgentPromptSessions(nextAgentPromptSessions);
     setBrandKnowledgeBases(nextBrandKnowledgeBases);
     setIpKnowledgeBases(nextIpKnowledgeBases);
     setContentKnowledgeMaps(nextContentKnowledgeMaps);
@@ -1312,11 +1212,6 @@ export function useContentStudioApp() {
     setMixPackages(nextMixPackages);
     setPlatformDrafts(nextPlatformDrafts);
     setActivePromptDraftId((current) => current || nextPromptDrafts[0]?.id || "");
-    setActiveAgentPromptSessionId((current) =>
-      current && nextAgentPromptSessions.some((session) => session.id === current)
-        ? current
-        : "",
-    );
     setActiveBrandKnowledgeBaseId((current) => current || nextBrandKnowledgeBases[0]?.id || "");
     setActiveIpKnowledgeBaseId((current) => current || nextIpKnowledgeBases[0]?.id || "");
     setActiveContentKnowledgeMapId((current) => current || nextContentKnowledgeMaps[0]?.id || "");
@@ -1393,15 +1288,6 @@ export function useContentStudioApp() {
       if (event.log.kind === "image" && event.log.status !== "queued" && event.log.status !== "running") {
         void syncShotStatusFromLog(event.log);
       }
-    });
-    return () => unsubscribe();
-  }, [workspacePath]);
-
-  useEffect(() => {
-    const unsubscribe = window.contentStudio.onAgentPromptSessionEvent((event) => {
-      if (workspacePath && event.workspacePath !== workspacePath) return;
-      setAgentPromptSessions((current) => upsertAgentPromptSession(current, event.session));
-      setActiveAgentPromptSessionId((current) => current || event.session.id);
     });
     return () => unsubscribe();
   }, [workspacePath]);
@@ -1648,7 +1534,6 @@ export function useContentStudioApp() {
     const nextSettings = await window.contentStudio.saveSettings({
       workspacePath: nextWorkspace,
     });
-    setActiveAgentPromptSessionId("");
     setActivePromptDraftId("");
     setSettings(nextSettings);
     await refresh(nextWorkspace);
@@ -1658,12 +1543,10 @@ export function useContentStudioApp() {
     const nextSettings = await window.contentStudio.saveSettings({
       workspacePath: "",
     });
-    setActiveAgentPromptSessionId("");
     setActivePromptDraftId("");
     setSettings(nextSettings);
     setInputSources([]);
     setPromptDrafts([]);
-    setAgentPromptSessions([]);
     setSearchResults([]);
     setLogs([]);
   }
@@ -1903,16 +1786,9 @@ export function useContentStudioApp() {
     if (imported) await refresh(workspace);
   }
 
-  async function resolveInputSourceRecoverySessionId(workspace: string, explicitSessionId?: string): Promise<string | undefined> {
-    if (explicitSessionId) return explicitSessionId;
-    const sessions = await window.contentStudio.listAgentPromptSessions(workspace);
-    const candidates = sessions.filter(isAgentInputSourceRecoverySession);
-    return candidates.find((session) => session.id === activeAgentPromptSessionId)?.id ?? candidates[0]?.id;
-  }
-
   async function importInputSource(
     purpose: InputSourcePurpose,
-    agentSessionId?: string,
+    _agentSessionId?: string,
     sensitivity?: InputSourceSensitivity,
   ): Promise<void> {
     const workspace = requireWorkspace();
@@ -1924,16 +1800,7 @@ export function useContentStudioApp() {
     if (imported) {
       if (purpose === "successful-asset") setActiveModule("video-import");
       setInputSources((current) => [imported, ...current.filter((item) => item.id !== imported.id)]);
-      const recoverySessionId = await resolveInputSourceRecoverySessionId(workspace, agentSessionId);
-      if (recoverySessionId) {
-        await attachAgentPromptSessionInputSources({
-          sessionId: recoverySessionId,
-          inputSourceIds: [imported.id],
-          reason: "file-input-source-imported",
-        });
-      } else {
-        await refresh(workspace);
-      }
+      await refresh(workspace);
     }
   }
 
@@ -1983,48 +1850,7 @@ export function useContentStudioApp() {
       summary: input.text.slice(0, 160),
     });
     setInputSources((current) => [source, ...current.filter((item) => item.id !== source.id)]);
-    const recoverySessionId = await resolveInputSourceRecoverySessionId(workspace, input.agentSessionId);
-    if (recoverySessionId) {
-      await attachAgentPromptSessionInputSources({
-        sessionId: recoverySessionId,
-        inputSourceIds: [source.id],
-        reason: "manual-input-source-registered",
-      });
-    } else {
-      await refresh(workspace);
-    }
-  }
-
-  async function ensureAgentAssetInputSources(
-    workspace: string,
-    productRefs?: string[],
-    referenceRefs?: string[],
-  ): Promise<string[]> {
-    const plan = planAgentAssetInputSourceRegistrations({
-      productRefs,
-      referenceRefs,
-      knownSources: inputSources,
-      fileNameFromPath,
-    });
-    if (!plan.existingIds.length && !plan.registrations.length) return [];
-
-    const createdSources: InputSourceRecord[] = [];
-    const ids: string[] = [...plan.existingIds];
-    for (const registration of plan.registrations) {
-      const source = await window.contentStudio.registerInputSource({
-        workspacePath: workspace,
-        ...registration.input,
-      });
-      createdSources.push(source);
-      ids.push(source.id);
-    }
-    if (createdSources.length) {
-      setInputSources((current) => [
-        ...createdSources,
-        ...current.filter((source) => !createdSources.some((created) => created.id === source.id)),
-      ]);
-    }
-    return Array.from(new Set(ids));
+    await refresh(workspace);
   }
 
   async function removeInputSource(sourceId: string): Promise<void> {
@@ -2073,95 +1899,6 @@ export function useContentStudioApp() {
   async function generatePromptDraft(input: PromptDraftCreateRequest): Promise<void> {
     const workspace = requireWorkspace();
     await createPromptDraftRecord(workspace, input);
-    await refresh(workspace);
-  }
-
-  async function startAgentPromptSession(input: PromptDraftCreateRequest): Promise<AgentPromptSession> {
-    const workspace = requireWorkspace();
-    const assetInputSourceIds = await ensureAgentAssetInputSources(workspace, input.productImageRefs, input.referenceImageRefs);
-    const inputSourceIds = Array.from(new Set([...input.inputSourceIds, ...assetInputSourceIds]));
-    const agentTextModel = requestedModelFromOptions(input.textModel, textModelOptions);
-    const pendingSession = createPendingAgentPromptSession({
-      workspacePath: workspace,
-      title: input.title,
-      purpose: input.purpose,
-      userIntent: input.userIntent,
-      inputSourceIds,
-      sceneCardIds: input.sceneCardIds,
-      selectedSkills: input.selectedSkills,
-      selectedSkillSlugs: input.selectedSkillSlugs,
-      textModel: agentTextModel,
-    });
-    setAgentPromptSessions((current) => upsertAgentPromptSession(current, pendingSession));
-    setActiveAgentPromptSessionId(pendingSession.id);
-    const result = await window.contentStudio.startAgentPromptSession({
-      workspacePath: workspace,
-      title: input.title,
-      purpose: input.purpose,
-      userIntent: input.userIntent,
-      inputSourceIds,
-      teamKnowledgeRelease: input.teamKnowledgeRelease,
-      sceneCardIds: input.sceneCardIds,
-      selectedSkills: input.selectedSkills,
-      selectedSkillSlugs: input.selectedSkillSlugs,
-      requiredCapabilities: input.requiredCapabilities,
-      capabilityHints: input.capabilityHints,
-      agentTaskKind: input.agentTaskKind,
-      agentIntentId: input.agentIntentId,
-      permissionMode: input.permissionMode,
-      textModel: agentTextModel,
-    });
-    if (result.draft) {
-      setPromptDrafts((current) => [result.draft!, ...current.filter((item) => item.id !== result.draft!.id)]);
-      setActivePromptDraftId(result.draft.id);
-    }
-    setAgentPromptSessions((current) => upsertAgentPromptSession(current, result.session, pendingSession.id));
-    setActiveAgentPromptSessionId(result.session.id);
-    await refresh(workspace);
-    return result.session;
-  }
-
-  async function continueAgentPromptSession(input: {
-    sessionId: string;
-    message: string;
-    textModel?: string;
-  }): Promise<void> {
-    const workspace = requireWorkspace();
-    const agentTextModel = requestedModelFromOptions(input.textModel, textModelOptions);
-    const result = await window.contentStudio.continueAgentPromptSession({
-      workspacePath: workspace,
-      sessionId: input.sessionId,
-      message: input.message,
-      textModel: agentTextModel,
-    });
-    if (result.draft) {
-      setPromptDrafts((current) => [result.draft!, ...current.filter((item) => item.id !== result.draft!.id)]);
-      setActivePromptDraftId(result.draft.id);
-    }
-    setAgentPromptSessions((current) => upsertAgentPromptSession(current, result.session));
-    setActiveAgentPromptSessionId(result.session.id);
-    await refresh(workspace);
-  }
-
-  async function respondAgentPromptAction(input: Omit<RespondAgentPromptActionInput, 'workspacePath'>): Promise<void> {
-    const workspace = requireWorkspace();
-    const session = await window.contentStudio.respondAgentPromptAction({
-      workspacePath: workspace,
-      ...input,
-    });
-    setAgentPromptSessions((current) => upsertAgentPromptSession(current, session));
-    setActiveAgentPromptSessionId(session.id);
-    await refresh(workspace);
-  }
-
-  async function attachAgentPromptSessionInputSources(input: Omit<AttachAgentPromptSessionInputSourcesInput, 'workspacePath'>): Promise<void> {
-    const workspace = requireWorkspace();
-    const session = await window.contentStudio.attachAgentPromptSessionInputSources({
-      workspacePath: workspace,
-      ...input,
-    });
-    setAgentPromptSessions((current) => upsertAgentPromptSession(current, session));
-    setActiveAgentPromptSessionId(session.id);
     await refresh(workspace);
   }
 
@@ -2565,7 +2302,7 @@ export function useContentStudioApp() {
       ? promptWorkbenchModuleForPurpose(result.promptDraft.purpose)
       : result.sceneCard
         ? 'knowledge'
-        : 'agents';
+        : 'assets';
     await refresh(workspace);
     if (result.promptDraft) setActivePromptDraftId(result.promptDraft.id);
     if (result.sceneCard) {
@@ -3769,13 +3506,11 @@ export function useContentStudioApp() {
       ...workflowStepOutputValues(run, ["sceneCardIds"]),
       ...workflowArtifactRefIds(run, "scene-card"),
     ]));
-    const agentSessionId = workflowStepOutputValue(run, ["agentSessionId"]);
     const promptDraftId = promptDraftIdFromWorkflowRun(run);
     if (brandKnowledgeBaseId) selectBrandKnowledgeBase(brandKnowledgeBaseId);
     if (ipKnowledgeBaseId) selectIpKnowledgeBase(ipKnowledgeBaseId);
     if (promptPackId) setActivePromptPackId(promptPackId);
     if (sceneCardIds.length) setSelectedSceneIds(sceneCardIds);
-    if (agentSessionId) setActiveAgentPromptSessionId(agentSessionId);
     if (promptDraftId) setActivePromptDraftId(promptDraftId);
     return promptDraftId;
   }
@@ -4857,16 +4592,12 @@ export function useContentStudioApp() {
     contentReviewTasks,
     inputSources,
     promptDrafts,
-    agentPromptSessions,
     overlayCards,
     assetReviews,
     mixPackages,
     activePromptDraft,
     activePromptDraftId,
     setActivePromptDraftId,
-    activeAgentPromptSession,
-    activeAgentPromptSessionId,
-    setActiveAgentPromptSessionId,
     knowledgeQuery,
     setKnowledgeQuery,
     knowledgeBaseFilter,
@@ -5035,10 +4766,6 @@ export function useContentStudioApp() {
     registerManualInputSource,
     removeInputSource,
     generatePromptDraft,
-    startAgentPromptSession,
-    continueAgentPromptSession,
-    respondAgentPromptAction,
-    attachAgentPromptSessionInputSources,
     generateBrandKnowledgeBase,
     buildContentKnowledgeMap,
     exportContentKnowledgePack,

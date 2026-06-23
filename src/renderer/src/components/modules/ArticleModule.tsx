@@ -1,5 +1,4 @@
 import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import { AgentTimeline } from '@limecloud/agent-runtime-ui';
 import type { ArticleGenerationRequest, ArticleGenerationResult, PlatformDraftRecord } from '../../../../shared/types';
 import { ARTICLE_LENGTH_OPTIONS, ARTICLE_TYPE_OPTIONS } from '../../app/constants';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
@@ -36,6 +35,27 @@ interface ArticleModuleProps {
 }
 
 type ArticlePreviewMode = 'rendered' | 'markdown';
+type ProductionTimelineMessage = { id: string; role: 'user' | 'assistant'; content: string; createdAt: string };
+
+function ProductionTimeline({
+  messages,
+  runningLabel,
+}: {
+  messages: ProductionTimelineMessage[];
+  runningLabel?: string;
+}) {
+  return (
+    <div className="production-timeline">
+      {messages.map((message) => (
+        <article key={message.id} className={`production-timeline-message ${message.role}`}>
+          <strong>{message.role === 'assistant' ? '写作助手' : '任务简报'}</strong>
+          <p>{message.content}</p>
+        </article>
+      ))}
+      {runningLabel ? <div className="production-timeline-running">{runningLabel}</div> : null}
+    </div>
+  );
+}
 
 function optionLabel<TValue extends string>(options: Array<{ value: TValue; label: string }>, value: TValue): string {
   return options.find((option) => option.value === value)?.label ?? value;
@@ -130,7 +150,7 @@ export function ArticleModule({
     () => (articleResult ? renderMarkdown(articleResult.markdown) : []),
     [articleResult],
   );
-  const agentMessages = useMemo(() => {
+  const agentMessages = useMemo<ProductionTimelineMessage[]>(() => {
     const brief = [
       `平台：${articlePlatform || '未填写'}`,
       `文章类型：${articleTypeLabel}`,
@@ -140,7 +160,7 @@ export function ArticleModule({
       `篇幅：${articleLengthLabel}`,
       articleRequirement ? `补充要求：${articleRequirement}` : '',
     ].filter(Boolean).join('\n');
-    const messages = [{
+    const messages: ProductionTimelineMessage[] = [{
       id: 'article-brief',
       role: 'user',
       content: brief,
@@ -253,7 +273,7 @@ export function ArticleModule({
           <div className="panel-title">
             <div>
               <p className="eyebrow">写作协作</p>
-              <h3>文章生成 Agent</h3>
+              <h3>文章生成流程</h3>
             </div>
             <span className={`status-pill ${busy ? 'warning' : articleResult ? 'ready' : 'idle'}`}>
               {busy ? '生成中' : articleResult ? '已产出' : '待开始'}
@@ -278,17 +298,14 @@ export function ArticleModule({
             </div>
           </div>
           <div className="article-agent-thread" aria-label="文章生成协作记录">
-            <AgentTimeline
+            <ProductionTimeline
               messages={agentMessages}
               runningLabel={busy ? '正在整理标题候选、正文草稿和发布检查。' : undefined}
-              messageMeta={() => null}
-              messageTitle={(message) => message.role === 'assistant' ? '写作助手' : '任务简报'}
-              messagePreview={(message) => message.content}
             />
           </div>
           <div className="article-agent-next-action">
             <strong>{articleResult ? '下一步：复核正文并导出交付' : '下一步：生成首版正文草稿'}</strong>
-            <p>{articleResult ? '先检查标题、事实边界和平台格式，再导出 Markdown 或平台草稿包。' : 'Agent 会根据左侧任务上下文生成标题候选、大纲、正文和发布检查。'}</p>
+            <p>{articleResult ? '先检查标题、事实边界和平台格式，再导出 Markdown 或平台草稿包。' : '系统会根据左侧任务上下文生成标题候选、大纲、正文和发布检查。'}</p>
             <button className="primary" disabled={busy || !workspaceReady} onClick={onGenerateArticle}>
               {articleResult ? '重新生成草稿' : '开始写作'}
             </button>

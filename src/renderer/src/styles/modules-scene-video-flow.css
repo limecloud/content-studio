@@ -23,19 +23,23 @@
   min-height: 0;
 }
 
+.video-prompt-scenes-panel {
+  flex-shrink: 0;
+}
+
 .video-prompt-builder-panel {
   align-content: stretch;
   height: 100%;
   overflow: hidden;
 }
 
-.video-prompt-builder-panel > .agent-session-panel {
+.video-prompt-builder-panel > .video-prompt-builder-surface {
   min-height: 0;
   height: 100%;
+  overflow: auto;
 }
 
-.video-prompt-builder-panel .agent-session-context,
-.video-prompt-builder-panel .agent-session-artifact {
+.video-prompt-builder-panel .video-prompt-builder-surface {
   background: #ffffff;
 }
 
@@ -44,8 +48,10 @@
   display: grid;
   gap: 10px;
   max-height: 230px;
+  min-height: 88px;
   overflow: auto;
   padding-right: 2px;
+  flex-shrink: 0;
 }
 
 .video-prompt-scene-card {

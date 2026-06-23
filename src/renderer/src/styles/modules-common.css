@@ -1022,11 +1022,39 @@
   padding: 12px;
   scrollbar-width: thin;
 }
-.article-agent-thread .agent-turn {
-  box-shadow: none;
+.production-timeline {
+  display: grid;
+  gap: 10px;
 }
-.article-agent-thread .agent-turn.user {
+.production-timeline-message {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  padding: 10px 12px;
+}
+.production-timeline-message.user,
+.article-agent-thread .production-timeline-message.user {
   background: #f8fafc;
+}
+.production-timeline-message strong {
+  color: var(--text);
+  font-size: 12px;
+}
+.production-timeline-message p {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.production-timeline-running {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 .article-agent-next-action {
   display: grid;

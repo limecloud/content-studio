@@ -1,8 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type {
-  AgentEvent,
-  AttachAgentPromptSessionInputSourcesInput,
-  ContinueAgentPromptSessionInput,
   ArticleGenerationRequest,
   CreateContentDraftChangeInput,
   CreateContentKnowledgeReleaseInput,
@@ -23,7 +20,6 @@ import type {
   ExportPlatformDraftInput,
   GenerateContentReviewTasksInput,
   GenerateOverlayCardsInput,
-  StartAgentPromptSessionInput,
   GeneratePromptPackInput,
   GeneratePromptDraftInput,
   GenerateImageSkillInput,
@@ -43,7 +39,6 @@ import type {
   SubmitContentReviewDecisionInput,
   SubmitContentDraftChangeInput,
   WriteBackContentMaterialCoverageInput,
-  RunTaskInput,
   SaveModelConfigInput,
   SaveSettingsInput,
   SceneCard,
@@ -70,7 +65,6 @@ import type {
   RenameSkillInput,
   ReplaceSkillPackageInput,
   RegisterInputSourceInput,
-  RespondAgentPromptActionInput,
   ResolveContentSyncConflictInput,
   SkillWorkspaceInput,
   SubmitGenerationTaskInput,
@@ -82,8 +76,6 @@ import { randomUUID } from 'node:crypto';
 import { MediaProvider } from './providers/mediaProvider';
 import { AgentKnowledgeContentExportService } from './services/agentKnowledgeContentExportService';
 import { ArticleGenerationService } from './services/articleGenerationService';
-import { AgentPromptSessionStore } from './services/agentPromptSessionStore';
-import { AppServerPromptAgentService } from './services/appServerPromptAgentService';
 import { AppServerSidecarService } from './services/appServerSidecarService';
 import { BrandKnowledgeBaseStore } from './services/brandKnowledgeBaseStore';
 import { AssetReviewStore } from './services/assetReviewStore';
@@ -388,21 +380,9 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   const knowledgeBases = new KnowledgeBaseStore();
   const logs = new GenerationLogStore();
   const textGeneration = new TextGenerationService(modelConfig, appServer);
-  const promptAgent = new AppServerPromptAgentService(appServer, modelConfig, platformHost);
   const imageSkills = new ImageSkillGenerationService(textGeneration);
   const inputSources = new InputSourceStore();
   const promptDrafts = new PromptDraftStore(inputSources, textGeneration, skills);
-  const agentPromptSessions = new AgentPromptSessionStore(
-    inputSources,
-    promptDrafts,
-    promptAgent,
-    skills,
-    (event) => {
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('agentPromptSessions:event', event);
-      }
-    },
-  );
   const brandKnowledgeBases = new BrandKnowledgeBaseStore(textGeneration);
   const ipKnowledgeBases = new IpKnowledgeBaseStore(textGeneration);
   const overlayCards = new OverlayCardStore();
@@ -482,9 +462,6 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     imageProductionTasks,
     (event) => mainWindow.webContents.send('generationTasks:event', event),
   );
-  const publish = (event: AgentEvent) => {
-    mainWindow.webContents.send(`agent:event:${event.taskId}`, event);
-  };
   const productName = getOemRuntimeConfig().productName || '布谷AI';
 
   ipcMain.handle('auth:getSession', () => buguAuth.getAuthState());
@@ -701,11 +678,6 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('promptDrafts:createTeamKnowledge', (_event, input: CreateTeamKnowledgePromptDraftInput) => contentTeamKnowledgePromptDrafts.create(input));
   ipcMain.handle('promptDrafts:update', (_event, input: UpdatePromptDraftInput) => promptDrafts.update(input));
   ipcMain.handle('promptDrafts:recordCopy', (_event, input: RecordPromptDraftCopyInput) => promptDrafts.recordCopy(input));
-  ipcMain.handle('agentPromptSessions:list', (_event, workspacePath: string) => agentPromptSessions.list(workspacePath));
-  ipcMain.handle('agentPromptSessions:start', (_event, input: StartAgentPromptSessionInput) => agentPromptSessions.start(input));
-  ipcMain.handle('agentPromptSessions:continue', (_event, input: ContinueAgentPromptSessionInput) => agentPromptSessions.continue(input));
-  ipcMain.handle('agentPromptSessions:respondAction', (_event, input: RespondAgentPromptActionInput) => agentPromptSessions.respondAction(input));
-  ipcMain.handle('agentPromptSessions:attachInputSources', (_event, input: AttachAgentPromptSessionInputSourcesInput) => agentPromptSessions.attachInputSources(input));
   ipcMain.handle('overlayCards:list', (_event, workspacePath: string) => overlayCards.list(workspacePath));
   ipcMain.handle('overlayCards:generate', (_event, input: GenerateOverlayCardsInput) => overlayCards.generate(input));
   ipcMain.handle('assetReviews:list', (_event, workspacePath: string) => assetReviews.list(workspacePath));
@@ -805,10 +777,6 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     });
   });
 
-  ipcMain.handle('agent:run', async (_event, input: RunTaskInput) => ({
-    taskId: await appServer.runAgent(input, publish),
-  }));
-  ipcMain.handle('agent:cancel', (_event, taskId: string) => appServer.cancelAgent(taskId));
   ipcMain.handle('appServer:health', () => appServer.healthCheck());
   ipcMain.handle('appServer:smoke', () => appServer.runSmoke());
 }

@@ -1082,11 +1082,11 @@
   scrollbar-width: thin;
 }
 
-.video-handoff-agent-panel .agent-turn {
+.video-handoff-agent-panel .production-timeline-message {
   box-shadow: none;
 }
 
-.video-handoff-agent-panel .agent-turn.user {
+.video-handoff-agent-panel .production-timeline-message.user {
   background: color-mix(in srgb, var(--cyan) 3%, var(--panel));
 }
 
@@ -1554,11 +1554,11 @@
   scrollbar-width: thin;
 }
 
-.video-script-agent-thread .agent-turn {
+.video-script-agent-thread .production-timeline-message {
   box-shadow: none;
 }
 
-.video-script-agent-thread .agent-turn.user {
+.video-script-agent-thread .production-timeline-message.user {
   background: color-mix(in srgb, var(--cyan) 3%, var(--panel));
 }
 

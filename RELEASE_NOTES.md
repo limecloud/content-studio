@@ -1,5 +1,23 @@
 # Release Notes
 
+## v0.25.0 - 2026-06-24
+
+### Content Studio Agents 功能下线
+
+- 移除 Content Studio 内置 Agents 工作台、模块内 Agent 会话面板、旧会话 IPC / preload API 和对应 E2E 回归面，后续相关协作能力迁到 Lime 继续开发。
+- 清理旧 AgentUI runtime UI / projection / workbench adapter 依赖、发布断言脚本和侧栏样式，避免桌面包继续携带已迁出的工作台 surface。
+- 保留 App Server capability/runtime 生成主链，文字、图片、视频和素材拆解仍通过当前内容生成服务或明确 blocked 分支返回可追溯结果。
+
+### 主链入口与回归修复
+
+- 图片 / 视频提示词助手改为本地提示词面板，不再读取已删除的 Agent session 列表，修复 `.filter()` 读取 undefined 导致 AI 生图和 AI 视频页面崩溃的问题。
+- 文章生成补回普通导航入口，品牌知识库、视频 Prompt 和文章生成测试改为验证当前业务面板，不再依赖旧新对话入口。
+- 发布前本地门禁改为 `typecheck -> content:v1 readiness -> build -> v2 -> functional -> smoke -> e2e`，不再执行已删除的 `verify:lime-agent`。
+
+### 验证
+
+- `npm run verify:local`
+
 ## v0.24.0 - 2026-06-16
 
 ### Platform Host WebSearch 主链修复

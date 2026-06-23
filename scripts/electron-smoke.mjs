@@ -326,7 +326,7 @@ try {
       return false;
     };
     const expandAllNavGroups = async () => {
-      const toggles = Array.from(document.querySelectorAll('.nav-group-toggle[aria-expanded="false"], .agent-nav-root[aria-expanded="false"]'));
+      const toggles = Array.from(document.querySelectorAll('.nav-group-toggle[aria-expanded="false"]'));
       for (const toggle of toggles) {
         toggle.click();
         await wait(80);
@@ -353,7 +353,7 @@ try {
       const candidates = Array.isArray(labels) ? labels : [labels];
       const nav = document.querySelector('.nav-stack');
       if (!nav) return false;
-      const button = Array.from(nav.querySelectorAll('button.nav-item, button.agent-nav-action, button.agent-project-row, button.agent-conversation-row')).find((item) => {
+      const button = Array.from(nav.querySelectorAll('button.nav-item')).find((item) => {
         const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
         const normalizedText = accessibleText.toLowerCase();
         return candidates.some((label) => normalizedText.includes(String(label).toLowerCase())) && !item.disabled;
@@ -401,13 +401,11 @@ try {
     const checks = [];
     checks.push({ action: 'click video nav', clicked: await clickNavButton(['视频生成', '视频引擎']), hasText: document.body.innerText.includes('视频复刻引擎') || document.body.innerText.includes('视频生成') });
     checks.push({
-      action: 'click agents nav',
-      clicked: await clickNavButton(['新对话', '对话', '项目', 'agents']),
-      hasText: Boolean(document.querySelector('.agents-entry'))
-        && Boolean(document.querySelector('.agents-composer-frame textarea[aria-label="agents 输入"]'))
-        && Boolean(document.querySelector('.agents-entry-board'))
+      action: 'click article nav',
+      clicked: await clickNavButton('文章生成'),
+      hasText: Boolean(document.querySelector('.article-module-workbench'))
         && document.body.innerText.includes('文章生成')
-        && document.body.innerText.includes('脚本生成'),
+        && document.body.innerText.includes('正文 / 发布检查'),
     });
     checks.push({ action: 'click knowledge nav', clicked: await clickNavButton('成型知识库'), hasText: document.body.innerText.includes('知识库') && document.body.innerText.includes('引用检索') && document.body.innerText.includes('提示词包') && document.body.innerText.includes('场景卡') });
     checks.push({ action: 'click assets nav', clicked: await clickNavButton(['素材库', '素材库 / 历史']), hasText: document.body.innerText.includes('素材库') });
@@ -443,7 +441,6 @@ try {
         && modelSettingsText.includes('添加模型')
         && (
           modelSettingsText.includes('平台模型设置')
-          || modelSettingsText.includes('Agent Runtime')
           || modelSettingsText.includes('Platform OpenAI')
           || modelSettingsText.includes('未连接平台设置')
           || modelSettingsText.includes('尚未配置 Provider')
@@ -478,7 +475,7 @@ try {
       throw new Error('UI workflow timeout: ' + label + '\\n' + lastText.slice(0, 1200));
     };
 	    const expandAllNavGroups = async () => {
-	      const toggles = Array.from(document.querySelectorAll('.nav-group-toggle[aria-expanded="false"], .agent-nav-root[aria-expanded="false"]'));
+      const toggles = Array.from(document.querySelectorAll('.nav-group-toggle[aria-expanded="false"]'));
 	      for (const toggle of toggles) {
 	        toggle.click();
 	        await wait(80);
@@ -509,7 +506,7 @@ try {
       const findButton = () => {
         const nav = document.querySelector('.nav-stack');
         if (!nav) return null;
-        return Array.from(nav.querySelectorAll('button.nav-item, button.agent-nav-action, button.agent-project-row, button.agent-conversation-row')).find((item) => {
+        return Array.from(nav.querySelectorAll('button.nav-item')).find((item) => {
           const accessibleText = [item.innerText, item.getAttribute('aria-label'), item.getAttribute('title')].filter(Boolean).join(' ');
           const normalizedText = accessibleText.toLowerCase();
           return candidates.some((label) => normalizedText.includes(String(label).toLowerCase())) && !item.disabled;
@@ -564,29 +561,18 @@ try {
       }
       throw new Error('按钮不可点击：' + lastLabel);
     };
-    const setAgentsInput = async (value) => {
-      const textarea = document.querySelector('.agents-composer-frame textarea[aria-label="agents 输入"]');
-      if (!textarea) throw new Error('agents 输入框不存在');
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-      setter?.call(textarea, value);
-      textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
-      await wait(120);
-    };
     const checks = [];
 
     await waitFor('default workspace ready', () => !bodyText().includes('尚未选择工作区') && !bodyText().includes('请先选择工作区'));
     checks.push({ step: 'default workspace ready', ok: true });
 
-    await clickNavButton(['新对话', 'agents']);
-    await clickButton('文章生成');
-    await setAgentsInput('请基于当前知识库和素材生成一篇 smoke 测试文章正文。');
-    await clickButton('开始协作');
+    await clickNavButton('文章生成');
+    await clickButton('生成大纲 / 正文 / 发布检查');
     await waitFor('article blocked', () => (
-      bodyText().includes('文章生成协作')
+      bodyText().includes('文章生成')
       && (
-        bodyText().includes('平台文字模型未配置')
+        bodyText().includes('文字模型未配置')
         || bodyText().includes('未连接 Lime Desktop Platform')
-        || bodyText().includes('AI Agent 对话未启动')
       )
       && (
         bodyText().includes('模型')

@@ -71,97 +71,6 @@ export function createModelSettingsProjection(app: ContentStudioAppController): 
   };
 }
 
-export function createAgentModelSettingsProjection(app: ContentStudioAppController): PlatformModelSettingsProjection {
-  const config = app.modelConfig;
-  const settings = createModelSettingsProjection(app);
-  if (!config?.platformManaged) {
-    const textProviders = settings.providers
-      .filter((provider) => provider.enabled !== false)
-      .filter((provider) => provider.models.length > 0);
-    const selectedProvider =
-      textProviders.find((provider) => provider.id === config?.agentProviderPreference)
-      ?? textProviders[0];
-    const agentModels = uniqueModels([
-      ...(config?.textModels ?? []),
-      ...(selectedProvider?.models ?? []),
-    ]);
-    const provider: PlatformModelProviderProjection | undefined = agentModels.length
-      ? {
-        id: selectedProvider?.id ?? config?.agentProviderPreference ?? 'content-studio-app-server-runtime',
-        displayName: selectedProvider?.displayName ?? 'Content Studio App Server Runtime',
-        description: selectedProvider?.description ?? '由 Content Studio Electron 启动的 Lime App Server provider store 提供。',
-        protocol: selectedProvider?.protocol ?? 'openai-compatible',
-        capabilityKinds: ['text'],
-        enabled: selectedProvider?.enabled ?? true,
-        apiKeyConfigured: selectedProvider?.apiKeyConfigured ?? true,
-        authType: selectedProvider?.authType ?? 'api-key',
-        baseUrl: selectedProvider?.baseUrl,
-        useResponsesApi: selectedProvider?.useResponsesApi,
-        models: agentModels,
-      }
-      : undefined;
-    const defaultTextModelId = selectModel(
-      provider,
-      config?.textModel,
-      settings.defaultTextModelId,
-      app.params.textModel,
-    );
-    return {
-      ...settings,
-      defaultAgentProviderId: provider?.id,
-      defaultTextModelId,
-      providers: provider ? [provider] : [],
-    };
-  }
-
-  const textProviders = settings.providers
-    .filter((provider) => provider.enabled !== false)
-    .filter((provider) => provider.authType === 'none' || provider.apiKeyConfigured)
-    .filter((provider) => !provider.capabilityKinds || provider.capabilityKinds.includes('text'))
-    .filter((provider) => provider.models.length > 0);
-  if (!textProviders.length) {
-    return {
-      ...settings,
-      defaultAgentProviderId: undefined,
-      defaultTextModelId: undefined,
-      providers: [],
-    };
-  }
-  const selectedProvider =
-    textProviders.find((provider) => provider.id === config?.agentProviderPreference)
-    ?? textProviders.find((provider) => provider.id === settings.defaultAgentProviderId)
-    ?? textProviders[0];
-  const agentModels = uniqueModels(textProviders.flatMap((provider) => provider.models));
-  const provider: PlatformModelProviderProjection | undefined = agentModels.length
-    ? {
-      id: 'lime-platform-agent-text',
-      displayName: selectedProvider?.displayName ?? '平台模型设置 / Agent Runtime',
-      description: '由 lime-desktop-platform 模型设置中心提供的 Agent 可用文字模型。',
-      protocol: selectedProvider?.protocol ?? 'openai-compatible',
-      capabilityKinds: ['text'],
-      enabled: textProviders.some((item) => item.enabled !== false),
-      apiKeyConfigured: textProviders.some((item) => item.apiKeyConfigured || item.authType === 'none'),
-      authType: selectedProvider?.authType ?? 'api-key',
-      baseUrl: selectedProvider?.baseUrl,
-      useResponsesApi: selectedProvider?.useResponsesApi,
-      models: agentModels,
-    }
-    : undefined;
-  const defaultTextModelId = selectModel(
-    provider,
-    app.params.textModel,
-    config?.textModel,
-    settings.defaultTextModelId,
-  );
-
-  return {
-    ...settings,
-    defaultAgentProviderId: provider?.id ?? selectedProvider?.id ?? settings.defaultAgentProviderId,
-    defaultTextModelId,
-    providers: provider ? [provider] : [],
-  };
-}
-
 export function selectUsableTextModel(
   settings: PlatformModelSettingsProjection,
   requestedModel?: string,
@@ -187,16 +96,4 @@ function projectProvider(provider: PlatformModelProviderProjection & { apiKey?: 
     ...projection,
     models: compactUsableModelIds(projection.models),
   };
-}
-
-function uniqueModels(models: Array<string | undefined> | undefined): string[] {
-  return compactUsableModelIds(models);
-}
-
-function selectModel(
-  provider: PlatformModelProviderProjection | undefined,
-  ...candidates: Array<string | undefined>
-): string | undefined {
-  const models = provider?.models ?? [];
-  return candidates.find((model): model is string => Boolean(model && models.includes(model))) ?? models[0];
 }

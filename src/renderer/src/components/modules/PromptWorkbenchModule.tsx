@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ModuleKey, V2ModuleKey } from '../../app/types';
 import type {
-  AgentPromptSession,
   ContentKnowledgeRelease,
   ContentKnowledgeReleaseReference,
   InputSourceRecord,
@@ -17,7 +16,6 @@ import type {
 import { isPromptDistilledSource, isReusablePromptInputSource } from '../../../../shared/inputSourcePolicy';
 import { skillKey, textProtocolLabel } from '../../app/formatters';
 import { V2_FEATURES } from '../../app/v2FeatureRegistry';
-import { AgentSessionPanel, type AgentActionResolver, type AgentExecutionStep } from '../agent/AgentSessionPanel';
 import { ModuleCommandCenter } from '../ModuleCommandCenter';
 import { PlatformDraftTraceList } from '../PlatformDraftTraceList';
 import { ActionGroup, SelectableRecordCard, StatusPill, type StatusPillTone } from '../WorkbenchPrimitives';
@@ -29,23 +27,16 @@ interface PromptWorkbenchModuleProps {
   initialUserIntent?: string;
   workspaceReady: boolean;
   busy: boolean;
-  currentActionLabel?: string | null;
   inputSources: InputSourceRecord[];
   promptDrafts: PromptDraft[];
   platformDrafts: PlatformDraftRecord[];
   teamKnowledgePackageVersions: ContentKnowledgeRelease[];
   copiedPlatformDraftId: string | null;
-  agentPromptSessions: AgentPromptSession[];
   skills: LoadedSkill[];
   enabledSkillKeys: Set<string>;
-  textModel?: string;
   textProtocol?: TextGenerationProtocol;
-  textModels?: string[];
   activeDraftId: string;
-  activeSessionId: string;
   onSelectDraft: (draftId: string) => void;
-  onSelectSession: (sessionId: string) => void;
-  onResolveAgentAction?: AgentActionResolver;
   onGenerateDraft: (input: {
     title?: string;
     purpose: PromptDraftPurpose;
@@ -54,22 +45,6 @@ interface PromptWorkbenchModuleProps {
     teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
     selectedSkills?: SkillRef[];
     selectedSkillSlugs?: string[];
-  }) => void;
-  onStartSession: (input: {
-    title?: string;
-    purpose: PromptDraftPurpose;
-    userIntent: string;
-    inputSourceIds: string[];
-    teamKnowledgeRelease?: ContentKnowledgeReleaseReference;
-    sceneCardIds?: string[];
-    selectedSkills?: SkillRef[];
-    selectedSkillSlugs?: string[];
-    textModel?: string;
-  }) => void;
-  onContinueSession: (input: {
-    sessionId: string;
-    message: string;
-    textModel?: string;
   }) => void;
   onUpdateDraft: (input: {
     draftId: string;
@@ -187,14 +162,6 @@ const INPUT_SOURCE_PURPOSE_LABELS: Record<InputSourcePurpose, string> = {
   'successful-asset': '成功素材',
 };
 
-const SESSION_STATUS_LABELS: Record<AgentPromptSession['status'], string> = {
-  active: '会话中',
-  'waiting-user': '待补充',
-  'draft-created': '已生成草稿',
-  blocked: '待配置',
-  closed: '已关闭',
-};
-
 function statusClass(status: PromptDraftStatus): StatusPillTone {
   if (status === 'confirmed' || status === 'materialized') return 'ready';
   if (status === 'archived') return 'blocked';
@@ -212,48 +179,6 @@ function modelLabel(model?: string): string {
   if (model === 'blocked:text-provider') return '文字模型未配置';
   if (model === 'fallback:local-rule') return '本地降级草稿';
   return model;
-}
-
-function uniqueNonEmptyModels(models: Array<string | undefined>): string[] {
-  return Array.from(new Set(models.map((model) => model?.trim()).filter((model): model is string => Boolean(model))));
-}
-
-function resolveDefaultSessionTextModel(
-  textModel: string | undefined,
-  textModels: string[],
-): string {
-  const configuredModel = textModel?.trim();
-  return configuredModel ?? textModels[0] ?? '';
-}
-
-function sessionStatusClass(status: AgentPromptSession['status']): StatusPillTone {
-  if (status === 'blocked') return 'blocked';
-  if (status === 'draft-created' || status === 'active') return 'ready';
-  if (status === 'waiting-user') return 'idle';
-  return 'blocked';
-}
-
-const AGENT_MESSAGE_KIND_LABELS: Record<AgentPromptSession['messages'][number]['kind'], string> = {
-  intent: '意图',
-  draft: '草稿',
-  adjustment: '调整',
-  note: '记录',
-};
-
-function compactAgentSessionMessage(message: AgentPromptSession['messages'][number]): string {
-  const content = message.content.trim();
-  if (!content) return '无内容';
-  const userIntent = content.match(/用户意图：\n([\s\S]*?)(\n\n输入源快照：|\n\n本轮 skills：|$)/)?.[1]?.trim();
-  if (message.role === 'user' && userIntent) return userIntent.split('\n').filter(Boolean).slice(0, 5).join('\n');
-  const promptDraft = content.match(/Prompt 草稿：\n([\s\S]*?)(\n\n需要追问|\n\n仍需追问|\n\n来源与合规提醒|\n\n下游检查清单|\n\n本轮调整：|$)/)?.[1]?.trim();
-  if (message.role === 'assistant' && promptDraft) return promptDraft.split('\n').filter(Boolean).slice(0, 8).join('\n');
-  return content.split('\n').filter(Boolean).slice(0, 8).join('\n');
-}
-
-function agentSessionMessageTitle(message: AgentPromptSession['messages'][number]): string {
-  if (message.role === 'user') return message.kind === 'adjustment' ? '你的调整' : '你的任务';
-  if (message.role === 'assistant') return '打磨结果';
-  return '系统记录';
 }
 
 function activeContent(draft?: PromptDraft): string {
@@ -322,10 +247,6 @@ function skillRefFromLoaded(skill: LoadedSkill): SkillRef {
   return { slug: skill.slug, source: skill.source };
 }
 
-function skillLabel(ref: SkillRef, skills: LoadedSkill[]): string {
-  return skills.find((skill) => skill.slug === ref.slug && skill.source === ref.source)?.metadata.name ?? ref.slug;
-}
-
 function teamKnowledgeReleaseReference(release?: ContentKnowledgeRelease): ContentKnowledgeReleaseReference | undefined {
   if (!release) return undefined;
   return {
@@ -346,12 +267,6 @@ function teamKnowledgeReleaseLabel(release: ContentKnowledgeRelease): string {
   return `${release.title} ${release.version}${status}`;
 }
 
-function compactLabels(labels: string[]): string {
-  if (!labels.length) return '未选择';
-  if (labels.length <= 3) return labels.join('、');
-  return `${labels.slice(0, 3).join('、')} 等 ${labels.length} 个`;
-}
-
 export function PromptWorkbenchModule({
   featureKey = 'video-creative',
   initialPurpose = 'video',
@@ -359,26 +274,17 @@ export function PromptWorkbenchModule({
   initialUserIntent = '基于品牌 / IP 资产生成 15 秒创意视频方向和可复制视频 Prompt。',
   workspaceReady,
   busy,
-  currentActionLabel,
   inputSources,
   promptDrafts,
   platformDrafts,
   teamKnowledgePackageVersions,
   copiedPlatformDraftId,
-  agentPromptSessions,
   skills,
   enabledSkillKeys,
-  textModel,
   textProtocol,
-  textModels = [],
   activeDraftId,
-  activeSessionId,
   onSelectDraft,
-  onSelectSession,
-  onResolveAgentAction,
   onGenerateDraft,
-  onStartSession,
-  onContinueSession,
   onUpdateDraft,
   onUsePromptInImage,
   onOpenVideoPrompt,
@@ -392,14 +298,9 @@ export function PromptWorkbenchModule({
   onSelectModule,
 }: PromptWorkbenchModuleProps) {
   const feature = V2_FEATURES[featureKey];
-  const defaultSessionTextModel = useMemo(
-    () => resolveDefaultSessionTextModel(textModel, textModels),
-    [textModel, textModels],
-  );
   const [purpose, setPurpose] = useState<PromptDraftPurpose>(initialPurpose);
   const [title, setTitle] = useState(initialTitle);
   const [userIntent, setUserIntent] = useState(initialUserIntent);
-  const [sessionTextModel, setSessionTextModel] = useState(defaultSessionTextModel);
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [selectedSkillKeys, setSelectedSkillKeys] = useState<string[]>([]);
   const [selectedTeamReleaseId, setSelectedTeamReleaseId] = useState('');
@@ -443,22 +344,7 @@ export function PromptWorkbenchModule({
     () => platformDrafts.filter((draft) => draft.promptDraftId === activeDraft?.id).slice(0, 6),
     [activeDraft?.id, platformDrafts],
   );
-  const visibleSessions = useMemo(
-    () => agentPromptSessions.filter((session) =>
-      session.purpose === purpose ||
-      (activeDraft ? session.promptDraftIds.includes(activeDraft.id) : false),
-    ),
-    [activeDraft, agentPromptSessions, purpose],
-  );
-  const activeSession =
-    visibleSessions.find((session) => session.id === activeSessionId) ??
-    visibleSessions.find((session) => activeDraft?.id && session.promptDraftIds.includes(activeDraft.id)) ??
-    visibleSessions[0];
-  const sessionModelOptions = useMemo(() => {
-    return uniqueNonEmptyModels([sessionTextModel, textModel, ...textModels]);
-  }, [sessionTextModel, textModel, textModels]);
   const [draftContent, setDraftContent] = useState(activeContent(activeDraft));
-  const [sessionAdjustment, setSessionAdjustment] = useState('请结合用户意图继续收紧文案结构，并补充合规提醒。');
   const selectedSources = useMemo(
     () => inputSources.filter((source) => selectedSourceIds.includes(source.id)),
     [inputSources, selectedSourceIds],
@@ -498,10 +384,6 @@ export function PromptWorkbenchModule({
   }, [activeDraft?.id, activeDraft?.activeVersionId]);
 
   useEffect(() => {
-    setSessionTextModel(defaultSessionTextModel);
-  }, [activeSession?.id, defaultSessionTextModel]);
-
-  useEffect(() => {
     setPurpose(initialPurpose);
     setTitle(initialTitle);
     setUserIntent(initialUserIntent);
@@ -527,58 +409,19 @@ export function PromptWorkbenchModule({
   useEffect(() => {
     if (teamReleaseSelectionModeRef.current === 'manual') return;
     const draftReleaseId = activeDraft?.teamKnowledgeRelease?.id;
-    const sessionReleaseId = activeSession?.teamKnowledgeRelease?.id;
-    const preferredId = draftReleaseId || sessionReleaseId || publishedTeamKnowledgeReleases[0]?.serverReleaseId || publishedTeamKnowledgeReleases[0]?.id || '';
+    const preferredId = draftReleaseId || publishedTeamKnowledgeReleases[0]?.serverReleaseId || publishedTeamKnowledgeReleases[0]?.id || '';
     setSelectedTeamReleaseId(preferredId);
   }, [
     activeDraft?.id,
     activeDraft?.teamKnowledgeRelease?.id,
-    activeSession?.id,
-    activeSession?.teamKnowledgeRelease?.id,
     publishedTeamKnowledgeReleases,
   ]);
 
   const canGenerate = workspaceReady && !busy && userIntent.trim().length > 0;
-  const canStartSession = canGenerate;
   const canSave = workspaceReady && !busy && Boolean(activeDraft) && draftContent.trim().length > 0;
   const canUseCurrentDraft = canSave && Boolean(activeDraft);
   const activePurpose = activeDraft?.purpose ?? purpose;
-  const activeDraftTextProtocol = activeDraft?.textProtocol ?? activeSession?.textProtocol;
-  const activeProcessSkillRefs = activeSession?.selectedSkills?.length
-    ? activeSession.selectedSkills
-    : activeDraft?.selectedSkills?.length
-      ? activeDraft.selectedSkills
-      : selectedSkillRefs;
-  const activeProcessSkillLabels = activeProcessSkillRefs.map((ref) => skillLabel(ref, skills));
-  const activeProcessSourceCount = activeSession?.sourceSnapshots.length ?? reusableSelectedSourceIds.length;
-  const activeTeamRelease = activeDraft?.teamKnowledgeRelease ?? activeSession?.teamKnowledgeRelease ?? selectedTeamReleaseRef;
-  const isPromptActionRunning = busy && Boolean(currentActionLabel?.includes('Prompt') || currentActionLabel?.includes('协作') || currentActionLabel?.includes('对话'));
-  const agentProcessSteps: AgentExecutionStep[] = [
-    {
-      key: 'skills',
-      title: '选取 skills',
-      detail: compactLabels(activeProcessSkillLabels),
-      state: activeProcessSkillRefs.length ? 'done' : 'idle',
-    },
-    {
-      key: 'sources',
-      title: '读取输入源',
-      detail: activeProcessSourceCount ? `${activeProcessSourceCount} 个输入源` : '未选择输入源',
-      state: activeProcessSourceCount ? 'done' : inputSources.length ? 'idle' : 'blocked',
-    },
-    {
-      key: 'draft',
-      title: '生成草稿',
-      detail: activeDraft ? modelLabel(activeDraft.model) : currentActionLabel ?? '等待启动',
-      state: isPromptActionRunning ? 'active' : activeDraft ? 'done' : canGenerate ? 'idle' : 'blocked',
-    },
-    {
-      key: 'refine',
-      title: '多轮调整',
-      detail: activeSession ? `${activeSession.messages.length} 条消息` : '待发送',
-      state: activeSession?.messages.length && activeSession.messages.length > 2 ? 'done' : activeSession ? 'active' : 'idle',
-    },
-  ];
+  const activeDraftTextProtocol = activeDraft?.textProtocol ?? textProtocol;
   const downstreamAction: PromptDownstreamAction | undefined =
     activePurpose === 'image'
       ? { label: '发送到图片生成', disabled: !canUseCurrentDraft, onClick: () => activeDraft && onUsePromptInImage(draftContent, activeDraft.sceneCardIds) }
@@ -589,165 +432,6 @@ export function PromptWorkbenchModule({
           : activePurpose === 'green-screen'
             ? { label: '生成绿幕图', disabled: !canUseCurrentDraft, onClick: () => activeDraft && onOpenGreenScreen(activeDraft.id) }
             : undefined;
-  const promptAgentContext = (
-    <>
-      <div className="agent-turn-head">
-        <strong>本轮资料</strong>
-        <small>{activeProcessSourceCount} 个输入源 / {activeProcessSkillRefs.length} 个 skill</small>
-      </div>
-      <div className="prompt-agent-context-grid">
-        <label>
-          <span>用途</span>
-          <select value={purpose} onChange={(event) => changePurpose(event.target.value as PromptDraftPurpose)}>
-            {PURPOSE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>标题</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
-        </label>
-        <label>
-          <span>模型</span>
-          <select value={sessionTextModel} onChange={(event) => setSessionTextModel(event.target.value)}>
-            {sessionModelOptions.map((model) => (
-              <option key={model} value={model}>{model === textModel ? `${model}（全局）` : model}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>团队知识包</span>
-          <select
-            value={selectedTeamReleaseId}
-            onChange={(event) => {
-              teamReleaseSelectionModeRef.current = 'manual';
-              setSelectedTeamReleaseId(event.target.value);
-            }}
-          >
-            <option value="">不绑定</option>
-            {publishedTeamKnowledgeReleases.map((release) => (
-              <option key={release.serverReleaseId || release.id} value={release.serverReleaseId || release.id}>
-                {teamKnowledgeReleaseLabel(release)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span>文字协议 <strong>{textProtocolLabel(activeDraftTextProtocol)}</strong></span>
-      </div>
-      <div className="prompt-agent-context-note">
-        {activeTeamRelease
-          ? `团队知识包：${activeTeamRelease.title} ${activeTeamRelease.version}`
-          : '未绑定团队知识包，本轮只使用所选输入源和用户意图。'}
-      </div>
-      {activeProcessSkillLabels.length ? (
-        <div className="prompt-agent-context-note">{compactLabels(activeProcessSkillLabels)}</div>
-      ) : null}
-    </>
-  );
-  const promptAgentArtifact = activeDraft ? (
-    <>
-      <div className="agent-turn-head">
-        <strong>{activeDraft.title}</strong>
-        <small>{STATUS_LABELS[activeDraft.status]} · {modelLabel(activeDraft.model)}</small>
-      </div>
-      <details className="agent-turn-details">
-        <summary>查看当前草稿</summary>
-        <pre>{draftContent}</pre>
-      </details>
-      <div className="scene-agent-turn-actions">
-        <button type="button" className="ghost small" onClick={() => onSelectDraft(activeDraft.id)}>
-          对齐当前草稿
-        </button>
-        {downstreamAction && !downstreamAction.disabled ? (
-          <button type="button" className="primary small" onClick={downstreamAction.onClick}>
-            {downstreamAction.label}
-          </button>
-        ) : null}
-      </div>
-    </>
-  ) : null;
-  const promptAgentFooter = (
-    <>
-      <label className="prompt-session-adjustment">
-        <span>{activeSession ? '继续调整' : '这次任务'}</span>
-        <textarea
-          value={activeSession ? sessionAdjustment : userIntent}
-          onChange={(event) => {
-            if (activeSession) {
-              setSessionAdjustment(event.target.value);
-              return;
-            }
-            setUserIntent(event.target.value);
-          }}
-        />
-      </label>
-      <ActionGroup align="left">
-        {activeSession ? (
-          <button
-            className="primary small"
-            disabled={!workspaceReady || busy || !sessionAdjustment.trim()}
-            onClick={() => onContinueSession({ sessionId: activeSession.id, message: sessionAdjustment, textModel: sessionTextModel })}
-          >
-            继续会话
-          </button>
-        ) : (
-          <button
-            className="primary small"
-            disabled={!canStartSession}
-            onClick={() => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, teamKnowledgeRelease: selectedTeamReleaseRef, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug), textModel: sessionTextModel })}
-          >
-            开始协作
-          </button>
-        )}
-        <button
-          className="ghost small"
-          disabled={!canGenerate}
-          onClick={() => onGenerateDraft({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, teamKnowledgeRelease: selectedTeamReleaseRef, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug) })}
-        >
-          仅生成草稿
-        </button>
-        <button className="ghost small" onClick={() => onSelectModule('knowledge')}>补知识来源</button>
-        {downstreamAction && !downstreamAction.disabled ? (
-          <button className="ghost small" onClick={downstreamAction.onClick}>
-            {downstreamAction.label}
-          </button>
-        ) : null}
-      </ActionGroup>
-      {busy || (activeSession && !sessionAdjustment.trim()) ? (
-        <span className="scene-prompt-inline-recovery">
-          {busy ? '处理中' : '待输入调整要求'}
-        </span>
-      ) : null}
-    </>
-  );
-  const promptAgentPanel = (
-    <AgentSessionPanel
-      eyebrow="Prompt 助手"
-      title={activeSession?.title ?? activeDraft?.title ?? 'Prompt 打磨'}
-      session={activeSession}
-      sessions={visibleSessions}
-      statusLabel={activeSession ? SESSION_STATUS_LABELS[activeSession.status] : activeDraft ? STATUS_LABELS[activeDraft.status] : '待开始'}
-      statusTone={activeSession ? sessionStatusClass(activeSession.status) : activeDraft ? statusClass(activeDraft.status) : 'idle'}
-      steps={activeSession || isPromptActionRunning ? agentProcessSteps : []}
-      runningLabel={isPromptActionRunning ? currentActionLabel ?? '正在处理 Prompt。' : undefined}
-      context={promptAgentContext}
-      artifact={promptAgentArtifact}
-      footer={promptAgentFooter}
-      empty={activeDraft ? (
-        <>
-          <strong>当前草稿尚未进入对话</strong>
-          <span>从“开始协作”继续后，会在这里记录消息、执行事件和交付结果。</span>
-        </>
-      ) : undefined}
-      onSelectSession={onSelectSession}
-      onResolveAction={onResolveAgentAction}
-      messageTitle={agentSessionMessageTitle}
-      messageMeta={(message) => `${AGENT_MESSAGE_KIND_LABELS[message.kind]} · ${new Date(message.createdAt).toLocaleString()}`}
-      messagePreview={compactAgentSessionMessage}
-    />
-  );
-
   function changePurpose(nextPurpose: PromptDraftPurpose): void {
     setPurpose(nextPurpose);
     setTitle(PURPOSE_DEFAULTS[nextPurpose].title);
@@ -772,9 +456,7 @@ export function PromptWorkbenchModule({
         )}
       />
 
-      {promptAgentPanel}
-
-      <details className="prompt-support-drawer" open={Boolean(activeDraft)}>
+      <details className="prompt-support-drawer" open>
         <summary>
           <span>支撑资料</span>
           <strong>{activeDraft ? '输入源 / 草稿 / 版本库' : '输入源和草稿编辑'}</strong>
@@ -793,14 +475,6 @@ export function PromptWorkbenchModule({
               <select value={purpose} onChange={(event) => changePurpose(event.target.value as PromptDraftPurpose)}>
                 {PURPOSE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>会话模型</span>
-              <select value={sessionTextModel} onChange={(event) => setSessionTextModel(event.target.value)}>
-                {sessionModelOptions.map((model) => (
-                  <option key={model} value={model}>{model === textModel ? `${model}（全局）` : model}</option>
                 ))}
               </select>
             </label>
@@ -904,17 +578,10 @@ export function PromptWorkbenchModule({
           <ActionGroup align="left">
             <button
               className="primary small"
-              disabled={!canStartSession}
-              onClick={() => onStartSession({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, teamKnowledgeRelease: selectedTeamReleaseRef, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug), textModel: sessionTextModel })}
-            >
-              开始协作
-            </button>
-            <button
-              className="ghost small"
               disabled={!canGenerate}
               onClick={() => onGenerateDraft({ title, purpose, userIntent, inputSourceIds: reusableSelectedSourceIds, teamKnowledgeRelease: selectedTeamReleaseRef, selectedSkills: selectedSkillRefs, selectedSkillSlugs: selectedSkillRefs.map((skill) => skill.slug) })}
             >
-              仅生成草稿
+              生成草稿
             </button>
             <button className="ghost small" onClick={() => onSelectModule('knowledge')}>补知识来源</button>
           </ActionGroup>

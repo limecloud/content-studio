@@ -28,7 +28,6 @@ async function resolveFirstExistingPath(paths) {
 const desktopPlatformDir = await resolveFirstExistingPath(desktopPlatformCandidates);
 const limePackagesDir = resolve(projectRoot, '../../aiclientproxy/lime/packages');
 const localAgentCapabilityCatalogDist = join(limePackagesDir, 'agent-capability-catalog/dist/index.js');
-const localAgentWorkbenchAdapterDist = join(limePackagesDir, 'agent-workbench-adapter/dist/index.js');
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
@@ -61,11 +60,6 @@ if (process.env.CONTENT_STUDIO_FUNCTIONAL_TEST_BUNDLE === '1') {
       if (existsSync(localAgentCapabilityCatalogDist)) {
         build.onResolve({ filter: /^@limecloud\/agent-capability-catalog$/ }, () => ({
           path: localAgentCapabilityCatalogDist,
-        }));
-      }
-      if (existsSync(localAgentWorkbenchAdapterDist)) {
-        build.onResolve({ filter: /^@limecloud\/agent-workbench-adapter$/ }, () => ({
-          path: localAgentWorkbenchAdapterDist,
         }));
       }
       build.onResolve({ filter: /^electron$/ }, () => ({ path: 'electron-test-shim', namespace: 'content-studio-test' }));

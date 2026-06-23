@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import type { ContentStudioAppController } from '../app/useContentStudioApp';
 import { ArticleModule } from './modules/ArticleModule';
 import { AssetsModule } from './modules/AssetsModule';
-import { AgentsWorkbench } from './agents/AgentsWorkbench';
 import { ImageModule } from './modules/ImageModule';
 import { ImageShowcaseModule } from './modules/ImageShowcaseModule';
 import { BrandKnowledgeModule } from './modules/BrandKnowledgeModule';
@@ -19,78 +18,20 @@ import { V2FeatureModule } from './modules/V2FeatureModule';
 import { VideoModule } from './modules/VideoModule';
 import { isV2FeatureModule } from '../app/v2FeatureRegistry';
 import {
-  createAgentModelSettingsProjection,
   createModelSettingsProjection,
-  selectUsableTextModel,
 } from '../app/platformModelSettingsProjection';
-import type { AgentActionResolver } from './agent/AgentSessionPanel';
-import { projectAgentRuntimeAction } from './agent/agentRuntimeProjection';
-import type { AgentPromptActionDecision } from '../../../shared/types';
 
 interface ModuleOutletProps {
   app: ContentStudioAppController;
   onOpenSkillPackage: (packagePath: string) => void;
 }
 
-function agentPromptActionDecision(decision: string): AgentPromptActionDecision {
-  if (decision === 'open-input-source' || decision === 'open-model-settings') return decision;
-  return 'acknowledge';
-}
-
 export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
   const modelSettings = createModelSettingsProjection(app);
-  const agentModelSettings = createAgentModelSettingsProjection(app);
-  const agentTextModel = selectUsableTextModel(
-    agentModelSettings,
-    app.params.textModel,
-  );
   const brandName = app.authState?.bootstrap?.branding?.shortName
     || app.authState?.bootstrap?.branding?.appName
     || app.authState?.bootstrap?.tenant?.name
     || '布谷AI';
-
-  const resolveAgentAction: AgentActionResolver = (event) => {
-    const action = projectAgentRuntimeAction(event);
-    const sessionId = event.threadId || app.activeAgentPromptSessionId;
-
-    const recordResponse = (afterResponse?: () => void) => {
-      if (!sessionId || !event.actionId) {
-        afterResponse?.();
-        return;
-      }
-      app.runAction(
-        async () => {
-          await app.respondAgentPromptAction({
-            sessionId,
-            actionId: event.actionId!,
-            decision: agentPromptActionDecision(action.decision),
-            payload: {
-              actionKind: action.actionKind,
-              targetModule: action.targetModule,
-              source: 'agent-event-action',
-            },
-          });
-          afterResponse?.();
-        },
-        '正在记录处理动作',
-      );
-    };
-
-    if (action.decision === 'open-model-settings') {
-      recordResponse(() => {
-        app.setSettingsPage('model');
-        app.setShowSettingsDialog(true);
-      });
-      return;
-    }
-
-    if (action.decision === 'open-input-source') {
-      recordResponse(() => app.setActiveModule('knowledge'));
-      return;
-    }
-
-    recordResponse();
-  };
 
   const renderShowcaseFrame = (content: ReactNode) => (
     <div className="showcase-page-frame">
@@ -126,71 +67,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
       onOpenRunTrace={() => app.setActiveModule('assets')}
     />
   );
-
-  if (app.activeModule === 'agents') {
-    return (
-      <AgentsWorkbench
-        busy={app.busy}
-        workspaceReady={Boolean(app.workspacePath)}
-        workspacePath={app.workspacePath}
-        recentWorkspacePaths={app.settings?.recentWorkspacePaths ?? []}
-        productImageRefs={app.productImageRefs}
-        referenceImageRefs={app.referenceImageRefs}
-        textModel={agentTextModel}
-        textProviderId={agentModelSettings.defaultAgentProviderId}
-        modelSettings={agentModelSettings}
-        skills={app.skills}
-        enabledSkillKeys={app.enabledSkillKeys}
-        mediaResult={app.mediaResult}
-        promptDrafts={app.promptDrafts}
-        agentPromptSessions={app.agentPromptSessions}
-        activeSessionId={app.activeAgentPromptSessionId}
-        onSelectWorkspacePath={(workspacePath) =>
-          app.runAction(() => app.switchWorkspace(workspacePath), '正在切换项目')
-        }
-        onChooseWorkspace={() => app.runAction(() => app.chooseWorkspace(), '正在选择项目')}
-        onClearWorkspace={() => app.runAction(() => app.clearWorkspace(), '正在取消项目')}
-        onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
-        onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
-        onSelectAgentSession={app.setActiveAgentPromptSessionId}
-        onSelectTextModel={(selection) => {
-          const modelId = selectUsableTextModel(agentModelSettings, selection.modelId);
-          if (!modelId) return;
-          app.setParams((current) => ({ ...current, textModel: modelId }));
-        }}
-        onStartAgentSession={(input) =>
-          app.runAction(() => app.startAgentPromptSession({
-            ...input,
-            textModel: input.textModel ?? agentTextModel,
-          }), '正在开始图片提示词协作')
-        }
-        onContinueAgentSession={(input) =>
-          app.runAction(() => app.continueAgentPromptSession({
-            ...input,
-            textModel: input.textModel ?? agentTextModel,
-          }), '正在继续 agents 协作')
-        }
-        onUsePromptInImage={app.useShowcasePromptInImage}
-        onGenerateImage={(input) => app.runAction((context) => app.generateShowcaseImage(input, context), '正在生成图片候选')}
-        onOpenImageProduction={() => app.setActiveModule('image-production')}
-        onOpenImageShowcase={() => app.setActiveModule('image-showcase')}
-        onOpenMaterialBreakdown={() => app.setActiveModule('material-breakdown')}
-        onOpenScenePrompts={() => app.setActiveModule('image-production')}
-        onOpenVideoPrompt={() => app.setActiveModule('video')}
-        onOpenArticle={() => app.setActiveModule('article')}
-        onOpenArticleTitle={() => app.setActiveModule('article-title')}
-        onOpenArticleScript={() => app.setActiveModule('article-script')}
-        onOpenGreenScreen={() => app.setActiveModule('image-green-screen')}
-        onOpenAssets={() => app.setActiveModule('assets')}
-        onOpenSkills={() => app.setActiveModule('skills')}
-        onOpenModelSettings={() => {
-          app.setSettingsPage('model');
-          app.setShowSettingsDialog(true);
-        }}
-        onResolveAgentAction={resolveAgentAction}
-      />
-    );
-  }
 
   if (app.activeModule === 'image' || app.activeModule === 'image-production') {
     return (
@@ -256,21 +132,10 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         mediaResult={app.mediaResult}
         authState={app.authState}
         logs={app.logs}
-        agentPromptSessions={app.agentPromptSessions}
-        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-        textModel={app.params.textModel}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectReferenceImages={() => app.runAction(() => app.selectAssetFiles('reference-image'))}
         onRemoveProductImageRef={app.removeProductImageRef}
         onRemoveReferenceImageRef={app.removeReferenceImageRef}
-        onSelectAgentSession={app.setActiveAgentPromptSessionId}
-        onStartAgentSession={(input) =>
-          app.runAction(() => app.startAgentPromptSession(input), '正在开始图片提示词协作')
-        }
-        onContinueAgentSession={(input) =>
-          app.runAction(() => app.continueAgentPromptSession(input), '正在继续图片提示词协作')
-        }
-        onResolveAgentAction={resolveAgentAction}
         onUsePromptInImage={app.useShowcasePromptInImage}
         onStartPartialRetouch={app.startShowcasePartialRetouch}
         onClearResult={app.clearMediaResult}
@@ -290,9 +155,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         mediaResult={app.mediaResult}
         authState={app.authState}
         logs={app.logs}
-        agentPromptSessions={app.agentPromptSessions}
-        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-        textModel={app.params.textModel}
         onSelectProductImages={() => app.runAction(() => app.selectAssetFiles('product-image'))}
         onSelectVideo={() => app.runAction(() => app.selectAssetFiles('video'))}
         onSelectAudio={() => app.runAction(() => app.selectAssetFiles('audio'))}
@@ -300,14 +162,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         onRemoveProductImageRef={app.removeProductImageRef}
         onRemoveVideoAssetRef={app.removeVideoAssetRef}
         onRemoveAudioAssetRef={app.removeAudioAssetRef}
-        onSelectAgentSession={app.setActiveAgentPromptSessionId}
-        onStartAgentSession={(input) =>
-          app.runAction(() => app.startAgentPromptSession(input), '正在开始视频提示词协作')
-        }
-        onContinueAgentSession={(input) =>
-          app.runAction(() => app.continueAgentPromptSession(input), '正在继续视频提示词协作')
-        }
-        onResolveAgentAction={resolveAgentAction}
         onUsePromptInVideo={app.useShowcasePromptInVideo}
         onStartPartialRetouch={(input) => {
           app.startShowcasePartialRetouch(input);
@@ -463,20 +317,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
         activeBrandKnowledgeBase={app.activeBrandKnowledgeBase}
         activeBrandKnowledgeBaseId={app.activeBrandKnowledgeBaseId}
         setActiveBrandKnowledgeBaseId={app.setActiveBrandKnowledgeBaseId}
-        inputSourceIds={app.selectedCitations
-          .map((citation) => citation.knowledgeBaseId.startsWith('input-source:') ? citation.knowledgeBaseId.slice('input-source:'.length) : '')
-          .filter(Boolean)}
-        agentPromptSessions={app.agentPromptSessions}
-        activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-        textModel={app.params.textModel}
-        onSelectAgentSession={app.setActiveAgentPromptSessionId}
-        onStartAgentSession={(input) =>
-          app.runAction(() => app.startAgentPromptSession(input), '正在开始品牌知识库判断')
-        }
-        onContinueAgentSession={(input) =>
-          app.runAction(() => app.continueAgentPromptSession(input), '正在继续品牌知识库判断')
-        }
-        onResolveAgentAction={resolveAgentAction}
         onGenerateBrandKnowledgeBase={() => app.runAction(app.generateBrandKnowledgeBase, '正在生成品牌知识库')}
         onOpenKnowledgeScenes={() => app.runAction(app.generateSceneCards, '正在基于品牌知识库生成场景')}
         onOpenInputSources={() => app.setActiveModule('knowledge')}
@@ -553,32 +393,19 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
           initialUserIntent={defaults.intent}
           workspaceReady={Boolean(app.workspacePath)}
           busy={app.busy}
-          currentActionLabel={app.currentActionLabel}
           inputSources={app.inputSources}
           promptDrafts={app.promptDrafts}
           platformDrafts={app.platformDrafts}
           teamKnowledgePackageVersions={app.contentKnowledgeReleases}
           copiedPlatformDraftId={app.copiedPlatformDraftId}
-          agentPromptSessions={app.agentPromptSessions}
           skills={app.skills}
           enabledSkillKeys={app.enabledSkillKeys}
-          textModel={app.params.textModel}
           textProtocol={app.modelConfig?.textProtocol}
-          textModels={app.textModelOptions}
           activeDraftId={app.activePromptDraftId}
-          activeSessionId={app.activeAgentPromptSessionId}
           onSelectDraft={app.setActivePromptDraftId}
-          onSelectSession={app.setActiveAgentPromptSessionId}
           onGenerateDraft={(input) =>
             app.runAction(() => app.generatePromptDraft(input), '正在生成 Prompt 草稿')
           }
-          onStartSession={(input) =>
-            app.runAction(() => app.startAgentPromptSession(input), '正在开始协作')
-          }
-          onContinueSession={(input) =>
-            app.runAction(() => app.continueAgentPromptSession(input), '正在继续对话')
-          }
-          onResolveAgentAction={resolveAgentAction}
           onUpdateDraft={(input) =>
             app.runAction(() => app.updatePromptDraft(input), '正在保存 Prompt 草稿')
           }
@@ -621,17 +448,6 @@ export function ModuleOutlet({ app, onOpenSkillPackage }: ModuleOutletProps) {
             }, '正在记录复制动作')
           }
           onSelectDraft={app.setActivePromptDraftId}
-          agentPromptSessions={app.agentPromptSessions}
-          activeAgentPromptSessionId={app.activeAgentPromptSessionId}
-          textModel={app.params.textModel}
-          onSelectAgentSession={app.setActiveAgentPromptSessionId}
-          onStartAgentSession={(input) =>
-            app.runAction(() => app.startAgentPromptSession(input), '正在开始视频 Prompt 打磨')
-          }
-          onContinueAgentSession={(input) =>
-            app.runAction(() => app.continueAgentPromptSession(input), '正在继续视频 Prompt 打磨')
-          }
-          onResolveAgentAction={resolveAgentAction}
           onSelectModule={app.setActiveModule}
         />
       );

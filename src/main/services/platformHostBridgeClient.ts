@@ -1,5 +1,4 @@
 import type {
-  PlatformAgentRuntimeResult,
   PlatformCapabilityInvokeInput,
   PlatformCapabilityInvokeResult,
   PlatformHostBridgeStatus,
@@ -9,18 +8,17 @@ import type {
   PlatformSettingsProjection,
   PlatformRuntimeBridgeDiscoveryDescriptor,
   PlatformRuntimeBridgeDescriptor,
-  PlatformRuntimeEvent,
 } from '../../shared/types';
 import { app } from 'electron';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createEmbeddedElectronPlatformHost } from '@limecloud/desktop-platform-electron-adapter';
-import type { EmbeddedElectronPlatformHost } from '@limecloud/desktop-platform-electron-adapter';
-import { buildAgentTurnStartPayload } from '@limecloud/agent-workbench-adapter';
+import {
+  createEmbeddedElectronPlatformHost,
+  type EmbeddedElectronPlatformHost,
+} from '@limecloud/desktop-platform-electron-adapter';
 import { getResourcesRoot } from './paths';
-import { buildAgentRuntimeHostOptions } from './agentRuntimeToolPolicy';
 
 interface BridgeResponse<T> {
   ok: boolean;
@@ -36,7 +34,6 @@ interface BridgeResponse<T> {
 type BridgeSource = 'embedded' | 'env' | 'discovery';
 const BRIDGE_FETCH_TIMEOUT_MS = 1500;
 const BRIDGE_AGENT_FETCH_TIMEOUT_MS = 120_000;
-const BRIDGE_AGENT_EVENTS_FETCH_TIMEOUT_MS = 5000;
 const CONTENT_STUDIO_APP_ID = 'content-studio';
 const CONTENT_STUDIO_ENTRY_KEY = 'default';
 const APP_SERVER_BINARY_NAME = process.platform === 'win32' ? 'app-server.exe' : 'app-server';
@@ -248,6 +245,7 @@ export class PlatformHostBridgeClient {
   private discoveredSnapshot: PlatformHostSnapshot | undefined;
   private embeddedAppServerSidecar: PlatformHostBridgeStatus['appServerSidecar'] | undefined;
   private loggedEmbeddedSidecarState: string | undefined;
+  private connecting: Promise<boolean> | undefined;
   private lastError: string | undefined = process.env.LIME_RUNTIME_BRIDGE && !this.descriptor
     ? 'LIME_RUNTIME_BRIDGE 不是合法 runtime bridge descriptor。'
     : undefined;
@@ -258,6 +256,14 @@ export class PlatformHostBridgeClient {
   }
 
   async ensureConnected(): Promise<boolean> {
+    if (this.connecting) return this.connecting;
+    this.connecting = this.connectOnce().finally(() => {
+      this.connecting = undefined;
+    });
+    return this.connecting;
+  }
+
+  private async connectOnce(): Promise<boolean> {
     if (this.embeddedHost) {
       try {
         await this.embeddedHost.ensureConnected();
@@ -358,124 +364,6 @@ export class PlatformHostBridgeClient {
       throw new Error(payload.error?.message || `平台 capability 调用失败：HTTP ${response.status}`);
     }
     return assertBridgeResponse(payload, '平台 capability 调用失败。');
-  }
-
-  async invokeAgent(input: {
-    prompt: string;
-    workspacePath: string;
-    capabilityId?: string;
-    workflowId?: string;
-    modelId?: string;
-    modelPreference?: string;
-    permissionMode?: 'safe' | 'ask' | 'allow-all';
-    providerPreference?: string;
-    metadata?: Record<string, unknown>;
-    selectedSkillSlugs?: string[];
-    requiredCapabilities?: string[];
-    capabilityHints?: string[];
-    tools?: string[];
-    hostOptions?: unknown;
-    businessObjectRef?: unknown;
-  }): Promise<PlatformAgentRuntimeResult> {
-    const payload = buildAgentTurnStartPayload({
-      agentAppId: 'content-studio',
-      workspacePath: input.workspacePath,
-      prompt: input.prompt,
-      capabilityId: input.capabilityId ?? 'content.draft.generate',
-      workflowId: input.workflowId,
-      modelId: input.modelId,
-      modelPreference: input.modelPreference ?? input.modelId,
-      permissionMode: input.permissionMode ?? 'ask',
-      providerPreference: input.providerPreference,
-      selectedSkillSlugs: input.selectedSkillSlugs ?? [],
-      requiredCapabilities: input.requiredCapabilities,
-      capabilityHints: input.capabilityHints,
-      metadata: input.metadata,
-      businessObjectRef: input.businessObjectRef,
-    });
-    const hostOptions = input.hostOptions ?? buildAgentRuntimeHostOptions({
-      prompt: input.prompt,
-      workspacePath: input.workspacePath,
-      providerPreference: input.providerPreference,
-      modelPreference: input.modelPreference ?? input.modelId,
-      metadata: input.metadata,
-      requiredCapabilities: input.requiredCapabilities,
-      capabilityHints: input.capabilityHints,
-      tools: input.tools,
-    });
-    const result = await this.invokeCapability({
-      capability: 'lime.agent',
-      operation: 'agentSession/turn/start',
-      input: {
-        ...payload,
-        runtimeOptions: {
-          ...payload.runtimeOptions,
-          hostOptions,
-        },
-      },
-    });
-    if (!result.ok) {
-      throw new Error(result.error?.message || '平台 lime.agent 调用被阻断。');
-    }
-    return result.output as PlatformAgentRuntimeResult;
-  }
-
-  async respondAgentAction(input: {
-    sessionId: string;
-    actionId: string;
-    decision: string;
-    response?: Record<string, unknown>;
-    note?: string;
-  }): Promise<PlatformAgentRuntimeResult> {
-    const result = await this.invokeCapability({
-      capability: 'lime.agent',
-      operation: 'agentSession/action/respond',
-      input: {
-        sessionId: input.sessionId,
-        actionId: input.actionId,
-        requestId: input.actionId,
-        decision: input.decision,
-        response: input.response ?? {},
-        note: input.note,
-      },
-    });
-    if (!result.ok) {
-      throw new Error(result.error?.message || '平台 lime.agent action/respond 调用被阻断。');
-    }
-    return result.output as PlatformAgentRuntimeResult;
-  }
-
-  async readAgentEvents(input: {
-    sessionId?: string;
-    turnId?: string;
-    afterSequence?: number;
-  }): Promise<PlatformRuntimeEvent[]> {
-    if (this.embeddedHost && 'readAgentRuntimeEvents' in this.embeddedHost) {
-      const events = await (this.embeddedHost as EmbeddedElectronPlatformHost & {
-        readAgentRuntimeEvents: (input: {
-          sessionId?: string;
-          turnId?: string;
-          afterSequence?: number;
-        }) => PlatformRuntimeEvent[];
-      }).readAgentRuntimeEvents(input);
-      return events as unknown as PlatformRuntimeEvent[];
-    }
-    await this.ensureConnected();
-    if (!this.descriptor) {
-      throw new Error('未检测到 lime-desktop-platform runtime bridge。');
-    }
-    const descriptor = this.descriptor;
-    const response = await this.fetchWithDiscoveryRetry(descriptor, '/agent/events', {
-      method: 'POST',
-      headers: bridgeFetchHeaders(descriptor),
-      body: JSON.stringify(input),
-    }, BRIDGE_AGENT_EVENTS_FETCH_TIMEOUT_MS);
-    const payload = (await response.json().catch(() => ({}))) as BridgeResponse<{ events?: PlatformRuntimeEvent[] }>;
-    if (!response.ok) {
-      throw new Error(payload.error?.message || `平台 Agent 事件读取失败：HTTP ${response.status}`);
-    }
-    const result = assertBridgeResponse(payload, '平台 Agent 事件读取失败。');
-    return Array.isArray(result.events) ? result.events : [];
   }
 
   async openIntent(input: PlatformNavigationIntent): Promise<PlatformNavigationResult> {

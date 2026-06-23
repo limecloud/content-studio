@@ -18,6 +18,15 @@
     "jsx": "react-jsx",
     "types": ["node", "electron"],
     "paths": {
+      "@limecloud/agent-ui-contracts": [
+        "../../aiclientproxy/lime/packages/agent-ui-contracts/dist/index.d.ts"
+      ],
+      "@limecloud/agent-runtime-client": [
+        "../../aiclientproxy/lime/packages/agent-runtime-client/dist/index.d.ts"
+      ],
+      "@limecloud/agent-runtime-client/sessionGateway": [
+        "../../aiclientproxy/lime/packages/agent-runtime-client/dist/sessionGateway.d.ts"
+      ],
       "@limecloud/desktop-platform-contracts": [
         ".tmp/lime-desktop-platform/packages/contracts/dist/index.d.ts",
         "../lime-desktop-platform/packages/contracts/dist/index.d.ts"

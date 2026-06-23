@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import { AgentTimeline } from '@limecloud/agent-runtime-ui';
 import type {
   GenerationLogEntry,
   MediaGenerationResult,
@@ -21,6 +20,7 @@ import { buildProductionSegments, shotTimeSeconds, type VideoProductionSegment }
 
 type VideoStage = 'breakdown' | 'library' | 'script' | 'history' | 'generate';
 type FeatureStatusFilter = 'active' | 'featured' | 'archived' | 'all';
+type ProductionTimelineMessage = { id: string; role: 'user' | 'assistant'; content: string; createdAt: string };
 
 const FEATURE_TYPE_OPTIONS = ['全部', '钩子策略', '叙事框架', '节奏模式', 'CTA策略', '完整模板'] as const;
 const HOOK_TYPE_OPTIONS = ['全部', '痛点提问', '反常识断言', '结果前置', '数字恐惧', '挑战互动', '权威背书'] as const;
@@ -31,6 +31,30 @@ const FEATURE_STATUS_OPTIONS: Array<{ key: FeatureStatusFilter; label: string }>
   { key: 'all', label: '全部' },
 ];
 const SCRIPT_HISTORY_PAGE_SIZE = 15;
+
+function ProductionTimeline({
+  messages,
+  runningLabel,
+  assistantTitle,
+  userTitle = '任务简报',
+}: {
+  messages: ProductionTimelineMessage[];
+  runningLabel?: string;
+  assistantTitle: string;
+  userTitle?: string;
+}) {
+  return (
+    <div className="production-timeline">
+      {messages.map((message) => (
+        <article key={message.id} className={`production-timeline-message ${message.role}`}>
+          <strong>{message.role === 'assistant' ? assistantTitle : userTitle}</strong>
+          <p>{message.content}</p>
+        </article>
+      ))}
+      {runningLabel ? <div className="production-timeline-running">{runningLabel}</div> : null}
+    </div>
+  );
+}
 
 const HOOK_TYPE_LABELS: Record<string, string> = {
   pain_point_question: '痛点提问',
@@ -795,7 +819,7 @@ export function VideoModule({
   const selectedScriptReviewNote = selectedScriptItem
     ? scriptFeedbackDrafts[selectedScriptItem.log.id] ?? selectedScriptItem.log.review?.note ?? ''
     : '';
-  const scriptAgentMessages = useMemo(() => {
+  const scriptAgentMessages = useMemo<ProductionTimelineMessage[]>(() => {
     const templateLabel = videoBreakdown
       ? `${videoBreakdown.contentTitle || '当前爆款模板'} / ${hookLabel(videoBreakdown.hook?.hookType?.value)} / ${narrativeLabel(videoBreakdown.narrative?.framework?.value)}`
       : '未选择爆款模板';
@@ -809,7 +833,7 @@ export function VideoModule({
       `素材：${imageMaterialRefs.length} 张图片`,
       videoCustomRequirement ? `改写要求：${videoCustomRequirement}` : '',
     ].filter(Boolean).join('\n');
-    const messages = [{
+    const messages: ProductionTimelineMessage[] = [{
       id: 'video-script-brief',
       role: 'user',
       content: brief,
@@ -842,7 +866,7 @@ export function VideoModule({
     }
     return messages;
   }, [imageMaterialRefs.length, readyScript, storyboardShots.length, videoBreakdown, videoCustomRequirement, videoDurationSeconds, videoProductName, videoSceneBackground, videoScript, videoShotCount, videoSubtitleMode, videoVoiceStyle]);
-  const handoffAgentMessages = useMemo(() => {
+  const handoffAgentMessages = useMemo<ProductionTimelineMessage[]>(() => {
     const brief = [
       `脚本：${readyScript ? readyScript.title : '未生成'}`,
       `素材：${imageMaterialRefs.length + videoAssetRefs.length} 个`,
@@ -851,7 +875,7 @@ export function VideoModule({
       `外部生成段落：${readyScript ? productionSegments.length || readyScript.storyboard.length : 0} 段`,
       `审核项：${productionReviewItems.length} 项`,
     ].join('\n');
-    const messages = [{
+    const messages: ProductionTimelineMessage[] = [{
       id: 'video-handoff-brief',
       role: 'user',
       content: brief,
@@ -1467,12 +1491,10 @@ export function VideoModule({
               </div>
             </div>
             <div className="video-script-agent-thread" aria-label="视频脚本协作记录">
-              <AgentTimeline
+              <ProductionTimeline
                 messages={scriptAgentMessages}
                 runningLabel={busy ? '正在整理商品脚本、镜头和生产 Prompt。' : undefined}
-                messageMeta={() => null}
-                messageTitle={(message) => message.role === 'assistant' ? '脚本结果' : '任务简报'}
-                messagePreview={(message) => message.content}
+                assistantTitle="脚本结果"
               />
             </div>
             <div className="video-script-agent-next-action">
@@ -1810,12 +1832,10 @@ export function VideoModule({
               </div>
             </div>
             <div className="video-handoff-agent-panel" aria-label="视频 Prompt 交接协作记录">
-              <AgentTimeline
+              <ProductionTimeline
                 messages={handoffAgentMessages}
                 runningLabel={busy ? '正在整理视频 Prompt 交接资料。' : undefined}
-                messageMeta={() => null}
-                messageTitle={(message) => message.role === 'assistant' ? '交接包' : '任务简报'}
-                messagePreview={(message) => message.content}
+                assistantTitle="交接包"
               />
             </div>
             {readyScript ? (

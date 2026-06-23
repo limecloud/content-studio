@@ -586,7 +586,7 @@ function resolveProviderConfig(config: ModelConfigView | undefined, apiKey: stri
 function visionConfigBlockedMessage(config: ModelConfigView | undefined, provider: ReferenceReverseProviderConfig): { message: string; error: string } | null {
   if (config?.platformManaged) {
     return {
-      message: '素材拆解暂未接入平台 lime.agent 视觉理解 runtime。平台托管模式下不会读取 Product App 本地或环境变量 API Key，请到平台模型设置确认 Provider 后再通过已接入的 Agent 工作台执行。',
+      message: '素材拆解暂未接入平台视觉理解生成服务。平台托管模式下不会读取本地或环境变量 API Key，请到平台模型设置确认可看图的生成服务后重试。',
       error: 'VISION_PLATFORM_AGENT_RUNTIME_REQUIRED',
     };
   }

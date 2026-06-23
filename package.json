@@ -1,6 +1,6 @@
 {
   "name": "content-studio",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "description": "布谷AI内容工厂桌面应用，用于知识库、提示词、图片、视频和文章生产。",
   "type": "module",
   "main": "out/main/index.js",
@@ -31,9 +31,6 @@
     "content:v1:verify-report": "node scripts/verify-content-ontology-v1-report.mjs",
     "content:v1:verify-readiness": "node scripts/verify-content-ontology-v1-readiness.mjs",
     "typecheck": "tsc --noEmit --project tsconfig.lime-packages.json",
-    "assert:agent-runtime-packages": "node scripts/assert-agent-runtime-packages.mjs",
-    "assert:local-lime-agent-runtime-tarballs": "node scripts/assert-local-lime-agent-runtime-tarballs.mjs",
-    "check:lime-agent-runtime-npm-publish-readiness": "node scripts/check-lime-agent-runtime-npm-publish-readiness.mjs",
     "assert:desktop-platform-packages": "node scripts/assert-desktop-platform-packages.mjs",
     "dist:mac": "npm run build:production && electron-builder --config electron-builder.yml --mac dmg zip --publish never",
     "dist:win": "npm run build:production && electron-builder --config electron-builder.yml --win nsis --publish never",
@@ -48,7 +45,6 @@
     "app-server:backend:live": "node scripts/app-server-backend-live-check.mjs",
     "app-server:runtime:live": "node scripts/app-server-runtime-live-check.mjs",
     "platform-host:runtime:live": "node scripts/platform-host-runtime-live-check.mjs",
-    "verify:lime-agent": "node scripts/lime-agent-boundary-audit.mjs",
     "verify:v2:providers": "node scripts/v2-provider-check.mjs",
     "verify:v2:providers:strict": "node scripts/v2-provider-check.mjs --strict",
     "verify:v2:acceptance": "node scripts/run-v2-business-acceptance.mjs",
@@ -59,14 +55,11 @@
     "test:functional": "node scripts/run-functional-tests.mjs",
     "test:e2e": "node scripts/run-playwright-e2e.mjs",
     "test:e2e:headed": "npm run test:e2e -- --headed",
-    "verify:local": "npm run typecheck && npm run content:v1:verify-readiness && npm run build && npm run verify:v2 && npm run verify:lime-agent && npm run test:functional && npm run smoke:electron && npm run test:e2e"
+    "verify:local": "npm run typecheck && npm run content:v1:verify-readiness && npm run build && npm run verify:v2 && npm run test:functional && npm run smoke:electron && npm run test:e2e"
   },
   "dependencies": {
     "@limecloud/agent-capability-catalog": "0.1.0",
     "@limecloud/agent-runtime-client": "0.1.1",
-    "@limecloud/agent-runtime-projection": "^0.1.1",
-    "@limecloud/agent-runtime-ui": "^0.1.1",
-    "@limecloud/agent-workbench-adapter": "0.1.0",
     "@limecloud/desktop-platform-contracts": "^0.2.2",
     "@limecloud/desktop-platform-electron-adapter": "^0.2.6",
     "@limecloud/desktop-platform-react": "^0.2.1",
@@ -97,5 +90,6 @@
     "typescript": "^5.9.3",
     "undici": "7.25.0"
   },
-  "author": "布谷AI"
+  "author": "布谷AI",
+  "packageManager": "pnpm@10.8.1+sha512.c50088ba998c67b8ca8c99df8a5e02fd2ae2e2b29aaf238feaa9e124248d3f48f9fb6db2424949ff901cffbb5e0f0cc1ad6aedb602cd29450751d11c35023677"
 }

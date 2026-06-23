@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import type {
-  AgentPromptSession,
   AssetFileKind,
   BuguAuthState,
   GenerationLogEntry,
@@ -9,12 +8,10 @@ import type {
   OemPublicCase,
   OemPublicSiteConfig,
   OemSiteConfigRequest,
-  PromptDraftPurpose,
 } from "../../../../shared/types";
 import { fileNameFromPath, localAssetUrl, statusLabel } from "../../app/formatters";
 import rawDressingkitVideoShared from "../../data/dressingkit-ai-video-shared.json";
 import rawDressingkitMaterials from "../../data/dressingkit-materials.json";
-import { AgentSessionPanel, type AgentActionResolver, type AgentExecutionStep } from "../agent/AgentSessionPanel";
 import { DetailDialog } from "../DetailDialog";
 
 type VideoShowcaseDialog = "feature-picker" | "material-upload" | "preview" | "history" | "prompt-list" | "prompt-assistant" | null;
@@ -29,7 +26,6 @@ type VideoMaterialActor = "virtual" | "real";
 type VideoMaterialStatus = "reported" | "reviewing" | "rejected";
 type VideoMaterialStatusFilter = "all" | VideoMaterialStatus;
 type VideoPreviewState = { url: string; kind: "image" | "video" | "artifact"; title: string; label: string };
-const VIDEO_SHOWCASE_AGENT_SOURCE = "AI 视频展示提示词助手";
 
 interface VideoShowcaseModuleProps {
   busy: boolean;
@@ -40,9 +36,6 @@ interface VideoShowcaseModuleProps {
   mediaResult: MediaGenerationResult | null;
   authState: BuguAuthState | null;
   logs: GenerationLogEntry[];
-  agentPromptSessions: AgentPromptSession[];
-  activeAgentPromptSessionId: string;
-  textModel?: string;
   onSelectProductImages: () => void;
   onSelectVideo: () => void;
   onSelectAudio: () => void;
@@ -50,20 +43,6 @@ interface VideoShowcaseModuleProps {
   onRemoveProductImageRef: (ref: string) => void;
   onRemoveVideoAssetRef: (ref: string) => void;
   onRemoveAudioAssetRef: (ref: string) => void;
-  onSelectAgentSession: (sessionId: string) => void;
-  onStartAgentSession: (input: {
-    title?: string;
-    purpose: PromptDraftPurpose;
-    userIntent: string;
-    inputSourceIds: string[];
-    textModel?: string;
-  }) => void;
-  onContinueAgentSession: (input: {
-    sessionId: string;
-    message: string;
-    textModel?: string;
-  }) => void;
-  onResolveAgentAction?: AgentActionResolver;
   onUsePromptInVideo: (input: ShowcaseVideoHandoff) => void;
   onStartPartialRetouch: (input: {
     prompt: string;
@@ -159,14 +138,6 @@ interface HistoryEntry {
   logId?: string;
   source?: "local" | "global";
 }
-
-const AGENT_SESSION_STATUS_LABELS: Record<AgentPromptSession["status"], string> = {
-  active: "协作中",
-  "waiting-user": "待补充",
-  "draft-created": "已生成草稿",
-  blocked: "待配置",
-  closed: "已关闭",
-};
 
 interface SavedVideoPromptTemplate {
   id: string;
@@ -1664,9 +1635,6 @@ export function VideoShowcaseModule({
   mediaResult,
   authState,
   logs,
-  agentPromptSessions,
-  activeAgentPromptSessionId,
-  textModel,
   onSelectProductImages,
   onSelectVideo,
   onSelectAudio,
@@ -1674,10 +1642,6 @@ export function VideoShowcaseModule({
   onRemoveProductImageRef,
   onRemoveVideoAssetRef,
   onRemoveAudioAssetRef,
-  onSelectAgentSession,
-  onStartAgentSession,
-  onContinueAgentSession,
-  onResolveAgentAction,
   onUsePromptInVideo,
   onStartPartialRetouch,
   onClearResult,
@@ -1716,7 +1680,6 @@ export function VideoShowcaseModule({
   const [assistantTab, setAssistantTab] = useState<VideoPromptAssistantTab>("text");
   const [assistantInput, setAssistantInput] = useState("");
   const [assistantResult, setAssistantResult] = useState("");
-  const [assistantAgentMessage, setAssistantAgentMessage] = useState("请结合当前视频功能、素材和参数，继续收紧提示词并指出素材不足的风险。");
   const [assistantTemplatesOpen, setAssistantTemplatesOpen] = useState(false);
   const [templateDraftTitle, setTemplateDraftTitle] = useState("");
   const [editingTemplateId, setEditingTemplateId] = useState("");
@@ -1908,44 +1871,6 @@ export function VideoShowcaseModule({
     () => mergeVideoHistoryEntries(historyEntries, logs),
     [historyEntries, logs],
   );
-  const relatedAgentSessions = useMemo(
-    () => agentPromptSessions.filter((session) =>
-      session.purpose === "video" &&
-      (session.userIntent.includes(VIDEO_SHOWCASE_AGENT_SOURCE) || session.title.includes("视频提示词助手")),
-    ),
-    [agentPromptSessions],
-  );
-  const activeAgentSession =
-    relatedAgentSessions.find((session) => session.id === activeAgentPromptSessionId) ??
-    relatedAgentSessions.find((session) => session.title.includes(activeFeature.title)) ??
-    relatedAgentSessions[0];
-  const canRunPromptAssistantAgent = workspaceReady && !busy && assistantAgentMessage.trim().length > 0;
-  const promptAssistantAgentSteps: AgentExecutionStep[] = [
-    {
-      key: "context",
-      title: "读取素材",
-      detail: uploadCount ? `${uploadCount} 个素材` : "未上传素材",
-      state: uploadCount ? "done" : canGenerateFromPromptOnly ? "idle" : "blocked",
-    },
-    {
-      key: "feature",
-      title: "确认功能",
-      detail: activeFeature.title,
-      state: activeFeature ? "done" : "blocked",
-    },
-    {
-      key: "dialog",
-      title: "协作打磨",
-      detail: activeAgentSession ? `${activeAgentSession.messages.length} 条消息` : "待开始",
-      state: busy && activeDialog === "prompt-assistant" ? "active" : activeAgentSession ? "done" : "idle",
-    },
-    {
-      key: "result",
-      title: "确认提示词",
-      detail: assistantResult.trim() ? "已有可编辑结果" : "待确认",
-      state: assistantResult.trim() ? "active" : "idle",
-    },
-  ];
 
   useEffect(() => {
     onClearResult();
@@ -2279,85 +2204,22 @@ export function VideoShowcaseModule({
     setActiveDialog(null);
   }
 
-  function buildPromptAssistantAgentIntent(message: string): string {
-    const draftPrompt = (assistantResult || assistantInput || promptDraft).trim();
-    const mediaRefs = assistantMediaRefs.length
-      ? assistantMediaRefs.map((ref, index) => `- 素材${index + 1}（${previewKindFromRef(ref)}）：${ref}`).join("\n")
-      : "- 未上传素材";
-    return [
-      `来源页面：${VIDEO_SHOWCASE_AGENT_SOURCE}`,
-      `任务：围绕「${activeFeature.title}」打磨可交付视频提示词。`,
-      "",
-      "用户本轮要求：",
-      message.trim(),
-      "",
-      "当前业务上下文：",
-      `- 行业：${selectedIndustry}`,
-      `- 功能：${activeFeature.title}`,
-      `- 时长：${videoDuration}`,
-      `- 分辨率：${videoResolution}`,
-      `- 画幅：${activeFeatureId === "storyboard" ? storyboardRatio : videoSize}`,
-      activeFeatureId === "storyboard" ? `- 分镜数量：${storyboardCount}` : "",
-      activeFeatureId === "storyboard" ? `- 分镜质量：${storyboardQuality}` : "",
-      selectedCase ? `- 参考案例：${selectedCase.title} / ${selectedCase.industry}` : "",
-      "",
-      "当前素材引用：",
-      mediaRefs,
-      "",
-      "当前提示词草稿：",
-      draftPrompt || "暂无提示词草稿。",
-      "",
-      "输出要求：如果素材不足，先明确需要补充的图片、视频或音频；如果可以生成，输出完整中文视频提示词，并保留主体、镜头、动作、节奏、卖点和合规边界。",
-    ].filter(Boolean).join("\n");
-  }
-
-  function startPromptAssistantAgent(): void {
-    if (!canRunPromptAssistantAgent) return;
-    onStartAgentSession({
-      title: `视频提示词助手 · ${activeFeature.title}`,
-      purpose: "video",
-      userIntent: buildPromptAssistantAgentIntent(assistantAgentMessage),
-      inputSourceIds: [],
-      textModel,
-    });
-  }
-
-  function continuePromptAssistantAgent(): void {
-    if (!activeAgentSession || !canRunPromptAssistantAgent) return;
-    onContinueAgentSession({
-      sessionId: activeAgentSession.id,
-      message: [
-        assistantAgentMessage.trim(),
-        "",
-        "当前页面上下文仍以以下提示词和素材为准：",
-        (assistantResult || assistantInput || promptDraft).trim() || "暂无提示词草稿。",
-        "",
-        `素材数量：${assistantMediaRefs.length} 个；功能：${activeFeature.title}；时长：${videoDuration}；分辨率：${videoResolution}。`,
-      ].join("\n"),
-      textModel,
-    });
-  }
-
-  function renderPromptAssistantAgentPanel(): ReactNode {
+  function renderPromptAssistantPanel(): ReactNode {
     const artifactPrompt = (assistantResult || assistantInput || promptDraft).trim();
-    const context = (
-      <>
-        <div className="agent-turn-head">
-          <strong>{activeFeature.title}</strong>
-          <small>{uploadCount} 个素材 / {videoDuration} / {videoResolution}</small>
-        </div>
-        <div className="prompt-agent-context-note">
-          {selectedCase ? `参考案例：${selectedCase.title}` : "未绑定参考案例"} · {textModel ? `模型：${textModel}` : "使用全局文字模型"}
-        </div>
-      </>
-    );
-    const artifact = artifactPrompt ? (
-      <>
-        <div className="agent-turn-head">
-          <strong>当前视频提示词</strong>
-          <small>{assistantResult.trim() ? "助手结果" : "页面草稿"}</small>
-        </div>
-        <div className="agent-claw-draft-editor">
+    return (
+      <div className="ai-assistant-agent-panel">
+        <div className="ai-assistant-prompt-panel">
+          <div className="panel-title compact">
+            <div>
+              <p className="eyebrow">提示词助手</p>
+              <h4>{activeFeature.title}</h4>
+            </div>
+            <span>{uploadCount} 个素材 / {videoDuration} / {videoResolution}</span>
+          </div>
+          <div className="prompt-agent-context-note">
+            {selectedCase ? `参考案例：${selectedCase.title}` : "未绑定参考案例"} · 当前使用本地提示词扩写和模板管理
+          </div>
+          <div className="ai-assistant-draft-editor">
           <label>
             <span>输入提示词</span>
             <textarea
@@ -2375,79 +2237,35 @@ export function VideoShowcaseModule({
             />
           </label>
         </div>
-        <details className="agent-turn-details">
-          <summary>查看提示词内容</summary>
-          <pre>{artifactPrompt}</pre>
-        </details>
-      </>
-    ) : null;
-    const footer = (
-      <>
-        <label className="prompt-session-adjustment">
-          <span>{activeAgentSession ? "继续调整" : "这次任务"}</span>
-          <textarea
-            value={assistantAgentMessage}
-            onChange={(event) => setAssistantAgentMessage(event.target.value)}
-          />
-        </label>
-        <div className="scene-agent-turn-actions">
-          <button
-            type="button"
-            className="primary small"
-            disabled={!canRunPromptAssistantAgent}
-            onClick={activeAgentSession ? continuePromptAssistantAgent : startPromptAssistantAgent}
-          >
-            {activeAgentSession ? "继续协作" : "开始协作"}
-          </button>
-          <button type="button" className="ghost small" onClick={generateAssistantPrompt} disabled={busy}>
-            本地扩写
-          </button>
-          <button type="button" className="ghost small" onClick={openPromptListDialog}>
-            模板列表
-          </button>
-          <button
-            type="button"
-            className="ghost small"
-            onClick={() => savePromptTemplate(
-              assistantResult || assistantInput || promptDraft,
-              templateDraftTitle,
-              editingTemplateId,
-              assistantMediaRefs.length ? assistantMediaRefs : undefined,
-            )}
-            disabled={!artifactPrompt}
-          >
-            保存模板
-          </button>
-          <button type="button" className="ghost small" onClick={confirmAssistantPrompt} disabled={!artifactPrompt}>
-            应用提示词
-          </button>
+          <details className="ai-assistant-prompt-summary" open={Boolean(artifactPrompt)}>
+            <summary>查看提示词内容</summary>
+            <pre>{artifactPrompt || "暂无提示词内容。"}</pre>
+          </details>
+          <div className="ai-assistant-action-row">
+            <button type="button" className="primary small" onClick={generateAssistantPrompt} disabled={!workspaceReady || busy}>
+              本地扩写
+            </button>
+            <button type="button" className="ghost small" onClick={openPromptListDialog}>
+              模板列表
+            </button>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => savePromptTemplate(
+                assistantResult || assistantInput || promptDraft,
+                templateDraftTitle,
+                editingTemplateId,
+                assistantMediaRefs.length ? assistantMediaRefs : undefined,
+              )}
+              disabled={!artifactPrompt}
+            >
+              保存模板
+            </button>
+            <button type="button" className="ghost small" onClick={confirmAssistantPrompt} disabled={!artifactPrompt}>
+              应用提示词
+            </button>
+          </div>
         </div>
-      </>
-    );
-    return (
-      <div className="ai-assistant-agent-panel">
-        <AgentSessionPanel
-          variant="claw"
-          eyebrow="提示词助手"
-          title={activeAgentSession?.title ?? `视频提示词协作 · ${activeFeature.title}`}
-          session={activeAgentSession}
-          sessions={relatedAgentSessions}
-          statusLabel={activeAgentSession ? AGENT_SESSION_STATUS_LABELS[activeAgentSession.status] : "待开始"}
-          steps={activeAgentSession || busy ? promptAssistantAgentSteps : []}
-          runningLabel={busy && activeDialog === "prompt-assistant" ? "正在处理视频提示词。" : undefined}
-          transcriptLabel={activeFeature.title}
-          context={context}
-          artifact={artifact}
-          footer={footer}
-          empty={(
-            <>
-              <strong>当前视频提示词尚未进入协作</strong>
-              <span>开始协作后，会在这里记录多轮消息、执行事实和生成草稿。</span>
-            </>
-          )}
-          onSelectSession={onSelectAgentSession}
-          onResolveAction={onResolveAgentAction}
-        />
       </div>
     );
   }
@@ -3475,7 +3293,7 @@ export function VideoShowcaseModule({
       {activeDialog === "prompt-assistant" ? (
         <div className="ai-assistant-overlay" role="presentation" onClick={() => setActiveDialog(null)}>
           <section
-            className={assistantTemplatesOpen ? "ai-assistant-dialog agent-first has-templates" : "ai-assistant-dialog agent-first"}
+            className={assistantTemplatesOpen ? "ai-assistant-dialog prompt-first has-templates" : "ai-assistant-dialog prompt-first"}
             role="dialog"
             aria-modal="true"
             aria-label="提示词助手"
@@ -3648,7 +3466,7 @@ export function VideoShowcaseModule({
                 </aside>
               ) : null}
             </div>
-            {renderPromptAssistantAgentPanel()}
+            {renderPromptAssistantPanel()}
             <footer className="ai-assistant-footer">
               <button type="button" onClick={() => setActiveDialog(null)}>取消</button>
               <button type="button" className="primary" onClick={confirmAssistantPrompt}>确定</button>

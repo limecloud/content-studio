@@ -160,8 +160,8 @@ export function GreenScreenModule({
             <h3>提示词 / 脚本 → 绿幕文案图 → 混剪清单</h3>
           </div>
           <div className="workflow-actions">
-            <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('agents')}>
-              agents
+            <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('video-creative')}>
+              Prompt 草稿
             </button>
             <button className="ghost small" disabled={!workspaceReady || busy} onClick={() => onSelectModule('video-mix-export')}>
               混剪包导出

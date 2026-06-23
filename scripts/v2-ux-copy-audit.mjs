@@ -89,13 +89,6 @@ export const V2_UX_COPY_AUDITS = [
     rules: v1BusinessModuleRules(),
   },
   {
-    path: 'src/renderer/src/components/agents/AgentsWorkbench.tsx',
-    rules: [
-      ...v1BusinessModuleRules(),
-      rule('agents-old-toolbar-copy', /计划模式|追求目标|附加 Wave|后端接口|等待启动协作|进行中的目标/, 'agents 工作台不能回流通用 Agent 工具栏、旧调试文案或无业务对象状态。'),
-    ],
-  },
-  {
     path: 'src/renderer/src/app/constants.ts',
     rules: [...retiredBrandCommandEntryRules(), ...retiredSopWorkflowEntryRules()],
   },

@@ -23,13 +23,6 @@ export const DEFAULT_PARAMS: GlobalGenerationParams = {
 
 export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
   {
-    title: 'agents',
-    items: [
-      { key: 'agents', label: '新对话' },
-      { key: 'skills', label: 'skills 管理' },
-    ],
-  },
-  {
     title: '图片',
     items: [
       { key: 'image-production', label: '图片生成' },
@@ -50,6 +43,12 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     ],
   },
   {
+    title: '文案',
+    items: [
+      { key: 'article', label: '文章生成' },
+    ],
+  },
+  {
     title: '知识库',
     items: [
       { key: 'knowledge', label: '成型知识库' },
@@ -60,6 +59,7 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: '资产',
     items: [
       { key: 'assets', label: '素材库' },
+      { key: 'skills', label: 'skills 管理' },
     ],
   },
 ];

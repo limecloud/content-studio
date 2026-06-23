@@ -24,7 +24,6 @@ function run(cmd, args) {
 }
 
 const steps = [
-  [command('npm'), ['run', 'assert:agent-runtime-packages']],
   [command('npm'), ['run', 'assert:desktop-platform-packages']],
   [command('tsc'), ['--noEmit']],
   [command('electron-vite'), ['build']],

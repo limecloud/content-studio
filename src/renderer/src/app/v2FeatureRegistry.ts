@@ -184,7 +184,7 @@ const V2_FEATURE_ACTION_TARGETS: Partial<
   Record<V2ModuleKey, Partial<Record<V2FeatureActionSlot, V2FeatureActionTarget>>>
 > = {
   'material-breakdown': {
-    secondary: { type: 'module', module: 'agents' },
+    secondary: { type: 'module', module: 'image-showcase' },
   },
   'image-green-screen': {
     secondary: { type: 'module', module: 'video-mix-export' },

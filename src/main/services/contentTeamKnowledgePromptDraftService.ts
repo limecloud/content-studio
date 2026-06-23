@@ -172,7 +172,7 @@ export class ContentTeamKnowledgePromptDraftService {
       inputSourceIds: map.sourceInputSourceIds,
       sceneCardIds: map.sceneCardIds,
       content: buildTeamKnowledgePromptContent(map, release, readyRows),
-      note: '由团队知识包详情页生成，可在 agents 继续协作和确认。',
+      note: '由团队知识包详情页生成，可在 Prompt 草稿中继续确认。',
       model: 'local-team-knowledge-package-handoff',
       status: 'draft',
     });
